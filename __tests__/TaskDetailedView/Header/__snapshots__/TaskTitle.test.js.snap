@@ -1,0 +1,99 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "flex": 1,
+      "height": 64,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "backgroundColor": "white",
+        "height": 32,
+      }
+    }
+  />
+  <View
+    style={
+      Object {
+        "alignContent": "flex-start",
+        "alignItems": "flex-start",
+        "backgroundColor": "white",
+        "flexDirection": "row",
+        "justifyContent": "flex-start",
+        "maxHeight": 64,
+        "minHeight": 32,
+        "overflow": "hidden",
+      }
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "flex": 1,
+          "marginRight": 16,
+        }
+      }
+    >
+      <Text
+        onLayout={[Function]}
+        onPress={[Function]}
+        style={
+          Array [
+            undefined,
+            Object {
+              "flexDirection": "row",
+              "textAlignVertical": "center",
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            Array [
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+              },
+              Object {
+                "flexWrap": "wrap",
+              },
+            ]
+          }
+        >
+          <Text
+            style={
+              Array [
+                Object {},
+                undefined,
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 24,
+                    "lineHeight": 32,
+                  },
+                  Object {
+                    "color": "#04142F",
+                  },
+                ],
+                Object {
+                  "marginLeft": 0,
+                },
+              ]
+            }
+          >
+            dsa
+            
+          </Text>
+        </View>
+      </Text>
+    </View>
+  </View>
+</View>
+`;

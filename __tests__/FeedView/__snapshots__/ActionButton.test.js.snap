@@ -1,0 +1,75 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ActionButton component should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "marginRight": 4,
+      },
+      null,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "borderRadius": 4,
+        "flexDirection": "row",
+        "height": 40,
+        "opacity": 1,
+        "paddingHorizontal": 16,
+      }
+    }
+    testID="touchableOpacity"
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      />
+    </View>
+    <View
+      style={
+        Object {
+          "marginLeft": 12,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontStyle": "normal",
+              "letterSpacing": 0.8,
+              "lineHeight": 14,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      />
+    </View>
+  </View>
+</View>
+`;

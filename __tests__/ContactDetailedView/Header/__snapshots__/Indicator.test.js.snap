@@ -1,0 +1,57 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Detailed Project Indicator component Detailed Project Indicator snapshot test should render correctly 1`] = `
+<View>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "white",
+        "flexDirection": "row",
+        "justifyContent": "center",
+        "marginTop": 36,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+          },
+          Object {
+            "color": "#8A94A6",
+          },
+        ]
+      }
+    >
+      RELEVANT CONTACT
+    </Text>
+    <View
+      style={
+        Object {
+          "marginLeft": 14,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 20,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

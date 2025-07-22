@@ -1,0 +1,7 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`TaskSummarizeTags component Function updateState snapshot test should execute and render correctly 1`] = `null`;
+
+exports[`TaskSummarizeTags component Function updateState snapshot test should execute and render correctly 2`] = `null`;
+
+exports[`TaskSummarizeTags component TaskSummarizeTags empty snapshot test should render correctly 1`] = `null`;

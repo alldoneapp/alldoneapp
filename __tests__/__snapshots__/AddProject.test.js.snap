@@ -1,0 +1,109 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AddProject component AddProject empty snapshot test should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 56,
+      "marginHorizontal": 12,
+      "opacity": 1,
+      "paddingHorizontal": 12,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "#6C8FC9",
+          "fontFamily": "alldone",
+          "fontSize": 22,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+  <Text
+    style={
+      Object {
+        "color": "#6C8FC9",
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 16,
+        "letterSpacing": 0.32,
+        "lineHeight": 24,
+        "paddingLeft": 8,
+      }
+    }
+  >
+    Add new project
+  </Text>
+</View>
+`;
+
+exports[`AddProject component AddProject empty snapshot test should render correctly when the platform is web 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 56,
+      "marginHorizontal": 12,
+      "opacity": 1,
+      "paddingHorizontal": 12,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "#6C8FC9",
+          "fontFamily": "alldone",
+          "fontSize": 22,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+  <Text
+    style={
+      Object {
+        "color": "#6C8FC9",
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 16,
+        "letterSpacing": 0.32,
+        "lineHeight": 24,
+        "paddingLeft": 8,
+      }
+    }
+  >
+    Add new project
+  </Text>
+</View>
+`;

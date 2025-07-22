@@ -1,0 +1,47 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AccessLearning component AccessLearning snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "#0D55CF",
+      "borderColor": "#0D55CF",
+      "borderRadius": 4,
+      "flexDirection": "row",
+      "height": 40,
+      "paddingLeft": 19,
+      "width": 198,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "white",
+          "fontFamily": "alldone",
+          "fontSize": 24,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+  <Text
+    style={
+      Object {
+        "color": "white",
+        "fontFamily": "Roboto-Medium",
+        "fontSize": 14,
+        "letterSpacing": 0.05,
+        "lineHeight": 14,
+        "paddingLeft": 15,
+      }
+    }
+  >
+    Access Learnings
+  </Text>
+</View>
+`;

@@ -1,0 +1,9 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DismissibleModal component DismissibleModal empty snapshot test Should render correctly 1`] = `<View />`;
+
+exports[`DismissibleModal component DismissibleModal empty snapshot test Should render correctly when the platform is web 1`] = `
+<View>
+  <div />
+</View>
+`;

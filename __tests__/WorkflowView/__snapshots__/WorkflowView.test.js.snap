@@ -1,0 +1,316 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`WorkflowView component WorkflowView snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "flex": 1,
+      "flexDirection": "column",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "height": 72,
+        "paddingBottom": 12,
+        "paddingTop": 32,
+        "width": "100%",
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 20,
+            "lineHeight": 28,
+          },
+          Object {
+            "color": "#04142F",
+          },
+        ]
+      }
+    >
+      Workflow
+    </Text>
+    <View
+      style={
+        Object {
+          "height": 28,
+          "justifyContent": "flex-end",
+          "marginLeft": 16,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+            },
+          ]
+        }
+      >
+        No steps yet
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+        "height": 40,
+        "paddingBottom": 12,
+        "paddingTop": 8,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignSelf": "center",
+        }
+      }
+    >
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "marginLeft": 8,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Customize the steps asd's tasks will go through when marked as completed
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "borderColor": "#E7ECEF",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "flexDirection": "row",
+        "height": 56,
+        "paddingLeft": 10,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#C6CDD2",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "marginLeft": 8,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "letterSpacing": 0.16,
+              "lineHeight": 22,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Open task
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flexDirection": "column",
+        "marginTop": 16,
+      }
+    }
+  />
+  <View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "borderColor": "#E7ECEF",
+          "borderRadius": 4,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "height": 56,
+          "opacity": 1,
+          "paddingLeft": 8,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+      <View
+        style={
+          Object {
+            "marginLeft": 12,
+          }
+        }
+      >
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 16,
+                "letterSpacing": 0.32,
+                "lineHeight": 24,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+            ]
+          }
+        >
+          Type to add new step
+        </Text>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderColor": "#E7ECEF",
+          "borderRadius": 4,
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "height": 56,
+          "paddingLeft": 10,
+        },
+        Object {
+          "marginTop": 16,
+        },
+      ]
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#C6CDD2",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "marginLeft": 8,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "letterSpacing": 0.16,
+              "lineHeight": 22,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Done task
+      </Text>
+    </View>
+  </View>
+</View>
+`;

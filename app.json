@@ -1,0 +1,31 @@
+{
+    "expo": {
+        "name": "Alldone.app",
+        "slug": "alldone",
+        "privacy": "public",
+        "sdkVersion": "36.0.0",
+        "description": "Alldone.app - team up with AI agents to get it all done",
+        "platforms": ["web"],
+        "scheme": "https",
+        "version": "0.0.1",
+        "orientation": "default",
+        "icon": "./assets/icon.png",
+        "splash": {
+            "image": "./assets/splash/Splash-Portrait(2049x2732).png",
+            "resizeMode": "contain",
+            "backgroundColor": "#0A44A5"
+        },
+        "updates": {
+            "fallbackToCacheTimeout": 0
+        },
+        "assetBundlePatterns": ["**/*"],
+        "entryPoint": "node_modules/expo/AppEntry.js",
+        "hooks": {
+            "postPublish": [
+                {
+                    "file": "sentry-expo/upload-sourcemaps"
+                }
+            ]
+        }
+    }
+}

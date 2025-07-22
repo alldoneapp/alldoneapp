@@ -1,0 +1,18 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SubtasksView should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "column",
+      "height": 200,
+      "justifyContent": "center",
+    }
+  }
+>
+  <Text>
+    SUBTASKS COMING SOON! ;)
+  </Text>
+</View>
+`;

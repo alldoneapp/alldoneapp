@@ -1,0 +1,235 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Member tag component Function updateState snapshot test should execute and render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={false}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "opacity": 1,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#EAF0AF",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "height": 24,
+          "justifyContent": "center",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "marginHorizontal": 4,
+        }
+      }
+    >
+      <Text
+        style={
+          Object {
+            "color": "#A8A700",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.16,
+            "lineHeight": 22,
+          },
+          Object {
+            "color": "#A8A700",
+            "marginLeft": 2,
+            "marginRight": 10,
+            "marginVertical": 1,
+          },
+        ]
+      }
+    >
+      Member
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`Member tag component Function updateState snapshot test should execute and render correctly 2`] = `
+<View
+  accessible={true}
+  focusable={false}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "opacity": 1,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#EAF0AF",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "height": 24,
+          "justifyContent": "center",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "marginHorizontal": 4,
+        }
+      }
+    >
+      <Text
+        style={
+          Object {
+            "color": "#A8A700",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.16,
+            "lineHeight": 22,
+          },
+          Object {
+            "color": "#A8A700",
+            "marginLeft": 2,
+            "marginRight": 10,
+            "marginVertical": 1,
+          },
+        ]
+      }
+    >
+      Member
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`Member tag component Member snapshot test should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={false}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "opacity": 1,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#EAF0AF",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "height": 24,
+          "justifyContent": "center",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "marginHorizontal": 4,
+        }
+      }
+    >
+      <Text
+        style={
+          Object {
+            "color": "#A8A700",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.16,
+            "lineHeight": 22,
+          },
+          Object {
+            "color": "#A8A700",
+            "marginLeft": 2,
+            "marginRight": 10,
+            "marginVertical": 1,
+          },
+        ]
+      }
+    >
+      Member
+    </Text>
+  </View>
+</View>
+`;

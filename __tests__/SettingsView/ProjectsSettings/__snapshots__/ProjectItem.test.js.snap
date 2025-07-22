@@ -1,0 +1,236 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProjectItem component ProjectItem snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 56,
+    }
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 56,
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "flex": 1,
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#39CCCC",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 16,
+              "letterSpacing": 0.16,
+              "lineHeight": 24,
+            },
+            Object {
+              "color": "#04142F",
+              "marginLeft": 4,
+            },
+          ]
+        }
+      >
+        Another one
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "flexDirection": "row",
+          "paddingRight": 12,
+        }
+      }
+    >
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "opacity": 1,
+          }
+        }
+      >
+        <View
+          style={
+            Array [
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "#E7ECEF",
+                "borderRadius": 12,
+                "flexDirection": "row",
+                "height": 24,
+                "justifyContent": "center",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            style={
+              Object {
+                "marginHorizontal": 4,
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 16,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+          <Text
+            style={
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.16,
+                  "lineHeight": 22,
+                },
+                Object {
+                  "color": "#8A94A6",
+                  "marginLeft": 2,
+                  "marginRight": 10,
+                  "marginVertical": 1,
+                },
+              ]
+            }
+          >
+            6 Members
+          </Text>
+        </View>
+      </View>
+    </View>
+    <View>
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Object {
+                "alignSelf": "center",
+                "color": "#FFFFFF",
+                "flexWrap": "nowrap",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 14,
+                "letterSpacing": 0.8,
+                "lineHeight": 16,
+                "margin": 0,
+                "paddingHorizontal": 8,
+                "paddingVertical": 0,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+              Object {},
+            ]
+          }
+        >
+          Archive
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

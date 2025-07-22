@@ -1,0 +1,38 @@
+/**
+ * Global styles for Tool Tip components
+ */
+.ad-global-tooltip {
+    position: absolute;
+    background-color: #1a3289 !important;
+    font-family: 'Roboto-Medium', serif !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    line-height: 22px !important;
+    color: #ffffff !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 4px 16px rgba(78, 93, 120, 0.56) !important;
+}
+.ad-global-tooltip.place-bottom:after {
+    border-bottom-color: #1a3289 !important;
+    border-bottom-style: solid !important;
+    border-bottom-width: 6px !important;
+}
+.ad-global-tooltip.place-top:after {
+    border-top-color: #1a3289 !important;
+    border-top-style: solid !important;
+    border-top-width: 6px !important;
+}
+.ad-global-tooltip.place-left:after {
+    border-left-color: #1a3289 !important;
+    border-left-style: solid !important;
+    border-left-width: 6px !important;
+}
+.ad-global-tooltip.place-right:after {
+    border-right-color: #1a3289 !important;
+    border-right-style: solid !important;
+    border-right-width: 6px !important;
+}
+/**
+ * END - Global styles for Tool Tip components
+ */

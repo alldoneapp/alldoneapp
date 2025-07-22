@@ -1,0 +1,184 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`WorkflowHeader component should render correctly when there are no steps 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 72,
+      "paddingBottom": 12,
+      "paddingTop": 32,
+      "width": "100%",
+    }
+  }
+>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 20,
+          "lineHeight": 28,
+        },
+        Object {
+          "color": "#04142F",
+        },
+      ]
+    }
+  >
+    Workflow
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
+    >
+      No steps yet
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`WorkflowHeader component should render correctly when there are two steps 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 72,
+      "paddingBottom": 12,
+      "paddingTop": 32,
+      "width": "100%",
+    }
+  }
+>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 20,
+          "lineHeight": 28,
+        },
+        Object {
+          "color": "#04142F",
+        },
+      ]
+    }
+  >
+    Workflow
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
+    >
+      2 steps
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`WorkflowHeader component should render correctly when there is one step 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 72,
+      "paddingBottom": 12,
+      "paddingTop": 32,
+      "width": "100%",
+    }
+  }
+>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 20,
+          "lineHeight": 28,
+        },
+        Object {
+          "color": "#04142F",
+        },
+      ]
+    }
+  >
+    Workflow
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
+    >
+      1 step
+    </Text>
+  </View>
+</View>
+`;

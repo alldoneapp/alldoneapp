@@ -1,0 +1,82 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ArchivedProjects component ArchivedProjects snapshot test should render correctly 1`] = `
+<View>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "height": 56,
+        "justifyContent": "space-between",
+        "opacity": 1,
+        "paddingLeft": 24,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 16,
+              "letterSpacing": 0.32,
+              "lineHeight": 24,
+            },
+            Object {
+              "color": "white",
+            },
+            Object {
+              "opacity": 0.4,
+            },
+          ]
+        }
+      >
+        Archived projects
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "paddingRight": 24,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 16,
+              "letterSpacing": 0.32,
+              "lineHeight": 24,
+            },
+            Object {
+              "color": "white",
+            },
+            Object {
+              "opacity": 0.4,
+            },
+            null,
+          ]
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;

@@ -1,0 +1,16 @@
+/* Styles for Tasks */
+
+.task-feed-name {
+    display: table-cell;
+    vertical-align: middle;
+}
+.task-feed-owner-icon {
+    width: 20px;
+    height: 20px;
+    margin: 0px 4px 0px 8px;
+}
+.task-feed-tags {
+    display: inline-block;
+    margin-left: 37px;
+    padding: 4px 0px;
+}

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Template</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap"
+            rel="stylesheet"
+        />
+        <style type="text/css" rel="stylesheet">
+            * {
+                padding: 0px;
+                margin: 0px;
+                font-family: 'Roboto', sans-serif;
+            }
+            table,
+            thead,
+            tbody,
+            tfoot,
+            tr,
+            th,
+            td {
+                display: block;
+                width: auto;
+                height: auto;
+                margin: 0;
+                padding: 0;
+                border: none;
+                border-collapse: inherit;
+                border-spacing: 0;
+                border-color: inherit;
+                vertical-align: inherit;
+                text-align: left;
+                font-weight: inherit;
+                -webkit-border-horizontal-spacing: 0;
+                -webkit-border-vertical-spacing: 0;
+            }
+            th,
+            td {
+                display: inline;
+                width: fit-content;
+            }
+            .body {
+                width: 100%;
+                background-color: #ffffff;
+                text-align: center;
+            }
+            .container {
+                width: 100%;
+                text-align: center;
+                padding-top: 32px;
+                padding-bottom: 32px;
+            }
+            .message-container {
+                max-width: 600px;
+                margin-left: auto;
+                margin-right: auto;
+                margin-bottom: 32px;
+                border-radius: 8px;
+                background-color: #ffffff;
+                /*box-shadow: 0px 0px 32px rgba(13, 85, 207, 0.24);*/
+            }
+            .message-header {
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                max-height: 72px;
+                text-align: center;
+                vertical-align: middle;
+                background-color: #0a44a5;
+                color: #ffffff;
+                padding-top: 26px;
+                padding-bottom: 22px;
+                border: 1px solid #0a44a5;
+            }
+            .message-header table,
+            .message-header thead,
+            .message-header tbody,
+            .message-header tfoot,
+            .message-header tr {
+                display: inline;
+                height: 24px;
+            }
+            .header-logo {
+                margin-right: 8px;
+            }
+            .header-name,
+            .header-link {
+                min-height: 24px;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: bold;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.02em;
+                /*color: #ffffff;*/
+            }
+            .header-link,
+            .header-link:hover,
+            .header-link:visited,
+            .header-link:active {
+                text-decoration: none;
+                color: #ffffff;
+            }
+            .message-body {
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                text-align: left;
+                padding-top: 48px;
+                padding-bottom: 48px;
+                padding-left: 48px;
+                padding-right: 48px;
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+                border: 1px solid rgba(13, 85, 207, 0.24);
+            }
+            .message-body-no-border {
+                border-top-left-radius: 0;
+                border-top-right-radius: 0;
+            }
+            .topic {
+                min-height: 24px;
+                margin-bottom: 24px;
+            }
+            .topic > table {
+                display: inline;
+                min-height: 24px;
+            }
+            .topic-icon {
+                margin-right: 12px;
+            }
+            .topic-text {
+                overflow-y: hidden;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.01em;
+                color: #8a94a6;
+            }
+            .topic-text.link,
+            .topic-text.link:hover,
+            .topic-text.link:visited,
+            .topic-text.link:active {
+                color: #007fff;
+                text-decoration: none;
+            }
+            .project-header {
+                min-height: 24px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                margin-bottom: 24px;
+            }
+            .project-header > table {
+                display: inline;
+                min-height: 24px;
+            }
+            .project-header-icon {
+                margin-right: 4px;
+            }
+            .project-header-text {
+                overflow-y: hidden;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.01em;
+                color: #04142f;
+            }
+            .feed-body {
+                margin-bottom: 24px;
+            }
+            .feed-time {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.02em;
+                color: #8a94a6;
+            }
+            .feed-link {
+                margin-top: 24px;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.01em;
+                color: #4e5d78;
+            }
+            #feed-link-a,
+            #feed-link-a:hover,
+            #feed-link-a:visited,
+            #feed-link-a:active {
+                font-weight: 400;
+                color: #007fff;
+                word-wrap: break-word;
+                word-break: break-all;
+                text-decoration: none;
+            }
+            .footer {
+                padding-top: 70px; /* 102 - 32 */
+                text-align: center;
+            }
+            .footer-icons {
+                margin-bottom: 24px;
+            }
+            .footer-icons .social-link {
+                margin-left: 12px;
+                margin-right: 12px;
+            }
+            .social-link,
+            .social-link:hover,
+            .social-link:visited,
+            .social-link:active {
+                text-decoration: none;
+            }
+            .footer-copy,
+            .footer-link {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.02em;
+                /*color: #8a94a6;*/
+            }
+            .footer-link,
+            .footer-link:hover,
+            .footer-link:visited,
+            .footer-link:active {
+                text-decoration: none;
+                color: #8a94a6;
+            }
+            table.attachment-item {
+                display: inline-block;
+                height: 24px;
+                border-radius: 100px;
+                background-color: #e7ecef;
+                padding: 0px 10px 0px 4px;
+                margin: 4px 9px 4px 0px;
+            }
+            table.attachment-item tbody,
+            table.attachment-item tbody tr,
+            table.attachment-item tbody td {
+                height: 24px !important;
+            }
+            table.attachment-item tr td {
+                display: table-cell;
+                padding: 2px 4px 0px 0px;
+            }
+            .attachment-icon-parent {
+                display: table-cell;
+                padding: 2px 4px 0px 0px;
+            }
+            .attachment-icon {
+                width: 16px;
+                height: 20px;
+            }
+            .attachment-text {
+                vertical-align: top;
+                padding: 1px 0px 0px 0px !important;
+                display: table-cell;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.01em;
+                color: #8a94a6;
+            }
+            .attachment-text a,
+            .attachment-text a:hover,
+            .attachment-text a:visited,
+            .attachment-text a:active {
+                text-decoration: none;
+                color: #8a94a6;
+            }
+
+            table.colored-tag {
+                display: inline-block;
+                height: 24px;
+                border-radius: 100px;
+                background-color: #e7ecef;
+                padding: 0px 10px 0px 4px;
+                margin: 0px 6px 1px 0px;
+                vertical-align: middle;
+            }
+            table.colored-tag tbody,
+            table.colored-tag tbody tr,
+            table.colored-tag tbody td {
+                height: 24px !important;
+            }
+            table.colored-tag tr td {
+                display: table-cell;
+                padding: 2px 4px 0px 0px;
+            }
+            .colored-icon {
+                width: 16px;
+                height: 20px;
+            }
+            .colored-text {
+                vertical-align: top;
+                padding: 1px 0px 0px 0px !important;
+                display: table-cell;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.01em;
+                color: #8a94a6;
+            }
+            .colored-text a,
+            .colored-text a:hover,
+            .colored-text a:visited,
+            .colored-text a:active {
+                text-decoration: none;
+                color: #8a94a6;
+            }
+
+            .rich-text-email,
+            .rich-text-email:hover,
+            .rich-text-email:visited,
+            .rich-text-email:active {
+                color: #f58e0a;
+                text-decoration: none;
+            }
+            .rich-text-link,
+            .rich-text-link:hover,
+            .rich-text-link:visited,
+            .rich-text-link:active {
+                color: #007fff;
+                text-decoration: none;
+            }
+            .feed-comment {
+                display: block;
+                width: auto;
+                margin-left: 37px;
+                padding: 4px 8px 4px 8px;
+                background-color: #fafbfb;
+                border-radius: 4px;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.02em;
+                color: #4e5d78;
+                vertical-align: middle;
+            }
+        </style>
+
+        <!-- Feed Items Common styles -->
+        <style type="text/css" rel="stylesheet">
+            .common-feed-icon {
+                margin-right: 12px;
+            }
+            .common-circle {
+                border-radius: 100px;
+            }
+            .common-feed-name {
+                overflow-y: hidden;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.02em;
+                color: #04142f;
+            }
+            .common-feed-owner-time {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 11px;
+                line-height: 20px;
+                letter-spacing: 0.03em;
+                color: #8a94a6;
+            }
+            .common-feed-owner-avatar {
+                width: 20px;
+                height: 20px;
+                margin: 2px 4px 0px 8px;
+                border-radius: 100px;
+            }
+            .common-feed-action-text {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.02em;
+                color: #4e5d78;
+            }
+        </style>
+        <!-- END - Feed Items Common styles -->
+
+        <style type="text/css" rel="stylesheet">
+            .task-feed-name {
+                display: table-cell;
+                vertical-align: middle;
+            }
+            .task-feed-owner-icon {
+                width: 20px;
+                height: 20px;
+                margin: 0px 4px 0px 8px;
+            }
+            .task-feed-tags {
+                display: inline-block;
+                margin-left: 37px;
+                padding: 4px 0px;
+            }
+        </style>
+    </head>
+    <body class="body">
+        <div class="container">
+            {{{ bodySection }}}
+
+            <div class="footer">
+                <div class="footer-icons">
+                    <a class="social-link" target="_blank" href="#">
+                        <img
+                            src="{{ appUrl }}icons/grey/facebook-notification-email.png"
+                            alt=""
+                            width="32"
+                            height="32"
+                        />
+                    </a>
+                    <a class="social-link" target="_blank" href="#">
+                        <img
+                            src="{{ appUrl }}icons/grey/youtube-notification-email.png"
+                            alt=""
+                            width="32"
+                            height="32"
+                        />
+                    </a>
+                    <a class="social-link" target="_blank" href="#">
+                        <img
+                            src="{{ appUrl }}icons/grey/twitter-notification-email.png"
+                            alt=""
+                            width="32"
+                            height="32"
+                        />
+                    </a>
+                </div>
+
+                <div class="footer-copy" style="margin-bottom: 24px;">
+                    <p style="color: #8a94a6;">
+                        If you choose not to receive email notifications from Alldone.app in the future, please click
+                        <a
+                            class="footer-link"
+                            style="color: #007fff; text-decoration: underline;"
+                            href="{{ appUrl }}settings/customizations"
+                        >
+                            unsubscribe
+                        </a>
+                    </p>
+                </div>
+
+                <div class="footer-copy">
+                    <p>
+                        <a class="footer-link" style="color: #8a94a6;" target="_blank" href="{{ appUrl }}">
+                            &copy;Alldone GmbH 2020
+                        </a>
+                        •
+                        <a class="footer-link" style="color: #8a94a6;" target="_blank" href="{{ appImpressum }}">
+                            Impressum
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

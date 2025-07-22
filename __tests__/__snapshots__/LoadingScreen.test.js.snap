@@ -1,0 +1,75 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LoadingScreen component LoadingScreen snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "white",
+      "flex": 1,
+      "justifyContent": "center",
+      "paddingHorizontal": 10,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderRadius": 10000,
+          "justifyContent": "center",
+        },
+        Object {
+          "backgroundColor": "#E7ECEF",
+          "height": 200,
+          "maxHeight": 200,
+          "maxWidth": 200,
+          "minHeight": 200,
+          "minWidth": 200,
+          "width": 200,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "transform": Array [
+            Object {
+              "rotate": "0deg",
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 150,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 30,
+        "marginBottom": 30,
+        "paddingTop": 40,
+        "textAlign": "justify",
+      }
+    }
+  />
+</View>
+`;

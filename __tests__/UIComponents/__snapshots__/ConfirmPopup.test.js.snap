@@ -1,0 +1,9 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ConfirmPopup component ConfirmPopup snapshot test Should render correctly 1`] = `null`;
+
+exports[`ConfirmPopup component Function executeTrigger snapshot test Should execute and render correctly 1`] = `null`;
+
+exports[`ConfirmPopup component Function hidePopup snapshot test Should execute and render correctly 1`] = `null`;
+
+exports[`ConfirmPopup component Function onKeyDown snapshot test Should execute and render correctly 1`] = `null`;

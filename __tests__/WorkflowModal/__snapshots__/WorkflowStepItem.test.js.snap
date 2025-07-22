@@ -1,0 +1,117 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`WorkflowStepItem should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 40,
+      "justifyContent": "space-between",
+      "opacity": 1,
+      "paddingBottom": 8,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#007FFF",
+            "fontFamily": "alldone",
+            "fontSize": 23,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <Text
+      style={
+        Array [
+          Object {
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+          },
+          Object {
+            "marginLeft": 10,
+          },
+          Object {
+            "color": "#007FFF",
+          },
+        ]
+      }
+    />
+  </View>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#8A94A6",
+            "fontWeight": "500",
+            "marginRight": 4,
+          },
+        ]
+      }
+    >
+      Sent to
+    </Text>
+    <Image
+      source={
+        Object {
+          "uri": undefined,
+        }
+      }
+      style={
+        Array [
+          Object {
+            "borderRadius": 100,
+            "height": 24,
+            "width": 24,
+          },
+          Object {
+            "borderColor": "#007FFF",
+            "borderWidth": 2,
+          },
+        ]
+      }
+    />
+  </View>
+</View>
+`;

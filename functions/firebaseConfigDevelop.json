@@ -1,0 +1,6 @@
+{
+    "url": "https://mystaging.alldone.app/",
+    "databaseURL": "https://alldonestaging.firebaseio.com",
+    "storageBucket": "alldonestaging.appspot.com",
+    "storageBackupBucket": "gs://alldonestaging-backups"
+}

@@ -1,0 +1,11 @@
+version: '3'
+services:
+    web:
+        image: alldone-dev-web
+        build:
+            context: .
+        restart: always
+        expose:
+            - '80'
+        ports:
+            - '127.0.0.1:9018:80'

@@ -1,0 +1,45 @@
+import React from 'react'
+import { StyleSheet, Text, View } from 'react-native'
+
+import Icon from '../../Icon'
+import styles, { colors } from '../../styles/global'
+import PrivacyButton from '../../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
+import { FEED_GOAL_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
+import { translate } from '../../../i18n/TranslationService'
+
+export default function Privacy({ projectId, object, objectType, disabled }) {
+    return (
+        <View style={localStyles.container}>
+            <View style={{ marginRight: 8 }}>
+                <Icon name="lock" size={24} color={colors.Text03} />
+            </View>
+            <Text style={localStyles.text}>{translate('Privacy')}</Text>
+            <View style={{ marginLeft: 'auto' }}>
+                <PrivacyButton
+                    projectId={projectId}
+                    object={object}
+                    objectType={objectType}
+                    disabled={disabled}
+                    shortcutText={'P'}
+                />
+            </View>
+        </View>
+    )
+}
+
+const localStyles = StyleSheet.create({
+    container: {
+        flex: 1,
+        flexDirection: 'row',
+        maxHeight: 56,
+        minHeight: 56,
+        height: 56,
+        paddingLeft: 8,
+        paddingVertical: 8,
+        alignItems: 'center',
+    },
+    text: {
+        ...styles.subtitle2,
+        color: colors.Text03,
+    },
+})

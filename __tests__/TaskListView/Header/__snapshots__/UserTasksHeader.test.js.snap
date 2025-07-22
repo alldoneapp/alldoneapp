@@ -1,0 +1,123 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`UserTasksHeader component UserTasksHeader empty snapshot test should render correctly for basic header 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 80,
+        "maxHeight": 80,
+        "minHeight": 80,
+        "paddingBottom": 8,
+        "paddingTop": 40,
+      },
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 24,
+        "lineHeight": 32,
+        "marginRight": 14,
+      }
+    }
+  >
+    Martina's tasks
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`UserTasksHeader component UserTasksHeader empty snapshot test should render correctly for header with caption 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 80,
+        "maxHeight": 80,
+        "minHeight": 80,
+        "paddingBottom": 8,
+        "paddingTop": 40,
+      },
+      undefined,
+    ]
+  }
+>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 24,
+        "lineHeight": 32,
+        "marginRight": 14,
+      }
+    }
+  >
+    Done team task
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
+    >
+      5 Open
+    </Text>
+  </View>
+</View>
+`;

@@ -1,0 +1,251 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`MentionsModal component should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "backgroundColor": "#091540",
+      "borderRadius": 4,
+      "elevation": 3,
+      "paddingHorizontal": 8,
+      "paddingVertical": 8,
+      "shadowColor": "rgba(78, 93, 120, 0.56)",
+      "shadowOffset": Object {
+        "height": 4,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 16,
+      "width": 305,
+    }
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "rgba(138,148,166,0.16)",
+        "borderRadius": 4,
+        "flexDirection": "row",
+        "opacity": 1,
+        "padding": 8,
+      }
+    }
+  >
+    <Image
+      source={
+        Object {
+          "uri": undefined,
+        }
+      }
+      style={
+        Array [
+          Object {
+            "borderRadius": 100,
+            "height": 32,
+            "width": 32,
+          },
+          Object {
+            "borderColor": "#007FFF",
+            "borderWidth": 2,
+          },
+        ]
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#FFFFFF",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+            "marginLeft": 8,
+          },
+          Object {
+            "color": "#007FFF",
+          },
+        ]
+      }
+    >
+      pedro
+    </Text>
+  </View>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "opacity": 1,
+        "padding": 8,
+      }
+    }
+  >
+    <Image
+      source={
+        Object {
+          "uri": undefined,
+        }
+      }
+      style={
+        Array [
+          Object {
+            "borderRadius": 100,
+            "height": 32,
+            "width": 32,
+          },
+          null,
+        ]
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#FFFFFF",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+            "marginLeft": 8,
+          },
+          null,
+        ]
+      }
+    >
+      pepe
+    </Text>
+  </View>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "opacity": 1,
+        "padding": 8,
+      }
+    }
+  >
+    <Image
+      source={
+        Object {
+          "uri": undefined,
+        }
+      }
+      style={
+        Array [
+          Object {
+            "borderRadius": 100,
+            "height": 32,
+            "width": 32,
+          },
+          null,
+        ]
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#FFFFFF",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+            "marginLeft": 8,
+          },
+          null,
+        ]
+      }
+    >
+      pepe
+    </Text>
+  </View>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "opacity": 1,
+        "padding": 8,
+      }
+    }
+  >
+    <Image
+      source={
+        Object {
+          "uri": undefined,
+        }
+      }
+      style={
+        Array [
+          Object {
+            "borderRadius": 100,
+            "height": 32,
+            "width": 32,
+          },
+          null,
+        ]
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#FFFFFF",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+            "marginLeft": 8,
+          },
+          null,
+        ]
+      }
+    >
+      pero
+    </Text>
+  </View>
+</View>
+`;

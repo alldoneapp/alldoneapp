@@ -1,0 +1,60 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CommentsHeader component CommentsHeader snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 94,
+      "justifyContent": "space-between",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "baseline",
+        "flexDirection": "row",
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 20,
+            "lineHeight": 28,
+          },
+          Object {
+            "color": "#04142F",
+            "marginRight": 16,
+          },
+        ]
+      }
+    >
+      Feeds
+    </Text>
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
+    >
+      10 Entries • undefined Shared files
+    </Text>
+  </View>
+</View>
+`;

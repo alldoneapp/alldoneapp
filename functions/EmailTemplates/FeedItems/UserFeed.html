@@ -1,0 +1,73 @@
+<div>
+    <table border="0">
+        <tr>
+            <td class="common-feed-owner-time">{{ feedTime }}</td>
+
+            <!-- all project members following new user -->
+            {{#if feedProjectAction }}
+            <td style="vertical-align: top;">
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{projectUrl appUrl feedProjectColor 'false' }}"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+            </td>
+            <td class="common-feed-action-text">{{ feedProjectAction }}</td>
+
+            {{else}}
+            <!-- regular feed notification -->
+            <td style="vertical-align: top;">
+                {{#if feedOwnerPhotoURL }}
+                <img class="common-feed-owner-avatar" src="{{ feedOwnerPhotoURL }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+            </td>
+            {{#if feedOwnerName }}
+            <td class="common-feed-action-text">{{ feedOwnerName }}&nbsp;</td>
+            {{/if }}
+            <td class="common-feed-action-text">{{ feedAction }}</td>
+            {{/if }}
+
+            <!-- User following all team members -->
+            {{#if feedExtraAction }}
+            <td style="vertical-align: top;">
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{projectUrl appUrl feedProjectColor 'false' }}"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+            </td>
+            <td class="common-feed-action-text">{{ feedExtraAction }}</td>
+            {{/if }}
+
+            <!-- karma point -->
+            {{#if feedKarmaUserName }}
+            <td style="vertical-align: top;">
+                {{#if feedKarmaUserPhoto }}
+                <img class="common-feed-owner-avatar" src="{{ feedKarmaUserPhoto }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+            </td>
+            <td class="common-feed-action-text">{{ feedKarmaUserName }} from Feed entry</td>
+            {{/if }}
+        </tr>
+    </table>
+</div>

@@ -1,0 +1,115 @@
+<div class="message-container">
+    {{#if messageHeader }}
+    <div class="message-header">
+        <table border="0">
+            <tr style="vertical-align: middle;">
+                <td style="vertical-align: top;">
+                    <a class="header-link" style="color: #ffffff;" target="_blank" href="{{ appUrl }}">
+                        <img
+                            class="header-logo"
+                            src="{{ appUrl }}icons/white/logo-icon.png"
+                            alt=""
+                            width="24"
+                            height="24"
+                        />
+                    </a>
+                </td>
+                <td class="header-name">
+                    <a class="header-link" style="color: #ffffff;" target="_blank" href="{{ appUrl }}">
+                        Alldone.app
+                    </a>
+                </td>
+            </tr>
+        </table>
+    </div>
+    {{/if }}
+
+    <div class="message-body {{#if messageHeader }} message-body-no-border {{/if }}">
+        {{#if messageHeader }}
+        <div class="topic">
+            <table border="0">
+                <tr>
+                    <td style="vertical-align: top;">
+                        <img class="topic-icon" src="{{ appUrl }}icons/grey/bell.png" alt="" width="24" height="24" />
+                    </td>
+                    <td class="topic-text">
+                        New feed entry from something you follow on
+                        <a class="topic-text link" target="_blank" href="{{ appUrl }}">
+                            Alldone.app
+                        </a>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        {{/if }}
+
+        <div class="project-header">
+            <table border="0">
+                <tr>
+                    <td style="vertical-align: top;">
+                        <img
+                            class="project-header-icon"
+                            src="{{projectUrl appUrl feedProjectColor 'false' }}"
+                            alt=""
+                            width="24"
+                            height="24"
+                        />
+                    </td>
+                    <td class="project-header-text">
+                        {{ feedProjectName }}
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="feed-body">
+            <div id="feed-body-content">
+                <table border="0" style="margin-bottom: 24px;">
+                    <tr>
+                        <td style="vertical-align: top;">
+                            {{#if feedContactPhotoURL }}
+                            <img
+                                class="common-feed-icon common-circle"
+                                src="{{ feedContactPhotoURL }}"
+                                alt=""
+                                width="24"
+                                height="24"
+                            />
+                            {{else}}
+                            <img
+                                class="common-feed-icon common-circle"
+                                src="{{ appUrl }}icons/Generic-User24px.png"
+                                alt=""
+                                width="24"
+                                height="24"
+                            />
+                            {{/if }}
+                        </td>
+                        <td class="common-feed-name">{{ feedContactName }}</td>
+                    </tr>
+                </table>
+
+                {{#if feedItems }} {{{ feedItems }}} {{/if }}
+            </div>
+        </div>
+
+        <!-- feed date -->
+        {{#if feedDate }}
+        <div class="feed-time" style="margin-top: 24px;">On {{ feedDate }}</div>
+        {{/if }}
+
+        <!-- feed link -->
+        {{#if feedLink }}
+        <div class="feed-link">
+            {{#if feedLinkTopic }}
+            <div><span>Link to the </span><span id="feed-link-topic">{{ feedLinkTopic }}:</span></div>
+            {{/if }}
+            <p>
+                <a id="feed-link-a" target="_blank" href="{{ appUrl }}{{ feedLink }}">
+                    {{ appUrl }}{{ feedLink }}
+                </a>
+            </p>
+        </div>
+        {{/if }}
+    </div>
+</div>

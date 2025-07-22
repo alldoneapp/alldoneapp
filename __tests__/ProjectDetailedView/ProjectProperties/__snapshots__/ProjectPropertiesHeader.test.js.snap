@@ -1,0 +1,33 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProjectPropertiesHeader component ProjectPropertiesHeader snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "flex-end",
+      "flexDirection": "row",
+      "height": 72,
+      "paddingBottom": 12,
+      "paddingTop": 32,
+    }
+  }
+>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 20,
+          "lineHeight": 28,
+        },
+        Object {
+          "color": "#04142F",
+        },
+      ]
+    }
+  >
+    Properties
+  </Text>
+</View>
+`;

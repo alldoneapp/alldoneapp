@@ -1,0 +1,196 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DoneTasksByProject component should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "marginBottom": 16,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "borderBottomColor": "#E7ECEF",
+        "borderBottomWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 56,
+        "justifyContent": "space-between",
+        "paddingBottom": 6,
+        "paddingTop": 25,
+      }
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "justifyContent": "flex-start",
+        }
+      }
+    >
+      <View
+        style={
+          Array [
+            Object {
+              "alignItems": "center",
+              "flexDirection": "row",
+            },
+            Object {
+              "maxWidth": false,
+            },
+          ]
+        }
+      >
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "justifyContent": "flex-start",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Array [
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "justifyContent": "flex-start",
+                },
+                Object {
+                  "flex": 1,
+                },
+              ]
+            }
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "#0055ff",
+                    "fontFamily": "alldone",
+                    "fontSize": 24,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "#04142F",
+                    "paddingLeft": 4,
+                  },
+                ]
+              }
+            >
+              My project
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flexDirection": "row",
+              "justifyContent": "flex-start",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "justifyContent": "flex-start",
+              }
+            }
+          />
+        </View>
+        <View
+          style={
+            Object {
+              "backgroundColor": "green",
+              "borderRadius": 100,
+              "opacity": 0,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "white",
+                  "fontFamily": "alldone",
+                  "fontSize": 19,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    onLayout={[Function]}
+  >
+    <View
+      style={
+        Object {
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "height": 8,
+          }
+        }
+      />
+    </View>
+  </View>
+</View>
+`;

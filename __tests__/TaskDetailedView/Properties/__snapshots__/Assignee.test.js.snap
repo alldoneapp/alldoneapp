@@ -1,0 +1,82 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Assignee component Assignee snapshot test should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "alignSelf": "flex-start",
+      "backgroundColor": "transparent",
+      "borderColor": "#C6CDD2",
+      "borderRadius": 4,
+      "borderStyle": "solid",
+      "borderWidth": 1,
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "height": 40,
+      "justifyContent": "center",
+      "maxHeight": 40,
+      "minHeight": 40,
+      "opacity": 1,
+      "paddingLeft": 12,
+      "paddingRight": 16,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <Image
+    source={
+      Object {
+        "uri": undefined,
+      }
+    }
+    style={
+      Object {
+        "borderRadius": 100,
+        "height": 24,
+        "width": 24,
+      }
+    }
+  />
+  <Text
+    numberOfLines={1}
+    style={
+      Array [
+        Array [
+          Object {
+            "alignSelf": "center",
+            "color": "#FFFFFF",
+            "flexWrap": "nowrap",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.8,
+            "lineHeight": 16,
+            "margin": 0,
+            "paddingHorizontal": 0,
+            "paddingVertical": 0,
+          },
+          Object {
+            "color": "#8A94A6",
+          },
+          Object {},
+        ],
+        Object {
+          "marginLeft": 12,
+        },
+      ]
+    }
+  >
+    Awesomeness
+  </Text>
+</View>
+`;

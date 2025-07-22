@@ -1,0 +1,70 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Detailed Project Back Button component Detailed Project Back Button snapshot test should render correctly 1`] = `
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
+  style={
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    style={
+      Object {
+        "height": 64,
+        "opacity": 1,
+        "width": 57,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "backgroundColor": "white",
+          "height": 32,
+          "width": 57,
+        }
+      }
+    />
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "white",
+          "borderRightColor": "#E7ECEF",
+          "borderRightWidth": 1,
+          "flexDirection": "column",
+          "height": 32,
+          "justifyContent": "center",
+          "width": 57,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</RNGestureHandlerButton>
+`;

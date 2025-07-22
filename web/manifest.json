@@ -1,0 +1,91 @@
+{
+    "name": "Alldone",
+    "short_name": "Alldone",
+    "start_url": "/",
+    "display": "fullscreen",
+    "description": "Next gen collaboration tool that makes team productivity simple.",
+    "background_color": "#0A44A5",
+    "icons": [
+        {
+            "src": "icons/App-Icon(48x).png",
+            "sizes": "48x48",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(57x).png",
+            "sizes": "57x57",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(60x).png",
+            "sizes": "60x60",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(72x).png",
+            "sizes": "72x72",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(76x).png",
+            "sizes": "76x76",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(96x).png",
+            "sizes": "96x96",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(120x).png",
+            "sizes": "120x120",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(144x).png",
+            "sizes": "144x144",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(152x).png",
+            "sizes": "152x152",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(167x).png",
+            "sizes": "167x167",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(168x).png",
+            "sizes": "168x168",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(180x).png",
+            "sizes": "180x180",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(192x).png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(256x).png",
+            "sizes": "256x256",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(512x).png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/App-Icon(1024x).png",
+            "sizes": "1024x1024",
+            "type": "image/png"
+        }
+    ],
+    "permissions": ["fullscreen"]
+}

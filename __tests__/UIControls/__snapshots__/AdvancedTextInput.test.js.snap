@@ -1,0 +1,74 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AdvancedTextInput component AdvancedTextInput empty snapshot test Should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "flex": 1,
+        "position": "relative",
+      },
+      undefined,
+    ]
+  }
+>
+  <TextInput
+    allowFontScaling={true}
+    multiline={true}
+    onChangeText={[Function]}
+    onContentSizeChange={[Function]}
+    rejectResponderTermination={true}
+    scrollEnabled={false}
+    style={
+      Array [
+        Array [
+          Object {
+            "borderColor": "transparent",
+            "color": "transparent",
+            "flexWrap": "wrap",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 16,
+            "left": 0,
+            "letterSpacing": 0.32,
+            "lineHeight": 24,
+            "minHeight": 40,
+            "minWidth": 200,
+            "paddingRight": 16,
+            "position": "absolute",
+            "top": 0,
+            "width": "100%",
+          },
+          Object {
+            "height": 40,
+          },
+        ],
+        undefined,
+        undefined,
+      ]
+    }
+    underlineColorAndroid="transparent"
+    value=""
+  />
+  <Text
+    onLayout={[Function]}
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "display": "flex",
+          "flexWrap": "wrap",
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 16,
+          "letterSpacing": 0.32,
+          "lineHeight": 24,
+          "minHeight": 40,
+          "minWidth": 200,
+          "paddingRight": 16,
+          "width": "100%",
+        },
+        undefined,
+      ]
+    }
+  />
+</View>
+`;

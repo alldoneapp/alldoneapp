@@ -1,0 +1,47 @@
+export const SubTaskList = [
+    {
+        id: '-LyzhG-xGsc74qsf54dds',
+        done: false,
+        name: 'Sub Hallo 1',
+        userIds: ['UUKU61Jc7ET8zE5ncN8F61HE19y1'],
+        hasStar: false,
+        created: 1579410000000,
+        creatorId: 'UUKU61Jc7ET8zE5ncN8F61HE19y1',
+        dueDate: 1579410000000,
+        completed: null,
+        isPrivate: false,
+        parentId: '-LyzhG-xGsc74qaNARtB',
+        subtaskIds: [],
+        recurrence: { type: 'never' }
+    },
+    {
+        id: '-LyzhG-dfgr563tbeh4g5tf',
+        done: false,
+        name: 'Sub Hallo 2',
+        userIds: ['UUKU61Jc7ET8zE5ncN8F61HE19y1'],
+        hasStar: false,
+        created: 1579410000000,
+        creatorId: 'UUKU61Jc7ET8zE5ncN8F61HE19y1',
+        dueDate: 1579410000000,
+        completed: null,
+        isPrivate: false,
+        parentId: '-LyzhG-xGsc74qaNARtB',
+        subtaskIds: [],
+        recurrence: { type: 'never' }
+    },
+    {
+        id: '-LyzhG-6534tfryj8567j',
+        done: false,
+        name: 'Sub Hallo 3',
+        userIds: ['UUKU61Jc7ET8zE5ncN8F61HE19y1'],
+        hasStar: false,
+        created: 1579410000000,
+        creatorId: 'UUKU61Jc7ET8zE5ncN8F61HE19y1',
+        dueDate: 1579410000000,
+        completed: null,
+        isPrivate: false,
+        parentId: '-LyzhG-xGsc74qaNARtB',
+        subtaskIds: [],
+        recurrence: { type: 'never' }
+    },
+]

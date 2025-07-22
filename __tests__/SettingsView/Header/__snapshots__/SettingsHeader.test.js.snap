@@ -1,0 +1,80 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SettingsHeader component SettingsHeader snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "flexDirection": "column",
+      "height": 96,
+      "justifyContent": "space-between",
+      "marginBottom": 8,
+      "maxHeight": 96,
+      "minHeight": 96,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+        "justifyContent": "space-between",
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "flex": 1,
+          "marginRight": "auto",
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 24,
+              "lineHeight": 32,
+            },
+            Object {
+              "flex": 1,
+              "height": 64,
+              "paddingTop": 32,
+            },
+          ]
+        }
+      >
+        Settings
+      </Text>
+    </View>
+    <View
+      style={
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "marginTop": 36,
+          },
+        ]
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

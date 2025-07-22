@@ -1,0 +1,25 @@
+/**
+ * @jest-environment jsdom
+ */
+
+import React from 'react'
+import ConfirmTaskWorkflowPopup from '../../../components/TaskListView/OpenTasksView/ConfirmTaskWorkflowPopup'
+import store from '../../../redux/store'
+import { setConfirmTaskWorkflowPopupVisible } from '../../../redux/actions'
+jest.mock('../../../utils/BackendBridge')
+
+import renderer from 'react-test-renderer'
+
+const projectId = '-LcRVRo6mhbC0oXCcZ2F'
+const ownerName = 'pepe'
+const task = { toReview: { currentStepId: '0', from: '1', taskId: '2', taskOwner: '3' } }
+
+describe('ConfirmTaskWorkflowPopup component', () => {
+    describe('ConfirmTaskWorkflowPopup snapshot test', () => {
+        it('should render correctly', async () => {
+            const tree = renderer.create(<ConfirmTaskWorkflowPopup />)
+            //store.dispatch(setConfirmTaskWorkflowPopupVisible(true, projectId, task, ownerName))
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
+    })
+})

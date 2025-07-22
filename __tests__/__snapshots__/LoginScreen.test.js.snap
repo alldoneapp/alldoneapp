@@ -1,0 +1,940 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LoginScreen component LoginScreen snapshot test should load user projects 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "#0A44A5",
+      "flex": 1,
+      "flexDirection": "column",
+      "justifyContent": "space-around",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "column",
+        "height": 168,
+        "justifyContent": "space-around",
+        "width": 168,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 69,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 35,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
+    style={
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      accessible={true}
+      style={
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "white",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "height": 40,
+          "opacity": 1,
+          "paddingLeft": 19,
+          "paddingRight": 19,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "gray",
+              "fontFamily": "alldone",
+              "fontSize": 20,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+      <Text
+        style={
+          Object {
+            "color": "black",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.8,
+            "lineHeight": 14,
+            "opacity": 0.54,
+            "paddingLeft": 15,
+          }
+        }
+      >
+        Enter in Offline Mode
+      </Text>
+    </View>
+  </RNGestureHandlerButton>
+</View>
+`;
+
+exports[`LoginScreen component LoginScreen snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "justifyContent": "center",
+      "paddingHorizontal": 10,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderRadius": 10000,
+          "justifyContent": "center",
+        },
+        Object {
+          "backgroundColor": "#E7ECEF",
+          "height": 200,
+          "maxHeight": 200,
+          "maxWidth": 200,
+          "minHeight": 200,
+          "minWidth": 200,
+          "width": 200,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "transform": Array [
+            Object {
+              "rotate": "0deg",
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#0A44A5",
+              "fontFamily": "alldone",
+              "fontSize": 150,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 30,
+        "paddingTop": 40,
+        "textAlign": "justify",
+      }
+    }
+  >
+    Loading your info...
+  </Text>
+</View>
+`;
+
+exports[`LoginScreen component LoginScreen snapshot test should render correctly 2`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "#0A44A5",
+      "flex": 1,
+      "flexDirection": "column",
+      "justifyContent": "space-around",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "column",
+        "height": 168,
+        "justifyContent": "space-around",
+        "width": 168,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 69,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 35,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
+    style={
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      accessible={true}
+      style={
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "white",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "height": 40,
+          "opacity": 1,
+          "paddingLeft": 19,
+          "paddingRight": 19,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "gray",
+              "fontFamily": "alldone",
+              "fontSize": 20,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+      <Text
+        style={
+          Object {
+            "color": "black",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.8,
+            "lineHeight": 14,
+            "opacity": 0.54,
+            "paddingLeft": 15,
+          }
+        }
+      >
+        Enter in Offline Mode
+      </Text>
+    </View>
+  </RNGestureHandlerButton>
+</View>
+`;
+
+exports[`LoginScreen component LoginScreen snapshot test should render when there is no user logged 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "#0A44A5",
+      "flex": 1,
+      "flexDirection": "column",
+      "justifyContent": "space-around",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "column",
+        "height": 168,
+        "justifyContent": "space-around",
+        "width": 168,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 69,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 35,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
+    style={
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      accessible={true}
+      style={
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "white",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "height": 40,
+          "opacity": 1,
+          "paddingLeft": 19,
+          "paddingRight": 19,
+        }
+      }
+    >
+      <RNSVGSvgView
+        align="xMidYMid"
+        bbHeight={25}
+        bbWidth={25}
+        focusable={false}
+        height={25}
+        meetOrSlice={0}
+        minX={0}
+        minY={0}
+        style={
+          Array [
+            Object {
+              "backgroundColor": "transparent",
+              "borderWidth": 0,
+            },
+            undefined,
+            Object {
+              "opacity": 1,
+            },
+            Object {
+              "flex": 0,
+              "height": 25,
+              "width": 25,
+            },
+          ]
+        }
+        vbHeight={545}
+        vbWidth={538}
+        width={25}
+      >
+        <RNSVGGroup
+          fill={4278190080}
+          fillOpacity={1}
+          fillRule={1}
+          font={Object {}}
+          matrix={
+            Array [
+              1,
+              0,
+              0,
+              1,
+              0,
+              0,
+            ]
+          }
+          opacity={1}
+          originX={0}
+          originY={0}
+          propList={Array []}
+          rotation={0}
+          scaleX={1}
+          scaleY={1}
+          skewX={0}
+          skewY={0}
+          stroke={null}
+          strokeDasharray={null}
+          strokeDashoffset={null}
+          strokeLinecap={0}
+          strokeLinejoin={0}
+          strokeMiterlimit={4}
+          strokeOpacity={1}
+          strokeWidth={1}
+          vectorEffect={0}
+          x={0}
+          y={0}
+        >
+          <RNSVGPath
+            d="M533.5 278.4c0-18.5-1.5-37.1-4.7-55.3H272.1v104.8h147c-6.1 33.8-25.7 63.7-54.4 82.7v68h87.7c51.5-47.4 81.1-117.4 81.1-200.2z"
+            fill={4282549748}
+            fillOpacity={1}
+            fillRule={1}
+            matrix={
+              Array [
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+              ]
+            }
+            opacity={1}
+            originX={0}
+            originY={0}
+            propList={
+              Array [
+                "fill",
+              ]
+            }
+            rotation={0}
+            scaleX={1}
+            scaleY={1}
+            skewX={0}
+            skewY={0}
+            stroke={null}
+            strokeDasharray={null}
+            strokeDashoffset={null}
+            strokeLinecap={0}
+            strokeLinejoin={0}
+            strokeMiterlimit={4}
+            strokeOpacity={1}
+            strokeWidth={1}
+            vectorEffect={0}
+            x={0}
+            y={0}
+          />
+          <RNSVGPath
+            d="M272.1 544.3c73.4 0 135.3-24.1 180.4-65.7l-87.7-68c-24.4 16.6-55.9 26-92.6 26-71 0-131.2-47.9-152.8-112.3H28.9v70.1c46.2 91.9 140.3 149.9 243.2 149.9z"
+            fill={4281641043}
+            fillOpacity={1}
+            fillRule={1}
+            matrix={
+              Array [
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+              ]
+            }
+            opacity={1}
+            originX={0}
+            originY={0}
+            propList={
+              Array [
+                "fill",
+              ]
+            }
+            rotation={0}
+            scaleX={1}
+            scaleY={1}
+            skewX={0}
+            skewY={0}
+            stroke={null}
+            strokeDasharray={null}
+            strokeDashoffset={null}
+            strokeLinecap={0}
+            strokeLinejoin={0}
+            strokeMiterlimit={4}
+            strokeOpacity={1}
+            strokeWidth={1}
+            vectorEffect={0}
+            x={0}
+            y={0}
+          />
+          <RNSVGPath
+            d="M119.3 324.3c-11.4-33.8-11.4-70.4 0-104.2V150H28.9c-38.6 76.9-38.6 167.5 0 244.4l90.4-70.1z"
+            fill={4294687748}
+            fillOpacity={1}
+            fillRule={1}
+            matrix={
+              Array [
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+              ]
+            }
+            opacity={1}
+            originX={0}
+            originY={0}
+            propList={
+              Array [
+                "fill",
+              ]
+            }
+            rotation={0}
+            scaleX={1}
+            scaleY={1}
+            skewX={0}
+            skewY={0}
+            stroke={null}
+            strokeDasharray={null}
+            strokeDashoffset={null}
+            strokeLinecap={0}
+            strokeLinejoin={0}
+            strokeMiterlimit={4}
+            strokeOpacity={1}
+            strokeWidth={1}
+            vectorEffect={0}
+            x={0}
+            y={0}
+          />
+          <RNSVGPath
+            d="M272.1 107.7c38.8-.6 76.3 14 104.4 40.8l77.7-77.7C405 24.6 339.7-.8 272.1 0 169.2 0 75.1 58 28.9 150l90.4 70.1c21.5-64.5 81.8-112.4 152.8-112.4z"
+            fill={4293542709}
+            fillOpacity={1}
+            fillRule={1}
+            matrix={
+              Array [
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+              ]
+            }
+            opacity={1}
+            originX={0}
+            originY={0}
+            propList={
+              Array [
+                "fill",
+              ]
+            }
+            rotation={0}
+            scaleX={1}
+            scaleY={1}
+            skewX={0}
+            skewY={0}
+            stroke={null}
+            strokeDasharray={null}
+            strokeDashoffset={null}
+            strokeLinecap={0}
+            strokeLinejoin={0}
+            strokeMiterlimit={4}
+            strokeOpacity={1}
+            strokeWidth={1}
+            vectorEffect={0}
+            x={0}
+            y={0}
+          />
+        </RNSVGGroup>
+      </RNSVGSvgView>
+      <Text
+        style={
+          Object {
+            "color": "black",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.8,
+            "lineHeight": 14,
+            "opacity": 0.54,
+            "paddingLeft": 15,
+          }
+        }
+      >
+        Enter with Google
+      </Text>
+    </View>
+  </RNGestureHandlerButton>
+</View>
+`;
+
+exports[`LoginScreen component method test after call componentDidMount should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "justifyContent": "center",
+      "paddingHorizontal": 10,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderRadius": 10000,
+          "justifyContent": "center",
+        },
+        Object {
+          "backgroundColor": "#E7ECEF",
+          "height": 200,
+          "maxHeight": 200,
+          "maxWidth": 200,
+          "minHeight": 200,
+          "minWidth": 200,
+          "width": 200,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "transform": Array [
+            Object {
+              "rotate": "0deg",
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#0A44A5",
+              "fontFamily": "alldone",
+              "fontSize": 150,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 30,
+        "paddingTop": 40,
+        "textAlign": "justify",
+      }
+    }
+  >
+    Loading your info...
+  </Text>
+</View>
+`;
+
+exports[`LoginScreen component method test after call onPressEnterButton should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "justifyContent": "center",
+      "paddingHorizontal": 10,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderRadius": 10000,
+          "justifyContent": "center",
+        },
+        Object {
+          "backgroundColor": "#E7ECEF",
+          "height": 200,
+          "maxHeight": 200,
+          "maxWidth": 200,
+          "minHeight": 200,
+          "minWidth": 200,
+          "width": 200,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "transform": Array [
+            Object {
+              "rotate": "0deg",
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#0A44A5",
+              "fontFamily": "alldone",
+              "fontSize": 150,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 30,
+        "paddingTop": 40,
+        "textAlign": "justify",
+      }
+    }
+  >
+    Loading your info...
+  </Text>
+</View>
+`;
+
+exports[`LoginScreen component method test after call onPressEnterButton should render correctly when is not a new user 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "white",
+      "flex": 1,
+      "justifyContent": "center",
+      "paddingHorizontal": 10,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderRadius": 10000,
+          "justifyContent": "center",
+        },
+        Object {
+          "backgroundColor": "#E7ECEF",
+          "height": 200,
+          "maxHeight": 200,
+          "maxWidth": 200,
+          "minHeight": 200,
+          "minWidth": 200,
+          "width": 200,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "transform": Array [
+            Object {
+              "rotate": "0deg",
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 150,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 30,
+        "marginBottom": 30,
+        "paddingTop": 40,
+        "textAlign": "justify",
+      }
+    }
+  >
+    Loading your info...
+  </Text>
+</View>
+`;
+
+exports[`LoginScreen component method test should navigate to App after projects load 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "white",
+      "flex": 1,
+      "justifyContent": "center",
+      "paddingHorizontal": 10,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "borderRadius": 10000,
+          "justifyContent": "center",
+        },
+        Object {
+          "backgroundColor": "#E7ECEF",
+          "height": 200,
+          "maxHeight": 200,
+          "maxWidth": 200,
+          "minHeight": 200,
+          "minWidth": 200,
+          "width": 200,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "transform": Array [
+            Object {
+              "rotate": "0deg",
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 150,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 30,
+        "marginBottom": 30,
+        "paddingTop": 40,
+        "textAlign": "justify",
+      }
+    }
+  >
+    Loading your info...
+  </Text>
+</View>
+`;

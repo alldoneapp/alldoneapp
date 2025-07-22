@@ -1,0 +1,99 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AddButton component AddButton empty snapshot test should render correctly 1`] = `
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
+  style={
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#1A3289",
+        "borderRadius": 4,
+        "height": 40,
+        "justifyContent": "center",
+        "opacity": 1,
+        "paddingHorizontal": 8,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#ffffff",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
+`;
+
+exports[`AddButton component AddButton empty snapshot test should render correctly when platform is web 1`] = `
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
+  style={
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#1A3289",
+        "borderRadius": 4,
+        "height": 40,
+        "justifyContent": "center",
+        "opacity": 1,
+        "paddingHorizontal": 8,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#ffffff",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
+`;

@@ -1,0 +1,74 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProjectLabel component ProjectLabel snapshot test should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "opacity": 1,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "borderBottomColor": "#E7ECEF",
+        "borderBottomWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 56,
+        "paddingBottom": 6,
+        "paddingTop": 25,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        style={
+          Array [
+            Object {
+              "borderRadius": 100,
+              "height": 16,
+              "marginLeft": 4,
+              "width": 16,
+            },
+            Object {
+              "backgroundColor": undefined,
+            },
+          ]
+        }
+      />
+      <Text
+        style={
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+            "paddingLeft": 8,
+          }
+        }
+      />
+    </View>
+  </View>
+</View>
+`;

@@ -1,0 +1,121 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CheckBox component CheckBox checked snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "borderColor": "#8A94A6",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "height": 24,
+        "width": 24,
+      },
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#8A94A6",
+        "justifyContent": "center",
+      },
+      null,
+    ]
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "white",
+          "fontFamily": "alldone",
+          "fontSize": 16,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`CheckBox component CheckBox snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "borderColor": "#8A94A6",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "height": 24,
+        "width": 24,
+      },
+      null,
+      null,
+    ]
+  }
+/>
+`;
+
+exports[`CheckBox component CheckBox subtask checked snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "borderColor": "#8A94A6",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "height": 24,
+        "width": 24,
+      },
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#8A94A6",
+        "justifyContent": "center",
+      },
+      Object {
+        "height": 20,
+        "width": 20,
+      },
+    ]
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "white",
+          "fontFamily": "alldone",
+          "fontSize": 16,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`CheckBox component CheckBox subtask snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "borderColor": "#8A94A6",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "height": 24,
+        "width": 24,
+      },
+      null,
+      Object {
+        "height": 20,
+        "width": 20,
+      },
+    ]
+  }
+/>
+`;
