@@ -2168,12 +2168,31 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
     })
 
     const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+
+    // Debug logging for focus task selection
+    console.log(`[moveTasksFromOpen] Focus task debug:`, {
+        taskId: task.id,
+        originalTaskUserId: task.userId,
+        newUserId,
+        stepToMoveId,
+        assignee: assignee
+            ? {
+                  uid: assignee.uid,
+                  inFocusTaskId: assignee.inFocusTaskId,
+              }
+            : null,
+        taskUserIds: task.userIds,
+        isWorkflow: task.userIds.length > 1,
+        focusTaskMatches: assignee?.inFocusTaskId === task.id,
+    })
+
     if (assignee && assignee.inFocusTaskId === task.id) {
-        if (stepToMoveId === DONE_STEP) {
-            await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId)
-        } else {
-            await updateFocusedTask(task.userId, projectId, null, null, null)
-        }
+        // When a user completes their part of a task (either to DONE_STEP or workflow step),
+        // they should get a new focus task since they're done with the current one
+        console.log(`[moveTasksFromOpen] User completed their part of task - calling findAndSetNewFocusedTask`)
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId)
+    } else {
+        console.log(`[moveTasksFromOpen] NOT calling focus task functions - conditions not met`)
     }
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations)
@@ -2340,8 +2359,28 @@ export async function setTaskStatus(
     taskBatch.commit()
 
     const assignee = TasksHelper.getUserInProject(projectId, taskOwnerUid)
+
+    // Debug logging for focus task selection
+    console.log(`[setTaskStatus] Focus task debug:`, {
+        taskId,
+        taskOwnerUid,
+        isDone,
+        assignee: assignee
+            ? {
+                  uid: assignee.uid,
+                  inFocusTaskId: assignee.inFocusTaskId,
+              }
+            : null,
+        taskUserIds: task.userIds,
+        isWorkflow: task.userIds.length > 1,
+        focusTaskMatches: assignee?.inFocusTaskId === taskId,
+    })
+
     if (assignee && assignee.inFocusTaskId === taskId && isDone) {
+        console.log(`[setTaskStatus] Calling findAndSetNewFocusedTask for workflow task`)
         await findAndSetNewFocusedTask(projectId, taskOwnerUid, task.parentGoalId)
+    } else if (isDone) {
+        console.log(`[setTaskStatus] NOT calling findAndSetNewFocusedTask - conditions not met`)
     }
 
     const feedBatch = new BatchWrapper(getDb())
@@ -2525,6 +2564,10 @@ export async function autoReminderMultipleTasks(tasks) {
 }
 
 async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskParentGoalId = null) {
+    console.log(
+        `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}`
+    )
+
     const currentTime = moment()
     const fifteenMinutesFromNow = moment().add(15, 'minutes')
     let earliestUpcomingCalendarTask = null
@@ -2576,6 +2619,11 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
     }
 
     if (earliestUpcomingCalendarTask) {
+        console.log(`[findAndSetNewFocusedTask] Found upcoming calendar task:`, {
+            projectId: earliestUpcomingCalendarTaskProject,
+            taskId: earliestUpcomingCalendarTask.id,
+            taskName: earliestUpcomingCalendarTask.name,
+        })
         await setNewFocusedTaskBatch(earliestUpcomingCalendarTaskProject, userId, earliestUpcomingCalendarTask)
         return true
     }
@@ -2606,7 +2654,13 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
             const tasksInSameSpecificGroup = allFetchedTasksInCurrentProject.filter(
                 task => task.parentGoalId === previousTaskParentGoalId
             )
-            if (tasksInSameSpecificGroup.length > 0) {
+
+            // Prioritize non-workflow tasks first
+            const nonWorkflowTasksInGroup = tasksInSameSpecificGroup.filter(task => task.userIds.length === 1)
+            if (nonWorkflowTasksInGroup.length > 0) {
+                newFocusedTask = nonWorkflowTasksInGroup[0] // Already sorted by sortIndex
+            } else if (tasksInSameSpecificGroup.length > 0) {
+                // Fallback to workflow tasks if no regular tasks available
                 newFocusedTask = tasksInSameSpecificGroup[0] // Already sorted by sortIndex
             }
         }
@@ -2619,18 +2673,35 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
             const generalTasks = allFetchedTasksInCurrentProject.filter(
                 task => task.parentGoalId === null || task.parentGoalId === undefined
             )
-            if (generalTasks.length > 0) {
+
+            // Prioritize non-workflow tasks first
+            const nonWorkflowGeneralTasks = generalTasks.filter(task => task.userIds.length === 1)
+            if (nonWorkflowGeneralTasks.length > 0) {
+                newFocusedTask = nonWorkflowGeneralTasks[0] // Already sorted by sortIndex
+            } else if (generalTasks.length > 0) {
+                // Fallback to workflow tasks if no regular tasks available
                 newFocusedTask = generalTasks[0] // Already sorted by sortIndex
             }
         }
 
         // Attempt 3: Any other task in the current project (general fallback if specific and general group searches yielded nothing)
         if (!newFocusedTask && allFetchedTasksInCurrentProject.length > 0) {
-            newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to the best one by sortIndex from all valid tasks
+            // Prioritize non-workflow tasks first
+            const nonWorkflowTasks = allFetchedTasksInCurrentProject.filter(task => task.userIds.length === 1)
+            if (nonWorkflowTasks.length > 0) {
+                newFocusedTask = nonWorkflowTasks[0] // Already sorted by sortIndex
+            } else {
+                // Fallback to workflow tasks if no regular tasks available
+                newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to the best one by sortIndex from all valid tasks
+            }
         }
     }
 
     if (newFocusedTask) {
+        console.log(`[findAndSetNewFocusedTask] Found new focus task in current project:`, {
+            taskId: newFocusedTask.id,
+            taskName: newFocusedTask.name,
+        })
         await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask)
         return true
     }
@@ -2676,7 +2747,17 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
                 )
 
             if (validTasks.length > 0) {
-                const newFocusedTaskFromOtherProject = validTasks[0]
+                // Prioritize non-workflow tasks first
+                const nonWorkflowValidTasks = validTasks.filter(task => task.userIds.length === 1)
+                const newFocusedTaskFromOtherProject =
+                    nonWorkflowValidTasks.length > 0 ? nonWorkflowValidTasks[0] : validTasks[0] // Fallback to workflow tasks if no regular tasks available
+
+                console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
+                    projectId: pid,
+                    taskId: newFocusedTaskFromOtherProject.id,
+                    taskName: newFocusedTaskFromOtherProject.name,
+                    isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
+                })
                 await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject)
                 return true
             }
@@ -2716,6 +2797,7 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
         inFocusTaskProjectId: '',
     })
     await batch.commit()
+    console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`)
     return false
 }
 
