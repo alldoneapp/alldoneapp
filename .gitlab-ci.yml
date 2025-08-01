@@ -104,8 +104,8 @@ build_web_production:
         - pwd
         - ls -la ci/
         - chmod +x ci/github-push.sh ci/replace-envs.sh
-        - bash ci/github-push.sh
-        - bash ci/replace-envs.sh
+        - sh ci/github-push.sh
+        - sh ci/replace-envs.sh
     script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/

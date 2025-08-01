@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 echo "Starting GitHub push process..."
@@ -28,7 +28,7 @@ git rm -rf . || true
 
 # Create a script to replay commits with preserved authorship
 cat > replay_commits.sh << 'EOF'
-#!/bin/bash
+#!/bin/sh
 if [ -n "$CUTOFF_COMMIT" ]; then
   echo "Replaying commits after July 18th, 2025 with preserved authorship..."
   for commit in $(git rev-list --reverse $CUTOFF_COMMIT..HEAD); do
