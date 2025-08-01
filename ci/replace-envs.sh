@@ -34,10 +34,11 @@ EOF
 
 echo "Before replacement - checking firestore.js:"
 grep -A 5 -B 5 "BEGIN-ENVS" utils/backends/firestore.js || true
-# First add our constants after the BEGIN-ENVS line
-sed -i '/\/\/ BEGIN-ENVS/r temp_firestore_envs.txt' utils/backends/firestore.js
-# Then delete only the specific import block for react-native-dotenv
-sed -i '/import {$/,/} from .react-native-dotenv.$/d' utils/backends/firestore.js
+# Replace everything between // BEGIN-ENVS and // END-ENVS with our constants
+sed -i '/\/\/ BEGIN-ENVS/,/\/\/ END-ENVS/{
+    /\/\/ BEGIN-ENVS/r temp_firestore_envs.txt
+    /\/\/ END-ENVS/!d
+}' utils/backends/firestore.js
 echo "After replacement - checking firestore.js:"
 grep -A 10 -B 5 "NOTES_COLLABORATION_SERVER" utils/backends/firestore.js || true
 echo "Checking if getNotesCollaborationServerData function still exists:"
@@ -49,10 +50,11 @@ const GOOGLE_FIREBASE_WEB_CLIENT_ID = "$GOOGLE_FIREBASE_WEB_CLIENT_ID_PROD"
 const GOOGLE_FIREBASE_WEB_API_KEY = "$GOOGLE_FIREBASE_WEB_API_KEY_PROD"
 EOF
 
-# First add our constants after the BEGIN-ENVS line  
-sed -i '/\/\/ BEGIN-ENVS/r temp_apis_envs.txt' apis/google/apisConfig.js
-# Then delete the original import line  
-sed -i "/import.*from 'react-native-dotenv'/d" apis/google/apisConfig.js
+# Replace everything between // BEGIN-ENVS and // END-ENVS with our constants
+sed -i '/\/\/ BEGIN-ENVS/,/\/\/ END-ENVS/{
+    /\/\/ BEGIN-ENVS/r temp_apis_envs.txt
+    /\/\/ END-ENVS/!d
+}' apis/google/apisConfig.js
 
 # Replace placeholders in firebase-messaging-sw.js
 sed -i "s|__FIREBASE_API_KEY__|${GOOGLE_FIREBASE_WEB_API_KEY_PROD}|g" web/firebase-messaging-sw.js
