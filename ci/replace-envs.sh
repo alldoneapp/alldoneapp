@@ -2,6 +2,9 @@
 set -e
 
 echo "Starting environment variable replacement..."
+echo "Current working directory: $(pwd)"
+echo "Checking if files exist before replacement:"
+ls -la utils/backends/firestore.js apis/google/apisConfig.js web/firebase-messaging-sw.js || true
 
 # Replace environment variables in firestore.js (use const for local scope)
 cat > temp_firestore_envs.txt << EOF
@@ -29,8 +32,12 @@ const GIPHY_API_KEY = "$GIPHY_API_KEY_PROD"
 const PERPLEXITY_API_KEY = "$PERPLEXITY_API_KEY_PROD"
 EOF
 
+echo "Before replacement - checking firestore.js:"
+grep -A 5 -B 5 "BEGIN-ENVS" utils/backends/firestore.js || true
 sed -i '/BEGIN-ENVS/,/END-ENVS/d' utils/backends/firestore.js
 sed -i '/\/\/ BEGIN-ENVS/r temp_firestore_envs.txt' utils/backends/firestore.js
+echo "After replacement - checking firestore.js:"
+grep -A 5 -B 5 "NOTES_COLLABORATION_SERVER" utils/backends/firestore.js || true
 
 # Replace environment variables in apisConfig.js (use const for local scope)
 cat > temp_apis_envs.txt << EOF
@@ -51,4 +58,7 @@ sed -i "s|__FIREBASE_MESSAGING_SENDER_ID__|${GOOGLE_FIREBASE_WEB_MESSAGING_SENDE
 sed -i "s|__FIREBASE_APP_ID__|${GOOGLE_FIREBASE_WEB_APP_ID_PROD}|g" web/firebase-messaging-sw.js
 sed -i "s|__FIREBASE_MEASUREMENT_ID__|${GOOGLE_ANALYTICS_KEY_PROD}|g" web/firebase-messaging-sw.js
 
+echo "Checking final replacement result:"
+echo "NOTES_COLLABORATION_SERVER value should be: $NOTES_COLLABORATION_SERVER"
+grep -n "NOTES_COLLABORATION_SERVER" utils/backends/firestore.js || true
 echo "Environment variable replacement completed"
