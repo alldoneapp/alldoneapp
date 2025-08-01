@@ -101,23 +101,17 @@ build_web_production:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_base:latest
     before_script:
-        # Push to github before we replace the envs
         - git config --global user.email "karsten@alldone.app"
         - git config --global user.name "Alldone CI"
         - git remote add origin_github "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/kwkrass/alldone.git" || true
         - git remote add alldoneapp_github "https://${GITHUB_USER_ALLDONEAPP}:${GITHUB_TOKEN_ALLDONEAPP}@github.com/alldoneapp/alldoneapp.git" || true
-        # Push with history to origin_github (safer force that checks remote state)
         - git fetch origin_github master || true
         - git push --force-with-lease origin_github HEAD:master || true
-        # Push with history after July 18th, 2025 to alldoneapp_github (preserving authorship)
         - git fetch alldoneapp_github master || true
-        # Find the first commit after July 18th, 2025
         - CUTOFF_COMMIT=$(git rev-list --max-count=1 --before="2025-07-18" HEAD)
-        - echo "Cutoff commit (last commit before July 18th, 2025): $CUTOFF_COMMIT"
-        # Create orphan branch but replay commits after cutoff date to preserve authorship
+        - echo "Cutoff commit (last commit before July 18th, 2025):$CUTOFF_COMMIT"
         - git checkout --orphan temp-branch
         - git rm -rf . || true
-        # Create a script to replay commits with preserved authorship
         - echo '#!/bin/bash' > replay_commits.sh
         - echo 'if [ -n "$CUTOFF_COMMIT" ]; then' >> replay_commits.sh
         - echo '  echo "Replaying commits after July 18th, 2025 with preserved authorship..."' >> replay_commits.sh
@@ -139,7 +133,6 @@ build_web_production:
         - chmod +x replay_commits.sh
         - CUTOFF_COMMIT="$CUTOFF_COMMIT" ./replay_commits.sh
         - git push --force alldoneapp_github temp-branch:master || true
-        # now we can replace the envs
         - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_PROD"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_PROD"'"\n const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD"'"\n const GOOGLE_FIREBASE_WEB_DATABASE_URL = "'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_PROD"'"\n const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD"'"\n const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_PROD"'"\n const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD"'"\n const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_PROD"'"\n const SENTRY_DSN = "'"$SENTRY_DSN"'"\n const HOSTING_URL = "'"$HOSTING_URL_PROD"'"\n const CURRENT_ENVIORNMENT = "'"$CURRENT_ENVIORNMENT_PROD"'"\n const NOTES_COLLABORATION_SERVER = "'"$NOTES_COLLABORATION_SERVER"'"\n const ALGOLIA_APP_ID = "'"$ALGOLIA_APP_ID_PROD"'"\n const ALGOLIA_SEARCH_ONLY_API_KEY = "'"$ALGOLIA_SEARCH_ONLY_API_KEY_PROD"'"\n const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD"'"\n const IP_REGISTRY_API_KEY = "'"$IP_REGISTRY_API_KEY"'"\n const SIB_API_KEY = "'"$SIB_API_KEY"'"\n const SIB_MARKETING_SERVICE_LIST = "'"$SIB_MARKETING_SERVICE_LIST_PROD"'"\n const GOOGLE_ANALYTICS_KEY = "'"$GOOGLE_ANALYTICS_KEY_PROD"'"\n const GOOGLE_ADS_GUIDE_CONVERSION_TAG = "'"$GOOGLE_ADS_GUIDE_CONVERSION_TAG_PROD"'"\n const GIPHY_API_KEY = "'"$GIPHY_API_KEY_PROD"'"\n const PERPLEXITY_API_KEY = "'"$PERPLEXITY_API_KEY_PROD"'"' utils/backends/firestore.js
         - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_PROD"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_PROD"'"' apis/google/apisConfig.js
         - sed -i 's|__FIREBASE_API_KEY__|'"$GOOGLE_FIREBASE_WEB_API_KEY_PROD"'|g; s|__FIREBASE_AUTH_DOMAIN__|'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD"'|g; s|__FIREBASE_DATABASE_URL__|'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_PROD"'|g; s|__FIREBASE_PROJECT_ID__|'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD"'|g; s|__FIREBASE_STORAGE_BUCKET__|'"$GOOGLE_FIREBASE_STORAGE_BUCKET_PROD"'|g; s|__FIREBASE_MESSAGING_SENDER_ID__|'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD"'|g; s|__FIREBASE_APP_ID__|'"$GOOGLE_FIREBASE_WEB_APP_ID_PROD"'|g; s|__FIREBASE_MEASUREMENT_ID__|'"$GOOGLE_ANALYTICS_KEY_PROD"'|g' web/firebase-messaging-sw.js
