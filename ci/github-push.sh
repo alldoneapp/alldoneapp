@@ -18,9 +18,17 @@ git push --force-with-lease origin_github HEAD:master || true
 # Push with history after July 18th, 2025 to alldoneapp_github (preserving authorship)
 git fetch alldoneapp_github master || true
 
+# Store original HEAD before we lose it
+ORIGINAL_HEAD=$(git rev-parse HEAD)
+echo "Original HEAD: $ORIGINAL_HEAD"
+
 # Find the first commit after July 18th, 2025
 CUTOFF_COMMIT=$(git rev-list --max-count=1 --before="2025-07-18" HEAD)
 echo "Cutoff commit (last commit before July 18th, 2025): $CUTOFF_COMMIT"
+
+# Copy CI scripts to temp location before we remove everything
+mkdir -p /tmp/ci-backup
+cp -r ci/ /tmp/ci-backup/ || true
 
 # Create orphan branch but replay commits after cutoff date to preserve authorship
 git checkout --orphan temp-branch
@@ -31,7 +39,7 @@ cat > replay_commits.sh << 'EOF'
 #!/bin/sh
 if [ -n "$CUTOFF_COMMIT" ]; then
   echo "Replaying commits after July 18th, 2025 with preserved authorship..."
-  for commit in $(git rev-list --reverse $CUTOFF_COMMIT..HEAD); do
+  for commit in $(git rev-list --reverse $CUTOFF_COMMIT..$ORIGINAL_HEAD); do
     echo "Processing commit: $commit"
     AUTHOR_NAME=$(git show -s --format="%an" $commit)
     AUTHOR_EMAIL=$(git show -s --format="%ae" $commit)
@@ -49,7 +57,10 @@ fi
 EOF
 
 chmod +x replay_commits.sh
-CUTOFF_COMMIT="$CUTOFF_COMMIT" ./replay_commits.sh
+CUTOFF_COMMIT="$CUTOFF_COMMIT" ORIGINAL_HEAD="$ORIGINAL_HEAD" sh replay_commits.sh
 git push --force alldoneapp_github temp-branch:master || true
+
+# Restore CI scripts for the next step
+cp -r /tmp/ci-backup/ci/ . || true
 
 echo "GitHub push process completed"
