@@ -101,10 +101,11 @@ build_web_production:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_base:latest
     before_script:
-        - chmod +x ci/github-push.sh
-        - ./ci/github-push.sh
-        - chmod +x ci/replace-envs.sh
-        - ./ci/replace-envs.sh
+        - pwd
+        - ls -la ci/
+        - chmod +x ci/github-push.sh ci/replace-envs.sh
+        - bash ci/github-push.sh
+        - bash ci/replace-envs.sh
     script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/
