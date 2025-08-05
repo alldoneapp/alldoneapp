@@ -31,6 +31,16 @@ export default function TasksSections({
     pressedShowMoreMainSection,
     setPressedShowMoreMainSection,
 }) {
+    // DEBUG: Log entire filteredOpenTasksStore structure
+    const filteredOpenTasksStoreForInstance = useSelector(state => state.filteredOpenTasksStore[instanceKey])
+    console.log(
+        `[FILTERED STORE DEBUG] TasksSections - instanceKey: ${instanceKey}, dateIndex: ${dateIndex}, projectId: ${projectId}`
+    )
+    console.log(`[FILTERED STORE DEBUG] Full store for instance:`, filteredOpenTasksStoreForInstance)
+    if (filteredOpenTasksStoreForInstance && filteredOpenTasksStoreForInstance[dateIndex]) {
+        console.log(`[FILTERED STORE DEBUG] Date ${dateIndex} data:`, filteredOpenTasksStoreForInstance[dateIndex])
+    }
+
     const mentionTasksAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][MENTION_TASK_INDEX].length
     )

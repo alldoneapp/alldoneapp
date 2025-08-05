@@ -54,6 +54,16 @@ export default function MainSection({
     const emptyGoalsAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX].length
     )
+
+    // DEBUG: Log task display details
+    console.log(
+        `[TASK DISPLAY DEBUG] MainSection - instanceKey: ${instanceKey}, dateIndex: ${dateIndex}, projectId: ${projectId}`
+    )
+    console.log(
+        `[TASK DISPLAY DEBUG] MainTasks count: ${mainTasks ? mainTasks.length : 'undefined'}, MainTasks:`,
+        mainTasks
+    )
+    console.log(`[TASK DISPLAY DEBUG] EmptyGoalsAmount: ${emptyGoalsAmount}`)
     const thereAreHiddenNotMainTasks = useSelector(state =>
         state.thereAreHiddenNotMainTasks[instanceKey] ? state.thereAreHiddenNotMainTasks[instanceKey] : false
     )

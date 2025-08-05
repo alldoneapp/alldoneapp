@@ -120,10 +120,32 @@ export const watchOpenTasksAmount = (
             if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
             const newAmount = snapshot.docs.length
             const previousAmount = amountsByProject[projectId].normal ? amountsByProject[projectId].normal : 0
+
+            // DEBUG: Log task counting details
+            console.log(
+                `[TASK COUNT DEBUG] ProjectId: ${projectId}, Count: ${newAmount}, Previous: ${previousAmount}, Total will be: ${
+                    amountsByProject.total - previousAmount + newAmount
+                }`
+            )
+            if (newAmount > 0) {
+                console.log(
+                    `[TASK COUNT DEBUG] Tasks found in project ${projectId}:`,
+                    snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        data: doc.data(),
+                        dueDate: doc.data().dueDate,
+                        done: doc.data().done,
+                        parentId: doc.data().parentId,
+                        currentReviewerId: doc.data().currentReviewerId,
+                    }))
+                )
+            }
+
             if (newAmount !== previousAmount) {
                 amountsByProject.total -= previousAmount
                 amountsByProject.total += newAmount
                 amountsByProject[projectId].normal = newAmount
+                console.log(`[TASK COUNT DEBUG] Dispatching new total count: ${amountsByProject.total}`)
                 store.dispatch(setOpenTasksAmount(amountsByProject.total))
             }
         })
@@ -165,10 +187,19 @@ export const watchObservedOpenTasksAmount = (
 
                 if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
                 const previousAmount = amountsByProject[projectId].observed ? amountsByProject[projectId].observed : 0
+
+                // DEBUG: Log observed task counting details
+                console.log(
+                    `[OBSERVED TASK COUNT DEBUG] ProjectId: ${projectId}, Count: ${newAmount}, Previous: ${previousAmount}, Total will be: ${
+                        amountsByProject.total - previousAmount + newAmount
+                    }`
+                )
+
                 if (newAmount !== previousAmount) {
                     amountsByProject.total -= previousAmount
                     amountsByProject.total += newAmount
                     amountsByProject[projectId].observed = newAmount
+                    console.log(`[OBSERVED TASK COUNT DEBUG] Dispatching new total count: ${amountsByProject.total}`)
                     store.dispatch(setOpenTasksAmount(amountsByProject.total))
                 }
             })
@@ -227,6 +258,12 @@ export const watchUserWorkstreamsOpenTasksAmount = (
                 if (!amountsByProject[projectId].workstreams) amountsByProject[projectId].workstreams = {}
                 if (!amountsByProject[projectId].workstreams[wsId]) amountsByProject[projectId].workstreams[wsId] = 0
                 const previousAmount = amountsByProject[projectId].workstreams[wsId]
+
+                // DEBUG: Log workstream task counting details
+                console.log(
+                    `[WORKSTREAM TASK COUNT DEBUG] ProjectId: ${projectId}, WorkstreamId: ${wsId}, Count: ${newAmount}, Previous: ${previousAmount}`
+                )
+
                 if (newAmount !== previousAmount) {
                     amountsByProject.total -= previousAmount
                     amountsByProject.total += newAmount
