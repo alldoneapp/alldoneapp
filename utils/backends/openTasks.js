@@ -497,14 +497,36 @@ const processTaskChange = (
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
         needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
+
+        // DEBUG: Log needToProcessTheTask logic
+        console.log(`[PROCESS TASK DEBUG] Task ${task.id} initial processing check:`)
+        console.log(`  - isPublicForLoggedUser: ${isPublicForLoggedUser}`)
+        console.log(`  - needToBeListedInThisDate: ${needToBeListedInThisDate}`)
+        console.log(`  - needToProcessTheTask (initial): ${needToProcessTheTask}`)
     }
 
     if (areStreamAndUserTasks) {
+        const previousNeed = needToProcessTheTask
         needToProcessTheTask = userIds.length === 1
+
+        // DEBUG: Log stream/user task override
+        console.log(`[PROCESS TASK DEBUG] Task ${task.id} stream/user task override:`)
+        console.log(`  - userIds.length: ${userIds.length}`)
+        console.log(`  - needToProcessTheTask (before): ${previousNeed}`)
+        console.log(`  - needToProcessTheTask (after): ${needToProcessTheTask}`)
     }
 
     const addTask = () => {
         if (needToProcessTheTask) {
+            // DEBUG: Log task storage details
+            console.log(`[TASK STORAGE DEBUG] Storing task ${task.id} (${task.title || 'No title'}):`)
+            console.log(`  - date: ${date}`)
+            console.log(`  - taskTypeIndex: ${taskTypeIndex}`)
+            console.log(`  - taskParentGoalId: ${taskParentGoalId}`)
+            console.log(`  - innerGroupKey: ${innerGroupKey}`)
+            console.log(`  - areObservedTasks: ${areObservedTasks}`)
+            console.log(`  - areStreamAndUserTasks: ${areStreamAndUserTasks}`)
+
             if (!storedTasks[date]) {
                 storedTasks[date] = {}
                 estimationByDate[date] = ESTIMATION_0_MIN
@@ -522,6 +544,9 @@ const processTaskChange = (
                 if (!storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId])
                     storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId] = []
                 storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId].push(task)
+                console.log(
+                    `  -> Stored in storedTasks[${date}][${taskTypeIndex}][${innerGroupKey}][${taskParentGoalId}] (with innerGroupKey)`
+                )
                 if (storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId].length > 1)
                     listsToSort[sortListKey] = sortListValue
             } else {
@@ -529,6 +554,9 @@ const processTaskChange = (
                 if (!storedTasks[date][taskTypeIndex][taskParentGoalId])
                     storedTasks[date][taskTypeIndex][taskParentGoalId] = []
                 storedTasks[date][taskTypeIndex][taskParentGoalId].push(task)
+                console.log(
+                    `  -> Stored in storedTasks[${date}][${taskTypeIndex}][${taskParentGoalId}] (no innerGroupKey)`
+                )
                 if (storedTasks[date][taskTypeIndex][taskParentGoalId].length > 1)
                     listsToSort[sortListKey] = sortListValue
             }
@@ -537,11 +565,16 @@ const processTaskChange = (
             //IS THE WORKLFOW IS REFACTORED WE CAN REMOVE TEH CLONE AND PUT THE TASK DIRECTLY
             if (areObservedTasks) {
                 tasksMap.observedTasksById[task.id] = cloneDeep(task)
+                console.log(`  -> Also stored in tasksMap.observedTasksById`)
             } else if (areStreamAndUserTasks) {
                 tasksMap.streamAndUserTasksById[task.id] = cloneDeep(task)
+                console.log(`  -> Also stored in tasksMap.streamAndUserTasksById`)
             } else {
                 tasksMap.userTasksById[task.id] = cloneDeep(task)
+                console.log(`  -> Also stored in tasksMap.userTasksById`)
             }
+        } else {
+            console.log(`[TASK STORAGE DEBUG] Task ${task.id} NOT processed (needToProcessTheTask = false)`)
         }
     }
 
