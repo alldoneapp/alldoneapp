@@ -32,6 +32,19 @@ export default function ParentGoalSection({
     isTemplateProject,
     focusedTaskId,
 }) {
+    // DEBUG: Log ParentGoalSection props
+    console.log(`[PARENT GOAL SECTION DEBUG] ParentGoalSection called:`)
+    console.log(`  - goalId: ${goalId}`)
+    console.log(`  - projectId: ${projectId}`)
+    console.log(`  - taskList.length: ${taskList ? taskList.length : 'null/undefined'}`)
+    console.log(`  - taskList:`, taskList)
+    console.log(`  - amountToRender: ${amountToRender}`)
+    console.log(`  - showingTasks will depend on goal state`)
+    if (taskList && taskList.length > 0) {
+        taskList.forEach((task, index) => {
+            console.log(`    Task ${index}: ${task.id} (${task.title || 'No title'})`)
+        })
+    }
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -136,6 +149,13 @@ export default function ParentGoalSection({
                             />
                         )
                     ) : null}
+                    {/* DEBUG: Log before TasksList render */}
+                    {console.log(`[PARENT GOAL SECTION DEBUG] About to render TasksList with:`) ||
+                        console.log(`  - taskList.length: ${taskList ? taskList.length : 'null'}`) ||
+                        console.log(`  - amountToRender: ${amountToRender}`) ||
+                        console.log(`  - showingTasks: ${showingTasks}`) ||
+                        console.log(`  - goal exists: ${!!goal}`) ||
+                        null}
                     <TasksList
                         projectId={projectId}
                         dateIndex={dateIndex}

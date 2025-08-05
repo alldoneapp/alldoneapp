@@ -304,12 +304,49 @@ export default function MainSection({
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
+    // DEBUG: Log the main tasks rendering
+    console.log(`[MAIN SECTION RENDER DEBUG] About to render sortedMainTasks:`)
+    console.log(`  - sortedMainTasks.length: ${sortedMainTasks.length}`)
+    console.log(`  - sortedMainTasks:`, sortedMainTasks)
+    if (sortedMainTasks.length > 0) {
+        sortedMainTasks.forEach((goalTasksData, index) => {
+            const goalId = goalTasksData[0]
+            const taskList = goalTasksData[1]
+            const isEmptyGoal = !!taskList.id
+            console.log(
+                `  Goal ${index}: ID=${goalId}, isEmpty=${isEmptyGoal}, tasks=${
+                    isEmptyGoal ? 'N/A (empty goal)' : taskList.length
+                }`
+            )
+            if (!isEmptyGoal && Array.isArray(taskList)) {
+                taskList.forEach((task, taskIndex) => {
+                    console.log(`    Task ${taskIndex}: ${task.id} (${task.title || 'No title'})`)
+                })
+            }
+        })
+    }
+
     return (
         <View style={localStyles.container}>
             {sortedMainTasks.map((goalTasksData, index) => {
                 const goalId = goalTasksData[0]
                 const isEmptyGoal = !!goalTasksData[1].id
                 const lastItem = sortedMainTasks.length - 1 === index
+
+                // DEBUG: Log rendering decision for each goal
+                console.log(`[MAIN SECTION RENDER DEBUG] Processing goal ${index}:`)
+                console.log(`  - goalId: ${goalId}`)
+                console.log(`  - isEmptyGoal: ${isEmptyGoal}`)
+                console.log(`  - NOT_PARENT_GOAL_INDEX: ${NOT_PARENT_GOAL_INDEX}`)
+                console.log(
+                    `  - Will render as: ${
+                        isEmptyGoal
+                            ? 'Empty Goal'
+                            : goalId === NOT_PARENT_GOAL_INDEX
+                            ? 'General Tasks'
+                            : 'Parent Goal Section'
+                    }`
+                )
 
                 if (isEmptyGoal) {
                     // --- Render Empty Goal ---
@@ -421,10 +458,30 @@ export default function MainSection({
                         ? taskList.length
                         : globalAmountToRender
 
-                    if (amountToRenderForGoal <= 0 && !showTheFullList) return null // Adjusted condition for amountToRender
+                    // DEBUG: Log parent goal section details
+                    console.log(`[PARENT GOAL DEBUG] Processing parent goal section:`)
+                    console.log(`  - goalId: ${goalId}`)
+                    console.log(`  - goalIndex: ${goalIndex}`)
+                    console.log(`  - taskList.length: ${taskList.length}`)
+                    console.log(`  - taskList:`, taskList)
+                    console.log(`  - showTheFullList: ${showTheFullList}`)
+                    console.log(`  - globalAmountToRender: ${globalAmountToRender}`)
+                    console.log(`  - amountToRenderForGoal: ${amountToRenderForGoal}`)
+                    console.log(
+                        `  - Will render: ${amountToRenderForGoal > 0 || showTheFullList ? 'YES' : 'NO (filtered out)'}`
+                    )
+
+                    if (amountToRenderForGoal <= 0 && !showTheFullList) {
+                        console.log(`[PARENT GOAL DEBUG] RETURNING NULL - Goal filtered out due to amountToRender`)
+                        return null // Adjusted condition for amountToRender
+                    }
 
                     globalAmountToRender =
                         globalAmountToRender > taskList.length ? globalAmountToRender - taskList.length : 0
+
+                    console.log(
+                        `[PARENT GOAL DEBUG] Rendering ParentGoalSection with amountToRender: ${amountToRenderForGoal}`
+                    )
 
                     return (
                         <ParentGoalSection
