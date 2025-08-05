@@ -128,17 +128,33 @@ export const watchOpenTasksAmount = (
                 }`
             )
             if (newAmount > 0) {
-                console.log(
-                    `[TASK COUNT DEBUG] Tasks found in project ${projectId}:`,
-                    snapshot.docs.map(doc => ({
+                const taskDetails = snapshot.docs.map(doc => {
+                    const data = doc.data()
+                    return {
                         id: doc.id,
-                        data: doc.data(),
-                        dueDate: doc.data().dueDate,
-                        done: doc.data().done,
-                        parentId: doc.data().parentId,
-                        currentReviewerId: doc.data().currentReviewerId,
-                    }))
-                )
+                        title: data.title || 'No title',
+                        dueDate: data.dueDate,
+                        done: data.done,
+                        parentId: data.parentId,
+                        currentReviewerId: data.currentReviewerId,
+                        userId: data.userId,
+                        genericData: !!data.genericData,
+                        suggestedBy: !!data.suggestedBy,
+                        calendarData: !!data.calendarData,
+                        gmailData: !!data.gmailData,
+                        userIds: data.userIds?.length || 0,
+                    }
+                })
+                console.log(`[TASK COUNT DEBUG] Tasks found in project ${projectId}:`)
+                taskDetails.forEach((task, index) => {
+                    console.log(`  Task ${index + 1}: ${task.title} (ID: ${task.id})`)
+                    console.log(
+                        `    - Type indicators: genericData=${task.genericData}, suggestedBy=${task.suggestedBy}, calendarData=${task.calendarData}, gmailData=${task.gmailData}, userIds=${task.userIds}`
+                    )
+                    console.log(
+                        `    - Due: ${new Date(task.dueDate).toISOString()}, Reviewer: ${task.currentReviewerId}`
+                    )
+                })
             }
 
             if (newAmount !== previousAmount) {
