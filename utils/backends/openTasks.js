@@ -362,14 +362,57 @@ const watchUserOpenTasks = (
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks) => {
     const { genericData, suggestedBy, userIds, calendarData, gmailData } = task
-    if (areObservedTasks) return OBSERVED_TASKS_INDEX
-    if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
-    if (genericData) return MENTION_TASK_INDEX
-    if (userIds.length > 1) return WORKFLOW_TASK_INDEX
-    if (suggestedBy) return SUGGESTED_TASK_INDEX
-    if (calendarData) return CALENDAR_TASK_INDEX
-    if (gmailData) return EMAIL_TASK_INDEX
-    return MAIN_TASK_INDEX
+
+    // DEBUG: Log task type determination
+    console.log(`[TASK TYPE DEBUG] Task ${task.id} (${task.title || 'No title'}):`)
+    console.log(`  - areObservedTasks: ${areObservedTasks}`)
+    console.log(`  - areStreamAndUserTasks: ${areStreamAndUserTasks}`)
+    console.log(`  - genericData: ${!!genericData}`)
+    console.log(`  - userIds.length: ${userIds?.length || 0}`)
+    console.log(`  - suggestedBy: ${!!suggestedBy}`)
+    console.log(`  - calendarData: ${!!calendarData}`)
+    console.log(`  - gmailData: ${!!gmailData}`)
+
+    let resultIndex
+    if (areObservedTasks) {
+        resultIndex = OBSERVED_TASKS_INDEX
+        console.log(`  -> Result: OBSERVED_TASKS_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+    if (areStreamAndUserTasks) {
+        resultIndex = STREAM_AND_USER_TASKS_INDEX
+        console.log(`  -> Result: STREAM_AND_USER_TASKS_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+    if (genericData) {
+        resultIndex = MENTION_TASK_INDEX
+        console.log(`  -> Result: MENTION_TASK_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+    if (userIds.length > 1) {
+        resultIndex = WORKFLOW_TASK_INDEX
+        console.log(`  -> Result: WORKFLOW_TASK_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+    if (suggestedBy) {
+        resultIndex = SUGGESTED_TASK_INDEX
+        console.log(`  -> Result: SUGGESTED_TASK_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+    if (calendarData) {
+        resultIndex = CALENDAR_TASK_INDEX
+        console.log(`  -> Result: CALENDAR_TASK_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+    if (gmailData) {
+        resultIndex = EMAIL_TASK_INDEX
+        console.log(`  -> Result: EMAIL_TASK_INDEX (${resultIndex})`)
+        return resultIndex
+    }
+
+    resultIndex = MAIN_TASK_INDEX
+    console.log(`  -> Result: MAIN_TASK_INDEX (${resultIndex})`)
+    return resultIndex
 }
 
 const processTaskChange = (
