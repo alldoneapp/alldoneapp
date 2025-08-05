@@ -14,6 +14,16 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab) {
     const dispatch = useDispatch()
 
     useEffect(() => {
+        console.log(
+            '🔄 useGetStickyChats: Starting loading data for project:',
+            projectId,
+            'tab:',
+            chatsActiveTab,
+            'toRender:',
+            toRender,
+            'filters:',
+            filtersArray.length
+        )
         dispatch(startLoadingData())
         let query = getDb().collection(`chatObjects/${projectId}/chats/`)
         query =
@@ -24,20 +34,26 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab) {
             .where('stickyData.days', '>', 0)
             .orderBy('stickyData.days', 'asc')
             .limit(toRender)
-            .onSnapshot(handleSnapshot)
+            .onSnapshot(handleSnapshot, error => {
+                console.error('❌ useGetStickyChats: Firebase snapshot error for project:', projectId, error)
+                dispatch(stopLoadingData())
+            })
 
         return () => {
+            console.log('🧹 useGetStickyChats: Cleaning up listener for project:', projectId)
             unsubscribe()
         }
     }, [projectId, toRender, chatsActiveTab, JSON.stringify(filtersArray)])
 
     async function handleSnapshot(docs) {
+        console.log('✅ useGetStickyChats: Received snapshot for project:', projectId, 'docs count:', docs.size)
         const chats = []
         docs.forEach(doc => {
             chats.push({ id: doc.id, ...doc.data() })
         })
 
         setChats(filtersArray.length > 0 ? filterStickyChats(chats) : chats)
+        console.log('🛑 useGetStickyChats: Stopping loading data for project:', projectId)
         dispatch(stopLoadingData())
     }
 

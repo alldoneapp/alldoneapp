@@ -40,6 +40,15 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
     const chats = useGetChats(project.id, toRender, chatsActiveTab)
     const stickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab)
 
+    console.log(
+        '📊 ChatsByProject: Loading state for project:',
+        project.id,
+        'regularChats:',
+        Object.keys(chats).length,
+        'stickyChats:',
+        Object.keys(stickyChats).length
+    )
+
     const today = moment().format('YYYYMMDD')
     const { [today]: todayChats, ...rest } = chats
     const isThereChats = Object.keys(chats).length > 0 || Object.keys(stickyChats).length > 0

@@ -263,7 +263,65 @@ export default function MainSection({
         ...tmpGoals.map(goal => [goal.id, goal]),
     ]
 
-    sortedMainTasks = sortedMainTasks.filter(data => goalsPositionId[data[0]] !== undefined)
+    // DEBUG: Log filtering issue
+    console.log(`[FILTER DEBUG] Before filtering:`)
+    console.log(`  - sortedMainTasks.length: ${sortedMainTasks.length}`)
+    console.log(`  - goalsPositionId:`, goalsPositionId)
+
+    // Separate valid and orphaned tasks
+    const validTasks = []
+    const orphanedTasks = []
+
+    sortedMainTasks.forEach((data, index) => {
+        const goalId = data[0]
+        const hasPosition = goalsPositionId[goalId] !== undefined
+        console.log(`  Goal ${index}: ${goalId} -> hasPosition: ${hasPosition} (position: ${goalsPositionId[goalId]})`)
+
+        if (hasPosition) {
+            validTasks.push(data)
+        } else {
+            console.log(`    ❌ ORPHANED! Converting to general task...`)
+            // For orphaned tasks, we need to extract the individual tasks
+            const taskList = data[1]
+            if (Array.isArray(taskList)) {
+                // This is a regular task group, add all tasks to orphaned list
+                orphanedTasks.push(...taskList)
+            } else {
+                // This might be an empty goal, skip it
+                console.log(`      Skipping empty goal: ${goalId}`)
+            }
+        }
+    })
+
+    // If we have orphaned tasks, create a general tasks group
+    if (orphanedTasks.length > 0) {
+        console.log(`[ORPHAN CONVERSION] Found ${orphanedTasks.length} orphaned tasks, converting to general tasks`)
+
+        // Check if we already have a general tasks group
+        const existingGeneralIndex = validTasks.findIndex(data => data[0] === NOT_PARENT_GOAL_INDEX)
+
+        if (existingGeneralIndex >= 0) {
+            // Merge with existing general tasks
+            console.log(`  - Merging with existing general tasks group`)
+            validTasks[existingGeneralIndex][1].push(...orphanedTasks)
+        } else {
+            // Create new general tasks group
+            console.log(`  - Creating new general tasks group`)
+            validTasks.push([NOT_PARENT_GOAL_INDEX, orphanedTasks])
+        }
+    }
+
+    sortedMainTasks = validTasks
+
+    // DEBUG: Log after conversion
+    console.log(`[FILTER DEBUG] After orphan conversion:`)
+    console.log(`  - sortedMainTasks.length: ${sortedMainTasks.length}`)
+    sortedMainTasks.forEach((data, index) => {
+        const goalId = data[0]
+        const taskCount = Array.isArray(data[1]) ? data[1].length : 'empty_goal'
+        console.log(`  Group ${index}: ${goalId} (${taskCount} tasks)`)
+    })
+
     sortedMainTasks.sort((a, b) => goalsPositionId[a[0]] - goalsPositionId[b[0]])
 
     // --- Start: Focus logic ---

@@ -723,6 +723,7 @@ export const setTaskTitleElementsWidths = taskTitleElementsWidths => {
 }
 
 export const startLoadingData = processes => {
+    console.log('🔢 Redux: START_LOADING_DATA called with processes:', processes)
     const action = {
         type: 'Start loading data',
         processes,
@@ -731,6 +732,7 @@ export const startLoadingData = processes => {
 }
 
 export const stopLoadingData = () => {
+    console.log('🔢 Redux: STOP_LOADING_DATA called')
     const action = {
         type: 'Stop loading data',
     }

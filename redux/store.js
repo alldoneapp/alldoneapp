@@ -824,10 +824,26 @@ export const theReducer = (state = initialState, action) => {
                 processes !== undefined && processes !== null && processes > 0
                     ? state.isLoadingData + processes
                     : state.isLoadingData + 1
+            console.log(
+                '🔢 Redux Store: START_LOADING_DATA - Before:',
+                state.isLoadingData,
+                'After:',
+                valueInc,
+                'Spinner:',
+                valueInc > 0
+            )
             return { ...state, isLoadingData: valueInc, showLoadingDataSpinner: valueInc > 0 }
         }
         case 'Stop loading data': {
             const valueDec = state.isLoadingData > 0 ? state.isLoadingData - 1 : 0
+            console.log(
+                '🔢 Redux Store: STOP_LOADING_DATA - Before:',
+                state.isLoadingData,
+                'After:',
+                valueDec,
+                'Spinner:',
+                valueDec > 0
+            )
             return { ...state, isLoadingData: valueDec, showLoadingDataSpinner: valueDec > 0 }
         }
         case 'Reset loading data':
