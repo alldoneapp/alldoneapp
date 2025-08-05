@@ -330,12 +330,6 @@ const watchUserOpenTasks = (
                     subtasksMap
                 )
                 subtasks = subtasksByTasks
-                // DEBUG: Log callback execution
-                console.log(`[CALLBACK DEBUG] watchUserOpenTasks callback:`)
-                console.log(`  - openTasksArray length: ${openTasksArray.length}`)
-                console.log(`  - areObservedTasks: ${areObservedTasks}`)
-                console.log(`  - openTasksArray[0]:`, openTasksArray[0])
-
                 callback(openTasksArray, !areObservedTasks)
                 store.dispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
@@ -368,57 +362,14 @@ const watchUserOpenTasks = (
 
 export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks) => {
     const { genericData, suggestedBy, userIds, calendarData, gmailData } = task
-
-    // DEBUG: Log task type determination
-    console.log(`[TASK TYPE DEBUG] Task ${task.id} (${task.title || 'No title'}):`)
-    console.log(`  - areObservedTasks: ${areObservedTasks}`)
-    console.log(`  - areStreamAndUserTasks: ${areStreamAndUserTasks}`)
-    console.log(`  - genericData: ${!!genericData}`)
-    console.log(`  - userIds.length: ${userIds?.length || 0}`)
-    console.log(`  - suggestedBy: ${!!suggestedBy}`)
-    console.log(`  - calendarData: ${!!calendarData}`)
-    console.log(`  - gmailData: ${!!gmailData}`)
-
-    let resultIndex
-    if (areObservedTasks) {
-        resultIndex = OBSERVED_TASKS_INDEX
-        console.log(`  -> Result: OBSERVED_TASKS_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-    if (areStreamAndUserTasks) {
-        resultIndex = STREAM_AND_USER_TASKS_INDEX
-        console.log(`  -> Result: STREAM_AND_USER_TASKS_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-    if (genericData) {
-        resultIndex = MENTION_TASK_INDEX
-        console.log(`  -> Result: MENTION_TASK_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-    if (userIds.length > 1) {
-        resultIndex = WORKFLOW_TASK_INDEX
-        console.log(`  -> Result: WORKFLOW_TASK_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-    if (suggestedBy) {
-        resultIndex = SUGGESTED_TASK_INDEX
-        console.log(`  -> Result: SUGGESTED_TASK_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-    if (calendarData) {
-        resultIndex = CALENDAR_TASK_INDEX
-        console.log(`  -> Result: CALENDAR_TASK_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-    if (gmailData) {
-        resultIndex = EMAIL_TASK_INDEX
-        console.log(`  -> Result: EMAIL_TASK_INDEX (${resultIndex})`)
-        return resultIndex
-    }
-
-    resultIndex = MAIN_TASK_INDEX
-    console.log(`  -> Result: MAIN_TASK_INDEX (${resultIndex})`)
-    return resultIndex
+    if (areObservedTasks) return OBSERVED_TASKS_INDEX
+    if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
+    if (genericData) return MENTION_TASK_INDEX
+    if (userIds.length > 1) return WORKFLOW_TASK_INDEX
+    if (suggestedBy) return SUGGESTED_TASK_INDEX
+    if (calendarData) return CALENDAR_TASK_INDEX
+    if (gmailData) return EMAIL_TASK_INDEX
+    return MAIN_TASK_INDEX
 }
 
 const processTaskChange = (
@@ -503,36 +454,14 @@ const processTaskChange = (
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
         needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
-
-        // DEBUG: Log needToProcessTheTask logic
-        console.log(`[PROCESS TASK DEBUG] Task ${task.id} initial processing check:`)
-        console.log(`  - isPublicForLoggedUser: ${isPublicForLoggedUser}`)
-        console.log(`  - needToBeListedInThisDate: ${needToBeListedInThisDate}`)
-        console.log(`  - needToProcessTheTask (initial): ${needToProcessTheTask}`)
     }
 
     if (areStreamAndUserTasks) {
-        const previousNeed = needToProcessTheTask
         needToProcessTheTask = userIds.length === 1
-
-        // DEBUG: Log stream/user task override
-        console.log(`[PROCESS TASK DEBUG] Task ${task.id} stream/user task override:`)
-        console.log(`  - userIds.length: ${userIds.length}`)
-        console.log(`  - needToProcessTheTask (before): ${previousNeed}`)
-        console.log(`  - needToProcessTheTask (after): ${needToProcessTheTask}`)
     }
 
     const addTask = () => {
         if (needToProcessTheTask) {
-            // DEBUG: Log task storage details
-            console.log(`[TASK STORAGE DEBUG] Storing task ${task.id} (${task.title || 'No title'}):`)
-            console.log(`  - date: ${date}`)
-            console.log(`  - taskTypeIndex: ${taskTypeIndex}`)
-            console.log(`  - taskParentGoalId: ${taskParentGoalId}`)
-            console.log(`  - innerGroupKey: ${innerGroupKey}`)
-            console.log(`  - areObservedTasks: ${areObservedTasks}`)
-            console.log(`  - areStreamAndUserTasks: ${areStreamAndUserTasks}`)
-
             if (!storedTasks[date]) {
                 storedTasks[date] = {}
                 estimationByDate[date] = ESTIMATION_0_MIN
@@ -550,9 +479,6 @@ const processTaskChange = (
                 if (!storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId])
                     storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId] = []
                 storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId].push(task)
-                console.log(
-                    `  -> Stored in storedTasks[${date}][${taskTypeIndex}][${innerGroupKey}][${taskParentGoalId}] (with innerGroupKey)`
-                )
                 if (storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId].length > 1)
                     listsToSort[sortListKey] = sortListValue
             } else {
@@ -560,9 +486,6 @@ const processTaskChange = (
                 if (!storedTasks[date][taskTypeIndex][taskParentGoalId])
                     storedTasks[date][taskTypeIndex][taskParentGoalId] = []
                 storedTasks[date][taskTypeIndex][taskParentGoalId].push(task)
-                console.log(
-                    `  -> Stored in storedTasks[${date}][${taskTypeIndex}][${taskParentGoalId}] (no innerGroupKey)`
-                )
                 if (storedTasks[date][taskTypeIndex][taskParentGoalId].length > 1)
                     listsToSort[sortListKey] = sortListValue
             }
@@ -571,16 +494,11 @@ const processTaskChange = (
             //IS THE WORKLFOW IS REFACTORED WE CAN REMOVE TEH CLONE AND PUT THE TASK DIRECTLY
             if (areObservedTasks) {
                 tasksMap.observedTasksById[task.id] = cloneDeep(task)
-                console.log(`  -> Also stored in tasksMap.observedTasksById`)
             } else if (areStreamAndUserTasks) {
                 tasksMap.streamAndUserTasksById[task.id] = cloneDeep(task)
-                console.log(`  -> Also stored in tasksMap.streamAndUserTasksById`)
             } else {
                 tasksMap.userTasksById[task.id] = cloneDeep(task)
-                console.log(`  -> Also stored in tasksMap.userTasksById`)
             }
-        } else {
-            console.log(`[TASK STORAGE DEBUG] Task ${task.id} NOT processed (needToProcessTheTask = false)`)
         }
     }
 
@@ -733,12 +651,6 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
 }
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
-    // DEBUG: Log the conversion process
-    console.log(`[ARRAY GENERATION DEBUG] generateOpenTasksArray called:`)
-    console.log(`  - dayDateFormated: ${dayDateFormated}`)
-    console.log(`  - storedTasks:`, storedTasks)
-    console.log(`  - amountOfTasksByDate:`, amountOfTasksByDate)
-
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
     const openTasksArray = storedTasks[dayDateFormated]
         ? []
@@ -750,24 +662,7 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
         const taskByType = dateElement[1]
         const amountTasks = amountOfTasksByDate[date]
         const estimationTasks = estimationByDate[date]
-
-        // DEBUG: Log main tasks conversion
-        console.log(`[ARRAY GENERATION DEBUG] Processing date ${date}:`)
-        console.log(`  - taskByType[MAIN_TASK_INDEX]:`, taskByType[MAIN_TASK_INDEX])
-
         const mainTasks = taskByType[MAIN_TASK_INDEX] ? Object.entries(taskByType[MAIN_TASK_INDEX]) : []
-
-        console.log(`  - mainTasks after Object.entries():`, mainTasks)
-        if (mainTasks.length > 0) {
-            console.log(`  - mainTasks detailed:`)
-            mainTasks.forEach((goalGroup, index) => {
-                const [goalId, tasks] = goalGroup
-                console.log(`    Goal ${index}: ${goalId} (${tasks.length} tasks)`)
-                tasks.forEach((task, taskIndex) => {
-                    console.log(`      Task ${taskIndex}: ${task.id} (${task.title || 'No title'})`)
-                })
-            })
-        }
         const mentionTasks = taskByType[MENTION_TASK_INDEX] ? Object.entries(taskByType[MENTION_TASK_INDEX]) : []
         const activeGoals = taskByType[ACTIVE_GOALS_INDEX] ? taskByType[ACTIVE_GOALS_INDEX] : []
         const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? Object.entries(taskByType[CALENDAR_TASK_INDEX]) : []
@@ -1194,11 +1089,6 @@ const watchStreamAndUserOpenTasks = (
                     subtasksMap
                 )
                 subtasks = subtasksByTasks
-                // DEBUG: Log stream callback execution
-                console.log(`[CALLBACK DEBUG] watchStreamAndUserOpenTasks callback:`)
-                console.log(`  - openTasksArray length: ${openTasksArray.length}`)
-                console.log(`  - openTasksArray[0]:`, openTasksArray[0])
-
                 callback(openTasksArray)
                 store.dispatch(
                     setOpenTasksMap(projectId, {

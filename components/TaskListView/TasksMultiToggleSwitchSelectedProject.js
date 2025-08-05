@@ -23,11 +23,6 @@ export default function TasksMultiToggleSwitchSelectedProject() {
     const earlierDoneTasksAmount = useSelector(state => state.earlierDoneTasksAmount)
     const workflowTasksAmount = useSelector(state => state.workflowTasksAmount.amount)
 
-    // DEBUG: Log the task amounts being displayed in the toggle switch
-    console.log(
-        `[TOGGLE SWITCH DEBUG] openTasksAmount: ${openTasksAmount}, doneTasksAmount: ${doneTasksAmount}, workflowTasksAmount: ${workflowTasksAmount}`
-    )
-
     const onChangeToggleOption = (index, optionText) => {
         TasksHelper.setURLOnChangeToggleOption(index, optionText)
     }

@@ -121,47 +121,10 @@ export const watchOpenTasksAmount = (
             const newAmount = snapshot.docs.length
             const previousAmount = amountsByProject[projectId].normal ? amountsByProject[projectId].normal : 0
 
-            // DEBUG: Log task counting details
-            console.log(
-                `[TASK COUNT DEBUG] ProjectId: ${projectId}, Count: ${newAmount}, Previous: ${previousAmount}, Total will be: ${
-                    amountsByProject.total - previousAmount + newAmount
-                }`
-            )
-            if (newAmount > 0) {
-                const taskDetails = snapshot.docs.map(doc => {
-                    const data = doc.data()
-                    return {
-                        id: doc.id,
-                        title: data.title || 'No title',
-                        dueDate: data.dueDate,
-                        done: data.done,
-                        parentId: data.parentId,
-                        currentReviewerId: data.currentReviewerId,
-                        userId: data.userId,
-                        genericData: !!data.genericData,
-                        suggestedBy: !!data.suggestedBy,
-                        calendarData: !!data.calendarData,
-                        gmailData: !!data.gmailData,
-                        userIds: data.userIds?.length || 0,
-                    }
-                })
-                console.log(`[TASK COUNT DEBUG] Tasks found in project ${projectId}:`)
-                taskDetails.forEach((task, index) => {
-                    console.log(`  Task ${index + 1}: ${task.title} (ID: ${task.id})`)
-                    console.log(
-                        `    - Type indicators: genericData=${task.genericData}, suggestedBy=${task.suggestedBy}, calendarData=${task.calendarData}, gmailData=${task.gmailData}, userIds=${task.userIds}`
-                    )
-                    console.log(
-                        `    - Due: ${new Date(task.dueDate).toISOString()}, Reviewer: ${task.currentReviewerId}`
-                    )
-                })
-            }
-
             if (newAmount !== previousAmount) {
                 amountsByProject.total -= previousAmount
                 amountsByProject.total += newAmount
                 amountsByProject[projectId].normal = newAmount
-                console.log(`[TASK COUNT DEBUG] Dispatching new total count: ${amountsByProject.total}`)
                 store.dispatch(setOpenTasksAmount(amountsByProject.total))
             }
         })
@@ -204,18 +167,10 @@ export const watchObservedOpenTasksAmount = (
                 if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
                 const previousAmount = amountsByProject[projectId].observed ? amountsByProject[projectId].observed : 0
 
-                // DEBUG: Log observed task counting details
-                console.log(
-                    `[OBSERVED TASK COUNT DEBUG] ProjectId: ${projectId}, Count: ${newAmount}, Previous: ${previousAmount}, Total will be: ${
-                        amountsByProject.total - previousAmount + newAmount
-                    }`
-                )
-
                 if (newAmount !== previousAmount) {
                     amountsByProject.total -= previousAmount
                     amountsByProject.total += newAmount
                     amountsByProject[projectId].observed = newAmount
-                    console.log(`[OBSERVED TASK COUNT DEBUG] Dispatching new total count: ${amountsByProject.total}`)
                     store.dispatch(setOpenTasksAmount(amountsByProject.total))
                 }
             })
@@ -274,11 +229,6 @@ export const watchUserWorkstreamsOpenTasksAmount = (
                 if (!amountsByProject[projectId].workstreams) amountsByProject[projectId].workstreams = {}
                 if (!amountsByProject[projectId].workstreams[wsId]) amountsByProject[projectId].workstreams[wsId] = 0
                 const previousAmount = amountsByProject[projectId].workstreams[wsId]
-
-                // DEBUG: Log workstream task counting details
-                console.log(
-                    `[WORKSTREAM TASK COUNT DEBUG] ProjectId: ${projectId}, WorkstreamId: ${wsId}, Count: ${newAmount}, Previous: ${previousAmount}`
-                )
 
                 if (newAmount !== previousAmount) {
                     amountsByProject.total -= previousAmount

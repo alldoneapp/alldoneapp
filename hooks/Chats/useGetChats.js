@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import moment from 'moment'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -13,6 +13,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [chats, setChats] = useState({})
     const [filters, filtersArray] = useSelectorHashtagFilters()
+    const isLoadingStartedRef = useRef(false)
 
     useEffect(() => {
         console.log(
@@ -25,7 +26,15 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
             'filters:',
             filtersArray.length
         )
+
+        // Guard clause: Don't proceed if projectId is invalid
+        if (!projectId || projectId === 'undefined' || projectId === 'null') {
+            console.error('❌ useGetChats: Invalid projectId, skipping Firebase query:', projectId)
+            return
+        }
+
         dispatch(startLoadingData())
+        isLoadingStartedRef.current = true
         let query = getDb().collection(`chatObjects/${projectId}/chats/`)
         query =
             chatsActiveTab === ALL_TAB
@@ -37,11 +46,19 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
             .limit(toRender)
             .onSnapshot(handleSnapshot, error => {
                 console.error('❌ useGetChats: Firebase snapshot error for project:', projectId, error)
-                dispatch(stopLoadingData())
+                if (isLoadingStartedRef.current) {
+                    dispatch(stopLoadingData())
+                    isLoadingStartedRef.current = false
+                }
             })
 
         return () => {
             console.log('🧹 useGetChats: Cleaning up listener for project:', projectId)
+            if (isLoadingStartedRef.current) {
+                console.log('🔧 useGetChats: Stopping loading data on cleanup for project:', projectId)
+                dispatch(stopLoadingData())
+                isLoadingStartedRef.current = false
+            }
             unsubscribe()
         }
     }, [projectId, toRender, chatsActiveTab, JSON.stringify(filtersArray)])
@@ -57,8 +74,13 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
         })
 
         setChats(filtersArray.length > 0 ? filterChats(chatsByDate) : chatsByDate)
-        console.log('🛑 useGetChats: Stopping loading data for project:', projectId)
-        dispatch(stopLoadingData())
+        if (isLoadingStartedRef.current) {
+            console.log('🛑 useGetChats: Stopping loading data for project:', projectId)
+            dispatch(stopLoadingData())
+            isLoadingStartedRef.current = false
+        } else {
+            console.warn('⚠️ useGetChats: Tried to stop loading when not started for project:', projectId)
+        }
     }
 
     return chats

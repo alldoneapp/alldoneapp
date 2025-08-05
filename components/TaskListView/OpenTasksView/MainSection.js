@@ -55,15 +55,6 @@ export default function MainSection({
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX].length
     )
 
-    // DEBUG: Log task display details
-    console.log(
-        `[TASK DISPLAY DEBUG] MainSection - instanceKey: ${instanceKey}, dateIndex: ${dateIndex}, projectId: ${projectId}`
-    )
-    console.log(
-        `[TASK DISPLAY DEBUG] MainTasks count: ${mainTasks ? mainTasks.length : 'undefined'}, MainTasks:`,
-        mainTasks
-    )
-    console.log(`[TASK DISPLAY DEBUG] EmptyGoalsAmount: ${emptyGoalsAmount}`)
     const thereAreHiddenNotMainTasks = useSelector(state =>
         state.thereAreHiddenNotMainTasks[instanceKey] ? state.thereAreHiddenNotMainTasks[instanceKey] : false
     )
@@ -263,11 +254,6 @@ export default function MainSection({
         ...tmpGoals.map(goal => [goal.id, goal]),
     ]
 
-    // DEBUG: Log filtering issue
-    console.log(`[FILTER DEBUG] Before filtering:`)
-    console.log(`  - sortedMainTasks.length: ${sortedMainTasks.length}`)
-    console.log(`  - goalsPositionId:`, goalsPositionId)
-
     // Separate valid and orphaned tasks
     const validTasks = []
     const orphanedTasks = []
@@ -275,52 +261,34 @@ export default function MainSection({
     sortedMainTasks.forEach((data, index) => {
         const goalId = data[0]
         const hasPosition = goalsPositionId[goalId] !== undefined
-        console.log(`  Goal ${index}: ${goalId} -> hasPosition: ${hasPosition} (position: ${goalsPositionId[goalId]})`)
 
         if (hasPosition) {
             validTasks.push(data)
         } else {
-            console.log(`    ❌ ORPHANED! Converting to general task...`)
             // For orphaned tasks, we need to extract the individual tasks
             const taskList = data[1]
             if (Array.isArray(taskList)) {
                 // This is a regular task group, add all tasks to orphaned list
                 orphanedTasks.push(...taskList)
-            } else {
-                // This might be an empty goal, skip it
-                console.log(`      Skipping empty goal: ${goalId}`)
             }
         }
     })
 
     // If we have orphaned tasks, create a general tasks group
     if (orphanedTasks.length > 0) {
-        console.log(`[ORPHAN CONVERSION] Found ${orphanedTasks.length} orphaned tasks, converting to general tasks`)
-
         // Check if we already have a general tasks group
         const existingGeneralIndex = validTasks.findIndex(data => data[0] === NOT_PARENT_GOAL_INDEX)
 
         if (existingGeneralIndex >= 0) {
             // Merge with existing general tasks
-            console.log(`  - Merging with existing general tasks group`)
             validTasks[existingGeneralIndex][1].push(...orphanedTasks)
         } else {
             // Create new general tasks group
-            console.log(`  - Creating new general tasks group`)
             validTasks.push([NOT_PARENT_GOAL_INDEX, orphanedTasks])
         }
     }
 
     sortedMainTasks = validTasks
-
-    // DEBUG: Log after conversion
-    console.log(`[FILTER DEBUG] After orphan conversion:`)
-    console.log(`  - sortedMainTasks.length: ${sortedMainTasks.length}`)
-    sortedMainTasks.forEach((data, index) => {
-        const goalId = data[0]
-        const taskCount = Array.isArray(data[1]) ? data[1].length : 'empty_goal'
-        console.log(`  Group ${index}: ${goalId} (${taskCount} tasks)`)
-    })
 
     sortedMainTasks.sort((a, b) => goalsPositionId[a[0]] - goalsPositionId[b[0]])
 
@@ -361,28 +329,6 @@ export default function MainSection({
     const loggedUserIsBoardOwner = loggedUserId === currentUserId
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
-
-    // DEBUG: Log the main tasks rendering
-    console.log(`[MAIN SECTION RENDER DEBUG] About to render sortedMainTasks:`)
-    console.log(`  - sortedMainTasks.length: ${sortedMainTasks.length}`)
-    console.log(`  - sortedMainTasks:`, sortedMainTasks)
-    if (sortedMainTasks.length > 0) {
-        sortedMainTasks.forEach((goalTasksData, index) => {
-            const goalId = goalTasksData[0]
-            const taskList = goalTasksData[1]
-            const isEmptyGoal = !!taskList.id
-            console.log(
-                `  Goal ${index}: ID=${goalId}, isEmpty=${isEmptyGoal}, tasks=${
-                    isEmptyGoal ? 'N/A (empty goal)' : taskList.length
-                }`
-            )
-            if (!isEmptyGoal && Array.isArray(taskList)) {
-                taskList.forEach((task, taskIndex) => {
-                    console.log(`    Task ${taskIndex}: ${task.id} (${task.title || 'No title'})`)
-                })
-            }
-        })
-    }
 
     return (
         <View style={localStyles.container}>
@@ -516,30 +462,10 @@ export default function MainSection({
                         ? taskList.length
                         : globalAmountToRender
 
-                    // DEBUG: Log parent goal section details
-                    console.log(`[PARENT GOAL DEBUG] Processing parent goal section:`)
-                    console.log(`  - goalId: ${goalId}`)
-                    console.log(`  - goalIndex: ${goalIndex}`)
-                    console.log(`  - taskList.length: ${taskList.length}`)
-                    console.log(`  - taskList:`, taskList)
-                    console.log(`  - showTheFullList: ${showTheFullList}`)
-                    console.log(`  - globalAmountToRender: ${globalAmountToRender}`)
-                    console.log(`  - amountToRenderForGoal: ${amountToRenderForGoal}`)
-                    console.log(
-                        `  - Will render: ${amountToRenderForGoal > 0 || showTheFullList ? 'YES' : 'NO (filtered out)'}`
-                    )
-
-                    if (amountToRenderForGoal <= 0 && !showTheFullList) {
-                        console.log(`[PARENT GOAL DEBUG] RETURNING NULL - Goal filtered out due to amountToRender`)
-                        return null // Adjusted condition for amountToRender
-                    }
+                    if (amountToRenderForGoal <= 0 && !showTheFullList) return null // Adjusted condition for amountToRender
 
                     globalAmountToRender =
                         globalAmountToRender > taskList.length ? globalAmountToRender - taskList.length : 0
-
-                    console.log(
-                        `[PARENT GOAL DEBUG] Rendering ParentGoalSection with amountToRender: ${amountToRenderForGoal}`
-                    )
 
                     return (
                         <ParentGoalSection
