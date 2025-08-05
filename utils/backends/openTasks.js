@@ -330,6 +330,12 @@ const watchUserOpenTasks = (
                     subtasksMap
                 )
                 subtasks = subtasksByTasks
+                // DEBUG: Log callback execution
+                console.log(`[CALLBACK DEBUG] watchUserOpenTasks callback:`)
+                console.log(`  - openTasksArray length: ${openTasksArray.length}`)
+                console.log(`  - areObservedTasks: ${areObservedTasks}`)
+                console.log(`  - openTasksArray[0]:`, openTasksArray[0])
+
                 callback(openTasksArray, !areObservedTasks)
                 store.dispatch(setOpenTasksMap(projectId, { ...tasksMap.observedTasksById, ...tasksMap.userTasksById }))
             } else if (Object.keys(storedTasks).length === 0) {
@@ -727,6 +733,12 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
 }
 
 const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDate, estimationByDate) => {
+    // DEBUG: Log the conversion process
+    console.log(`[ARRAY GENERATION DEBUG] generateOpenTasksArray called:`)
+    console.log(`  - dayDateFormated: ${dayDateFormated}`)
+    console.log(`  - storedTasks:`, storedTasks)
+    console.log(`  - amountOfTasksByDate:`, amountOfTasksByDate)
+
     const tasksByDateAndStep = Object.entries(storedTasks).sort((a, b) => a[0] - b[0])
     const openTasksArray = storedTasks[dayDateFormated]
         ? []
@@ -738,7 +750,24 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
         const taskByType = dateElement[1]
         const amountTasks = amountOfTasksByDate[date]
         const estimationTasks = estimationByDate[date]
+
+        // DEBUG: Log main tasks conversion
+        console.log(`[ARRAY GENERATION DEBUG] Processing date ${date}:`)
+        console.log(`  - taskByType[MAIN_TASK_INDEX]:`, taskByType[MAIN_TASK_INDEX])
+
         const mainTasks = taskByType[MAIN_TASK_INDEX] ? Object.entries(taskByType[MAIN_TASK_INDEX]) : []
+
+        console.log(`  - mainTasks after Object.entries():`, mainTasks)
+        if (mainTasks.length > 0) {
+            console.log(`  - mainTasks detailed:`)
+            mainTasks.forEach((goalGroup, index) => {
+                const [goalId, tasks] = goalGroup
+                console.log(`    Goal ${index}: ${goalId} (${tasks.length} tasks)`)
+                tasks.forEach((task, taskIndex) => {
+                    console.log(`      Task ${taskIndex}: ${task.id} (${task.title || 'No title'})`)
+                })
+            })
+        }
         const mentionTasks = taskByType[MENTION_TASK_INDEX] ? Object.entries(taskByType[MENTION_TASK_INDEX]) : []
         const activeGoals = taskByType[ACTIVE_GOALS_INDEX] ? taskByType[ACTIVE_GOALS_INDEX] : []
         const calendarTasks = taskByType[CALENDAR_TASK_INDEX] ? Object.entries(taskByType[CALENDAR_TASK_INDEX]) : []
@@ -1165,6 +1194,11 @@ const watchStreamAndUserOpenTasks = (
                     subtasksMap
                 )
                 subtasks = subtasksByTasks
+                // DEBUG: Log stream callback execution
+                console.log(`[CALLBACK DEBUG] watchStreamAndUserOpenTasks callback:`)
+                console.log(`  - openTasksArray length: ${openTasksArray.length}`)
+                console.log(`  - openTasksArray[0]:`, openTasksArray[0])
+
                 callback(openTasksArray)
                 store.dispatch(
                     setOpenTasksMap(projectId, {
