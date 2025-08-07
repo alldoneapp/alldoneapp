@@ -337,21 +337,6 @@ export default function MainSection({
                 const isEmptyGoal = !!goalTasksData[1].id
                 const lastItem = sortedMainTasks.length - 1 === index
 
-                // DEBUG: Log rendering decision for each goal
-                console.log(`[MAIN SECTION RENDER DEBUG] Processing goal ${index}:`)
-                console.log(`  - goalId: ${goalId}`)
-                console.log(`  - isEmptyGoal: ${isEmptyGoal}`)
-                console.log(`  - NOT_PARENT_GOAL_INDEX: ${NOT_PARENT_GOAL_INDEX}`)
-                console.log(
-                    `  - Will render as: ${
-                        isEmptyGoal
-                            ? 'Empty Goal'
-                            : goalId === NOT_PARENT_GOAL_INDEX
-                            ? 'General Tasks'
-                            : 'Parent Goal Section'
-                    }`
-                )
-
                 if (isEmptyGoal) {
                     // --- Render Empty Goal ---
                     const goal = goalTasksData[1]
