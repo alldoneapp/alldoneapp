@@ -732,7 +732,6 @@ export const startLoadingData = processes => {
 }
 
 export const stopLoadingData = () => {
-    console.log('🔢 Redux: STOP_LOADING_DATA called')
     const action = {
         type: 'Stop loading data',
     }

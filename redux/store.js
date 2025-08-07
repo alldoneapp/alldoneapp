@@ -836,14 +836,6 @@ export const theReducer = (state = initialState, action) => {
         }
         case 'Stop loading data': {
             const valueDec = state.isLoadingData > 0 ? state.isLoadingData - 1 : 0
-            console.log(
-                '🔢 Redux Store: STOP_LOADING_DATA - Before:',
-                state.isLoadingData,
-                'After:',
-                valueDec,
-                'Spinner:',
-                valueDec > 0
-            )
             return { ...state, isLoadingData: valueDec, showLoadingDataSpinner: valueDec > 0 }
         }
         case 'Reset loading data':
