@@ -18,7 +18,7 @@ async function generateBotAdvaiceForTopic(
     assistantId,
     followerIds
 ) {
-    // Get settings based on whether this is a task or not
+    // Get settings based on whether this is a task or not. Indeed.
     const settings =
         objectType === 'tasks'
             ? await getTaskOrAssistantSettings(projectId, objectId, assistantId)
