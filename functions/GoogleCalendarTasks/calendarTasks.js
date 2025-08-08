@@ -116,13 +116,23 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) =>
     if (task) {
         // If the task already exists but under a different project, and it's the same calendar email,
         // move it to the newly connected project to enforce single-project ownership per account.
-        if (task.projectId !== projectId && task.calendarData && task.calendarData.email === email) {
+        if (
+            task.projectId !== projectId &&
+            task.calendarData &&
+            task.calendarData.email === email &&
+            task.calendarData.pinnedToProjectId !== task.projectId
+        ) {
             const oldRef = admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`)
             const newRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
 
             // Merge existing task data with the latest calendar fields, omitting non-persisted props
             const { id, projectId: oldProjectId, ...persistableTask } = task
             const newTaskData = { ...persistableTask, ...dataToUpdate }
+
+            // Respect manual pinning: if pinnedToProjectId exists and equals current project, do not move
+            if (persistableTask.calendarData && persistableTask.calendarData.pinnedToProjectId) {
+                return
+            }
 
             // Preserve sortIndex when present; otherwise compute from start
             if (!newTaskData.sortIndex) {

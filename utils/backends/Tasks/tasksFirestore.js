@@ -1564,6 +1564,14 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
         taskCopy.sortIndex = generateSortIndex()
     }
 
+    // If this is a calendar task and the user manually moved it, pin it to the new project
+    if (taskCopy.calendarData) {
+        taskCopy.calendarData = {
+            ...taskCopy.calendarData,
+            pinnedToProjectId: newProject.id,
+        }
+    }
+
     taskCopy.creatorId = newProjectUsers.map(user => user.uid).includes(taskCopy.creatorId)
         ? taskCopy.creatorId
         : loggedUser.uid
