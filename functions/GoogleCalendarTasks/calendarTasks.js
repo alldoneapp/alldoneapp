@@ -114,6 +114,28 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) =>
     const dataToUpdate = generateDataToUpdate(event, email)
 
     if (task) {
+        // If the task already exists but under a different project, and it's the same calendar email,
+        // move it to the newly connected project to enforce single-project ownership per account.
+        if (task.projectId !== projectId && task.calendarData && task.calendarData.email === email) {
+            const oldRef = admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`)
+            const newRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
+
+            // Merge existing task data with the latest calendar fields, omitting non-persisted props
+            const { id, projectId: oldProjectId, ...persistableTask } = task
+            const newTaskData = { ...persistableTask, ...dataToUpdate }
+
+            // Preserve sortIndex when present; otherwise compute from start
+            if (!newTaskData.sortIndex) {
+                newTaskData.sortIndex = moment(start.dateTime || start.date).valueOf()
+            }
+
+            // Create in new project, delete from old
+            await newRef.set(newTaskData, { merge: true })
+            await oldRef.delete()
+            return
+        }
+
+        // Otherwise, just update in-place when needed
         if (checkIfNeedToUpdateTask(task, dataToUpdate)) {
             await admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`).update(dataToUpdate)
         }
