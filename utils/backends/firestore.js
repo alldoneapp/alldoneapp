@@ -6518,14 +6518,11 @@ export async function checkIfCalendarConnected(projectId) {
     const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
     if (apisConnected && apisConnected[projectId]?.calendar && GooleApi.checkAccessGranted()) {
         const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
-        try {
-            const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
-            if (currentEmail && currentEmail !== emailToUse) {
-                // Attempt to switch account to the one with calendar scope
-                await GooleApi.handleAuthClick()
-            }
-        } catch (e) {
-            // Ignore and proceed; user may cancel
+        // Avoid prompting for auth on view load. If the active account
+        // does not match the project's account, skip silent sync.
+        const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+        if (currentEmail && currentEmail !== emailToUse) {
+            return
         }
         await Promise.resolve(GooleApi.listTodayEvents(30)).then(async ({ result }) => {
             if (result) {
@@ -6571,14 +6568,11 @@ export async function checkIfGmailIsConnected(projectId) {
     const { uid, apisConnected, email } = store.getState().loggedUser
     if (apisConnected && apisConnected[projectId]?.gmail && GooleApi.checkGmailAccessGranted()) {
         const emailToUse = apisConnected?.[projectId]?.gmailEmail || email
-        try {
-            const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
-            if (currentEmail && currentEmail !== emailToUse) {
-                // Attempt to switch account to the one with gmail scope
-                await GooleApi.handleGmailAuthClick()
-            }
-        } catch (e) {
-            // Ignore and proceed; user may cancel
+        // Avoid prompting for auth on view load. If the active account
+        // does not match the project's account, skip silent sync.
+        const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+        if (currentEmail && currentEmail !== emailToUse) {
+            return
         }
         await GooleApi.listGmail()
             .then(result => {
