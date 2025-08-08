@@ -59,6 +59,7 @@ export const CONFIRM_POPUP_TRIGGER_DELETE_ALL_GOALS = 'CONFIRM POPUP TRIGGER DEL
 export const CONFIRM_POPUP_TRIGGER_DELETE_WORKSTREAM = 'CONFIRM POPUP TRIGGER DELETE WORKSTREAM'
 export const CONFIRM_POPUP_TIMEOUT = 'CONFIRM POPUP TIMEOUT'
 export const CONFIRM_POPUP_NOTE_REVISION_HISTORY = 'CONFIRM POPUP NOTE REVISION HISTORY'
+export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
 
 export default function ConfirmPopup() {
     const dispatch = useDispatch()
@@ -231,6 +232,11 @@ export default function ConfirmPopup() {
                 setProcessing(true)
                 const { projectId, stream } = object
                 await deleteWorkstream(projectId, stream)
+                hidePopup()
+                break
+            }
+
+            case CONFIRM_POPUP_TRIGGER_INFO: {
                 hidePopup()
                 break
             }

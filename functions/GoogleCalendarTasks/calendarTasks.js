@@ -135,8 +135,7 @@ const addCalendarEvents = async (events, syncProjectId, userId, email) => {
     const user = await getUserData(userId)
     if (!user) return
 
-    // Only consider tasks in the project being synced to allow duplication
-    const tasks = await getCalendarTasksInProject(syncProjectId, userId)
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true)
     const tasksMap = createTasksMap(tasks)
 
     const filteredEvents = filterEvents(events, email)
