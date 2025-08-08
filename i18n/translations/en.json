@@ -1051,6 +1051,8 @@
     "Disconnect": "Disconnect",
     "Connect": "Connect",
     "Connected": "Connected",
+    "Calendar connection moved": "Calendar connection moved",
+    "Calendar connection moved description": "This Google Calendar account (%{email}) was already connected to another project. It has been disconnected there and connected here.",
     "Delete Project": "Delete Project",
     "No members yet": "No members yet",
     "Number members": "%{number} members",

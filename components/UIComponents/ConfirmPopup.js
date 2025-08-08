@@ -281,8 +281,10 @@ export default function ConfirmPopup() {
     }, [])
 
     const { trigger, object } = showConfirmPopupData
-    const headerText = object.headerText ? object.headerText : 'Be careful with this action'
-    const headerQuestion = object.headerQuestion ? object.headerQuestion : 'Do you really want to perform this action?'
+    const headerTextKey = object.headerText ? object.headerText : 'Be careful with this action'
+    const headerQuestionKey = object.headerQuestion
+        ? object.headerQuestion
+        : 'Do you really want to perform this action?'
 
     const customStyles = getCustomStyle()
 
@@ -303,11 +305,29 @@ export default function ConfirmPopup() {
                 />
             ) : trigger === CONFIRM_POPUP_TRIGGER_PUSH_NOTIFICATIONS ? (
                 <PushNotificationsModalMandatory />
+            ) : trigger === CONFIRM_POPUP_TRIGGER_INFO ? (
+                <View style={[localStyles.infoPopup, smallScreenNavigation && { marginLeft: 300 }]}>
+                    <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.title7, { color: '#ffffff' }]}>
+                            {translate(headerTextKey, object.headerTextParams)}
+                        </Text>
+                        <Text style={[styles.body2, { color: colors.Text03, marginTop: 4 }]}>
+                            {translate(headerQuestionKey, object.headerQuestionParams)}
+                        </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row' }}>
+                        <Button title={translate('Ok')} type={'primary'} onPress={hidePopup} />
+                    </View>
+                </View>
             ) : (
                 <View style={[localStyles.popup, smallScreenNavigation && { marginLeft: 300 }, customStyles.popup]}>
                     <View style={[{ marginBottom: 20 }, customStyles.popupTexts]}>
-                        <Text style={[styles.title7, { color: '#ffffff' }]}>{translate(headerText)}</Text>
-                        <Text style={[styles.body2, { color: colors.Text03 }]}>{translate(headerQuestion)}</Text>
+                        <Text style={[styles.title7, { color: '#ffffff' }]}>
+                            {translate(headerTextKey, object.headerTextParams)}
+                        </Text>
+                        <Text style={[styles.body2, { color: colors.Text03 }]}>
+                            {translate(headerQuestionKey, object.headerQuestionParams)}
+                        </Text>
                         {object.headerExclamationSentence && (
                             <Text style={[styles.body2, { color: '#ffffff' }]}>{object.headerExclamationSentence}</Text>
                         )}
@@ -347,6 +367,18 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    infoPopup: {
+        backgroundColor: colors.Secondary400,
+        padding: 16,
+        shadowColor: 'rgba(0,0,0,0.04)',
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 1,
+        shadowRadius: 24,
+        borderRadius: 4,
+        alignItems: 'center',
+        maxWidth: 432,
+        width: 'auto',
     },
     popup: {
         backgroundColor: colors.Secondary400,

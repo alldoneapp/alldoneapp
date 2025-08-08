@@ -701,6 +701,8 @@
     "Amount member": "%{amount} Mitglied",
     "Type email or name to add person": "Trage die email oder den Namen ein, um eine Person hinzuzufügen",
     "Info": "Informationen",
+    "Calendar connection moved": "Kalenderverbindung verschoben",
+    "Calendar connection moved description": "Dieses Google-Kalenderkonto (%{email}) war bereits mit einem anderen Projekt verbunden. Dort wurde die Verbindung getrennt und hier verbunden.",
     "Picture": "Bild",
     "Invite": "Einladung",
     "Add Person": "Person hinzufügen",

@@ -1049,6 +1049,8 @@
     "Disconnect": "Desconectar",
     "Connect": "Conectar",
     "Connected": "Conectado",
+    "Calendar connection moved": "Conexión de calendario movida",
+    "Calendar connection moved description": "Esta cuenta de Google Calendar (%{email}) ya estaba conectada a otro proyecto. Se ha desconectado allí y se ha conectado aquí.",
     "Delete Project": "Eliminar Proyecto",
     "No members yet": "Aún no hay miembros",
     "Number members": "%{number} miembros",

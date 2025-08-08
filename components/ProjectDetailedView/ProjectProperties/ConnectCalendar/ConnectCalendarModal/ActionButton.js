@@ -80,7 +80,9 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
                         trigger: CONFIRM_POPUP_TRIGGER_INFO,
                         object: {
                             headerText: 'Calendar connection moved',
-                            headerQuestion: `This Google Calendar account (${email}) was already connected to another project. It has been disconnected there and connected here.`,
+                            headerTextParams: {},
+                            headerQuestion: 'Calendar connection moved description',
+                            headerQuestionParams: { email },
                         },
                     })
                 )
