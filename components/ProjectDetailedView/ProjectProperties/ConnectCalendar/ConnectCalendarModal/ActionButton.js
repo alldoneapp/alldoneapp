@@ -7,20 +7,22 @@ import { translate } from '../../../../../i18n/TranslationService'
 import Backend from '../../../../../utils/BackendBridge'
 import GooleApi from '../../../../../apis/google/GooleApi'
 import { runHttpsCallableFunction } from '../../../../../utils/backends/firestore'
-import { disableOtherProjects, isSomethingConnected } from '../../../../../apis/google/ApiHelper'
+import { isSomethingConnected } from '../../../../../apis/google/ApiHelper'
 
 export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const userEmail = useSelector(state => state.loggedUser.email)
 
     const isConnectedAndSignedIn = isConnected && isSignedIn
 
     const loadEvents = () => {
         GooleApi.listTodayEvents(30).then(({ result }) => {
+            const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
             runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
                 events: result?.items,
                 projectId,
                 uid: loggedUserId,
-                email: result.summary,
+                email,
             })
         })
     }
@@ -52,13 +54,13 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     }
 
     const connect = () => {
+        const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
         Backend.getDb()
             .doc(`users/${loggedUserId}`)
-            .set({ apisConnected: { [projectId]: { calendar: true } } }, { merge: true })
+            .set({ apisConnected: { [projectId]: { calendar: true, calendarEmail: email } } }, { merge: true })
             .then(loadEvents)
         closePopover()
         setIsSignedIn(GooleApi.checkAccessGranted())
-        disableOtherProjects(projectId)
     }
 
     return (

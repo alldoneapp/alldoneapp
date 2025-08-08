@@ -2,16 +2,20 @@ import React from 'react'
 import { useSelector } from 'react-redux'
 
 import { checkIfCalendarConnected } from '../../../../../utils/backends/firestore'
-import { getProjectIdWhereCalendarIsConnected } from '../../../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import ModalItem from '../../MorePopupsOfEditModals/Common/ModalItem'
 
 export default function SyncCalendarModalItem({ onPress, shortcut }) {
-    const apisConnected = useSelector(state => state.loggedUser.apisConnected)
-
-    const projectIdWhereCalendarIsConnected = getProjectIdWhereCalendarIsConnected(apisConnected)
+    const { selectedProjectIndex, loggedUserProjects, loggedUser } = useSelector(state => state)
+    const projectId = loggedUserProjects[selectedProjectIndex]?.id
 
     const sync = () => {
-        checkIfCalendarConnected(projectIdWhereCalendarIsConnected)
+        if (projectId) {
+            checkIfCalendarConnected(projectId)
+        } else if (loggedUser?.apisConnected) {
+            Object.entries(loggedUser.apisConnected).forEach(([pid, flags]) => {
+                if (flags?.calendar) checkIfCalendarConnected(pid)
+            })
+        }
         onPress?.()
     }
 

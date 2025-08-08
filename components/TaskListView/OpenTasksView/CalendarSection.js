@@ -13,7 +13,7 @@ import GooleApi from '../../../apis/google/GooleApi'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
-import { getProjectIdWhereCalendarIsConnected } from '../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
+// Removed global single-project lookup; use the current project instead
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 
 export default function CalendarSection({ projectId, calendarEvents, dateIndex, isActiveOrganizeMode, instanceKey }) {
@@ -25,7 +25,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const [showReload, setShowReload] = useState(false)
     const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
 
-    const projectIdWhereCalendarIsConnected = getProjectIdWhereCalendarIsConnected(apisConnected)
+    const isProjectCalendarConnected = apisConnected?.[projectId]?.calendar
 
     useEffect(() => {
         GooleApi.onLoad(() => {
@@ -92,11 +92,8 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         <GoogleCalendar />
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    {showReload && !!projectIdWhereCalendarIsConnected && (
-                        <ReloadCalendar
-                            projectId={projectIdWhereCalendarIsConnected}
-                            Promise={checkIfCalendarConnected}
-                        />
+                    {showReload && !!isProjectCalendarConnected && (
+                        <ReloadCalendar projectId={projectId} Promise={checkIfCalendarConnected} />
                     )}
                 </View>
             </View>

@@ -6,16 +6,17 @@ import { translate } from '../../../../../i18n/TranslationService'
 import Backend from '../../../../../utils/BackendBridge'
 import GooleApi from '../../../../../apis/google/GooleApi'
 import { connectToGmail } from '../../../../../utils/backends/firestore'
-import { disableOtherProjects, isSomethingConnected } from '../../../../../apis/google/ApiHelper'
+import { isSomethingConnected } from '../../../../../apis/google/ApiHelper'
 
 export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
-    const email = useSelector(state => state.loggedUser.email)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const userEmail = useSelector(state => state.loggedUser.email)
 
     const isConnectedAndSignedIn = isConnected && isSignedIn
 
     const loadEvents = () => {
         GooleApi.listGmail().then(result => {
+            const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
             connectToGmail({
                 projectId,
                 date: Date.now(),
@@ -34,13 +35,13 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     }
 
     const connect = () => {
+        const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
         Backend.getDb()
             .doc(`users/${loggedUserId}`)
-            .set({ apisConnected: { [projectId]: { gmail: true } } }, { merge: true })
+            .set({ apisConnected: { [projectId]: { gmail: true, gmailEmail: email } } }, { merge: true })
             .then(loadEvents)
         closePopover()
         setIsSignedIn(GooleApi.checkGmailAccessGranted())
-        disableOtherProjects(projectId)
     }
 
     const onPress = () => {

@@ -7,10 +7,6 @@ import MyDayWorkflowTasks from './MyDayTasks/MyDayWorkflowTasks/MyDayWorkflowTas
 import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
 import gooleApi from '../../apis/google/GooleApi'
 import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../utils/backends/firestore'
-import {
-    getProjectIdWhereCalendarIsConnected,
-    getProjectIdWhereGmailIsConnected,
-} from './MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import store from '../../redux/store'
 
 export default function MyDayView() {
@@ -25,10 +21,12 @@ export default function MyDayView() {
     useEffect(() => {
         gooleApi.onLoad(() => {
             const { apisConnected } = store.getState().loggedUser
-            const projectIdWhereCalendarIsConnected = getProjectIdWhereCalendarIsConnected(apisConnected)
-            checkIfCalendarConnected(projectIdWhereCalendarIsConnected)
-            const projectIdWhereGmailIsConnected = getProjectIdWhereGmailIsConnected(apisConnected)
-            checkIfGmailIsConnected(projectIdWhereGmailIsConnected)
+            if (apisConnected) {
+                Object.entries(apisConnected).forEach(([pid, flags]) => {
+                    if (flags?.calendar) checkIfCalendarConnected(pid)
+                    if (flags?.gmail) checkIfGmailIsConnected(pid)
+                })
+            }
         })
     }, [])
 

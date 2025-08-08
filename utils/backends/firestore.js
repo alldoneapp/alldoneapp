@@ -6517,6 +6517,16 @@ export async function createNoteInObject(
 export async function checkIfCalendarConnected(projectId) {
     const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
     if (apisConnected && apisConnected[projectId]?.calendar && GooleApi.checkAccessGranted()) {
+        const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
+        try {
+            const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+            if (currentEmail && currentEmail !== emailToUse) {
+                // Attempt to switch account to the one with calendar scope
+                await GooleApi.handleAuthClick()
+            }
+        } catch (e) {
+            // Ignore and proceed; user may cancel
+        }
         await Promise.resolve(GooleApi.listTodayEvents(30)).then(async ({ result }) => {
             if (result) {
                 store.dispatch(startLoadingData())
@@ -6527,7 +6537,7 @@ export async function checkIfCalendarConnected(projectId) {
                             events: result.items,
                             projectId,
                             uid,
-                            email: userEmail,
+                            email: emailToUse,
                         })
                     )
                 }
@@ -6536,7 +6546,7 @@ export async function checkIfCalendarConnected(projectId) {
                         uid,
                         dateFormated: moment().format('DDMMYYYY'),
                         events: result?.items.map(event => {
-                            const userAttendee = event.attendees?.find(item => item.email === userEmail)
+                            const userAttendee = event.attendees?.find(item => item.email === emailToUse)
                             const userResponseStatus = userAttendee?.responseStatus
                             return {
                                 id: event.id,
@@ -6560,9 +6570,25 @@ export async function checkIfCalendarConnected(projectId) {
 export async function checkIfGmailIsConnected(projectId) {
     const { uid, apisConnected, email } = store.getState().loggedUser
     if (apisConnected && apisConnected[projectId]?.gmail && GooleApi.checkGmailAccessGranted()) {
+        const emailToUse = apisConnected?.[projectId]?.gmailEmail || email
+        try {
+            const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+            if (currentEmail && currentEmail !== emailToUse) {
+                // Attempt to switch account to the one with gmail scope
+                await GooleApi.handleGmailAuthClick()
+            }
+        } catch (e) {
+            // Ignore and proceed; user may cancel
+        }
         await GooleApi.listGmail()
             .then(result => {
-                connectToGmail({ projectId, date: Date.now(), uid, unreadMails: result.threadsTotal, email })
+                connectToGmail({
+                    projectId,
+                    date: Date.now(),
+                    uid,
+                    unreadMails: result.threadsTotal,
+                    email: emailToUse,
+                })
             })
             .catch(console.error)
     }
