@@ -3,6 +3,7 @@ import { View } from 'react-native'
 import { useSelector, useDispatch, shallowEqual } from 'react-redux'
 
 import OpenTasksDateHeader from '../Header/OpenTasksDateHeader'
+import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import { removeActiveDragTaskModeInDate, setSelectedTasks } from '../../../redux/actions'
 import { AMOUNT_TASKS_INDEX, DATE_TASK_INDEX, EMPTY_SECTION_INDEX, TODAY_DATE } from '../../../utils/backends/openTasks'
 import TopShowMoreButton from './TopShowMoreButton'
@@ -93,6 +94,7 @@ export default function OpenTasksByDate({
 
     return (
         <View>
+            {(dateIsToday || isFirstDate) && <UpcomingMilestoneRow projectId={projectId} />}
             <OpenTasksDateHeader
                 projectId={projectId}
                 dateIndex={dateIndex}

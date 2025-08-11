@@ -28,6 +28,7 @@ export default function MilestonePresentation({
     previousMilestoneDate,
     isActiveMilestone,
     loggedUserCanUpdateObject,
+    hideMoreButton,
 }) {
     const dispatch = useDispatch()
     const usersInProject = useSelector(state => state.projectUsers[projectId])
@@ -186,7 +187,7 @@ export default function MilestonePresentation({
                 />
             </TouchableOpacity>
 
-            {!loggedUser.isAnonymous && loggedUserCanUpdateObject && (
+            {!hideMoreButton && !loggedUser.isAnonymous && loggedUserCanUpdateObject && (
                 <View style={localStyles.moreButtonContainer}>
                     <MilestoneMoreButton
                         projectId={projectId}
