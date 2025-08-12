@@ -113,26 +113,27 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) =>
 
     const dataToUpdate = generateDataToUpdate(event, email)
 
+    // Preserve manual pinning info so later updates don't drop it
+    if (task && task.calendarData && task.calendarData.pinnedToProjectId) {
+        dataToUpdate.calendarData = {
+            ...dataToUpdate.calendarData,
+            pinnedToProjectId: task.calendarData.pinnedToProjectId,
+        }
+    }
+
     if (task) {
-        // If the task already exists but under a different project, and it's the same calendar email,
+        // Respect manual pinning: if pinned, never move between projects
+        const isPinned = Boolean(task.calendarData && task.calendarData.pinnedToProjectId)
+
+        // If exists under a different project, same calendar email, and not pinned,
         // move it to the newly connected project to enforce single-project ownership per account.
-        if (
-            task.projectId !== projectId &&
-            task.calendarData &&
-            task.calendarData.email === email &&
-            task.calendarData.pinnedToProjectId !== task.projectId
-        ) {
+        if (!isPinned && task.projectId !== projectId && task.calendarData && task.calendarData.email === email) {
             const oldRef = admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`)
             const newRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
 
             // Merge existing task data with the latest calendar fields, omitting non-persisted props
             const { id, projectId: oldProjectId, ...persistableTask } = task
             const newTaskData = { ...persistableTask, ...dataToUpdate }
-
-            // Respect manual pinning: if pinnedToProjectId exists and equals current project, do not move
-            if (persistableTask.calendarData && persistableTask.calendarData.pinnedToProjectId) {
-                return
-            }
 
             // Preserve sortIndex when present; otherwise compute from start
             if (!newTaskData.sortIndex) {
@@ -145,7 +146,7 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) =>
             return
         }
 
-        // Otherwise, just update in-place when needed
+        // Otherwise, just update in-place when needed (and keep pinning if present)
         if (checkIfNeedToUpdateTask(task, dataToUpdate)) {
             await admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`).update(dataToUpdate)
         }
