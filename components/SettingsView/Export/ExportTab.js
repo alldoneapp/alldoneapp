@@ -294,6 +294,7 @@ export default function ExportTab() {
 
             const allChats = []
             let totalComments = 0
+            let grandTotalChatsSoFar = 0
 
             for (let pIndex = 0; pIndex < allProjectIds.length; pIndex++) {
                 const projectId = allProjectIds[pIndex]
@@ -307,8 +308,17 @@ export default function ExportTab() {
                 const chatDocs = chatsSnap.docs
                 if (chatDocs.length === 0) continue
 
+                grandTotalChatsSoFar += chatDocs.length
+                setExportStatus(
+                    `Project ${pIndex + 1}/${allProjectIds.length}: found ${
+                        chatDocs.length
+                    } chats • total chats so far: ${grandTotalChatsSoFar}`
+                )
+
                 setExportStatus(`Fetching comments (${pIndex + 1}/${allProjectIds.length})...`)
 
+                let processed = 0
+                const totalInProject = chatDocs.length
                 await promisePool(chatDocs, 6, async doc => {
                     const chatMeta = { id: doc.id, projectId, ...doc.data() }
                     const commentsSnap = await db
@@ -319,6 +329,16 @@ export default function ExportTab() {
                     chatMeta.comments = comments
                     totalComments += comments.length
                     allChats.push(chatMeta)
+                    processed++
+                    if (processed % 5 === 0 || processed === totalInProject) {
+                        setExportStatus(
+                            `Project ${pIndex + 1}/${
+                                allProjectIds.length
+                            }: processed ${processed}/${totalInProject} chats • chats so far: ${
+                                allChats.length
+                            } • comments so far: ${totalComments}`
+                        )
+                    }
                 })
             }
 
@@ -403,18 +423,22 @@ export default function ExportTab() {
 
     const exportAllNotes = useCallback(async () => {
         if (!loggedUser?.uid) return
+        setCurrentExportType('notes')
         setIsExporting(true)
+        setExportStatus('Starting export...')
+        setLastNotesExportInfo(null)
 
         const uid = loggedUser.uid
         const db = getDb()
 
         try {
+            setExportStatus('Fetching notes...')
             const snap = await db.collectionGroup('notes').where('userId', '==', uid).get()
 
             const notes = []
             let embeddedCount = 0
-            const contentPromises = []
             const storageRef = notesStorage ? notesStorage.ref() : null
+            const contentTargets = []
 
             const bytesToString = uint8 => {
                 let binary = ''
@@ -427,12 +451,7 @@ export default function ExportTab() {
             }
             const decodeToText = buf => {
                 try {
-                    // Prefer proper UTF-8 decoding
-                    // TextDecoder is widely supported in modern browsers
-                    // Fallback to naive decoding if unavailable
-                    // eslint-disable-next-line no-undef
                     if (typeof TextDecoder !== 'undefined') {
-                        // eslint-disable-next-line no-undef
                         return new TextDecoder('utf-8').decode(new Uint8Array(buf))
                     }
                 } catch (e) {}
@@ -445,38 +464,45 @@ export default function ExportTab() {
                 notes.push(meta)
 
                 if (storageRef && projectId && meta.preview) {
-                    // Try primary path; if not found, try a lightweight HEAD check on fallback URL to avoid repeated 404 logs
-                    const primaryRef = storageRef.child(`notesData/${projectId}/${doc.id}`)
-                    const fallbackRef = storageRef.child(`noteDailyVersionsData/${projectId}/${doc.id}`)
-
-                    const p = primaryRef
-                        .getDownloadURL()
-                        .then(url => fetch(url))
-                        .then(res => (res.ok ? res.arrayBuffer() : Promise.reject(new Error('404'))))
-                        .catch(() =>
-                            fallbackRef
-                                .getDownloadURL()
-                                .then(url => fetch(url))
-                                .then(res => (res.ok ? res.arrayBuffer() : Promise.reject(new Error('404'))))
-                        )
-                        .then(buf => {
-                            if (buf) {
-                                const text = decodeToText(buf)
-                                meta.content = text
-                                embeddedCount++
-                            }
-                        })
-                        .catch(() => null)
-
-                    contentPromises.push(p)
+                    contentTargets.push({ meta, projectId, noteId: doc.id })
                 }
             })
 
-            if (contentPromises.length > 0) {
-                setExportStatus('Embedding note content...')
-                await Promise.all(contentPromises)
+            setExportStatus(
+                `Found ${notes.length} notes${
+                    contentTargets.length ? `; embedding content for ${contentTargets.length}…` : ''
+                }`
+            )
+
+            if (contentTargets.length > 0) {
+                let processed = 0
+                await promisePool(contentTargets, 6, async ({ meta, projectId, noteId }) => {
+                    const primaryRef = storageRef.child(`notesData/${projectId}/${noteId}`)
+                    const fallbackRef = storageRef.child(`noteDailyVersionsData/${projectId}/${noteId}`)
+
+                    try {
+                        const url = await primaryRef.getDownloadURL().catch(async () => fallbackRef.getDownloadURL())
+                        const res = await fetch(url)
+                        if (res.ok) {
+                            const buf = await res.arrayBuffer()
+                            const text = decodeToText(buf)
+                            meta.content = text
+                            embeddedCount++
+                        }
+                    } catch (err) {
+                        // ignore missing files
+                    } finally {
+                        processed++
+                        if (processed % 5 === 0 || processed === contentTargets.length) {
+                            setExportStatus(
+                                `Embedding note content ${processed}/${contentTargets.length} • notes: ${notes.length}`
+                            )
+                        }
+                    }
+                })
             }
 
+            setExportStatus('Preparing file...')
             const generatedAt = Date.now()
             const payload = {
                 userId: uid,
@@ -488,6 +514,8 @@ export default function ExportTab() {
             const filename = `alldone_notes_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
             downloadJson(payload, filename)
             setLastNotesExportInfo({ notes: notes.length, embedded: embeddedCount })
+            setExportStatus('')
+            setCurrentExportType(null)
         } catch (error) {
             console.error('Error exporting notes', error)
             alert(translate('Error exporting tasks. Please try again.'))
