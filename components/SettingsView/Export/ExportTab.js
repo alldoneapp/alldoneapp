@@ -10,6 +10,7 @@ import URLsSettings from '../../../URLSystem/Settings/URLsSettings'
 import { DV_TAB_SETTINGS_EXPORT } from '../../../utils/TabNavigationConstants'
 import { getDb, notesStorage } from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
+import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 
 export default function ExportTab() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -150,6 +151,51 @@ export default function ExportTab() {
             downloadJson(payload, filename)
         } catch (error) {
             console.error('Error exporting projects', error)
+            alert(translate('Error exporting tasks. Please try again.'))
+        } finally {
+            setIsExporting(false)
+        }
+    }, [loggedUser])
+
+    const exportAllContacts = useCallback(async () => {
+        if (!loggedUser?.uid) return
+        setIsExporting(true)
+
+        const uid = loggedUser.uid
+        const db = getDb()
+
+        try {
+            const projectIds = loggedUser.projectIds || []
+            const archivedProjectIds = loggedUser.archivedProjectIds || []
+            const allProjectIds = Array.from(new Set([...projectIds, ...archivedProjectIds]))
+
+            const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, uid]
+            const allContacts = []
+
+            await Promise.all(
+                allProjectIds.map(async projectId => {
+                    const snap = await db
+                        .collection(`/projectsContacts/${projectId}/contacts`)
+                        .where('isPublicFor', 'array-contains-any', allowUserIds)
+                        .get()
+                    snap.forEach(doc => {
+                        allContacts.push({ id: doc.id, projectId, ...doc.data() })
+                    })
+                })
+            )
+
+            const generatedAt = Date.now()
+            const payload = {
+                userId: uid,
+                generatedAt,
+                totals: { contacts: allContacts.length },
+                contacts: allContacts,
+            }
+
+            const filename = `alldone_contacts_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
+            downloadJson(payload, filename)
+        } catch (error) {
+            console.error('Error exporting contacts', error)
             alert(translate('Error exporting tasks. Please try again.'))
         } finally {
             setIsExporting(false)
@@ -357,6 +403,15 @@ export default function ExportTab() {
                               } • ${translate('Embedded')}: ${lastNotesExportInfo.embedded}`
                             : ''}
                     </Text>
+                </View>
+
+                <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>
+                    <Button
+                        title={translate('Download all contacts (JSON)')}
+                        type="primary"
+                        onPress={exportAllContacts}
+                        loading={isExporting}
+                    />
                 </View>
             </View>
         </View>
