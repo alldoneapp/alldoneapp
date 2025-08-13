@@ -19,6 +19,10 @@ export default function ExportTab() {
     const [exportStatus, setExportStatus] = useState('')
     const [lastTasksExportInfo, setLastTasksExportInfo] = useState(null)
     const [lastNotesExportInfo, setLastNotesExportInfo] = useState(null)
+    const [lastChatsExportInfo, setLastChatsExportInfo] = useState(null)
+    const [lastProjectsExportInfo, setLastProjectsExportInfo] = useState(null)
+    const [lastGoalsExportInfo, setLastGoalsExportInfo] = useState(null)
+    const [lastContactsExportInfo, setLastContactsExportInfo] = useState(null)
 
     useEffect(() => {
         URLsSettings.push(DV_TAB_SETTINGS_EXPORT)
@@ -41,6 +45,19 @@ export default function ExportTab() {
         } catch (e) {
             console.error('Failed to trigger download', e)
         }
+    }
+
+    const promisePool = async (items, limit, iterator) => {
+        const results = []
+        let idx = 0
+        const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+            while (idx < items.length) {
+                const currentIndex = idx++
+                results[currentIndex] = await iterator(items[currentIndex], currentIndex)
+            }
+        })
+        await Promise.all(workers)
+        return results
     }
 
     const exportAllTasks = useCallback(async () => {
@@ -69,13 +86,46 @@ export default function ExportTab() {
                 const projectId = doc.ref.parent.parent ? doc.ref.parent.parent.id : undefined
                 allOpenTasks.push({ id: doc.id, projectId, ...t })
             })
+            setExportStatus(`Open tasks fetched: ${allOpenTasks.length}`)
 
-            setExportStatus('Fetching done tasks...')
-            // Fetch all done tasks in monthly chunks to avoid response size limits
-            const earliestYear = 2015
-            const currentYear = moment().year()
-            for (let year = earliestYear; year <= currentYear; year++) {
-                for (let month = 0; month < 12; month++) {
+            // Determine first completion date for this user's done tasks, then iterate month-by-month
+            setExportStatus('Finding first done task...')
+            let earliestCompletedMs = null
+            try {
+                const earliestSnap = await db
+                    .collectionGroup('tasks')
+                    .where('userId', '==', uid)
+                    .where('inDone', '==', true)
+                    .orderBy('completed', 'asc')
+                    .limit(1)
+                    .get()
+                if (!earliestSnap.empty) {
+                    const d = earliestSnap.docs[0].data()
+                    if (typeof d.completed === 'number' && d.completed > 0) {
+                        earliestCompletedMs = d.completed
+                    }
+                }
+            } catch (e) {
+                console.warn('Earliest done-task lookup failed', e)
+            }
+
+            if (earliestCompletedMs) {
+                setExportStatus('Fetching done tasks...')
+                const startCursor = moment(earliestCompletedMs).startOf('month')
+                const endCursor = moment().endOf('month')
+                const months = []
+                for (let m = startCursor.clone(); m.isSameOrBefore(endCursor, 'month'); m.add(1, 'month')) {
+                    months.push({ year: m.year(), month: m.month(), label: m.format('MMM YYYY') })
+                }
+
+                for (let i = 0; i < months.length; i++) {
+                    const { year, month, label } = months[i]
+                    setExportStatus(
+                        `Fetching done tasks (${i + 1}/${months.length}) — ${label} … total so far: ${
+                            allDoneTasks.length
+                        }`
+                    )
+
                     const start = moment({ year, month, day: 1 }).startOf('month').valueOf()
                     const end = moment({ year, month, day: 1 }).endOf('month').valueOf()
 
@@ -87,11 +137,19 @@ export default function ExportTab() {
                         .where('completed', '<=', end)
                         .get()
 
+                    let added = 0
                     doneSnap.forEach(doc => {
                         const projectId = doc.ref.parent.parent ? doc.ref.parent.parent.id : undefined
                         allDoneTasks.push({ id: doc.id, projectId, ...doc.data() })
+                        added++
                     })
+
+                    setExportStatus(
+                        `Fetched ${label}: +${added} • done so far: ${allDoneTasks.length} • open: ${allOpenTasks.length}`
+                    )
                 }
+            } else {
+                setExportStatus('No done tasks found; exporting open tasks only')
             }
 
             setExportStatus('Preparing file...')
@@ -123,13 +181,16 @@ export default function ExportTab() {
 
     const exportAllProjects = useCallback(async () => {
         if (!loggedUser?.uid) return
+        setCurrentExportType('projects')
         setIsExporting(true)
-        // Do not alter lastResultInfo as the footer refers to tasks export summary
+        setExportStatus('Starting export...')
+        setLastProjectsExportInfo(null)
 
         const uid = loggedUser.uid
         const db = getDb()
 
         try {
+            setExportStatus('Fetching projects...')
             const snapshot = await db.collection('projects').where('userIds', 'array-contains', uid).get()
 
             const projects = []
@@ -137,6 +198,7 @@ export default function ExportTab() {
                 projects.push({ id: doc.id, ...doc.data() })
             })
 
+            setExportStatus('Preparing file...')
             const generatedAt = Date.now()
             const payload = {
                 userId: uid,
@@ -149,6 +211,9 @@ export default function ExportTab() {
 
             const filename = `alldone_projects_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
             downloadJson(payload, filename)
+            setLastProjectsExportInfo(payload.totals)
+            setExportStatus('')
+            setCurrentExportType(null)
         } catch (error) {
             console.error('Error exporting projects', error)
             alert(translate('Error exporting tasks. Please try again.'))
@@ -159,7 +224,10 @@ export default function ExportTab() {
 
     const exportAllContacts = useCallback(async () => {
         if (!loggedUser?.uid) return
+        setCurrentExportType('contacts')
         setIsExporting(true)
+        setExportStatus('Starting export...')
+        setLastContactsExportInfo(null)
 
         const uid = loggedUser.uid
         const db = getDb()
@@ -172,6 +240,7 @@ export default function ExportTab() {
             const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, uid]
             const allContacts = []
 
+            setExportStatus('Fetching contacts...')
             await Promise.all(
                 allProjectIds.map(async projectId => {
                     const snap = await db
@@ -184,6 +253,7 @@ export default function ExportTab() {
                 })
             )
 
+            setExportStatus('Preparing file...')
             const generatedAt = Date.now()
             const payload = {
                 userId: uid,
@@ -194,6 +264,9 @@ export default function ExportTab() {
 
             const filename = `alldone_contacts_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
             downloadJson(payload, filename)
+            setLastContactsExportInfo(payload.totals)
+            setExportStatus('')
+            setCurrentExportType(null)
         } catch (error) {
             console.error('Error exporting contacts', error)
             alert(translate('Error exporting tasks. Please try again.'))
@@ -204,7 +277,10 @@ export default function ExportTab() {
 
     const exportAllChats = useCallback(async () => {
         if (!loggedUser?.uid) return
+        setCurrentExportType('chats')
         setIsExporting(true)
+        setExportStatus('Starting export...')
+        setLastChatsExportInfo(null)
 
         const uid = loggedUser.uid
         const db = getDb()
@@ -219,29 +295,34 @@ export default function ExportTab() {
             const allChats = []
             let totalComments = 0
 
-            await Promise.all(
-                allProjectIds.map(async projectId => {
-                    const chatsSnap = await db
-                        .collection(`chatObjects/${projectId}/chats`)
-                        .where('isPublicFor', 'array-contains-any', allowUserIds)
+            for (let pIndex = 0; pIndex < allProjectIds.length; pIndex++) {
+                const projectId = allProjectIds[pIndex]
+                setExportStatus(`Fetching chats (${pIndex + 1}/${allProjectIds.length})...`)
+
+                const chatsSnap = await db
+                    .collection(`chatObjects/${projectId}/chats`)
+                    .where('isPublicFor', 'array-contains-any', allowUserIds)
+                    .get()
+
+                const chatDocs = chatsSnap.docs
+                if (chatDocs.length === 0) continue
+
+                setExportStatus(`Fetching comments (${pIndex + 1}/${allProjectIds.length})...`)
+
+                await promisePool(chatDocs, 6, async doc => {
+                    const chatMeta = { id: doc.id, projectId, ...doc.data() }
+                    const commentsSnap = await db
+                        .collection(`chatComments/${projectId}/topics/${doc.id}/comments`)
                         .get()
-
-                    await Promise.all(
-                        chatsSnap.docs.map(async doc => {
-                            const chatMeta = { id: doc.id, projectId, ...doc.data() }
-                            const commentsSnap = await db
-                                .collection(`chatComments/${projectId}/topics/${doc.id}/comments`)
-                                .get()
-                            const comments = []
-                            commentsSnap.forEach(c => comments.push({ id: c.id, ...c.data() }))
-                            chatMeta.comments = comments
-                            totalComments += comments.length
-                            allChats.push(chatMeta)
-                        })
-                    )
+                    const comments = []
+                    commentsSnap.forEach(c => comments.push({ id: c.id, ...c.data() }))
+                    chatMeta.comments = comments
+                    totalComments += comments.length
+                    allChats.push(chatMeta)
                 })
-            )
+            }
 
+            setExportStatus('Preparing file...')
             const generatedAt = Date.now()
             const payload = {
                 userId: uid,
@@ -252,6 +333,9 @@ export default function ExportTab() {
 
             const filename = `alldone_chats_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
             downloadJson(payload, filename)
+            setLastChatsExportInfo(payload.totals)
+            setExportStatus('')
+            setCurrentExportType(null)
         } catch (error) {
             console.error('Error exporting chats', error)
             alert(translate('Error exporting tasks. Please try again.'))
@@ -262,13 +346,16 @@ export default function ExportTab() {
 
     const exportAllGoals = useCallback(async () => {
         if (!loggedUser?.uid) return
+        setCurrentExportType('goals')
         setIsExporting(true)
+        setExportStatus('Starting export...')
+        setLastGoalsExportInfo(null)
 
         const uid = loggedUser.uid
         const db = getDb()
 
         try {
-            // Fetch goals across all projects owned by the user
+            setExportStatus('Fetching goals...')
             const projectIds = loggedUser.projectIds || []
             const archivedProjectIds = loggedUser.archivedProjectIds || []
             const allProjectIds = Array.from(new Set([...projectIds, ...archivedProjectIds]))
@@ -290,6 +377,7 @@ export default function ExportTab() {
                 })
             )
 
+            setExportStatus('Preparing file...')
             const generatedAt = Date.now()
             const payload = {
                 userId: uid,
@@ -302,6 +390,9 @@ export default function ExportTab() {
 
             const filename = `alldone_goals_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
             downloadJson(payload, filename)
+            setLastGoalsExportInfo(payload.totals)
+            setExportStatus('')
+            setCurrentExportType(null)
         } catch (error) {
             console.error('Error exporting goals', error)
             alert(translate('Error exporting tasks. Please try again.'))
@@ -416,8 +507,17 @@ export default function ExportTab() {
                         title={translate('Download all projects (JSON)')}
                         type="primary"
                         onPress={exportAllProjects}
-                        loading={isExporting}
+                        loading={isExporting && currentExportType === 'projects'}
                     />
+                    <Text style={localStyles.infoText}>
+                        {currentExportType === 'projects' && isExporting
+                            ? exportStatus
+                            : lastProjectsExportInfo
+                            ? `${translate('Last export')} — ${translate('Projects')}: ${
+                                  lastProjectsExportInfo.projects
+                              }`
+                            : ''}
+                    </Text>
                 </View>
 
                 <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>
@@ -425,7 +525,7 @@ export default function ExportTab() {
                         title={translate('Download all tasks (JSON)')}
                         type="primary"
                         onPress={exportAllTasks}
-                        loading={isExporting}
+                        loading={isExporting && currentExportType === 'tasks'}
                     />
                     <Text style={localStyles.infoText}>
                         {currentExportType === 'tasks' && isExporting
@@ -443,8 +543,15 @@ export default function ExportTab() {
                         title={translate('Download all goals (JSON)')}
                         type="primary"
                         onPress={exportAllGoals}
-                        loading={isExporting}
+                        loading={isExporting && currentExportType === 'goals'}
                     />
+                    <Text style={localStyles.infoText}>
+                        {currentExportType === 'goals' && isExporting
+                            ? exportStatus
+                            : lastGoalsExportInfo
+                            ? `${translate('Last export')} — ${translate('Goals')}: ${lastGoalsExportInfo.goals}`
+                            : ''}
+                    </Text>
                 </View>
 
                 <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>
@@ -452,10 +559,12 @@ export default function ExportTab() {
                         title={translate('Download all notes (JSON)')}
                         type="primary"
                         onPress={exportAllNotes}
-                        loading={isExporting}
+                        loading={isExporting && currentExportType === 'notes'}
                     />
                     <Text style={localStyles.infoText}>
-                        {lastNotesExportInfo
+                        {currentExportType === 'notes' && isExporting
+                            ? exportStatus
+                            : lastNotesExportInfo
                             ? `${translate('Last export')} — ${translate('Notes')}: ${
                                   lastNotesExportInfo.notes
                               } • ${translate('Embedded')}: ${lastNotesExportInfo.embedded}`
@@ -468,8 +577,17 @@ export default function ExportTab() {
                         title={translate('Download all contacts (JSON)')}
                         type="primary"
                         onPress={exportAllContacts}
-                        loading={isExporting}
+                        loading={isExporting && currentExportType === 'contacts'}
                     />
+                    <Text style={localStyles.infoText}>
+                        {currentExportType === 'contacts' && isExporting
+                            ? exportStatus
+                            : lastContactsExportInfo
+                            ? `${translate('Last export')} — ${translate('Contacts')}: ${
+                                  lastContactsExportInfo.contacts
+                              }`
+                            : ''}
+                    </Text>
                 </View>
 
                 <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>
@@ -477,8 +595,17 @@ export default function ExportTab() {
                         title={translate('Download all chats (JSON)')}
                         type="primary"
                         onPress={exportAllChats}
-                        loading={isExporting}
+                        loading={isExporting && currentExportType === 'chats'}
                     />
+                    <Text style={localStyles.infoText}>
+                        {currentExportType === 'chats' && isExporting
+                            ? exportStatus
+                            : lastChatsExportInfo
+                            ? `${translate('Last export')} — ${translate('Chats')}: ${
+                                  lastChatsExportInfo.chats
+                              } • ${translate('Comments')}: ${lastChatsExportInfo.comments}`
+                            : ''}
+                    </Text>
                 </View>
             </View>
         </View>
