@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 import moment from 'moment'
 
 import global, { colors } from '../../styles/global'
+import { ALL_USERS } from '../../GoalsView/GoalsHelper'
 import Button from '../../UIControls/Button'
 import URLsSettings from '../../../URLSystem/Settings/URLsSettings'
 import { DV_TAB_SETTINGS_EXPORT } from '../../../utils/TabNavigationConstants'
@@ -155,6 +156,56 @@ export default function ExportTab() {
         }
     }, [loggedUser])
 
+    const exportAllGoals = useCallback(async () => {
+        if (!loggedUser?.uid) return
+        setIsExporting(true)
+
+        const uid = loggedUser.uid
+        const db = getDb()
+
+        try {
+            // Fetch goals across all projects owned by the user
+            const projectIds = loggedUser.projectIds || []
+            const archivedProjectIds = loggedUser.archivedProjectIds || []
+            const allProjectIds = Array.from(new Set([...projectIds, ...archivedProjectIds]))
+
+            const allGoals = []
+            await Promise.all(
+                allProjectIds.map(async projectId => {
+                    const [ownedSnap, allUsersSnap] = await Promise.all([
+                        db.collection(`goals/${projectId}/items`).where('ownerId', '==', uid).get(),
+                        db.collection(`goals/${projectId}/items`).where('ownerId', '==', ALL_USERS).get(),
+                    ])
+
+                    ownedSnap.forEach(doc => {
+                        allGoals.push({ id: doc.id, projectId, ...doc.data() })
+                    })
+                    allUsersSnap.forEach(doc => {
+                        allGoals.push({ id: doc.id, projectId, ...doc.data() })
+                    })
+                })
+            )
+
+            const generatedAt = Date.now()
+            const payload = {
+                userId: uid,
+                generatedAt,
+                totals: {
+                    goals: allGoals.length,
+                },
+                goals: allGoals,
+            }
+
+            const filename = `alldone_goals_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
+            downloadJson(payload, filename)
+        } catch (error) {
+            console.error('Error exporting goals', error)
+            alert(translate('Error exporting tasks. Please try again.'))
+        } finally {
+            setIsExporting(false)
+        }
+    }, [loggedUser])
+
     const exportAllNotes = useCallback(async () => {
         if (!loggedUser?.uid) return
         setIsExporting(true)
@@ -281,6 +332,15 @@ export default function ExportTab() {
                               } • ${translate('Done tasks')}: ${lastTasksExportInfo.done}`
                             : ''}
                     </Text>
+                </View>
+
+                <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>
+                    <Button
+                        title={translate('Download all goals (JSON)')}
+                        type="primary"
+                        onPress={exportAllGoals}
+                        loading={isExporting}
+                    />
                 </View>
 
                 <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>

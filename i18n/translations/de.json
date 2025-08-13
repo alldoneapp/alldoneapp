@@ -965,6 +965,7 @@
     "Export description": "Lade einen JSON-Export all deiner Daten über alle deine Projekte herunter",
     "Download all tasks (JSON)": "Alle Aufgaben herunterladen (JSON)",
     "Download all projects (JSON)": "Alle Projekte herunterladen (JSON)",
+    "Download all goals (JSON)": "Alle Ziele herunterladen (JSON)",
     "Download all notes (JSON)": "Alle Notizen herunterladen (JSON)",
     "Last export": "Letzter Export",
     "Open tasks": "Offene Aufgaben",
