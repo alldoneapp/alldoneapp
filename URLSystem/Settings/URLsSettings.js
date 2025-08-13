@@ -51,6 +51,11 @@ export const URL_SETTINGS_SHORTCUTS = 'SETTINGS_SHORTCUTS'
 export const URL_SETTINGS_PREMIUM = 'SETTINGS_PREMIUM'
 
 /**
+ * /settings/export
+ */
+export const URL_SETTINGS_EXPORT = 'SETTINGS_EXPORT'
+
+/**
  * URL System for Settings
  */
 class URLsSettings {
@@ -108,6 +113,8 @@ class URLsSettings {
                 return `settings/shortcuts`
             case URL_SETTINGS_PREMIUM:
                 return `settings/premium`
+            case URL_SETTINGS_EXPORT:
+                return `settings/export`
         }
     }
 
@@ -142,6 +149,9 @@ class URLsSettings {
                 break
             case URL_SETTINGS_PREMIUM:
                 document.title = `Alldone.app - Settings - Premium`
+                break
+            case URL_SETTINGS_EXPORT:
+                document.title = `Alldone.app - Settings - Export`
                 break
         }
     }

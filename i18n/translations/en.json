@@ -1431,5 +1431,15 @@
     "If you already have a subscription but it's not showing up, enter the email address you used when subscribing:": "If you already have a subscription but it's not showing up, enter the email address you used when subscribing:",
     "Email used for Stripe subscription": "Email used for Stripe subscription",
     "Link Account": "Link Account",
-    "Note: This will only work if you have an active subscription in Stripe.": "Note: This will only work if you have an active subscription in Stripe."
+    "Note: This will only work if you have an active subscription in Stripe.": "Note: This will only work if you have an active subscription in Stripe.",
+    "Export": "Export",
+    "Export description": "Download a JSON export of all your data across all your projects",
+    "Download all tasks (JSON)": "Download all tasks (JSON)",
+    "Download all projects (JSON)": "Download all projects (JSON)",
+    "Download all notes (JSON)": "Download all notes (JSON)",
+    "Last export": "Last export",
+    "Embedded": "Embedded",
+    "Open tasks": "Open tasks",
+    "Done tasks": "Done tasks",
+    "Error exporting tasks. Please try again.": "Error exporting tasks. Please try again."
 }

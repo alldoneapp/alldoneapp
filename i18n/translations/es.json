@@ -1412,5 +1412,15 @@
     "Error checking premium status": "Error al verificar estado premium",
     "Choose your plan": "Elige tu plan",
     "Save 45%!": "¡Ahorra 45%!",
-    "Manage Billing": "Administrar Facturación"
+    "Manage Billing": "Administrar Facturación",
+    "Export": "Exportar",
+    "Export description": "Descarga una exportación JSON de todos tus datos en todos tus proyectos",
+    "Download all tasks (JSON)": "Descargar todas las tareas (JSON)",
+    "Download all projects (JSON)": "Descargar todos los proyectos (JSON)",
+    "Download all notes (JSON)": "Descargar todas las notas (JSON)",
+    "Embedded": "Incorporado",
+    "Last export": "Última exportación",
+    "Open tasks": "Tareas abiertas",
+    "Done tasks": "Tareas completadas",
+    "Error exporting tasks. Please try again.": "Error al exportar las tareas. Por favor, inténtalo de nuevo."
 }

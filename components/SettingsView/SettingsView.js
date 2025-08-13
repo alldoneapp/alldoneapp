@@ -30,8 +30,10 @@ import {
     DV_TAB_SETTINGS_STATISTICS,
     DV_TAB_SETTINGS_CUSTOMIZATIONS,
     DV_TAB_SETTINGS_PROFILE,
+    DV_TAB_SETTINGS_EXPORT,
 } from '../../utils/TabNavigationConstants'
 import StripePremiumTab from '../Premium/PremiumTab/StripePremiumTab'
+import ExportTab from './Export/ExportTab'
 import { useDispatch, useSelector } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import UserProfileSettings from './Profile/UserProfileSettings'
@@ -57,6 +59,7 @@ const SettingsView = ({ navigation }) => {
         DV_TAB_SETTINGS_INVITATIONS,
         DV_TAB_SETTINGS_STATISTICS,
         DV_TAB_SETTINGS_SHORTCUTS,
+        DV_TAB_SETTINGS_EXPORT,
         DV_TAB_SETTINGS_PREMIUM,
     ]
 
@@ -127,6 +130,8 @@ const SettingsView = ({ navigation }) => {
                                     return <ShortcutsSection />
                                 case DV_TAB_SETTINGS_PREMIUM:
                                     return <StripePremiumTab />
+                                case DV_TAB_SETTINGS_EXPORT:
+                                    return <ExportTab />
                             }
                         })()}
                     </View>

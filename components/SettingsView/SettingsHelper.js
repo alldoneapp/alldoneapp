@@ -9,6 +9,7 @@ import URLsSettings, {
     URL_SETTINGS_SHORTCUTS,
     URL_SETTINGS_STATISTICS,
     URL_SETTINGS_PROFILE,
+    URL_SETTINGS_EXPORT,
 } from '../../URLSystem/Settings/URLsSettings'
 import URLSystem, {
     URL_FEEDS_FOLLOWED,
@@ -56,6 +57,9 @@ class SettingsHelper {
                 break
             case URL_SETTINGS_PREMIUM:
                 URLsSettings.replace(URL_SETTINGS_PREMIUM)
+                break
+            case URL_SETTINGS_EXPORT:
+                URLsSettings.replace(URL_SETTINGS_EXPORT)
                 break
         }
         navigation.navigate('SettingsView')

@@ -147,6 +147,7 @@ export const DV_TAB_SETTINGS_INVITATIONS = 'SETTINGS_INVITATIONS'
 export const DV_TAB_SETTINGS_STATISTICS = 'SETTINGS_STATISTICS'
 export const DV_TAB_SETTINGS_SHORTCUTS = 'SETTINGS_SHORTCUTS'
 export const DV_TAB_SETTINGS_PREMIUM = 'SETTINGS_PREMIUM'
+export const DV_TAB_SETTINGS_EXPORT = 'SETTINGS_EXPORT'
 
 /**
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -232,6 +233,7 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_SETTINGS_STATISTICS]: 'Statistics',
     [DV_TAB_SETTINGS_SHORTCUTS]: 'Shortcuts',
     [DV_TAB_SETTINGS_PREMIUM]: 'Premium',
+    [DV_TAB_SETTINGS_EXPORT]: 'Export',
     // Chat
     [DV_TAB_CHAT_BOARD]: 'Chat',
     [DV_TAB_CHAT_PROPERTIES]: 'Properties',

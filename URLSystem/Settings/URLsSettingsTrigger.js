@@ -9,6 +9,7 @@ import {
     URL_SETTINGS_SHORTCUTS,
     URL_SETTINGS_STATISTICS,
     URL_SETTINGS_PROFILE,
+    URL_SETTINGS_EXPORT,
 } from './URLsSettings'
 import SettingsHelper from '../../components/SettingsView/SettingsHelper'
 import {
@@ -19,6 +20,7 @@ import {
     DV_TAB_SETTINGS_STATISTICS,
     DV_TAB_SETTINGS_CUSTOMIZATIONS,
     DV_TAB_SETTINGS_PROFILE,
+    DV_TAB_SETTINGS_EXPORT,
 } from '../../utils/TabNavigationConstants'
 import {
     PROJECT_TYPE_ACTIVE,
@@ -39,6 +41,7 @@ class URLsSettingsTrigger {
             [URL_SETTINGS_STATISTICS]: new RegExp('^/settings/statistics$'),
             [URL_SETTINGS_SHORTCUTS]: new RegExp('^/settings/shortcuts$'),
             [URL_SETTINGS_PREMIUM]: new RegExp('^/settings/premium$'),
+            [URL_SETTINGS_EXPORT]: new RegExp('^/settings/export$'),
         }
     }
 
@@ -78,6 +81,8 @@ class URLsSettingsTrigger {
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_SHORTCUTS)
             case URL_SETTINGS_PREMIUM:
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_PREMIUM)
+            case URL_SETTINGS_EXPORT:
+                return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_EXPORT)
         }
     }
 }
