@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { cloneDeep } from 'lodash'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 
 import ProjectHeader from '../Header/ProjectHeader'
 import DoneTasksByDate from '../DoneTasksView/DoneTasksByDate'
@@ -14,8 +14,11 @@ import useEarlierSubtasks from './useEarlierSubtasks'
 import moment from 'moment'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
+import { setAmountTasksExpanded } from '../../../redux/actions'
+import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
 
 export default function DoneTasksByProject({ project, inSelectedProject }) {
+    const dispatch = useDispatch()
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const doneTasksAmount = useSelector(state => state.doneTasksAmount)
     const amountDoneTasksExpanded = useSelector(state => state.amountDoneTasksExpanded)
@@ -36,6 +39,13 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const tasksByDate = amountDoneTasksExpanded > 0 ? earlierTasksByDate : todayTasksByDate
     const estimationByDate = amountDoneTasksExpanded > 0 ? earlierEstimationByDate : todayEstimationByDate
     const subtaskByTask = amountDoneTasksExpanded > 0 ? earlierSubtasksByTask : todaySubtasksByTask
+
+    // Auto-expand earlier tasks if there are no tasks today in the selected project view
+    useEffect(() => {
+        if (inSelectedProject && amountDoneTasksExpanded === 0 && doneTasksAmount !== null && doneTasksAmount === 0) {
+            dispatch(setAmountTasksExpanded(AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON))
+        }
+    }, [inSelectedProject, amountDoneTasksExpanded, doneTasksAmount])
 
     useEffect(() => {
         if (filtersArray.length > 0) {
