@@ -202,6 +202,64 @@ export default function ExportTab() {
         }
     }, [loggedUser])
 
+    const exportAllChats = useCallback(async () => {
+        if (!loggedUser?.uid) return
+        setIsExporting(true)
+
+        const uid = loggedUser.uid
+        const db = getDb()
+
+        try {
+            const projectIds = loggedUser.projectIds || []
+            const archivedProjectIds = loggedUser.archivedProjectIds || []
+            const allProjectIds = Array.from(new Set([...projectIds, ...archivedProjectIds]))
+
+            const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, uid]
+
+            const allChats = []
+            let totalComments = 0
+
+            await Promise.all(
+                allProjectIds.map(async projectId => {
+                    const chatsSnap = await db
+                        .collection(`chatObjects/${projectId}/chats`)
+                        .where('isPublicFor', 'array-contains-any', allowUserIds)
+                        .get()
+
+                    await Promise.all(
+                        chatsSnap.docs.map(async doc => {
+                            const chatMeta = { id: doc.id, projectId, ...doc.data() }
+                            const commentsSnap = await db
+                                .collection(`chatComments/${projectId}/topics/${doc.id}/comments`)
+                                .get()
+                            const comments = []
+                            commentsSnap.forEach(c => comments.push({ id: c.id, ...c.data() }))
+                            chatMeta.comments = comments
+                            totalComments += comments.length
+                            allChats.push(chatMeta)
+                        })
+                    )
+                })
+            )
+
+            const generatedAt = Date.now()
+            const payload = {
+                userId: uid,
+                generatedAt,
+                totals: { chats: allChats.length, comments: totalComments },
+                chats: allChats,
+            }
+
+            const filename = `alldone_chats_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
+            downloadJson(payload, filename)
+        } catch (error) {
+            console.error('Error exporting chats', error)
+            alert(translate('Error exporting tasks. Please try again.'))
+        } finally {
+            setIsExporting(false)
+        }
+    }, [loggedUser])
+
     const exportAllGoals = useCallback(async () => {
         if (!loggedUser?.uid) return
         setIsExporting(true)
@@ -410,6 +468,15 @@ export default function ExportTab() {
                         title={translate('Download all contacts (JSON)')}
                         type="primary"
                         onPress={exportAllContacts}
+                        loading={isExporting}
+                    />
+                </View>
+
+                <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center' }}>
+                    <Button
+                        title={translate('Download all chats (JSON)')}
+                        type="primary"
+                        onPress={exportAllChats}
                         loading={isExporting}
                     />
                 </View>
