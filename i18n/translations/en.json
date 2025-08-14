@@ -1446,5 +1446,9 @@
     "Embedded": "Embedded",
     "Open tasks": "Open tasks",
     "Done tasks": "Done tasks",
-    "Error exporting tasks. Please try again.": "Error exporting tasks. Please try again."
+    "Error exporting tasks. Please try again.": "Error exporting tasks. Please try again.",
+    "All time": "All time",
+    "Yesterday": "Yesterday",
+    "Last 30 days": "Last 30 days",
+    "Last 90 days": "Last 90 days"
 }

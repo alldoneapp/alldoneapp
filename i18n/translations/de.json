@@ -967,13 +967,16 @@
     "Download all projects (JSON)": "Alle Projekte herunterladen (JSON)",
     "Download all contacts (JSON)": "Alle Kontakte herunterladen (JSON)",
     "Download all chats (JSON)": "Alle Chats herunterladen (JSON)",
-    "Chats": "Chats",
-    "Comments": "Kommentare",
     "Download all goals (JSON)": "Alle Ziele herunterladen (JSON)",
     "Download all notes (JSON)": "Alle Notizen herunterladen (JSON)",
     "Last export": "Letzter Export",
     "Open tasks": "Offene Aufgaben",
-    "Done tasks": "Erledigte Aufgaben",
+    "Done tasks (export)": "Erledigte Aufgaben",
     "Embedded": "Eingebettet",
-    "Error exporting tasks. Please try again.": "Fehler beim Exportieren der Aufgaben. Bitte versuche es erneut."
+    "Error exporting tasks. Please try again.": "Fehler beim Exportieren der Aufgaben. Bitte versuche es erneut.",
+    "All time": "Gesamte Zeit",
+    "Last 7 days": "Letzte 7 Tage",
+    "Last 30 days": "Letzte 30 Tage",
+    "Last 90 days": "Letzte 90 Tage",
+    "Yesterday": "Gestern"
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 import moment from 'moment'
@@ -11,6 +11,7 @@ import { DV_TAB_SETTINGS_EXPORT } from '../../../utils/TabNavigationConstants'
 import { getDb, notesStorage } from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
+import Popover from 'react-tiny-popover'
 
 export default function ExportTab() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -23,12 +24,60 @@ export default function ExportTab() {
     const [lastProjectsExportInfo, setLastProjectsExportInfo] = useState(null)
     const [lastGoalsExportInfo, setLastGoalsExportInfo] = useState(null)
     const [lastContactsExportInfo, setLastContactsExportInfo] = useState(null)
+    const [tasksTimeframe, setTasksTimeframe] = useState('all') // 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'last90'
+    const [tasksTfPopoverOpen, setTasksTfPopoverOpen] = useState(false)
 
     useEffect(() => {
         URLsSettings.push(DV_TAB_SETTINGS_EXPORT)
     }, [])
 
-    // Exporting all tasks, so no date range is needed
+    const tasksTimeframeLabel = useMemo(() => {
+        switch (tasksTimeframe) {
+            case 'today':
+                return 'Today'
+            case 'yesterday':
+                return 'Yesterday'
+            case 'last7':
+                return 'Last 7 days'
+            case 'last30':
+                return 'Last 30 days'
+            case 'last90':
+                return 'Last 90 days'
+            default:
+                return 'All time'
+        }
+    }, [tasksTimeframe])
+
+    const getSelectedTimeframeRange = useCallback(() => {
+        // Returns { start:number, end:number } in ms, or null for all-time
+        const now = moment()
+        if (tasksTimeframe === 'today') {
+            return {
+                start: now.clone().startOf('day').valueOf(),
+                end: now.clone().endOf('day').valueOf(),
+            }
+        }
+        if (tasksTimeframe === 'yesterday') {
+            const y = now.clone().subtract(1, 'day')
+            return { start: y.clone().startOf('day').valueOf(), end: y.clone().endOf('day').valueOf() }
+        }
+        if (tasksTimeframe === 'last7') {
+            const start = now.clone().subtract(6, 'day').startOf('day').valueOf()
+            const end = now.clone().endOf('day').valueOf()
+            return { start, end }
+        }
+        if (tasksTimeframe === 'last30') {
+            const start = now.clone().subtract(29, 'day').startOf('day').valueOf()
+            const end = now.clone().endOf('day').valueOf()
+            return { start, end }
+        }
+        if (tasksTimeframe === 'last90') {
+            const start = now.clone().subtract(89, 'day').startOf('day').valueOf()
+            const end = now.clone().endOf('day').valueOf()
+            return { start, end }
+        }
+        return null
+    }, [tasksTimeframe])
 
     const downloadJson = (data, filename) => {
         try {
@@ -73,14 +122,15 @@ export default function ExportTab() {
         const allDoneTasks = []
 
         try {
+            const range = getSelectedTimeframeRange()
+            // Fetch open tasks
             setExportStatus('Fetching open tasks...')
-            // Fetch all open tasks across all projects
-            const openSnap = await db
-                .collectionGroup('tasks')
-                .where('userId', '==', uid)
-                .where('inDone', '==', false)
-                .get()
-
+            let openQuery = db.collectionGroup('tasks').where('userId', '==', uid).where('inDone', '==', false)
+            if (range) {
+                // Include all overdue open tasks up to the end of the selected range
+                openQuery = openQuery.where('dueDate', '<=', range.end)
+            }
+            const openSnap = await openQuery.get()
             openSnap.forEach(doc => {
                 const t = doc.data()
                 const projectId = doc.ref.parent.parent ? doc.ref.parent.parent.id : undefined
@@ -88,68 +138,89 @@ export default function ExportTab() {
             })
             setExportStatus(`Open tasks fetched: ${allOpenTasks.length}`)
 
-            // Determine first completion date for this user's done tasks, then iterate month-by-month
-            setExportStatus('Finding first done task...')
-            let earliestCompletedMs = null
-            try {
-                const earliestSnap = await db
+            // Fetch done tasks
+            if (range) {
+                setExportStatus('Fetching done tasks...')
+                const doneSnap = await db
                     .collectionGroup('tasks')
                     .where('userId', '==', uid)
                     .where('inDone', '==', true)
-                    .orderBy('completed', 'asc')
-                    .limit(1)
+                    .where('completed', '>=', range.start)
+                    .where('completed', '<=', range.end)
                     .get()
-                if (!earliestSnap.empty) {
-                    const d = earliestSnap.docs[0].data()
-                    if (typeof d.completed === 'number' && d.completed > 0) {
-                        earliestCompletedMs = d.completed
-                    }
-                }
-            } catch (e) {
-                console.warn('Earliest done-task lookup failed', e)
-            }
-
-            if (earliestCompletedMs) {
-                setExportStatus('Fetching done tasks...')
-                const startCursor = moment(earliestCompletedMs).startOf('month')
-                const endCursor = moment().endOf('month')
-                const months = []
-                for (let m = startCursor.clone(); m.isSameOrBefore(endCursor, 'month'); m.add(1, 'month')) {
-                    months.push({ year: m.year(), month: m.month(), label: m.format('MMM YYYY') })
-                }
-
-                for (let i = 0; i < months.length; i++) {
-                    const { year, month, label } = months[i]
-                    setExportStatus(
-                        `Fetching done tasks (${i + 1}/${months.length}) — ${label} … total so far: ${
-                            allDoneTasks.length
-                        }`
-                    )
-
-                    const start = moment({ year, month, day: 1 }).startOf('month').valueOf()
-                    const end = moment({ year, month, day: 1 }).endOf('month').valueOf()
-
-                    const doneSnap = await db
+                let added = 0
+                doneSnap.forEach(doc => {
+                    const projectId = doc.ref.parent.parent ? doc.ref.parent.parent.id : undefined
+                    allDoneTasks.push({ id: doc.id, projectId, ...doc.data() })
+                    added++
+                })
+                setExportStatus(
+                    `Done tasks fetched: +${added} • totals — done: ${allDoneTasks.length} • open: ${allOpenTasks.length}`
+                )
+            } else {
+                // All time: determine first completion date, then iterate month-by-month
+                setExportStatus('Finding first done task...')
+                let earliestCompletedMs = null
+                try {
+                    const earliestSnap = await db
                         .collectionGroup('tasks')
                         .where('userId', '==', uid)
                         .where('inDone', '==', true)
-                        .where('completed', '>=', start)
-                        .where('completed', '<=', end)
+                        .orderBy('completed', 'asc')
+                        .limit(1)
                         .get()
-
-                    let added = 0
-                    doneSnap.forEach(doc => {
-                        const projectId = doc.ref.parent.parent ? doc.ref.parent.parent.id : undefined
-                        allDoneTasks.push({ id: doc.id, projectId, ...doc.data() })
-                        added++
-                    })
-
-                    setExportStatus(
-                        `Fetched ${label}: +${added} • done so far: ${allDoneTasks.length} • open: ${allOpenTasks.length}`
-                    )
+                    if (!earliestSnap.empty) {
+                        const d = earliestSnap.docs[0].data()
+                        if (typeof d.completed === 'number' && d.completed > 0) {
+                            earliestCompletedMs = d.completed
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Earliest done-task lookup failed', e)
                 }
-            } else {
-                setExportStatus('No done tasks found; exporting open tasks only')
+
+                if (earliestCompletedMs) {
+                    setExportStatus('Fetching done tasks...')
+                    const startCursor = moment(earliestCompletedMs).startOf('month')
+                    const endCursor = moment().endOf('month')
+                    const months = []
+                    for (let m = startCursor.clone(); m.isSameOrBefore(endCursor, 'month'); m.add(1, 'month')) {
+                        months.push({ year: m.year(), month: m.month(), label: m.format('MMM YYYY') })
+                    }
+
+                    for (let i = 0; i < months.length; i++) {
+                        const { year, month, label } = months[i]
+                        setExportStatus(
+                            `Fetching done tasks (${i + 1}/${months.length}) — ${label} … total so far: ${
+                                allDoneTasks.length
+                            }`
+                        )
+
+                        const start = moment({ year, month, day: 1 }).startOf('month').valueOf()
+                        const end = moment({ year, month, day: 1 }).endOf('month').valueOf()
+
+                        const doneSnap = await db
+                            .collectionGroup('tasks')
+                            .where('userId', '==', uid)
+                            .where('inDone', '==', true)
+                            .where('completed', '>=', start)
+                            .where('completed', '<=', end)
+                            .get()
+
+                        let added = 0
+                        doneSnap.forEach(doc => {
+                            const projectId = doc.ref.parent.parent ? doc.ref.parent.parent.id : undefined
+                            allDoneTasks.push({ id: doc.id, projectId, ...doc.data() })
+                            added++
+                        })
+
+                        setExportStatus(
+                            `Fetched ${label}: +${added} • done so far: ${allDoneTasks.length} • open: ${allOpenTasks.length}`
+                        )
+                    }
+                } else {
+                    setExportStatus('No done tasks found; exporting open tasks only')
+                }
             }
 
             setExportStatus('Preparing file...')
@@ -166,7 +237,13 @@ export default function ExportTab() {
                 doneTasks: allDoneTasks,
             }
 
-            const filename = `alldone_tasks_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
+            let filename = `alldone_tasks_all_${moment(generatedAt).format('YYYY-MM-DD')}.json`
+            const rangeForName = getSelectedTimeframeRange()
+            if (rangeForName) {
+                const startStr = moment(rangeForName.start).format('YYYY-MM-DD')
+                const endStr = moment(rangeForName.end).format('YYYY-MM-DD')
+                filename = `alldone_tasks_${startStr}_to_${endStr}.json`
+            }
             downloadJson(payload, filename)
             setLastTasksExportInfo(payload.totals)
             setExportStatus('')
@@ -177,7 +254,7 @@ export default function ExportTab() {
         } finally {
             setIsExporting(false)
         }
-    }, [loggedUser])
+    }, [loggedUser, getSelectedTimeframeRange])
 
     const exportAllProjects = useCallback(async () => {
         if (!loggedUser?.uid) return
@@ -555,6 +632,43 @@ export default function ExportTab() {
                         onPress={exportAllTasks}
                         loading={isExporting && currentExportType === 'tasks'}
                     />
+                    <Popover
+                        isOpen={tasksTfPopoverOpen}
+                        onClickOutside={() => setTasksTfPopoverOpen(false)}
+                        position={['bottom', 'left', 'right', 'top']}
+                        align={'start'}
+                        padding={4}
+                        content={
+                            <View style={localStyles.dropdownMenu}>
+                                {[
+                                    { key: 'all', label: translate('All time') },
+                                    { key: 'today', label: translate('Today') },
+                                    { key: 'yesterday', label: translate('Yesterday') },
+                                    { key: 'last7', label: translate('Last 7 days') },
+                                    { key: 'last30', label: translate('Last 30 days') },
+                                    { key: 'last90', label: translate('Last 90 days') },
+                                ].map(opt => (
+                                    <Text
+                                        key={opt.key}
+                                        style={localStyles.dropdownItem}
+                                        onPress={() => {
+                                            setTasksTimeframe(opt.key)
+                                            setTasksTfPopoverOpen(false)
+                                        }}
+                                    >
+                                        {opt.label}
+                                    </Text>
+                                ))}
+                            </View>
+                        }
+                    >
+                        <Button
+                            type={'ghost'}
+                            onPress={() => setTasksTfPopoverOpen(v => !v)}
+                            title={translate(tasksTimeframeLabel)}
+                            buttonStyle={{ marginLeft: 12 }}
+                        />
+                    </Popover>
                     <Text style={localStyles.infoText}>
                         {currentExportType === 'tasks' && isExporting
                             ? exportStatus
@@ -666,5 +780,19 @@ const localStyles = StyleSheet.create({
         ...global.caption,
         color: colors.Text02,
         marginLeft: 16,
+    },
+    dropdownMenu: {
+        backgroundColor: colors.Surface,
+        borderWidth: 1,
+        borderColor: colors.Text03,
+        borderRadius: 8,
+        paddingVertical: 8,
+        minWidth: 200,
+    },
+    dropdownItem: {
+        ...global.body2,
+        color: colors.Text01,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
     },
 })
