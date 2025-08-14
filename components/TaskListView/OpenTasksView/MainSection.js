@@ -274,17 +274,17 @@ export default function MainSection({
         }
     })
 
-    // If we have orphaned tasks, create a general tasks group
+    // If we have orphaned tasks, create or merge into a general tasks group without mutating existing arrays
     if (orphanedTasks.length > 0) {
-        // Check if we already have a general tasks group
         const existingGeneralIndex = validTasks.findIndex(data => data[0] === NOT_PARENT_GOAL_INDEX)
 
         if (existingGeneralIndex >= 0) {
-            // Merge with existing general tasks
-            validTasks[existingGeneralIndex][1].push(...orphanedTasks)
+            const currentGeneralTasks = validTasks[existingGeneralIndex][1] || []
+            // Replace the tuple to avoid mutating the original tasks array reference
+            validTasks[existingGeneralIndex] = [NOT_PARENT_GOAL_INDEX, [...currentGeneralTasks, ...orphanedTasks]]
         } else {
-            // Create new general tasks group
-            validTasks.push([NOT_PARENT_GOAL_INDEX, orphanedTasks])
+            // Create new general tasks group with a fresh array reference
+            validTasks.push([NOT_PARENT_GOAL_INDEX, [...orphanedTasks]])
         }
     }
 
