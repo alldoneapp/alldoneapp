@@ -287,8 +287,8 @@ function createTaskEventFeed(eventType, params) {
     }
 }
 
-// Universal export that works with both CommonJS and ES6 environments
-export {
+// CommonJS export - works with Node.js and can be converted by bundlers
+module.exports = {
     generateCurrentDateObject,
     generateFeedModel,
     generateTaskObjectModel,
@@ -303,26 +303,5 @@ export {
     FEED_TASK_UPDATED,
     FEED_PUBLIC_FOR_ALL,
     OPEN_STEP,
-}
-export default createTaskEventFeed
-
-// Also provide CommonJS export for Node.js/Cloud Functions compatibility
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        generateCurrentDateObject,
-        generateFeedModel,
-        generateTaskObjectModel,
-        createTaskCreatedFeed,
-        createTaskFollowedFeed,
-        createTaskUpdateFeed,
-        createTaskEventFeed,
-        validateFeedParams,
-        // Constants
-        FEED_TASK_CREATED,
-        FEED_TASK_FOLLOWED,
-        FEED_TASK_UPDATED,
-        FEED_PUBLIC_FOR_ALL,
-        OPEN_STEP,
-    }
-    module.exports.default = createTaskEventFeed
+    default: createTaskEventFeed,
 }

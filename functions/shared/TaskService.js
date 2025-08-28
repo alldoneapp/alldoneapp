@@ -286,7 +286,14 @@ class TaskService {
      */
     async createAndPersistTask(params, context = {}, options = {}) {
         const taskResult = await this.createTask(params, context)
-        return await this.persistTask(taskResult, options)
+
+        // Ensure projectId is available for persistence
+        const persistOptions = {
+            ...options,
+            projectId: options.projectId || params.projectId || context.projectId,
+        }
+
+        return await this.persistTask(taskResult, persistOptions)
     }
 
     /**
@@ -343,13 +350,8 @@ class TaskService {
     }
 }
 
-// Universal export that works with both CommonJS and ES6 environments
-export { TaskService }
-export default TaskService
-
-// Also provide CommonJS export for Node.js/Cloud Functions compatibility
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = TaskService
-    module.exports.TaskService = TaskService
-    module.exports.default = TaskService
+// CommonJS export - works with Node.js and can be converted by bundlers
+module.exports = {
+    TaskService,
+    default: TaskService,
 }

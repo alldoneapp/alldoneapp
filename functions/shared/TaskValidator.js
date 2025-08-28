@@ -264,26 +264,13 @@ function validateTask(params, context = null) {
     }
 }
 
-// Universal export that works with both CommonJS and ES6 environments
-export {
+// CommonJS export - works with Node.js and can be converted by bundlers
+module.exports = {
     validateRequiredFields,
     validateOptionalFields,
     validateCreationContext,
     validateTaskUpdate,
     validateBatchOperation,
     validateTask,
-}
-export default validateTask
-
-// Also provide CommonJS export for Node.js/Cloud Functions compatibility
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        validateRequiredFields,
-        validateOptionalFields,
-        validateCreationContext,
-        validateTaskUpdate,
-        validateBatchOperation,
-        validateTask,
-    }
-    module.exports.default = validateTask
+    default: validateTask,
 }

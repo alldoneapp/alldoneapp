@@ -233,18 +233,12 @@ function createTaskObject(params) {
     return buildTaskObject(params)
 }
 
-// Universal export that works with both CommonJS and ES6 environments
-export { buildTaskObject, validateTaskParams, createTaskObject, OPEN_STEP, FEED_PUBLIC_FOR_ALL }
-export default createTaskObject
-
-// Also provide CommonJS export for Node.js/Cloud Functions compatibility
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        buildTaskObject,
-        validateTaskParams,
-        createTaskObject,
-        OPEN_STEP,
-        FEED_PUBLIC_FOR_ALL,
-    }
-    module.exports.default = createTaskObject
+// CommonJS export - works with Node.js and can be converted by bundlers
+module.exports = {
+    buildTaskObject,
+    validateTaskParams,
+    createTaskObject,
+    OPEN_STEP,
+    FEED_PUBLIC_FOR_ALL,
+    default: createTaskObject,
 }
