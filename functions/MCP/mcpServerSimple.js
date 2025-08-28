@@ -28,6 +28,23 @@ const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 
+// Helper function to get the correct base URL based on environment
+function getBaseUrl() {
+    // Check for production environment (GCLOUD_PROJECT ends with production identifier)
+    const project = process.env.GCLOUD_PROJECT || ''
+    const isProduction = project.includes('production') || project.includes('prod') || project === 'alldonealeph'
+
+    if (process.env.FUNCTIONS_EMULATOR) {
+        return 'http://localhost:5000'
+    }
+
+    if (isProduction) {
+        return process.env.MCP_BASE_URL_PROD
+    }
+
+    return process.env.MCP_BASE_URL_DEV
+}
+
 // Note: Firebase admin is already initialized by main functions/index.js
 // We'll use the existing admin instance directly
 
@@ -1402,9 +1419,7 @@ class AlldoneSimpleMCPServer {
                     // Not authenticated - return HTTP 401 as required by MCP authorization spec
                     console.log('🔐 MCP Initialize: Authentication required, returning HTTP 401')
 
-                    const baseUrl = process.env.FUNCTIONS_EMULATOR
-                        ? 'http://localhost:5000/mcpServer'
-                        : 'https://alldonestaging.web.app/mcpServer'
+                    const baseUrl = `${getBaseUrl()}/mcpServer`
 
                     // This should be handled at the HTTP transport level, not here
                     // But since we're in the JSON-RPC handler, we'll throw an error that the HTTP handler will catch
@@ -1830,9 +1845,7 @@ class AlldoneSimpleMCPServer {
                 req.path === '/.well-known/oauth-authorization-server/mcpServer' ||
                 req.url === '/.well-known/oauth-authorization-server/mcpServer'
             ) {
-                const baseUrl = process.env.FUNCTIONS_EMULATOR
-                    ? 'http://localhost:5000/mcpServer'
-                    : 'https://alldonestaging.web.app/mcpServer'
+                const baseUrl = `${getBaseUrl()}/mcpServer`
 
                 res.set('Content-Type', 'application/json; charset=utf-8').json({
                     issuer: baseUrl,
@@ -1866,9 +1879,7 @@ class AlldoneSimpleMCPServer {
                 req.path === '/.well-known/oauth-protected-resource/mcpServer' ||
                 req.url === '/.well-known/oauth-protected-resource/mcpServer'
             ) {
-                const baseUrl = process.env.FUNCTIONS_EMULATOR
-                    ? 'http://localhost:5000/mcpServer'
-                    : 'https://alldonestaging.web.app/mcpServer'
+                const baseUrl = `${getBaseUrl()}/mcpServer`
 
                 res.set('Content-Type', 'application/json; charset=utf-8').json({
                     resource: baseUrl,
@@ -2008,9 +2019,7 @@ class AlldoneSimpleMCPServer {
                             recommended_flows: {
                                 client_credentials: {
                                     description: 'For application-to-application access (no user interaction)',
-                                    endpoint: process.env.FUNCTIONS_EMULATOR
-                                        ? 'http://localhost:5000/mcpServer/token'
-                                        : 'https://alldonestaging.web.app/mcpServer/token',
+                                    endpoint: `${getBaseUrl()}/mcpServer/token`,
                                     parameters: ['grant_type=client_credentials', 'client_id', 'api_key'],
                                     note: 'Requires pre-configured API key (MCP_API_KEY)',
                                 },
@@ -2098,9 +2107,7 @@ class AlldoneSimpleMCPServer {
                                 })
 
                                 // Redirect to existing session
-                                const baseUrl = process.env.FUNCTIONS_EMULATOR
-                                    ? 'http://localhost:5000'
-                                    : 'https://alldonestaging.web.app'
+                                const baseUrl = getBaseUrl()
                                 const loginUrl = `${baseUrl}/mcpServer/auth/login?session_id=${
                                     existingSession.sessionId
                                 }&auth_code=${existingSession.authCode}&redirect_uri=${encodeURIComponent(
@@ -2340,9 +2347,7 @@ class AlldoneSimpleMCPServer {
 
                 // Redirect to Firebase Auth login with state - always use hosting domain
                 console.log('🔀 === REDIRECTING TO FIREBASE AUTH ===')
-                const baseUrl = process.env.FUNCTIONS_EMULATOR
-                    ? 'http://localhost:5000'
-                    : 'https://alldonestaging.web.app'
+                const baseUrl = getBaseUrl()
                 const loginUrl = `${baseUrl}/mcpServer/auth/login?session_id=${sessionId}&auth_code=${authCode}&redirect_uri=${encodeURIComponent(
                     redirect_uri || ''
                 )}&state=${state || ''}`
@@ -2883,9 +2888,7 @@ class AlldoneSimpleMCPServer {
                         const authenticatedTools = ['create_task', 'get_tasks', 'get_user_projects']
 
                         if (authenticatedTools.includes(toolName)) {
-                            const baseUrl = process.env.FUNCTIONS_EMULATOR
-                                ? 'http://localhost:5000/mcpServer'
-                                : 'https://alldonestaging.web.app/mcpServer'
+                            const baseUrl = `${getBaseUrl()}/mcpServer`
 
                             res.status(401)
                                 .set({
@@ -2930,9 +2933,7 @@ class AlldoneSimpleMCPServer {
                             '/token',
                         ],
                         recommended_flow: 'client_credentials',
-                        token_endpoint: process.env.FUNCTIONS_EMULATOR
-                            ? 'http://localhost:5000/token'
-                            : 'https://alldonestaging.web.app/token',
+                        token_endpoint: `${getBaseUrl()}/token`,
                     })
                 return
             }

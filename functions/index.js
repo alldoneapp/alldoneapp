@@ -7,6 +7,23 @@ const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require('fir
 const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
 
+// Helper function to get the correct base URL based on environment
+function getBaseUrl() {
+    // Check for production environment (GCLOUD_PROJECT ends with production identifier)
+    const project = process.env.GCLOUD_PROJECT || ''
+    const isProduction = project.includes('production') || project.includes('prod') || project === 'alldonealeph'
+
+    if (process.env.FUNCTIONS_EMULATOR) {
+        return 'http://localhost:5000'
+    }
+
+    if (isProduction) {
+        return process.env.MCP_BASE_URL_PROD
+    }
+
+    return process.env.MCP_BASE_URL_DEV
+}
+
 // Guard against duplicate initialization during Firebase CLI code analysis
 try {
     admin.app()
@@ -61,7 +78,7 @@ exports.wellKnownOAuth = onRequest(
     async (req, res) => {
         console.log('Root OAuth metadata request:', req.path, req.url)
 
-        const baseUrl = process.env.FUNCTIONS_EMULATOR ? 'http://localhost:5000' : 'https://alldonestaging.web.app'
+        const baseUrl = getBaseUrl()
 
         // Handle authorization server metadata
         if (req.path === '/.well-known/oauth-authorization-server' || req.url?.includes('oauth-authorization-server')) {
@@ -117,7 +134,7 @@ exports.oauthAuthorizationServer = onRequest(
     async (req, res) => {
         console.log('Root-level OAuth authorization server metadata request')
 
-        const baseUrl = process.env.FUNCTIONS_EMULATOR ? 'http://localhost:5000' : 'https://alldonestaging.web.app'
+        const baseUrl = getBaseUrl()
 
         res.json({
             issuer: baseUrl,
@@ -152,7 +169,7 @@ exports.oauthProtectedResource = onRequest(
     async (req, res) => {
         console.log('Root-level OAuth protected resource metadata request')
 
-        const baseUrl = process.env.FUNCTIONS_EMULATOR ? 'http://localhost:5000' : 'https://alldonestaging.web.app'
+        const baseUrl = getBaseUrl()
 
         res.json({
             resource: `${baseUrl}/mcpServer`,
@@ -185,9 +202,7 @@ exports.authorize = onRequest(
         console.log('Headers:', req.headers)
 
         // Forward to the actual MCP server authorize endpoint
-        const mcpServerUrl = process.env.FUNCTIONS_EMULATOR
-            ? 'http://localhost:5000/mcpServer'
-            : 'https://alldonestaging.web.app/mcpServer'
+        const mcpServerUrl = `${getBaseUrl()}/mcpServer`
 
         // Build the target URL with all query parameters
         const targetUrl = new URL(`${mcpServerUrl}/authorize`)
@@ -248,9 +263,7 @@ exports.token = onRequest(
         console.log('Headers:', req.headers)
 
         // Forward to the actual MCP server token endpoint
-        const mcpServerUrl = process.env.FUNCTIONS_EMULATOR
-            ? 'http://localhost:5000/mcpServer'
-            : 'https://alldonestaging.web.app/mcpServer'
+        const mcpServerUrl = `${getBaseUrl()}/mcpServer`
 
         try {
             const requestInit = {
@@ -313,9 +326,7 @@ exports.register = onRequest(
         console.log('Body:', req.body)
 
         // Forward to the actual MCP server register endpoint
-        const mcpServerUrl = process.env.FUNCTIONS_EMULATOR
-            ? 'http://localhost:5000/mcpServer'
-            : 'https://alldonestaging.web.app/mcpServer'
+        const mcpServerUrl = `${getBaseUrl()}/mcpServer`
 
         try {
             const response = await fetch(`${mcpServerUrl}/register`, {

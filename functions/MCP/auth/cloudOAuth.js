@@ -2,6 +2,23 @@ const admin = require('firebase-admin')
 const { v4: uuidv4 } = require('uuid')
 const { getEnvironmentConfig } = require('../config/environments.js')
 
+// Helper function to get the correct base URL based on environment
+function getBaseUrl() {
+    // Check for production environment (GCLOUD_PROJECT ends with production identifier)
+    const project = process.env.GCLOUD_PROJECT || ''
+    const isProduction = project.includes('production') || project.includes('prod') || project === 'alldonealeph'
+
+    if (process.env.FUNCTIONS_EMULATOR) {
+        return 'http://localhost:5000'
+    }
+
+    if (isProduction) {
+        return process.env.MCP_BASE_URL_PROD
+    }
+
+    return process.env.MCP_BASE_URL_DEV
+}
+
 // Simple session storage using Firestore
 class CloudSessionManager {
     constructor() {
@@ -184,9 +201,7 @@ class CloudOAuthHandler {
     generateOAuthUrl(sessionId) {
         // For Cloud Functions, we'll generate a simple Firebase Auth URL
         // Users will authenticate via Firebase Auth in their browser
-        const baseUrl = process.env.FUNCTIONS_EMULATOR
-            ? 'http://localhost:5000/mcpServer'
-            : 'https://alldonestaging.web.app/mcpServer'
+        const baseUrl = `${getBaseUrl()}/mcpServer`
 
         return `${baseUrl}/auth/login?session_id=${sessionId}`
     }
