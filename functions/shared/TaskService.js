@@ -286,9 +286,23 @@ class TaskService {
                                     feedsBatch.setProjectContext(finalProjectId)
                                 }
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
+                                // Normalize estimations so CF feeds helper (OPEN_STEP = -1) gets a defined value
+                                const normalizedTaskForFeeds = (() => {
+                                    try {
+                                        const estimations =
+                                            task && task.estimations ? { ...task.estimations } : { Open: 0 }
+                                        if (estimations['-1'] === undefined) {
+                                            const openValue = estimations['Open']
+                                            estimations['-1'] = typeof openValue === 'number' ? openValue : 0
+                                        }
+                                        return { ...task, estimations }
+                                    } catch (_) {
+                                        return task
+                                    }
+                                })()
                                 await feedsTasks.createTaskCreatedFeed(
                                     finalProjectId,
-                                    task,
+                                    normalizedTaskForFeeds,
                                     taskId,
                                     feedsBatch,
                                     creator,
@@ -352,9 +366,23 @@ class TaskService {
                             const feedsTasks = require('../Feeds/tasksFeeds')
                             if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
+                                // Normalize estimations so CF feeds helper (OPEN_STEP = -1) gets a defined value
+                                const normalizedTaskForFeeds = (() => {
+                                    try {
+                                        const estimations =
+                                            task && task.estimations ? { ...task.estimations } : { Open: 0 }
+                                        if (estimations['-1'] === undefined) {
+                                            const openValue = estimations['Open']
+                                            estimations['-1'] = typeof openValue === 'number' ? openValue : 0
+                                        }
+                                        return { ...task, estimations }
+                                    } catch (_) {
+                                        return task
+                                    }
+                                })()
                                 await feedsTasks.createTaskCreatedFeed(
                                     finalProjectId,
-                                    task,
+                                    normalizedTaskForFeeds,
                                     taskId,
                                     batch,
                                     creator,
