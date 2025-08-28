@@ -92,6 +92,7 @@ function buildTaskObject({
     // Build the complete task object matching Alldone's schema
     const task = {
         // Core identification
+        id: taskId,
         name: trimmedName,
         extendedName: trimmedName,
         description: description || '',

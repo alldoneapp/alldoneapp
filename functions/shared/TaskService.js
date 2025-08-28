@@ -137,12 +137,35 @@ class TaskService {
         const taskId = params.taskId || this.generateTaskId()
         const now = params.now || Date.now()
 
-        return TaskModelBuilder.createTaskObject({
+        // Validate generated task ID
+        if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+            console.error('TaskService buildTask error: invalid generated taskId', {
+                taskId,
+                params_taskId: params.taskId,
+                generated_id: this.generateTaskId(),
+                hasIdGenerator: !!this.options.idGenerator,
+                hasDatabase: !!this.options.database,
+            })
+            throw new Error(`Failed to generate valid task ID: "${taskId}"`)
+        }
+
+        const task = TaskModelBuilder.createTaskObject({
             ...params,
             taskId,
             now,
             moment: this.options.moment,
         })
+
+        // Double-check the task has the ID field
+        if (!task.id) {
+            console.error('TaskService buildTask error: task object missing id field', {
+                taskId,
+                task_keys: Object.keys(task).slice(0, 10),
+            })
+            throw new Error('Task object is missing id field after creation')
+        }
+
+        return task
     }
 
     /**
@@ -195,7 +218,7 @@ class TaskService {
                 feedData = await this.createTaskFeed('created', {
                     projectId: task.projectId || taskParams.projectId,
                     task,
-                    taskId: task.id || taskParams.taskId,
+                    taskId: task.id,
                     feedUser,
                 })
             } catch (feedError) {
@@ -207,7 +230,7 @@ class TaskService {
         return {
             task,
             feedData,
-            taskId: task.id || taskParams.taskId,
+            taskId: task.id,
             success: true,
             message: `Task "${task.name}" created successfully`,
         }
@@ -232,6 +255,18 @@ class TaskService {
         const finalProjectId = projectId || task.projectId
         if (!finalProjectId) {
             throw new Error('Project ID is required for task persistence')
+        }
+
+        // Validate task ID
+        if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+            console.error('TaskService persistence error: invalid taskId', {
+                taskId,
+                taskResultKeys: Object.keys(taskResult),
+                taskId_from_result: taskResult.taskId,
+                taskId_from_task: task.id,
+                task_keys: task ? Object.keys(task).slice(0, 10) : 'no task',
+            })
+            throw new Error(`Invalid task ID for persistence: "${taskId}". Task ID must be a non-empty string.`)
         }
 
         try {
