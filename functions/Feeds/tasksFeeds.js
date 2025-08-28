@@ -32,7 +32,15 @@ const {
 } = require('../Utils/HelperFunctionsCloud')
 const { shrinkTagText } = require('../Utils/parseTextUtils')
 
-async function createTaskCreatedFeed(projectId, task, taskId, batch, feedUser, needGenerateNotification) {
+async function createTaskCreatedFeed(
+    projectId,
+    task,
+    taskId,
+    batch,
+    feedUser,
+    needGenerateNotification,
+    contextOverrides = {}
+) {
     const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
     const taskFeedObject = generateTaskObjectModel(currentMilliseconds, task, taskId)
 
@@ -62,7 +70,8 @@ async function createTaskCreatedFeed(projectId, task, taskId, batch, feedUser, n
         feed,
         feedUser,
         batch,
-        needGenerateNotification
+        needGenerateNotification,
+        contextOverrides
     )
 
     if (isSubtask) {
@@ -70,7 +79,14 @@ async function createTaskCreatedFeed(projectId, task, taskId, batch, feedUser, n
     }
 }
 
-async function createTaskFollowedFeed(projectId, taskId, batch, feedUser, needGenerateNotification) {
+async function createTaskFollowedFeed(
+    projectId,
+    taskId,
+    batch,
+    feedUser,
+    needGenerateNotification,
+    contextOverrides = {}
+) {
     const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
     const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
     if (!taskFeedObject) return
@@ -97,7 +113,8 @@ async function createTaskFollowedFeed(projectId, taskId, batch, feedUser, needGe
         feed,
         feedUser,
         batch,
-        needGenerateNotification
+        needGenerateNotification,
+        contextOverrides
     )
 }
 

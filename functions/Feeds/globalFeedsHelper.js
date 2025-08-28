@@ -286,9 +286,13 @@ function increaseFeedCount(
     feedId,
     feed,
     feedObject,
-    needGenerateNotification
+    needGenerateNotification,
+    contextOverrides = {}
 ) {
-    const { feedCreator, project } = getGlobalState()
+    const { feedCreator: ctxFeedCreator, project: ctxProject } = contextOverrides
+    const { feedCreator: globalFeedCreator, project: globalProject } = getGlobalState()
+    const feedCreator = ctxFeedCreator || globalFeedCreator || { uid: '' }
+    const project = ctxProject || globalProject || { userIds: [] }
 
     const followersIds = batch.followersIds[objectId]
 
@@ -647,7 +651,8 @@ async function proccessFeed(
     feed,
     feedUser,
     batch,
-    needGenerateNotification
+    needGenerateNotification,
+    contextOverrides = {}
 ) {
     updateFeedObject(projectId, currentDateFormated, objectId, feedObject, objectsType, batch)
 
@@ -666,7 +671,8 @@ async function proccessFeed(
         feedId,
         feed,
         feedObject,
-        needGenerateNotification
+        needGenerateNotification,
+        contextOverrides
     )
     globalInnerFeedsGenerator(projectId, objectsType, objectId, feed, feedId, batch)
 }

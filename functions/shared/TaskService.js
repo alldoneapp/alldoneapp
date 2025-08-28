@@ -289,11 +289,13 @@ class TaskService {
                                 }
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
                                 // Load minimal global state required by feeds helpers (feedCreator and project)
+                                let projectUsersIds = []
                                 try {
                                     const projectSnap = await this.options.database
                                         .doc(`projects/${finalProjectId}`)
                                         .get()
                                     const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+                                    projectUsersIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
                                     loadFeedsGlobalState(
                                         admin,
                                         admin,
@@ -317,14 +319,43 @@ class TaskService {
                                         return task
                                     }
                                 })()
+                                // Prepare initial followers: creator + assignees + observers (dedup)
+                                const creatorId = creator.uid || task.userId
+                                const assigneeIds = Array.isArray(task.userIds)
+                                    ? task.userIds
+                                    : [task.userId].filter(Boolean)
+                                const observerIds = Array.isArray(task.observersIds) ? task.observersIds : []
+                                const followerSet = new Set([creatorId, ...assigneeIds, ...observerIds].filter(Boolean))
+                                const initialFollowers = Array.from(followerSet)
+                                // Make followers available to feeds helper chain
+                                feedsBatch.feedChainFollowersIds = {
+                                    ...(feedsBatch.feedChainFollowersIds || {}),
+                                    [taskId]: initialFollowers,
+                                }
                                 await feedsTasks.createTaskCreatedFeed(
                                     finalProjectId,
                                     normalizedTaskForFeeds,
                                     taskId,
                                     feedsBatch,
                                     creator,
-                                    true
+                                    true,
+                                    { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
                                 )
+                                // Create follow feeds for each follower (dedup); creator will also get a follow feed unless duplicates collapse
+                                for (const followerId of initialFollowers) {
+                                    const followerUser = { uid: followerId, id: followerId }
+                                    await feedsTasks.createTaskFollowedFeed(
+                                        finalProjectId,
+                                        taskId,
+                                        feedsBatch,
+                                        followerUser,
+                                        true,
+                                        {
+                                            feedCreator: creator,
+                                            project: { id: finalProjectId, userIds: projectUsersIds },
+                                        }
+                                    )
+                                }
                                 if (feedsBatch.commit) {
                                     await feedsBatch.commit()
                                 }
@@ -386,11 +417,13 @@ class TaskService {
                             if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
                                 // Load minimal global state required by feeds helpers (feedCreator and project)
+                                let projectUsersIds = []
                                 try {
                                     const projectSnap = await this.options.database
                                         .doc(`projects/${finalProjectId}`)
                                         .get()
                                     const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+                                    projectUsersIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
                                     loadFeedsGlobalState(
                                         admin,
                                         admin,
@@ -414,14 +447,43 @@ class TaskService {
                                         return task
                                     }
                                 })()
+                                // Prepare initial followers: creator + assignees + observers (dedup)
+                                const creatorId = creator.uid || task.userId
+                                const assigneeIds = Array.isArray(task.userIds)
+                                    ? task.userIds
+                                    : [task.userId].filter(Boolean)
+                                const observerIds = Array.isArray(task.observersIds) ? task.observersIds : []
+                                const followerSet = new Set([creatorId, ...assigneeIds, ...observerIds].filter(Boolean))
+                                const initialFollowers = Array.from(followerSet)
+                                // Make followers available to feeds helper chain
+                                batch.feedChainFollowersIds = {
+                                    ...(batch.feedChainFollowersIds || {}),
+                                    [taskId]: initialFollowers,
+                                }
                                 await feedsTasks.createTaskCreatedFeed(
                                     finalProjectId,
                                     normalizedTaskForFeeds,
                                     taskId,
                                     batch,
                                     creator,
-                                    true
+                                    true,
+                                    { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
                                 )
+                                // Create follow feeds for each follower (dedup)
+                                for (const followerId of initialFollowers) {
+                                    const followerUser = { uid: followerId, id: followerId }
+                                    await feedsTasks.createTaskFollowedFeed(
+                                        finalProjectId,
+                                        taskId,
+                                        batch,
+                                        followerUser,
+                                        true,
+                                        {
+                                            feedCreator: creator,
+                                            project: { id: finalProjectId, userIds: projectUsersIds },
+                                        }
+                                    )
+                                }
                             } else {
                                 console.warn('TaskService: Feeds module missing createTaskCreatedFeed function (batch)')
                             }
