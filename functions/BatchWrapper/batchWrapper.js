@@ -56,7 +56,7 @@ class BatchWrapper {
 
     async commit(doParallelActionsForBatchGroups) {
         // Process feed objects before committing batches
-        await this.#persistFeedObjects()
+        await this._persistFeedObjects()
 
         if (doParallelActionsForBatchGroups) {
             const promises = []
@@ -76,7 +76,7 @@ class BatchWrapper {
         this.feedObjects = {} // Clear feed objects after commit
     }
 
-    async #persistFeedObjects() {
+    async _persistFeedObjects() {
         // Persist feed objects to Firestore if any exist
         if (Object.keys(this.feedObjects).length > 0) {
             for (const [objectId, feedContext] of Object.entries(this.feedObjects)) {
