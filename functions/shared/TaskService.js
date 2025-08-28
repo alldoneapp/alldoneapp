@@ -293,6 +293,7 @@ class TaskService {
 
                 // Add feed data to batch if available
                 if (feedData && this.options.enableFeeds) {
+                    console.log('TaskService: Adding feed data to batch for task:', taskId)
                     if (batch.feedObjects) {
                         // Store feed data with context needed for persistence
                         batch.feedObjects[taskId] = {
@@ -301,7 +302,16 @@ class TaskService {
                             objectType: 'tasks',
                             currentDateFormated: feedData.currentDateFormated,
                         }
+                        console.log('TaskService: Successfully added feed data to batch.feedObjects')
+                    } else {
+                        console.warn('TaskService: batch.feedObjects is not available')
                     }
+                } else {
+                    console.log('TaskService: Not adding feed data:', {
+                        hasFeedData: !!feedData,
+                        enableFeeds: this.options.enableFeeds,
+                        taskId,
+                    })
                 }
 
                 // Commit batch if we created it

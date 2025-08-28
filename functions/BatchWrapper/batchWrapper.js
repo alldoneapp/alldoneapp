@@ -89,6 +89,11 @@ class BatchWrapper {
 
     async _persistFeedObjects() {
         // Persist feed objects to Firestore if any exist
+        console.log(
+            'BatchWrapper: _persistFeedObjects called with',
+            Object.keys(this.feedObjects).length,
+            'feed objects'
+        )
         if (Object.keys(this.feedObjects).length > 0) {
             for (const [objectId, feedData] of Object.entries(this.feedObjects)) {
                 try {
@@ -144,6 +149,12 @@ class BatchWrapper {
 
                         // Use the existing batch system to add the feed object write
                         this.set(feedObjectRef, feedObject, { merge: true })
+                        console.log(
+                            'BatchWrapper: Successfully queued feed object for persistence:',
+                            objectId,
+                            'to',
+                            feedObjectRef.path
+                        )
                     } else {
                         console.warn('BatchWrapper: Could not resolve feed context for objectId:', objectId, {
                             feedObject: !!feedObject,
