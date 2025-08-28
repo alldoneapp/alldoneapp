@@ -9,19 +9,19 @@ const firebaseConfig = require('./firebaseConfig.js')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
-    // Check for production environment (GCLOUD_PROJECT ends with production identifier)
-    const project = process.env.GCLOUD_PROJECT || ''
-    const isProduction = project.includes('production') || project.includes('prod') || project === 'alldonealeph'
+    const { inProductionEnvironment } = require('./Utils/HelperFunctionsCloud.js')
 
     if (process.env.FUNCTIONS_EMULATOR) {
         return 'http://localhost:5000'
     }
 
+    const isProduction = inProductionEnvironment()
+
     if (isProduction) {
         return process.env.MCP_BASE_URL_PROD
+    } else {
+        return process.env.MCP_BASE_URL_DEV
     }
-
-    return process.env.MCP_BASE_URL_DEV
 }
 
 // Guard against duplicate initialization during Firebase CLI code analysis
