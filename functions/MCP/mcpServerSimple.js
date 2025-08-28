@@ -485,7 +485,8 @@ class AlldoneSimpleMCPServer {
                     },
                     {
                         name: 'get_tasks',
-                        description: 'Get tasks from a project (requires OAuth 2.0 Bearer token authentication)',
+                        description:
+                            'Get tasks from a project with advanced filtering and subtask support (requires OAuth 2.0 Bearer token authentication)',
                         inputSchema: {
                             type: 'object',
                             properties: {
@@ -501,11 +502,20 @@ class AlldoneSimpleMCPServer {
                                 date: {
                                     type: 'string',
                                     description:
-                                        'Date filter in YYYY-MM-DD format. Default: "today" (shows today + overdue tasks). For future dates: shows only tasks for that specific date.',
+                                        'Date filter in YYYY-MM-DD format or "today". For open tasks: shows due tasks. For done tasks: shows completed tasks. Default: "today".',
                                 },
                                 limit: {
                                     type: 'number',
-                                    description: 'Maximum number of tasks to return (default: 20)',
+                                    description: 'Maximum number of tasks to return (default: 20, max: 200)',
+                                },
+                                includeSubtasks: {
+                                    type: 'boolean',
+                                    description: 'Include subtasks in results (default: false)',
+                                },
+                                parentId: {
+                                    type: 'string',
+                                    description:
+                                        'Get subtasks for specific parent task ID (requires includeSubtasks: true)',
                                 },
                                 bearerToken: {
                                     type: 'string',
@@ -734,7 +744,15 @@ class AlldoneSimpleMCPServer {
     }
 
     async getTasks(args, request) {
-        const { projectId: specifiedProjectId, status = 'open', limit = 20, bearerToken, date } = args
+        const {
+            projectId: specifiedProjectId,
+            status = 'open',
+            limit = 20,
+            bearerToken,
+            date,
+            includeSubtasks = false,
+            parentId = null,
+        } = args
 
         // Get authenticated user from header or optional bearerToken arg
         let userId
@@ -772,100 +790,30 @@ class AlldoneSimpleMCPServer {
                 throw new Error('User does not have access to this project')
             }
 
-            // Build query (using correct Alldone collection path and proper permission filtering)
-            let query = db.collection(`items/${projectId}/tasks`)
-
-            // Filter by status
-            if (status === 'open') {
-                query = query.where('done', '==', false)
-            } else if (status === 'done') {
-                query = query.where('done', '==', true)
-            }
-
-            // Filter by user permissions (only get tasks user can see)
-            query = query.where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, userId])
-
-            // Date filtering logic (same as main app)
-            if (date) {
-                const filterDate = date.toLowerCase() === 'today' ? null : date
-
-                if (!filterDate) {
-                    // For "today": show tasks with dueDate <= end of today (includes overdue)
-                    const endOfToday = moment().endOf('day').valueOf()
-                    console.log(
-                        '📅 Filtering for today and overdue tasks (dueDate <=',
-                        new Date(endOfToday).toISOString(),
-                        ')'
-                    )
-                    query = query.where('dueDate', '<=', endOfToday)
-                } else {
-                    // For specific date: show tasks with dueDate exactly on that day
-                    const targetDate = moment(filterDate)
-                    if (!targetDate.isValid()) {
-                        throw new Error('Invalid date format. Use YYYY-MM-DD format.')
-                    }
-
-                    const startOfDay = targetDate.startOf('day').valueOf()
-                    const endOfDay = targetDate.endOf('day').valueOf()
-
-                    console.log(
-                        '📅 Filtering for specific date:',
-                        filterDate,
-                        '(',
-                        new Date(startOfDay).toISOString(),
-                        'to',
-                        new Date(endOfDay).toISOString(),
-                        ')'
-                    )
-
-                    // For future dates: only show tasks for that specific day
-                    query = query.where('dueDate', '>=', startOfDay).where('dueDate', '<=', endOfDay)
-                }
-            } else {
-                // Default behavior: show today + overdue (same as date="today")
-                const endOfToday = moment().endOf('day').valueOf()
-                console.log(
-                    '📅 Default filtering: today and overdue tasks (dueDate <=',
-                    new Date(endOfToday).toISOString(),
-                    ')'
-                )
-                query = query.where('dueDate', '<=', endOfToday)
-            }
-
-            // Order by due date first, then creation date
-            query = query.orderBy('dueDate', 'asc').orderBy('created', 'desc').limit(limit)
-
-            const snapshot = await query.get()
-            const tasks = []
-
-            snapshot.forEach(doc => {
-                const taskData = doc.data()
-                tasks.push({
-                    id: doc.id,
-                    ...taskData,
-                    // Format dueDate for better readability
-                    dueDateFormatted: taskData.dueDate ? moment(taskData.dueDate).format('YYYY-MM-DD HH:mm:ss') : null,
+            // Initialize TaskRetrievalService if not already done
+            if (!this.taskRetrievalService) {
+                const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+                this.taskRetrievalService = new TaskRetrievalService({
+                    database: db,
+                    moment: moment,
+                    isCloudFunction: true,
                 })
+                await this.taskRetrievalService.initialize()
+            }
+
+            // Use TaskRetrievalService to get tasks
+            const result = await this.taskRetrievalService.getTasksWithValidation({
+                projectId,
+                userId,
+                status,
+                date,
+                includeSubtasks,
+                parentId,
+                limit,
+                userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
             })
 
-            // Determine the effective date filter for the response
-            let effectiveDateFilter = 'today'
-            if (date) {
-                effectiveDateFilter = date.toLowerCase() === 'today' ? 'today' : date
-            }
-
-            return {
-                success: true,
-                tasks: tasks,
-                count: tasks.length,
-                projectId: projectId,
-                status: status,
-                dateFilter: effectiveDateFilter,
-                dateFilterDescription:
-                    effectiveDateFilter === 'today'
-                        ? 'Today and overdue tasks (dueDate <= end of today)'
-                        : `Tasks for specific date: ${effectiveDateFilter}`,
-            }
+            return result
         } catch (error) {
             console.error('Error getting tasks:', error)
             throw new Error(`Failed to get tasks: ${error.message}`)
@@ -1587,7 +1535,8 @@ class AlldoneSimpleMCPServer {
                         },
                         {
                             name: 'get_tasks',
-                            description: 'Get tasks from a project (requires authentication)',
+                            description:
+                                'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
@@ -1603,11 +1552,20 @@ class AlldoneSimpleMCPServer {
                                     date: {
                                         type: 'string',
                                         description:
-                                            'Date filter in YYYY-MM-DD format. Default: "today" (shows today + overdue tasks). For future dates: shows only tasks for that specific date.',
+                                            'Date filter in YYYY-MM-DD format or "today". For open tasks: shows due tasks. For done tasks: shows completed tasks. Default: "today".',
                                     },
                                     limit: {
                                         type: 'number',
-                                        description: 'Maximum number of tasks to return (default: 20)',
+                                        description: 'Maximum number of tasks to return (default: 20, max: 200)',
+                                    },
+                                    includeSubtasks: {
+                                        type: 'boolean',
+                                        description: 'Include subtasks in results (default: false)',
+                                    },
+                                    parentId: {
+                                        type: 'string',
+                                        description:
+                                            'Get subtasks for specific parent task ID (requires includeSubtasks: true)',
                                     },
                                     bearerToken: {
                                         type: 'string',

@@ -9,7 +9,13 @@ import { updateAssistant } from '../../../../utils/backends/Assistants/assistant
 export default function ToolsAccessProperty({ disabled, projectId, assistant }) {
     const loggedUser = useSelector(state => state.loggedUser)
 
-    const availableTools = useMemo(() => [{ key: 'create_task', label: translate('Create new task') }], [])
+    const availableTools = useMemo(
+        () => [
+            { key: 'create_task', label: translate('Create new task') },
+            { key: 'get_tasks', label: translate('Get tasks') },
+        ],
+        []
+    )
 
     const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
 

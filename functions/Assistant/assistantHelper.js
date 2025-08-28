@@ -795,6 +795,129 @@ async function storeChunks(
                         await commentRef.update({ commentText })
                         toolAlreadyExecuted = true
                     }
+
+                    // Check for get_tasks tool
+                    const getTasksMatch = commentText.match(/TOOL:\s*get_tasks\s*(\{[\s\S]*?\})/)
+                    if (getTasksMatch) {
+                        console.log('Detected TOOL:get_tasks invocation')
+                        // Fetch assistant to check allowed tools
+                        const assistant = await getAssistantForChat(projectId, assistantId)
+                        const allowed = Array.isArray(assistant.allowedTools)
+                            ? assistant.allowedTools.includes('get_tasks')
+                            : false
+                        if (!allowed) {
+                            console.log('Assistant not allowed to use get_tasks tool')
+                            const replaced = commentText.replace(getTasksMatch[0], 'Tool not permitted: get_tasks')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Parse JSON args
+                        const argsJson = getTasksMatch[1]
+                        let args = {}
+                        try {
+                            args = JSON.parse(argsJson)
+                        } catch (e) {
+                            console.error('Failed to parse get_tasks args JSON', e)
+                            const replaced = commentText.replace(getTasksMatch[0], 'Failed to parse tool arguments')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Determine creatorId (the user interacting with the assistant)
+                        const creatorId =
+                            requestUserId ||
+                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
+
+                        // Initialize TaskRetrievalService for assistant tool calls
+                        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+                        const taskRetrievalService = new TaskRetrievalService({
+                            database: admin.firestore(),
+                            moment: require('moment'),
+                            isCloudFunction: true,
+                        })
+                        await taskRetrievalService.initialize()
+
+                        // Extract parameters with defaults
+                        const status = args.status || 'open'
+                        const limit = Math.min(args.limit || 10, 50) // Cap at 50 for assistant usage
+                        const date = args.date || 'today'
+                        const includeSubtasks = !!args.includeSubtasks
+                        const parentId = args.parentId || null
+
+                        try {
+                            // Get tasks using unified service
+                            const result = await taskRetrievalService.getTasksWithValidation({
+                                projectId: projectId,
+                                userId: creatorId,
+                                status,
+                                date,
+                                includeSubtasks,
+                                parentId,
+                                limit,
+                                userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                            })
+
+                            // Format results for assistant response
+                            let taskSummary = ''
+                            if (result.tasks && result.tasks.length > 0) {
+                                taskSummary = `Found ${result.count} task(s):\n\n`
+                                result.tasks.forEach((task, index) => {
+                                    const dueInfo = task.dueDateFormatted ? ` (due: ${task.dueDateFormatted})` : ''
+                                    const doneInfo =
+                                        task.completedFormatted && status === 'done'
+                                            ? ` (completed: ${task.completedFormatted})`
+                                            : ''
+                                    taskSummary += `${index + 1}. ${task.name}${dueInfo}${doneInfo}\n`
+                                    if (task.description) {
+                                        taskSummary += `   ${task.description}\n`
+                                    }
+                                    taskSummary += '\n'
+                                })
+
+                                // Add subtask info if included
+                                if (includeSubtasks && result.subtasksByParent) {
+                                    const subtaskCount = Object.keys(result.subtasksByParent).reduce(
+                                        (total, parentId) => total + result.subtasksByParent[parentId].length,
+                                        0
+                                    )
+                                    if (subtaskCount > 0) {
+                                        taskSummary += `\nIncludes ${subtaskCount} subtask(s).`
+                                    }
+                                }
+                            } else {
+                                taskSummary = `No ${status} tasks found for ${result.dateFilterDescription || date}.`
+                            }
+
+                            console.log('Retrieved tasks via tool call', {
+                                projectId,
+                                status,
+                                count: result.count,
+                                date: result.dateFilter,
+                            })
+
+                            // Replace tool line with formatted task list
+                            const replaced = commentText.replace(getTasksMatch[0], taskSummary.trim())
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        } catch (error) {
+                            console.error('Error getting tasks via tool call:', error)
+                            const errorMsg = `Error retrieving tasks: ${error.message}`
+                            const replaced = commentText.replace(getTasksMatch[0], errorMsg)
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        }
+                    }
                 } catch (err) {
                     console.error('Error while processing tool call', err)
                 }
@@ -1025,7 +1148,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Example for creating a task: TOOL:create_task {"name":"Task title","description":"Optional"}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])
