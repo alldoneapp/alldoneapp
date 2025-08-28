@@ -243,7 +243,7 @@ class TaskService {
         }
 
         const { task, feedData, taskId } = taskResult
-        const { projectId, batch: externalBatch } = options
+        const { projectId, batch: externalBatch, feedUser } = options
 
         const finalProjectId = projectId || task.projectId
         if (!finalProjectId) {
@@ -274,15 +274,54 @@ class TaskService {
 
                 await taskRef.set(task)
 
-                // Also persist feed data directly if available
+                // Persist feeds using Cloud Functions feeds pipeline when available
                 if (feedData && this.options.enableFeeds) {
-                    try {
-                        const feedObjectRef = this.options.database.doc(
-                            `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
-                        )
-                        await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
-                    } catch (feedError) {
-                        console.error('Failed to persist feed object directly:', feedError)
+                    if (this.options.isCloudFunction) {
+                        try {
+                            const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+                            const feedsTasks = require('../Feeds/tasksFeeds')
+                            if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
+                                const feedsBatch = new BatchWrapper(this.options.database)
+                                if (feedsBatch.setProjectContext) {
+                                    feedsBatch.setProjectContext(finalProjectId)
+                                }
+                                const creator = feedUser || { uid: task.userId, id: task.userId }
+                                await feedsTasks.createTaskCreatedFeed(
+                                    finalProjectId,
+                                    task,
+                                    taskId,
+                                    feedsBatch,
+                                    creator,
+                                    true
+                                )
+                                if (feedsBatch.commit) {
+                                    await feedsBatch.commit()
+                                }
+                            } else {
+                                console.warn('TaskService: Feeds module missing createTaskCreatedFeed function')
+                            }
+                        } catch (feedPersistError) {
+                            console.error('TaskService: Failed to persist feeds via pipeline:', feedPersistError)
+                            // Fallback: persist last state only
+                            try {
+                                const feedObjectRef = this.options.database.doc(
+                                    `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
+                                )
+                                await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
+                            } catch (fallbackError) {
+                                console.error('Failed to persist feed object as fallback:', fallbackError)
+                            }
+                        }
+                    } else {
+                        // Non-cloud environments: persist last state only
+                        try {
+                            const feedObjectRef = this.options.database.doc(
+                                `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
+                            )
+                            await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
+                        } catch (feedError) {
+                            console.error('Failed to persist feed object directly:', feedError)
+                        }
                     }
                 }
             } else {
@@ -305,6 +344,31 @@ class TaskService {
                         console.log('TaskService: Successfully added feed data to batch.feedObjects')
                     } else {
                         console.warn('TaskService: batch.feedObjects is not available')
+                    }
+
+                    // In Cloud Functions, also push through feeds pipeline to generate inner feeds
+                    if (this.options.isCloudFunction) {
+                        try {
+                            const feedsTasks = require('../Feeds/tasksFeeds')
+                            if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
+                                const creator = feedUser || { uid: task.userId, id: task.userId }
+                                await feedsTasks.createTaskCreatedFeed(
+                                    finalProjectId,
+                                    task,
+                                    taskId,
+                                    batch,
+                                    creator,
+                                    true
+                                )
+                            } else {
+                                console.warn('TaskService: Feeds module missing createTaskCreatedFeed function (batch)')
+                            }
+                        } catch (feedPersistError) {
+                            console.error(
+                                'TaskService: Failed to enqueue feeds via pipeline (batch):',
+                                feedPersistError
+                            )
+                        }
                     }
                 } else {
                     console.log('TaskService: Not adding feed data:', {
@@ -345,6 +409,8 @@ class TaskService {
         const persistOptions = {
             ...options,
             projectId: options.projectId || params.projectId || context.projectId,
+            // Pass feedUser forward so persistence can generate inner feeds in CF
+            feedUser: params.feedUser,
         }
 
         return await this.persistTask(taskResult, persistOptions)
