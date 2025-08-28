@@ -26,7 +26,7 @@ class CloudSessionManager {
     }
 
     get db() {
-        // Lazy initialization - only access Firestore when needed
+        // Lazy initialization - only access Firestore when needed. cool
         if (!this._db) {
             this._db = admin.firestore()
         }
