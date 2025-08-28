@@ -1,52 +1,48 @@
 /**
- * TaskServiceFrontendHelper - Frontend wrapper for unified TaskService
+ * TaskServiceFrontendHelper - Frontend wrapper for task creation
  *
- * This helper provides an easy way to use the TaskService in frontend contexts
- * while preserving existing patterns and integrations.
+ * PHASE 1 (Current): Uses original uploadNewTask for main app to ensure feeds work
+ * PHASE 2 (Future): Will migrate to unified TaskService once feed compatibility is complete
+ *
+ * This maintains existing feed functionality while preserving unified architecture
+ * for Assistant tools and MCP server contexts.
  */
 
 import store from '../../../redux/store'
-import { TaskService } from '../../../functions/shared/TaskService'
-import { getDb, getId } from '../firestore'
-import moment from 'moment'
+import { uploadNewTask } from './tasksFirestore'
 
 /**
- * Initialize TaskService for frontend use
- * @returns {TaskService} Configured TaskService instance
+ * Maps modern task parameters to the format expected by uploadNewTask
+ * @param {Object} params - Modern task creation parameters
+ * @returns {Object} Task object in legacy format
  */
-async function initializeFrontendTaskService() {
-    const taskService = new TaskService({
-        database: getDb(),
-        moment: moment,
-        idGenerator: getId,
-        enableFeeds: true,
-        enableValidation: true,
-        isReactNative: typeof navigator !== 'undefined' && navigator.product === 'ReactNative',
-        isWeb: typeof window !== 'undefined',
-    })
-
-    await taskService.initialize()
-    return taskService
-}
-
-/**
- * Creates a feedUser object from the current logged-in user
- * @returns {Object} Feed user object
- */
-function createFeedUserFromStore() {
+function mapToLegacyTaskFormat(params) {
     const { loggedUser } = store.getState()
+
     return {
-        uid: loggedUser.uid,
-        id: loggedUser.uid,
-        creatorId: loggedUser.uid,
-        name: loggedUser.displayName || loggedUser.name || 'User',
-        email: loggedUser.email || '',
+        name: params.name,
+        description: params.description || '',
+        userId: params.userId || loggedUser.uid,
+        dueDate: params.dueDate || Date.now(),
+        isPrivate: params.isPrivate || false,
+        observersIds: params.observersIds || [],
+        estimations: params.estimations || null,
+        recurrence: params.recurrence || 'never',
+        parentId: params.parentId || null,
+        linkBack: params.linkBack || '',
+        genericData: params.genericData || null,
+        // Map any additional task properties
+        ...Object.fromEntries(
+            Object.entries(params).filter(
+                ([key]) => !['name', 'description', 'userId', 'projectId', 'feedUser'].includes(key)
+            )
+        ),
     }
 }
 
 /**
- * Simplified task creation function using TaskService
- * This demonstrates how existing frontend task creation can be unified
+ * Create task using original uploadNewTask function (PHASE 1 implementation)
+ * This ensures feeds work correctly while maintaining the interface expected by components
  *
  * @param {Object} params - Task creation parameters
  * @param {string} params.projectId - Project ID
@@ -66,71 +62,8 @@ function createFeedUserFromStore() {
  * @returns {Promise<Object>} Created task result
  */
 export async function createTaskWithService(params, options = {}) {
-    const { loggedUser } = store.getState()
-    const {
-        projectId,
-        name,
-        description = '',
-        userId = loggedUser.uid,
-        dueDate = Date.now(),
-        isPrivate = false,
-        observersIds = [],
-        estimations = null,
-        recurrence = 'never',
-        parentId = null,
-        linkBack = '',
-        genericData = null,
-        ...otherParams
-    } = params
+    const { projectId, linkBack = '', ...taskParams } = params
 
-    // Initialize TaskService
-    const taskService = await initializeFrontendTaskService()
-
-    // Create feed user
-    const feedUser = createFeedUserFromStore()
-
-    // Create task using unified service
-    const result = await taskService.createAndPersistTask(
-        {
-            name: name.trim(),
-            description,
-            userId,
-            projectId,
-            dueDate,
-            isPrivate,
-            observersIds,
-            estimations,
-            recurrence,
-            parentId,
-            linkBack,
-            genericData,
-            feedUser,
-            ...otherParams,
-        },
-        {
-            userId: loggedUser.uid,
-            projectId,
-        }
-    )
-
-    // Return result in the format expected by frontend
-    return {
-        id: result.taskId,
-        ...result.task,
-        success: result.success,
-        message: result.message,
-    }
-}
-
-/**
- * Enhanced task creation that preserves existing frontend functionality
- * This version includes all the complex logic from the original uploadNewTask
- *
- * @param {Object} params - Same parameters as original uploadNewTask
- * @param {Object} options - Same options as original uploadNewTask
- * @returns {Promise<Object>} Task creation result
- */
-export async function createTaskWithFullFeatures(params, options = {}) {
     const {
         awaitForTaskCreation = false,
         tryToGenerateBotAdvice = false,
@@ -138,81 +71,24 @@ export async function createTaskWithFullFeatures(params, options = {}) {
         notGenerateUpdates = false,
     } = options
 
-    // First create the basic task using TaskService
-    const basicResult = await createTaskWithService(params, {
-        notGenerateUpdates: true, // We'll handle feeds manually for now
-    })
+    // Map to legacy task format
+    const taskObject = mapToLegacyTaskFormat(taskParams)
 
-    // TODO: Add the complex frontend-specific logic here:
-    // - Bot advice generation (tryToGenerateTopicAdvice)
-    // - Mention task creation (createGenericTaskWhenMention)
-    // - Template project handling
-    // - Special sort index logic
-    // - Store state updates (storeLastAddedTaskId)
-    // - Event logging
-
-    if (tryToGenerateBotAdvice) {
-        console.log('Bot advice generation would be triggered here')
-        // TODO: Implement bot advice integration
-    }
-
-    if (!notGenerateMentionTasks) {
-        console.log('Mention task generation would be triggered here')
-        // TODO: Implement mention task integration
-    }
-
-    return basicResult
-}
-
-/**
- * Migration helper - wraps existing uploadNewTask to use TaskService internally
- * This allows gradual migration without breaking existing code
- */
-export async function migrateUploadNewTask(originalUploadNewTask) {
-    return async function (
+    // Use original uploadNewTask function to ensure feeds work
+    const result = await uploadNewTask(
         projectId,
-        task,
+        taskObject,
         linkBack,
         awaitForTaskCreation,
         tryToGenerateBotAdvice,
         notGenerateMentionTasks,
         notGenerateUpdates
-    ) {
-        try {
-            // Try new TaskService approach
-            return await createTaskWithFullFeatures(
-                {
-                    projectId,
-                    ...task,
-                    linkBack,
-                },
-                {
-                    awaitForTaskCreation,
-                    tryToGenerateBotAdvice,
-                    notGenerateMentionTasks,
-                    notGenerateUpdates,
-                }
-            )
-        } catch (error) {
-            console.warn('TaskService creation failed, falling back to original implementation:', error)
-            // Fallback to original implementation
-            return await originalUploadNewTask(
-                projectId,
-                task,
-                linkBack,
-                awaitForTaskCreation,
-                tryToGenerateBotAdvice,
-                notGenerateMentionTasks,
-                notGenerateUpdates
-            )
-        }
-    }
+    )
+
+    return result
 }
 
 export default {
-    initializeFrontendTaskService,
-    createFeedUserFromStore,
+    mapToLegacyTaskFormat,
     createTaskWithService,
-    createTaskWithFullFeatures,
-    migrateUploadNewTask,
 }

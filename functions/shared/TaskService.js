@@ -139,13 +139,6 @@ class TaskService {
 
         // Validate generated task ID
         if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
-            console.error('TaskService buildTask error: invalid generated taskId', {
-                taskId,
-                params_taskId: params.taskId,
-                generated_id: this.generateTaskId(),
-                hasIdGenerator: !!this.options.idGenerator,
-                hasDatabase: !!this.options.database,
-            })
             throw new Error(`Failed to generate valid task ID: "${taskId}"`)
         }
 
@@ -280,6 +273,18 @@ class TaskService {
                 const taskRef = this.options.database.collection(`items/${finalProjectId}/tasks`).doc(taskId)
 
                 await taskRef.set(task)
+
+                // Also persist feed data directly if available
+                if (feedData && this.options.enableFeeds) {
+                    try {
+                        const feedObjectRef = this.options.database.doc(
+                            `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
+                        )
+                        await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
+                    } catch (feedError) {
+                        console.error('Failed to persist feed object directly:', feedError)
+                    }
+                }
             } else {
                 // Batch write
                 const taskRef = this.options.database.collection(`items/${finalProjectId}/tasks`).doc(taskId)
@@ -288,10 +293,14 @@ class TaskService {
 
                 // Add feed data to batch if available
                 if (feedData && this.options.enableFeeds) {
-                    // The actual feed persistence would depend on the specific
-                    // feed system implementation in each environment
                     if (batch.feedObjects) {
-                        batch.feedObjects[taskId] = feedData.taskFeedObject
+                        // Store feed data with context needed for persistence
+                        batch.feedObjects[taskId] = {
+                            feedObject: feedData.taskFeedObject,
+                            projectId: finalProjectId,
+                            objectType: 'tasks',
+                            currentDateFormated: feedData.currentDateFormated,
+                        }
                     }
                 }
 
