@@ -132,6 +132,9 @@ export async function createTaskCreatedFeed(projectId, task, taskId, externalBat
     })
 
     const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+    if (!externalBatch && batch.setProjectContext) {
+        batch.setProjectContext(projectId)
+    }
     batch.feedObjects = { [taskId]: taskFeedObject }
 
     taskFeedObject.parentName = task.parentName ? task.parentName : ''
@@ -171,6 +174,9 @@ export async function createTaskToAnotherUserFeed(projectId, task, taskId, assig
     feed.assigneeId = assignee.uid
 
     const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+    if (!externalBatch && batch.setProjectContext) {
+        batch.setProjectContext(projectId)
+    }
     batch.feedObjects = { [taskId]: taskFeedObject }
 
     taskFeedObject.parentName = task.parentName ? task.parentName : ''
