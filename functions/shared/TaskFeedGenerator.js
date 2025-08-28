@@ -99,16 +99,17 @@ function generateTaskObjectModel(currentMilliseconds, task, taskId) {
         lastChangeDate: currentMilliseconds,
         taskId: taskId,
         name: task.extendedName || task.name,
-        assigneeEstimation: task.estimations ? task.estimations[OPEN_STEP] : 0,
+        assigneeEstimation: (task.estimations && task.estimations[OPEN_STEP]) || 0,
         recurrence: task.recurrence || 'never',
         isDone: Boolean(task.done),
         isDeleted: false,
-        privacy: task.isPrivate ? task.userId || task.userIds?.[0] : 'public',
+        privacy: task.isPrivate ? task.userId || task.userIds?.[0] || '' : 'public',
         linkBack: task.linkBack || '',
         comments: task.comments || [],
-        userId: task.userId || task.userIds?.[0],
+        userId: task.userId || task.userIds?.[0] || '',
         genericData: task.genericData || null,
-        isPublicFor: task.isPublicFor || (task.isPrivate ? [task.userId || task.userIds?.[0]] : [FEED_PUBLIC_FOR_ALL]),
+        isPublicFor:
+            task.isPublicFor || (task.isPrivate ? [task.userId || task.userIds?.[0] || ''] : [FEED_PUBLIC_FOR_ALL]),
         lockKey: task.lockKey || '',
     }
 }
