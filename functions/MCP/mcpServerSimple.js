@@ -39,9 +39,9 @@ function getBaseUrl() {
     const isProduction = inProductionEnvironment()
 
     if (isProduction) {
-        return process.env.MCP_BASE_URL_PROD
+        return 'https://alldonealeph.web.app'
     } else {
-        return process.env.MCP_BASE_URL_DEV
+        return 'https://alldonestaging.web.app'
     }
 }
 
