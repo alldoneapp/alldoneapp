@@ -1,0 +1,282 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EditMember component EditMember snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "#ffffff",
+        "borderColor": "#F1F3F4",
+        "borderRadius": 4,
+        "borderStyle": "solid",
+        "borderWidth": 1,
+        "elevation": 3,
+        "flex": 1,
+        "marginBottom": 16,
+        "marginLeft": -16,
+        "marginRight": -16,
+        "shadowColor": "rgba(0,0,0,0.08)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+      },
+      undefined,
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "flexDirection": "row",
+          "height": 56,
+          "overflow": "hidden",
+        },
+      ]
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "left": 23,
+            "margin": 0,
+            "padding": 0,
+            "position": "absolute",
+            "top": 15,
+          },
+          undefined,
+        ]
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+    <TextInput
+      allowFontScaling={true}
+      autoFocus={true}
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      onKeyPress={[Function]}
+      placeholder="Type an email to send invitation"
+      placeholderTextColor="#8A94A6"
+      rejectResponderTermination={true}
+      returnKeyType="done"
+      style={
+        Array [
+          Object {
+            "borderTopLeftRadius": 4,
+            "borderTopRightRadius": 4,
+            "bottom": -1,
+            "color": "#04142F",
+            "flexWrap": "wrap",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 16,
+            "left": -1,
+            "letterSpacing": 0.32,
+            "lineHeight": 24,
+            "paddingBottom": 16,
+            "paddingLeft": 68,
+            "paddingRight": 16,
+            "paddingTop": 16,
+            "position": "absolute",
+            "right": -1,
+            "textAlignVertical": "top",
+            "top": -1,
+            "width": "101%",
+          },
+          undefined,
+        ]
+      }
+      underlineColorAndroid="transparent"
+    />
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderStyle": "solid",
+        "borderTopColor": "#E7ECEF",
+        "borderTopWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "paddingHorizontal": 9,
+        "paddingVertical": 8,
+      }
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+        ]
+      }
+    >
+      <View
+        style={
+          Object {
+            "marginRight": 32,
+          }
+        }
+      />
+    </View>
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+          Object {
+            "justifyContent": "flex-end",
+          },
+        ]
+      }
+    >
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#EAF0F5",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Cancel
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#0D55CF",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Invite
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

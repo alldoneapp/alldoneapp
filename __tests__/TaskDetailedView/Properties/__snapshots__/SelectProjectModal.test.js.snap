@@ -1,0 +1,161 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SelectProjectModal component SelectProjectModal snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "flex": 1,
+    }
+  }
+>
+  <RCTScrollView
+    onContentSizeChange={[Function]}
+    onLayout={[Function]}
+    onScroll={[Function]}
+    scrollEventThrottle={16}
+    showsVerticalScrollIndicator={false}
+    style={
+      Array [
+        Object {
+          "backgroundColor": "#091540",
+          "borderRadius": 4,
+          "elevation": 3,
+          "flexDirection": "column",
+          "paddingLeft": 16,
+          "paddingRight": 8,
+          "paddingVertical": 8,
+          "shadowColor": "rgba(78, 93, 120, 0.56)",
+          "shadowOffset": Object {
+            "height": 4,
+            "width": 0,
+          },
+          "shadowOpacity": 1,
+          "shadowRadius": 16,
+        },
+        Object {
+          "maxHeight": NaN,
+        },
+      ]
+    }
+  >
+    <View>
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "flexDirection": "column",
+              "marginTop": 8,
+            }
+          }
+        >
+          <Text
+            style={
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 18,
+                  "lineHeight": 26,
+                },
+                Object {
+                  "color": "white",
+                },
+              ]
+            }
+          >
+            Move task
+          </Text>
+          <Text
+            style={
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+              ]
+            }
+          >
+            Select the project this task will move to
+          </Text>
+        </View>
+        <View
+          style={
+            Object {
+              "flexDirection": "row",
+              "height": 40,
+              "justifyContent": "flex-end",
+              "marginLeft": "auto",
+              "width": 40,
+            }
+          }
+        >
+          <RNGestureHandlerButton
+            collapsable={false}
+            onGestureEvent={[Function]}
+            onGestureHandlerEvent={[Function]}
+            onGestureHandlerStateChange={[Function]}
+            onHandlerStateChange={[Function]}
+            rippleColor={0}
+            style={
+              Array [
+                Object {
+                  "overflow": "hidden",
+                },
+                undefined,
+              ]
+            }
+          >
+            <View
+              accessible={true}
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 24,
+                  "justifyContent": "center",
+                  "opacity": 1,
+                  "width": 24,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </RNGestureHandlerButton>
+        </View>
+      </View>
+      <View
+        style={
+          Object {
+            "flexDirection": "column",
+            "marginTop": 20,
+          }
+        }
+      />
+    </View>
+  </RCTScrollView>
+</View>
+`;

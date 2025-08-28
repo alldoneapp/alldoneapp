@@ -1,0 +1,11 @@
+const FEED_USER_OBJECT_TYPE = 'user'
+const FEED_CONTACT_OBJECT_TYPE = 'contact'
+const FEED_PROJECT_OBJECT_TYPE = 'project'
+const FEED_TASK_OBJECT_TYPE = 'task'
+
+module.exports = {
+    FEED_USER_OBJECT_TYPE,
+    FEED_CONTACT_OBJECT_TYPE,
+    FEED_PROJECT_OBJECT_TYPE,
+    FEED_TASK_OBJECT_TYPE,
+}

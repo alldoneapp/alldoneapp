@@ -1,0 +1,44 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`UserItem component UserItem snapshot test should render correctly 1`] = `
+<userItem
+  navigation={
+    Object {
+      "closeDrawer": [Function],
+    }
+  }
+  tasksAmount={10}
+  user={
+    UserItem {
+      "_isMounted": false,
+      "context": undefined,
+      "firstFetch": true,
+      "onPress": [Function],
+      "onTaskEvent": [Function],
+      "props": Object {
+        "user": Object {
+          "displayName": "Jhon Doe",
+          "photoURL": "https://dummy.com/dummy.png",
+          "uid": "1",
+        },
+      },
+      "refs": Object {},
+      "startWatchUserTasks": [Function],
+      "state": Object {
+        "currentUserId": undefined,
+        "hiddenSideMenuUser": true,
+        "loggedUserId": undefined,
+        "searchText": "",
+        "unsubscribe": [Function],
+      },
+      "updateState": [Function],
+      "updater": Object {
+        "enqueueForceUpdate": [Function],
+        "enqueueReplaceState": [Function],
+        "enqueueSetState": [Function],
+        "isMounted": [Function],
+      },
+    }
+  }
+/>
+`;

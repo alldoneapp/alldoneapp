@@ -1,0 +1,200 @@
+.ql-textInputContainer {
+    padding-right: 0px !important;
+    padding-bottom: 0px !important;
+    width: 100% !important;
+    font-family: Roboto-Regular !important;
+}
+
+.ql-textInputContainer > .ql-editor {
+    overflow: hidden;
+}
+
+.ql-textInputContainer > .ql-editor > p {
+    line-height: 34px;
+}
+
+.ql-textInputContainer > .ql-editor > p::content {
+    position: relative;
+    bottom: 0;
+}
+
+.ql-textInputContainer > .ql-editor .ql-url,
+.ql-textInputContainer > .ql-editor .ql-email,
+.ql-textInputContainer > .ql-editor .ql-hashtag {
+    position: relative;
+    top: 2px;
+}
+
+.ql-textInputContainer > .ql-editor .ql-mention {
+    position: relative;
+    top: 2.7px;
+}
+
+.ql-textInputContainer > .ql-editor .ql-mention[userid='0'] {
+    position: relative;
+    top: 2px;
+}
+
+.ql-textInputContainer > .ql-editor .ql-url div > span:first-of-type,
+.ql-textInputContainer > .ql-editor .ql-email div > span:first-of-type,
+.ql-textInputContainer > .ql-editor .ql-hashtag div > span:first-of-type,
+.ql-textInputContainer > .ql-editor .ql-mention div > span:first-of-type {
+    margin-top: 0;
+}
+
+.ql-textInputContainer > .ql-editor.ql-blank::before {
+    top: 5px;
+    left: 0 !important;
+    right: 15px !important;
+    color: #8a94a6 !important;
+    font-style: normal !important;
+    font-weight: normal !important;
+    line-height: 24px !important;
+    letter-spacing: 0.02em !important;
+}
+
+.ql-taskTextInputContainer > .ql-editor.ql-blank::before {
+    font-size: 16px !important;
+}
+
+.ql-subtaskTextInputContainer > .ql-editor.ql-blank::before {
+    font-size: 14px !important;
+}
+
+.ql-textInputEditor {
+    height: 100%;
+    width: 100%;
+    overflow: auto;
+    margin-top: 0px !important;
+    padding: 0px !important;
+    line-height: 24px !important;
+}
+
+.ql-clipboard {
+    -webkit-user-select: text;
+}
+
+.ql-textInputEditorSingleLine {
+    overflow-x: visible !important;
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+.ql-textInputEditorSingleLine > p {
+    white-space: pre !important;
+}
+
+.ql-textInputEditorSingleLine::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome, Safari and Opera */
+}
+
+body::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome, Safari and Opera */
+}
+
+body {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+.ql-taskTextInputEditor {
+    font-size: 16px !important;
+}
+
+.ql-goalTextInputEditor {
+    color: #04142f !important;
+}
+
+.ql-subtaskTextInputEditor {
+    font-size: 14px !important;
+    letter-spacing: 0.02em !important;
+    color: #04142f !important;
+    word-spacing: 0.05em !important;
+}
+
+.ql-modalTextInputEditor {
+    color: #ffffff !important;
+    caret-color: #ffffff !important;
+}
+
+.ql-modalTextInputEditorModern {
+    color: #007FFF !important;
+    caret-color: #007FFF !important;
+}
+
+.ql-newTopicModalTextInputEditor {
+    min-height: 80px !important;
+}
+
+.ql-createTaskModalTextInputEditor {
+    min-height: 38px !important;
+}
+
+.ql-createSubtaskModalTextInputContainer > .ql-editor.ql-blank::before {
+    font-size: 14px !important;
+    margin-top: 0.5px !important;
+    letter-spacing: 0.255px !important;
+    word-spacing: 0.03em !important;
+}
+
+.ql-createSubtaskModalTextInputEditor {
+    min-height: 38px !important;
+    font-size: 14px !important;
+    letter-spacing: 0.02em !important;
+    color: #ffffff !important;
+    word-spacing: 0.05em !important;
+    margin-top: 1px !important;
+}
+
+.ql-createDefaultProjectTextInputContainer > .ql-editor.ql-blank::before {
+    color: #6c8fc9 !important;
+}
+
+.ql-createModernProjectTextInputContainer > .ql-editor.ql-blank::before {
+    color: #B7BDC8 !important;
+}
+
+.ql-inviteDefaultTextInputContainer > .ql-editor.ql-blank::before {
+    color: #ffffff !important;
+    font-size: 14px !important;
+    letter-spacing: 0.023em !important;
+}
+
+.ql-inviteModernTextInputEditor > .ql-editor.ql-blank::before {
+    color: #4E5D78 !important;
+    font-size: 14px !important;
+    letter-spacing: 0.023em !important;
+}
+
+.ql-inviteDefaultTextInputEditor {
+    color: #ffffff;
+    font-size: 14px !important;
+    letter-spacing: 0.023em !important;
+}
+
+.ql-inviteModernTextInputEditor {
+    color: #4E5D78;
+    font-size: 14px !important;
+    letter-spacing: 0.023em !important;
+}
+
+.ql-searchTextInputContainer > .ql-editor.ql-blank::before {
+    top: 4.5px !important;
+    color: #c6cdd2 !important;
+}
+
+@media only screen and (min-width: 1098px) {
+    .ql-textInputContainer > .ql-editor.ql-blank::before {
+        padding-left: 0;
+    }
+}
+@media only screen and (max-width: 1328px) {
+    .ql-textInputContainer > .ql-editor.ql-blank::before {
+        padding-left: 0;
+    }
+}
+@media only screen and (max-width: 819px) {
+    .ql-textInputContainer > .ql-editor.ql-blank::before {
+        left: -18px;
+    }
+}

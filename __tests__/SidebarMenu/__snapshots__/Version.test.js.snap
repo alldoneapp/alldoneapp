@@ -1,0 +1,121 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Version component Version snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 48,
+      "paddingHorizontal": 24,
+      "width": "100%",
+    }
+  }
+>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 14,
+          "letterSpacing": 0.32,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#FFFFFF",
+          "flex": 1,
+          "opacity": 0.4,
+        },
+      ]
+    }
+  >
+    Alldone.app v
+    5
+    .
+    3
+  </Text>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignSelf": "flex-end",
+          "backgroundColor": "#0C66FF",
+          "borderRadius": 12,
+          "height": 24,
+          "justifyContent": "center",
+          "minWidth": 64,
+          "opacity": 1,
+          "paddingLeft": 4,
+          "paddingRight": 10,
+        }
+      }
+      testID="refreshButton"
+    >
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#FFFFFF",
+                "fontFamily": "alldone",
+                "fontSize": 16,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 14,
+                "letterSpacing": 0.16,
+                "lineHeight": 22,
+              },
+              Object {
+                "color": "#FFFFFF",
+                "fontFamily": "Roboto-regular",
+                "fontWeight": "500",
+                "marginLeft": 6,
+              },
+            ]
+          }
+        >
+          v
+          5
+          .
+          3
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

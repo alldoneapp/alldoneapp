@@ -1,0 +1,53 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Show More Button component Task Points Button snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "flex": 1,
+        "flexDirection": "row",
+        "justifyContent": "center",
+      },
+      Object {
+        "marginBottom": 0,
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "opacity": 1,
+        "padding": 8,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#B7BDC8",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;

@@ -1,0 +1,1189 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EditContact component should render correctly when is a new contact 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "#ffffff",
+        "borderColor": "#F1F3F4",
+        "borderRadius": 4,
+        "borderStyle": "solid",
+        "borderWidth": 1,
+        "elevation": 3,
+        "flex": 1,
+        "marginBottom": 16,
+        "marginLeft": -16,
+        "marginRight": -16,
+        "shadowColor": "rgba(0,0,0,0.08)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+      },
+      undefined,
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "flexDirection": "row",
+          "height": 56,
+          "overflow": "hidden",
+        },
+      ]
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "left": 27,
+            "margin": 0,
+            "padding": 0,
+            "position": "absolute",
+            "top": 15,
+          },
+          undefined,
+        ]
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+    <TextInput
+      allowFontScaling={true}
+      autoFocus={true}
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      onKeyPress={[Function]}
+      placeholder="Type email or name to add person"
+      placeholderTextColor="#8A94A6"
+      rejectResponderTermination={true}
+      returnKeyType="done"
+      style={
+        Array [
+          Object {
+            "borderTopLeftRadius": 4,
+            "borderTopRightRadius": 4,
+            "color": "#04142F",
+            "flex": 1,
+            "flexWrap": "wrap",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 16,
+            "letterSpacing": 0.32,
+            "lineHeight": 24,
+            "marginLeft": 52,
+            "paddingBottom": 16,
+            "paddingLeft": 20,
+            "paddingRight": 16,
+            "paddingTop": 16,
+            "textAlignVertical": "top",
+          },
+          undefined,
+        ]
+      }
+      underlineColorAndroid="transparent"
+      value=""
+    />
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderStyle": "solid",
+        "borderTopColor": "#E7ECEF",
+        "borderTopWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "paddingHorizontal": 9,
+        "paddingVertical": 8,
+      }
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+        ]
+      }
+    >
+      <View
+        style={
+          Object {
+            "marginRight": 32,
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={false}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "alignSelf": "flex-start",
+              "backgroundColor": "#EAF0F5",
+              "borderRadius": 4,
+              "flexDirection": "row",
+              "flexWrap": "nowrap",
+              "height": 40,
+              "justifyContent": "center",
+              "marginRight": 4,
+              "maxHeight": 40,
+              "minHeight": 40,
+              "opacity": 1,
+              "paddingLeft": 12,
+              "paddingRight": 16,
+              "paddingVertical": 8,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+          <Text
+            numberOfLines={1}
+            style={
+              Array [
+                Array [
+                  Object {
+                    "alignSelf": "center",
+                    "color": "#FFFFFF",
+                    "flexWrap": "nowrap",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 14,
+                    "letterSpacing": 0.8,
+                    "lineHeight": 16,
+                    "margin": 0,
+                    "paddingHorizontal": 0,
+                    "paddingVertical": 0,
+                  },
+                  Object {
+                    "color": "#04142F",
+                  },
+                  Object {},
+                ],
+                Object {
+                  "marginLeft": 12,
+                },
+              ]
+            }
+          >
+            Open
+          </Text>
+        </View>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          Info
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          Picture
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          Public
+        </Text>
+      </View>
+    </View>
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+          Object {
+            "justifyContent": "flex-end",
+          },
+        ]
+      }
+    >
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#EAF0F5",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Cancel
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#0D55CF",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Ok
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`EditContact component should render correctly when is not a new contact 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "#ffffff",
+        "borderColor": "#F1F3F4",
+        "borderRadius": 4,
+        "borderStyle": "solid",
+        "borderWidth": 1,
+        "elevation": 3,
+        "flex": 1,
+        "marginBottom": 16,
+        "marginLeft": -16,
+        "marginRight": -16,
+        "shadowColor": "rgba(0,0,0,0.08)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+      },
+      undefined,
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "flexDirection": "row",
+          "height": 56,
+          "overflow": "hidden",
+        },
+      ]
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "left": 27,
+            "margin": 0,
+            "padding": 0,
+            "position": "absolute",
+            "top": 15,
+          },
+          undefined,
+        ]
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#007FFF",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+    <TextInput
+      allowFontScaling={true}
+      autoFocus={true}
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      onKeyPress={[Function]}
+      placeholder="Type email or name to add person"
+      placeholderTextColor="#8A94A6"
+      rejectResponderTermination={true}
+      returnKeyType="done"
+      style={
+        Array [
+          Object {
+            "borderTopLeftRadius": 4,
+            "borderTopRightRadius": 4,
+            "color": "#04142F",
+            "flex": 1,
+            "flexWrap": "wrap",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 16,
+            "letterSpacing": 0.32,
+            "lineHeight": 24,
+            "marginLeft": 52,
+            "paddingBottom": 16,
+            "paddingLeft": 20,
+            "paddingRight": 16,
+            "paddingTop": 16,
+            "textAlignVertical": "top",
+          },
+          undefined,
+        ]
+      }
+      underlineColorAndroid="transparent"
+    />
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderStyle": "solid",
+        "borderTopColor": "#E7ECEF",
+        "borderTopWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "paddingHorizontal": 9,
+        "paddingVertical": 8,
+      }
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+        ]
+      }
+    >
+      <View
+        style={
+          Object {
+            "marginRight": 32,
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={false}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "alignSelf": "flex-start",
+              "backgroundColor": "#EAF0F5",
+              "borderRadius": 4,
+              "flexDirection": "row",
+              "flexWrap": "nowrap",
+              "height": 40,
+              "justifyContent": "center",
+              "marginRight": 4,
+              "maxHeight": 40,
+              "minHeight": 40,
+              "opacity": 1,
+              "paddingLeft": 12,
+              "paddingRight": 16,
+              "paddingVertical": 8,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+          <Text
+            numberOfLines={1}
+            style={
+              Array [
+                Array [
+                  Object {
+                    "alignSelf": "center",
+                    "color": "#FFFFFF",
+                    "flexWrap": "nowrap",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 14,
+                    "letterSpacing": 0.8,
+                    "lineHeight": 16,
+                    "margin": 0,
+                    "paddingHorizontal": 0,
+                    "paddingVertical": 0,
+                  },
+                  Object {
+                    "color": "#04142F",
+                  },
+                  Object {},
+                ],
+                Object {
+                  "marginLeft": 12,
+                },
+              ]
+            }
+          >
+            Open
+          </Text>
+        </View>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          Info
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "borderRadius": 100,
+              "height": 24,
+              "overflow": "hidden",
+              "width": 24,
+            }
+          }
+        >
+          <Image
+            style={
+              Object {
+                "height": 24,
+                "width": 24,
+              }
+            }
+          />
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          Picture
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          Public
+        </Text>
+      </View>
+    </View>
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+          Object {
+            "justifyContent": "flex-end",
+          },
+        ]
+      }
+    >
+      <View
+        accessible={true}
+        focusable={false}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#EAF0F5",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Cancel
+        </Text>
+      </View>
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#0D55CF",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Ok
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

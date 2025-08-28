@@ -1,0 +1,28 @@
+<svg width="2544" height="737" viewBox="0 0 2544 737" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0 241V0L2004 0L905.65 725.817C888.317 735.83 866.958 735.83 849.625 725.817L0 241Z" fill="url(#paint0_radial)"/>
+<path opacity="0.08" d="M294.123 301.936C303.175 300.112 310.808 308.77 307.862 317.522L297.919 347.058C294.973 355.81 283.657 358.09 277.552 351.163L256.944 327.784C250.838 320.857 254.521 309.918 263.573 308.093L294.123 301.936Z" fill="#ADF0D9"/>
+<path opacity="0.08" d="M1309.12 80.8744C1318.18 79.0501 1325.81 87.7089 1322.86 96.4604L1312.92 125.997C1309.97 134.748 1298.66 137.029 1292.55 130.101L1271.94 106.722C1265.84 99.7953 1269.52 88.856 1278.57 87.0316L1309.12 80.8744Z" fill="#ADF0D9"/>
+<circle opacity="0.08" cx="300" cy="337.062" r="11" fill="#06EEC1"/>
+<circle opacity="0.08" cx="1315" cy="116" r="11" fill="#06EEC1"/>
+<circle opacity="0.08" cx="286.5" cy="296.562" r="23.5" fill="#06EEC1"/>
+<circle opacity="0.08" cx="100" cy="57" r="29" fill="#06EEC1"/>
+<circle opacity="0.08" cx="462.5" cy="388.562" r="17.5" fill="#06EEC1"/>
+<circle opacity="0.08" cx="497.5" cy="220.5" r="27.5" fill="#06EEC1"/>
+<circle opacity="0.08" cx="180.5" cy="46.5" r="17.5" fill="#06EEC1"/>
+<circle opacity="0.08" cx="738.5" cy="582.345" r="40.5" fill="#1DE686"/>
+<rect opacity="0.08" x="705.582" y="159.062" width="83.1654" height="83.1654" rx="12" transform="rotate(30 705.582 159.062)" fill="#FFB59E"/>
+<rect opacity="0.08" x="1018.76" y="86" width="41.5106" height="41.5106" rx="12" transform="rotate(30 1018.76 86)" fill="#FFB59E"/>
+<rect opacity="0.08" x="435.59" y="21" width="65.4651" height="65.4651" rx="12" transform="rotate(66.3814 435.59 21)" fill="#FFB59E"/>
+<rect opacity="0.08" x="116.98" y="100" width="29.01" height="29.01" rx="12" transform="rotate(66.3814 116.98 100)" fill="#FFB59E"/>
+<circle opacity="0.08" cx="1078.5" cy="307.281" r="40.5" fill="#1DE686"/>
+<path opacity="0.08" d="M1748.02 36.4453C1760.06 34.0186 1770.21 45.5361 1766.29 57.1767L1753.07 96.4639C1749.15 108.105 1734.1 111.138 1725.98 101.924L1698.57 70.8267C1690.44 61.6127 1695.34 47.0619 1707.38 44.6352L1748.02 36.4453Z" fill="#ADF0D9"/>
+<circle opacity="0.08" cx="1664.5" cy="29.5" r="17.5" fill="#06EEC1"/>
+<circle opacity="0.08" cx="1817.5" cy="57.5" r="10.5" fill="#06EEC1"/>
+<defs>
+<radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(984.972 82.139) rotate(90) scale(601.897 2620.69)">
+<stop stop-color="#0D55CF"/>
+<stop offset="0.711412" stop-color="#308CF5"/>
+<stop offset="1" stop-color="#2D95FF"/>
+</radialGradient>
+</defs>
+</svg>

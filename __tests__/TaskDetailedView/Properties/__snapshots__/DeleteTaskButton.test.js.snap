@@ -1,0 +1,69 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DeleteTaskButton component DeleteTaskButton snapshot test should render correctly 1`] = `
+<View
+  accessible={false}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "borderColor": "#E00000",
+      "borderRadius": 4,
+      "borderWidth": 2,
+      "flexDirection": "row",
+      "opacity": 1,
+      "paddingHorizontal": 16,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "marginRight": 14,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#E00000",
+            "fontFamily": "alldone",
+            "fontSize": 20,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      Array [
+        Object {
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "fontStyle": "normal",
+          "letterSpacing": 0.8,
+          "lineHeight": 14,
+        },
+        Object {
+          "color": "#E00000",
+        },
+      ]
+    }
+  >
+    Delete Task
+  </Text>
+</View>
+`;

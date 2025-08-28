@@ -1,0 +1,121 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`WriteComment component WriteComment snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 42,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "marginLeft": 6,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 20,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "borderColor": "#C6CDD2",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 42,
+        "justifyContent": "space-between",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <TextInput
+      allowFontScaling={true}
+      blurOnSubmit={true}
+      multiline={true}
+      onBlur={[Function]}
+      onChangeText={[Function]}
+      onContentSizeChange={[Function]}
+      onSubmitEditing={[Function]}
+      placeholder="Write an update"
+      placeholderTextColor="#8A94A6"
+      rejectResponderTermination={true}
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 16,
+            "letterSpacing": 0.32,
+            "lineHeight": 24,
+          },
+          Object {
+            "flex": 1,
+            "paddingLeft": 16,
+            "paddingRight": 32,
+            "paddingVertical": 8,
+          },
+        ]
+      }
+      underlineColorAndroid="transparent"
+    />
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "left": "100%",
+          "opacity": 1,
+          "position": "absolute",
+          "top": "25%",
+          "transform": Array [
+            Object {
+              "translateX": -28,
+            },
+          ],
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 22,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

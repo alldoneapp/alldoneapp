@@ -1,0 +1,48 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Detailed Project Title component Detailed Project Title snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "flex": 1,
+      "height": 64,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "backgroundColor": "white",
+        "height": 32,
+      }
+    }
+  />
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "white",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 32,
+        "justifyContent": "flex-start",
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 24,
+            "lineHeight": 32,
+          },
+        ]
+      }
+    >
+      My Project
+    </Text>
+  </View>
+</View>
+`;

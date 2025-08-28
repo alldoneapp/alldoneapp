@@ -1,0 +1,43 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DoneTasksView component DoneTasksView snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "paddingHorizontal": 56,
+      },
+      undefined,
+    ]
+  }
+/>
+`;
+
+exports[`DoneTasksView component Function updateState snapshot test should execute and render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "paddingHorizontal": 56,
+      },
+      undefined,
+    ]
+  }
+/>
+`;
+
+exports[`DoneTasksView component Function updateState snapshot test should execute and render correctly 2`] = `
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "paddingHorizontal": 56,
+      },
+      undefined,
+    ]
+  }
+/>
+`;

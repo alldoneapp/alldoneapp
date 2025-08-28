@@ -1,0 +1,107 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProjectModalItem component ProjectModalItem snapshot test should render correctly 1`] = `
+<View>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+          },
+          false,
+        ]
+      }
+    >
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "paddingLeft": 4,
+            "paddingVertical": 16,
+          }
+        }
+      >
+        <View
+          style={
+            Array [
+              Object {
+                "borderRadius": 100,
+                "height": 16,
+                "marginRight": 12,
+                "width": 16,
+              },
+              Object {
+                "backgroundColor": "the same with colors",
+              },
+            ]
+          }
+        />
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Object {
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 16,
+                "letterSpacing": 0.16,
+                "lineHeight": 24,
+              },
+              Object {
+                "color": "#ffffff",
+              },
+              false,
+            ]
+          }
+        >
+          Running out of cool names
+        </Text>
+      </View>
+      <View
+        style={
+          Array [
+            Object {
+              "marginLeft": "auto",
+              "marginRight": 8,
+            },
+          ]
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "white",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+      </View>
+    </View>
+  </View>
+</View>
+`;

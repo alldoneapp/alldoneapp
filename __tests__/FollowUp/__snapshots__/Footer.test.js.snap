@@ -1,0 +1,71 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Footer component Footer snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 72,
+      "justifyContent": "center",
+      "paddingTop": 16,
+    }
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "alignSelf": "flex-start",
+        "backgroundColor": "#0D55CF",
+        "borderRadius": 4,
+        "flexDirection": "row",
+        "flexWrap": "nowrap",
+        "height": 40,
+        "justifyContent": "center",
+        "maxHeight": 40,
+        "minHeight": 40,
+        "opacity": 1,
+        "paddingHorizontal": 16,
+        "paddingVertical": 8,
+      }
+    }
+  >
+    <Text
+      numberOfLines={1}
+      style={
+        Array [
+          Object {
+            "alignSelf": "center",
+            "color": "#FFFFFF",
+            "flexWrap": "nowrap",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.8,
+            "lineHeight": 16,
+            "margin": 0,
+            "paddingHorizontal": 8,
+            "paddingVertical": 0,
+          },
+          Object {
+            "color": "#ffffff",
+          },
+          Object {},
+        ]
+      }
+    >
+      some text
+    </Text>
+  </View>
+</View>
+`;

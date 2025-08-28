@@ -1,0 +1,7 @@
+node_modules/
+service_accounts/
+.env
+.runtimeconfig.json
+env_functions.json
+env_functions_dev.json
+env_functions_master.json

@@ -1,0 +1,48 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CloseButton component CloseButton snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "position": "absolute",
+      "right": 13,
+      "top": 13,
+    }
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "justifyContent": "center",
+        "opacity": 1,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;

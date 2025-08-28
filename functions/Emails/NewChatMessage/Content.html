@@ -1,0 +1,93 @@
+<div class="message-container">
+    <div class="message-header">
+        <table border="0">
+            <tr style="vertical-align: middle;">
+                <td style="vertical-align: top;">
+                    <a class="header-link" style="color: #ffffff;" target="_blank" href="{{ appUrl }}">
+                        <img
+                            class="header-logo"
+                            src="{{ appUrl }}icons/white/logo-icon.png"
+                            alt=""
+                            width="24"
+                            height="24"
+                        />
+                    </a>
+                </td>
+                <td class="header-name">
+                    <a class="header-link" style="color: #ffffff;" target="_blank" href="{{ appUrl }}">
+                        Alldone.app
+                    </a>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="message-body message-body-no-border">
+        <div class="topic">
+            <table border="0">
+                <tr>
+                    <td style="vertical-align: top;">
+                        <img class="topic-icon" src="{{ appUrl }}icons/grey/bell.png" alt="" width="24" height="24" />
+                    </td>
+                    <td class="topic-text">
+                        New message from something you follow on
+                        <a class="topic-text link" target="_blank" href="{{ appUrl }}">
+                            Alldone.app
+                        </a>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="project-header">
+            <table border="0">
+                <tr>
+                    <td style="vertical-align: top;">
+                        <img
+                            class="project-header-icon"
+                            src="{{projectUrl appUrl projectColor 'false' }}"
+                            alt=""
+                            width="24"
+                            height="24"
+                        />
+                    </td>
+                    <td class="project-header-text">
+                        {{ projectName }}
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="feed-body">
+            <div id="feed-body-content">
+                <table border="0" style="margin-bottom: 24px;">
+                    <tr>
+                        <td style="vertical-align: top; display: table-cell;">
+                            <img
+                                class="common-feed-icon"
+                                src="{{ appUrl }}icons/grey/message-circle.png"
+                                alt=""
+                                width="24"
+                                height="24"
+                            />
+                        </td>
+                        <td class="common-feed-name task-feed-name">{{{richText objectName 'size_title' }}}</td>
+                    </tr>
+                </table>
+
+                {{{ messageSection }}}
+            </div>
+        </div>
+
+        <div class="feed-time" style="margin-top: 24px;">On {{ messageDate }}</div>
+
+        <div class="feed-link">
+            <div><span>Link to the chat</span></div>
+            <p>
+                <a id="feed-link-a" target="_blank" href="{{ appUrl }}{{ chatLink }}">
+                    {{ appUrl }}{{ chatLink }}
+                </a>
+            </p>
+        </div>
+    </div>
+</div>

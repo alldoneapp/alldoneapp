@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProjectInvitationPopup component Function hidePopup snapshot test Should execute and render correctly 1`] = `null`;
+
+exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test Should render correctly 1`] = `null`;

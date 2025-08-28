@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`MessagePopup component Function hidePopup snapshot test Should execute and render correctly 1`] = `null`;
+
+exports[`MessagePopup component MessagePopup snapshot test Should render correctly 1`] = `null`;

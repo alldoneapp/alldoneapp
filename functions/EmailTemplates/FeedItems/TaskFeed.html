@@ -1,0 +1,157 @@
+<div>
+    <table border="0">
+        <tr>
+            <td class="common-feed-owner-time">{{ feedTime }}</td>
+            <td style="vertical-align: top;">
+                {{#if feedOwnerPhotoURL }}
+                <img class="common-feed-owner-avatar" src="{{ feedOwnerPhotoURL }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+            </td>
+            {{#if feedOwnerName }}
+            <td class="common-feed-action-text">{{ feedOwnerName }}&nbsp;</td>
+            {{/if }}
+            <td class="common-feed-action-text">{{ feedAction }}</td>
+
+            <!-- karma point -->
+            {{#if feedKarmaUserName }}
+            <td style="vertical-align: top;">
+                {{#if feedKarmaUserPhoto }}
+                <img class="common-feed-owner-avatar" src="{{ feedKarmaUserPhoto }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+            </td>
+            <td class="common-feed-action-text">{{ feedKarmaUserName }} from Feed entry</td>
+            {{/if }}
+
+            <!-- created task by another user -->
+            {{#if feedAssigneeName }}
+            <td style="vertical-align: top;">
+                {{#if feedAssigneeAvatarURL }}
+                <img class="common-feed-owner-avatar" src="{{ feedAssigneeAvatarURL }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+            </td>
+            <td class="common-feed-action-text">{{ feedAssigneeName }}</td>
+            {{/if }}
+
+            <!-- photo changes -->
+            {{#ifCond feedPrevName '&&' feedCurrName }}
+            <td style="vertical-align: top;">
+                <!-- OPEN -->
+                {{#ifCond feedPrevName '===' 'open' }}
+                <img
+                    class="task-feed-owner-icon"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{else}}
+                <!-- DONE -->
+                {{#ifCond feedPrevName '===' 'done' }}
+                <img
+                    class="task-feed-owner-icon"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{else}}
+                <!-- NORMAL -->
+                {{#if feedPrevPhoto }}
+                <img class="common-feed-owner-avatar" src="{{ feedPrevPhoto }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+                <!-- /DONE -->
+                {{/ifCond }}
+                <!-- /OPEN -->
+                {{/ifCond }}
+            </td>
+            <td class="common-feed-action-text">&nbsp;{{ feedPrevName }}</td>
+            <td class="common-feed-action-text">&nbsp;to&nbsp;</td>
+            <td style="vertical-align: top;">
+                <!-- OPEN -->
+                {{#ifCond feedCurrName '===' 'open' }}
+                <img
+                    class="task-feed-owner-icon"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{else}}
+                <!-- DONE -->
+                {{#ifCond feedCurrName '===' 'done' }}
+                <img
+                    class="task-feed-owner-icon"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{else}}
+                <!-- NORMAL -->
+                {{#if feedCurrPhoto }}
+                <img class="common-feed-owner-avatar" src="{{ feedCurrPhoto }}" alt="" width="20" height="20" />
+                {{else}}
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{ appUrl }}icons/Generic-User24px.png"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+                {{/if }}
+                <!-- /DONE -->
+                {{/ifCond }}
+                <!-- /OPEN -->
+                {{/ifCond }}
+            </td>
+            <td class="common-feed-action-text">&nbsp;{{ feedCurrName }}</td>
+            {{/ifCond }}
+
+            <!-- move from project -->
+            {{#if feedTargetProjectName }}
+            <td style="vertical-align: top;">
+                <img
+                    class="common-feed-owner-avatar"
+                    src="{{projectUrl appUrl feedTargetProjectColor 'false' }}"
+                    alt=""
+                    width="20"
+                    height="20"
+                />
+            </td>
+            <td class="common-feed-action-text">{{ feedTargetProjectName }}</td>
+            {{/if }}
+        </tr>
+    </table>
+</div>

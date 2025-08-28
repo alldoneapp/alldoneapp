@@ -1,0 +1,151 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AttachmentsTag component AttachmentsTag snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "alignSelf": "flex-start",
+        "backgroundColor": "#E7ECEF",
+        "borderRadius": 12,
+        "flexDirection": "row",
+        "height": 24,
+      },
+      undefined,
+    ]
+  }
+>
+  <Image
+    source={
+      Object {
+        "uri": "https://asdas",
+      }
+    }
+    style={
+      Object {
+        "borderRadius": 100,
+        "height": 20,
+        "marginLeft": 2,
+        "marginRight": 4,
+        "width": 20,
+      }
+    }
+  />
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+          "marginRight": 14.67,
+        },
+      ]
+    }
+  >
+    some text
+  </Text>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "marginRight": 4.67,
+        "opacity": 1,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`AttachmentsTag component AttachmentsTag snapshot test should render correctly 2`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "alignSelf": "flex-start",
+        "backgroundColor": "#E7ECEF",
+        "borderRadius": 12,
+        "flexDirection": "row",
+        "height": 24,
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Object {
+        "alignSelf": "center",
+        "flexDirection": "row",
+        "marginLeft": 5.33,
+        "marginRight": 7.33,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+          "marginRight": 14.67,
+        },
+      ]
+    }
+  >
+    some text
+  </Text>
+</View>
+`;

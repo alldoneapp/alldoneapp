@@ -1,0 +1,154 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Spinner component Spinner snapshot test should render correctly as default 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "borderRadius": 10000,
+        "justifyContent": "center",
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+        "height": 24,
+        "maxHeight": 24,
+        "maxWidth": 24,
+        "minHeight": 24,
+        "minWidth": 24,
+        "width": 24,
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Object {
+        "transform": Array [
+          Object {
+            "rotate": "0deg",
+          },
+        ],
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#007FFF",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`Spinner component Spinner snapshot test should render correctly passing custom colors 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "borderRadius": 10000,
+        "justifyContent": "center",
+      },
+      Object {
+        "backgroundColor": "red",
+        "height": 24,
+        "maxHeight": 24,
+        "maxWidth": 24,
+        "minHeight": 24,
+        "minWidth": 24,
+        "width": 24,
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Object {
+        "transform": Array [
+          Object {
+            "rotate": "0deg",
+          },
+        ],
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "blue",
+            "fontFamily": "alldone",
+            "fontSize": 16,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`Spinner component Spinner snapshot test should render correctly passing custom sizes 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "borderRadius": 10000,
+        "justifyContent": "center",
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+        "height": 100,
+        "maxHeight": 100,
+        "maxWidth": 100,
+        "minHeight": 100,
+        "minWidth": 100,
+        "width": 100,
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    style={
+      Object {
+        "transform": Array [
+          Object {
+            "rotate": "0deg",
+          },
+        ],
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#007FFF",
+            "fontFamily": "alldone",
+            "fontSize": 70,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;

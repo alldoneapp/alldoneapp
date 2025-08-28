@@ -1,0 +1,265 @@
+image: node:12
+
+stages:
+    # - clean
+    - build_base
+    - build_web
+    - deploy_web
+    - update_version
+
+#clean_workspace:
+#    stage: clean
+#    script:
+#        - rm -rf web-build/
+#        - rm -rf node_modules/
+#    allow_failure: true
+
+modules_cache:
+    stage: build_base
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: ['']
+    script:
+        - mkdir -p /kaniko/.docker
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+        - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_base --destination $CI_REGISTRY_IMAGE/build_base:latest
+    only:
+        changes:
+            - package.json
+            - package-lock.json
+
+firebase_cmd_cache:
+    stage: build_base
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: ['']
+    script:
+        - mkdir -p /kaniko/.docker
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+        - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_firebase --destination $CI_REGISTRY_IMAGE/build_firebase:latest
+    only:
+        changes:
+            - ci/Dockerfile_firebase
+
+functions_cache:
+    stage: build_base
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: ['']
+    script:
+        - mkdir -p /kaniko/.docker
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+        - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_functions --destination $CI_REGISTRY_IMAGE/build_functions:latest
+    only:
+        changes:
+            - ci/Dockerfile_functions
+            - functions/package.json
+            - functions/package-lock.json
+
+build_web_preview:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_base:latest
+    before_script:
+        - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\n const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'"\n const GOOGLE_FIREBASE_WEB_DATABASE_URL = "'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'"\n const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\n const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\n const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"\n const SENTRY_DSN = "'"$SENTRY_DSN"'"\n const HOSTING_URL = "'"$HOSTING_URL_DEV"'"\n const CURRENT_ENVIORNMENT = "'"$CURRENT_ENVIORNMENT_DEV"'"\n const NOTES_COLLABORATION_SERVER = "'"$NOTES_COLLABORATION_SERVER"'"\n const ALGOLIA_APP_ID = "'"$ALGOLIA_APP_ID_DEV"'"\n const ALGOLIA_SEARCH_ONLY_API_KEY = "'"$ALGOLIA_SEARCH_ONLY_API_KEY_DEV"'"\n const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV"'"\n const IP_REGISTRY_API_KEY = "'"$IP_REGISTRY_API_KEY"'"\n const SIB_API_KEY = "'"$SIB_API_KEY"'"\n const SIB_MARKETING_SERVICE_LIST = "'"$SIB_MARKETING_SERVICE_LIST_DEV"'"\n const GOOGLE_ANALYTICS_KEY = null\n const GOOGLE_ADS_GUIDE_CONVERSION_TAG = null\n const GIPHY_API_KEY = "'"$GIPHY_API_KEY_DEV"'"\n const PERPLEXITY_API_KEY = "'"$PERPLEXITY_API_KEY_DEV"'"' utils/backends/firestore.js
+        - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"' apis/google/apisConfig.js
+        - sed -i 's|__FIREBASE_API_KEY__|'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'|g; s|__FIREBASE_AUTH_DOMAIN__|'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'|g; s|__FIREBASE_DATABASE_URL__|'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'|g; s|__FIREBASE_PROJECT_ID__|'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'|g; s|__FIREBASE_STORAGE_BUCKET__|'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'|g; s|__FIREBASE_MESSAGING_SENDER_ID__|'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'|g; s|__FIREBASE_APP_ID__|'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'|g; s|__FIREBASE_MEASUREMENT_ID__|'"$GOOGLE_ANALYTICS_KEY_DEV"'|g' web/firebase-messaging-sw.js
+    script:
+        - ln -s /app/node_modules node_modules
+        - cp -R -f replacement_node_modules/* node_modules/
+        - npm run build-web
+    artifacts:
+        expire_in: 1 days
+        when: on_success
+        paths:
+            - web-build/
+            - firebase.json
+    except:
+        refs:
+            - develop
+            - master
+
+build_web_staging:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_base:latest
+    before_script:
+        - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\n const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'"\n const GOOGLE_FIREBASE_WEB_DATABASE_URL = "'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'"\n const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\n const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\n const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"\n const SENTRY_DSN = "'"$SENTRY_DSN"'"\n const HOSTING_URL = "'"$HOSTING_URL_DEV"'"\n const CURRENT_ENVIORNMENT = "'"$CURRENT_ENVIORNMENT_DEV"'"\n const NOTES_COLLABORATION_SERVER = "'"$NOTES_COLLABORATION_SERVER"'"\n const ALGOLIA_APP_ID = "'"$ALGOLIA_APP_ID_DEV"'"\n const ALGOLIA_SEARCH_ONLY_API_KEY = "'"$ALGOLIA_SEARCH_ONLY_API_KEY_DEV"'"\n const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV"'"\n const IP_REGISTRY_API_KEY = "'"$IP_REGISTRY_API_KEY"'"\n const SIB_API_KEY = "'"$SIB_API_KEY"'"\n const SIB_MARKETING_SERVICE_LIST = "'"$SIB_MARKETING_SERVICE_LIST_DEV"'"\n const GOOGLE_ANALYTICS_KEY = null\n const GOOGLE_ADS_GUIDE_CONVERSION_TAG = null\n const GIPHY_API_KEY = "'"$GIPHY_API_KEY_DEV"'"\n const PERPLEXITY_API_KEY = "'"$PERPLEXITY_API_KEY_DEV"'"' utils/backends/firestore.js
+        - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"' apis/google/apisConfig.js
+        - echo "DEBUG - Checking if MCP config file exists before replacement:"
+        - ls -la functions/MCP/config/environments.js || echo "MCP config file not found"
+        - echo "DEBUG - Content before MCP replacement:"
+        - grep -A 10 -B 5 "BEGIN-ENVS" functions/MCP/config/environments.js || echo "BEGIN-ENVS not found"
+        - echo "DEBUG - Environment variables being used for MCP:"
+        - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_DEV:0:20}...
+        - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV
+        - echo "PROJECT_ID:" $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV
+        - |
+            sed -i '/BEGIN-ENVS/,/END-ENVS/c\
+            const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\
+            const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"' functions/MCP/config/environments.js
+        - echo "DEBUG - Content after MCP replacement:"
+        - grep -A 10 -B 5 "GOOGLE_FIREBASE_WEB_API_KEY" functions/MCP/config/environments.js || echo "Replacement failed"
+        - sed -i 's|__FIREBASE_API_KEY__|'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'|g; s|__FIREBASE_AUTH_DOMAIN__|'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'|g; s|__FIREBASE_DATABASE_URL__|'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'|g; s|__FIREBASE_PROJECT_ID__|'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'|g; s|__FIREBASE_STORAGE_BUCKET__|'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'|g; s|__FIREBASE_MESSAGING_SENDER_ID__|'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'|g; s|__FIREBASE_APP_ID__|'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'|g; s|__FIREBASE_MEASUREMENT_ID__|'"$GOOGLE_ANALYTICS_KEY_DEV"'|g' web/firebase-messaging-sw.js
+    script:
+        - ln -s /app/node_modules node_modules
+        - cp -R -f replacement_node_modules/* node_modules/
+        - npm run build-web
+    artifacts:
+        expire_in: 1 days
+        when: on_success
+        paths:
+            - web-build/
+            - firebase.json
+    only:
+        refs:
+            - develop
+
+build_web_production:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_base:latest
+    before_script:
+        - pwd
+        - ls -la ci/
+        - chmod +x ci/github-push.sh ci/replace-envs.sh
+        - sh ci/github-push.sh
+        - sh ci/replace-envs.sh
+    script:
+        - ln -s /app/node_modules node_modules
+        - cp -R -f replacement_node_modules/* node_modules/
+        - npm run build-web
+    after_script:
+        # here used to be the github push
+
+    artifacts:
+        expire_in: 1 days
+        when: on_success
+        paths:
+            - web-build/
+            - firebase.json
+    only:
+        refs:
+            - master
+
+deploy:web-preview:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_preview'
+    script:
+        - firebase --version
+        - firebase hosting:channel:deploy --token $GOOGLE_FIREBASE_DEPLOY_TOKEN $CI_COMMIT_REF_NAME
+    when: manual
+    except:
+        refs:
+            - develop
+            - master
+
+deploy:web:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_production'
+    script:
+        - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+    environment:
+        name: production
+    only:
+        refs:
+            - master
+
+deploy:web-dev:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_staging'
+    script:
+        - firebase --version
+        - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+    environment:
+        name: staging
+    only:
+        refs:
+            - develop
+
+deploy:cloud:functions:staging:
+    image: $CI_REGISTRY_IMAGE/build_functions:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_staging'
+    before_script:
+        - echo "DEBUG - Replacing MCP config for functions deployment"
+        - echo "Environment variables for MCP functions:"
+        - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_DEV:0:20}...
+        - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV
+        - echo "PROJECT_ID:" $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV
+        - |
+            sed -i '/BEGIN-ENVS/,/END-ENVS/c\
+            const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\
+            const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"' functions/MCP/config/environments.js
+        - echo "DEBUG - MCP config after replacement:"
+        - grep -A 10 -B 5 "GOOGLE_FIREBASE_WEB_API_KEY" functions/MCP/config/environments.js || echo "Replacement failed"
+        - cd functions
+        - ln -s /functions/node_modules node_modules
+        - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
+        - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
+        - echo "$GOOGLE_FUNCTIONS_ENV_DEV" > env_functions.json
+        - chmod +x service_accounts/setup_functions.sh
+        - npm run setup_functions
+    script:
+        - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
+        - rm -rf tmp_project_name
+    only:
+        refs:
+            - develop
+        changes:
+            - functions/**/*
+
+deploy:cloud:functions:production:
+    image: $CI_REGISTRY_IMAGE/build_functions:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_production'
+    before_script:
+        - cd functions
+        - ln -s /functions/node_modules node_modules
+        - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
+        - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
+        - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > env_functions.json
+        - chmod +x service_accounts/setup_functions.sh
+        - npm run setup_functions
+    script:
+        - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
+        - rm -rf tmp_project_name
+    only:
+        refs:
+            - master
+        changes:
+            - functions/**/*
+
+update:version:staging:
+    image: curlimages/curl
+    stage: 'update_version'
+    only:
+        refs:
+            - develop
+    script:
+        - curl "$NEW_APP_VERSION_FUNCTION_DEV"
+
+update:version:production:
+    image: curlimages/curl
+    stage: 'update_version'
+    only:
+        refs:
+            - master
+    script:
+        - curl "$NEW_APP_VERSION_FUNCTION_PROD"

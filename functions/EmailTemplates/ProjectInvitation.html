@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Project Invitation</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap"
+            rel="stylesheet"
+        />
+        <style type="text/css" rel="stylesheet">
+            * {
+                padding: 0px;
+                margin: 0px;
+                font-family: 'Roboto', sans-serif;
+            }
+            table,
+            thead,
+            tbody,
+            tfoot,
+            tr,
+            th,
+            td {
+                display: block;
+                width: auto;
+                height: auto;
+                margin: 0;
+                padding: 0;
+                border: none;
+                border-collapse: inherit;
+                border-spacing: 0;
+                border-color: inherit;
+                vertical-align: inherit;
+                text-align: left;
+                font-weight: inherit;
+                -webkit-border-horizontal-spacing: 0;
+                -webkit-border-vertical-spacing: 0;
+            }
+            th,
+            td {
+                display: inline;
+                width: fit-content;
+            }
+            .body {
+                width: 100%;
+                background-color: #ffffff;
+                text-align: center;
+            }
+            .container {
+                width: 100%;
+                text-align: center;
+                padding-top: 32px;
+                padding-bottom: 32px;
+            }
+            .message-container {
+                max-width: 600px;
+                margin-left: auto;
+                margin-right: auto;
+                border-radius: 8px;
+                background-color: #ffffff;
+                /*box-shadow: 0px 0px 32px rgba(13, 85, 207, 0.24);*/
+            }
+            .message-header {
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                max-height: 72px;
+                text-align: center;
+                vertical-align: middle;
+                background-color: #0a44a5;
+                color: #ffffff;
+                padding-top: 26px;
+                padding-bottom: 22px;
+                border: 1px solid #0a44a5;
+            }
+            .message-header table,
+            .message-header thead,
+            .message-header tbody,
+            .message-header tfoot,
+            .message-header tr {
+                display: inline;
+                height: 24px;
+            }
+            .header-logo {
+                margin-right: 8px;
+            }
+            .header-name,
+            .header-link {
+                min-height: 24px;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: bold;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.02em;
+                /*color: #ffffff;*/
+            }
+            .header-link,
+            .header-link:hover,
+            .header-link:visited,
+            .header-link:active {
+                text-decoration: none;
+                color: #ffffff;
+            }
+            .message-body {
+                text-align: left;
+                padding-top: 32px;
+                padding-bottom: 43px;
+                padding-left: 48px;
+                padding-right: 48px;
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+                border: 1px solid rgba(13, 85, 207, 0.24);
+            }
+            .topic {
+                min-height: 24px;
+                margin-bottom: 24px;
+            }
+            .topic > table {
+                display: inline;
+                min-height: 24px;
+            }
+            .topic-icon {
+                margin-right: 12px;
+            }
+            .topic-text {
+                overflow-y: hidden;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.01em;
+                color: #8a94a6;
+            }
+            .topic-text.link,
+            .topic-text.link:hover,
+            .topic-text.link:visited,
+            .topic-text.link:active {
+                color: #007fff;
+                text-decoration: none;
+            }
+            .tmpl-body {
+                margin-bottom: 24px;
+            }
+            .tmpl-time {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.02em;
+                color: #8a94a6;
+            }
+            .tmpl-link {
+                margin-top: 24px;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.01em;
+                color: #4e5d78;
+            }
+            #tmpl-link-a,
+            #tmpl-link-a:hover,
+            #tmpl-link-a:visited,
+            #tmpl-link-a:active {
+                color: #007fff;
+                word-wrap: break-word;
+                word-break: break-all;
+                text-decoration: none;
+            }
+            .footer {
+                padding-top: 102px;
+                text-align: center;
+            }
+            .footer-icons {
+                margin-bottom: 24px;
+            }
+            .footer-icons .social-link {
+                margin-left: 12px;
+                margin-right: 12px;
+            }
+            .social-link,
+            .social-link:hover,
+            .social-link:visited,
+            .social-link:active {
+                text-decoration: none;
+            }
+            .footer-copy,
+            .footer-link {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.02em;
+                /*color: #8a94a6;*/
+            }
+            .footer-link,
+            .footer-link:hover,
+            .footer-link:visited,
+            .footer-link:active {
+                text-decoration: none;
+                color: #8a94a6;
+            }
+
+            .project-tmpl-icon {
+                margin-right: 12px;
+                border-radius: 100px;
+            }
+            .project-tmpl-name {
+                overflow-y: hidden;
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: normal;
+                font-size: 16px;
+                line-height: 24px;
+                letter-spacing: 0.02em;
+                color: #04142f;
+            }
+            .contact-tmpl-icon {
+                margin-right: 12px;
+                border-radius: 100px;
+            }
+            .tmpl-action-text {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.01em;
+                color: #4e5d78;
+            }
+            .answer-section {
+                margin-top: 24px;
+                text-align: center;
+            }
+            .answer-button {
+                padding: 11px 24px 14px 16px;
+                background-color: #0d55cf;
+                border-radius: 4px;
+            }
+            .answer-icon {
+                width: 24px;
+                height: 24px;
+                margin-right: 12px;
+                vertical-align: middle;
+            }
+            .answer-button-text {
+                font-family: 'Roboto', sans-serif;
+                font-style: normal;
+                font-weight: 500;
+                font-size: 14px;
+                line-height: 22px;
+                letter-spacing: 0.05em;
+                color: #ffffff;
+                vertical-align: middle;
+            }
+        </style>
+    </head>
+    <body class="body">
+        <div class="container">
+            <div class="message-container">
+                <div class="message-header">
+                    <table border="0">
+                        <tr style="vertical-align: middle;">
+                            <td style="vertical-align: top;">
+                                <a class="header-link" style="color: #ffffff;" target="_blank" href="{{ appUrl }}">
+                                    <img
+                                        class="header-logo"
+                                        src="{{ appUrl }}icons/white/logo-icon.png"
+                                        alt=""
+                                        width="24"
+                                        height="24"
+                                    />
+                                </a>
+                            </td>
+                            <td class="header-name">
+                                <a class="header-link" style="color: #ffffff;" target="_blank" href="{{ appUrl }}">
+                                    Alldone.app
+                                </a>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="message-body">
+                    <div class="topic">
+                        <table border="0">
+                            <tr>
+                                <td style="vertical-align: top;">
+                                    <img
+                                        class="topic-icon"
+                                        src="{{ appUrl }}icons/grey/bell.png"
+                                        alt=""
+                                        width="24"
+                                        height="24"
+                                    />
+                                </td>
+                                <td class="topic-text">
+                                    Incoming notification from&nbsp;
+                                    <a class="topic-text link" target="_blank" href="{{ appUrl }}">
+                                        Alldone.app
+                                    </a>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div>
+                        <table border="0" style="margin-bottom: 24px;">
+                            <tr>
+                                <td style="vertical-align: top;">
+                                    {{#if tmplInviterPhotoURL }}
+                                    <img
+                                        class="contact-tmpl-icon"
+                                        src="{{ tmplInviterPhotoURL }}"
+                                        alt=""
+                                        width="24"
+                                        height="24"
+                                    />
+                                    {{else}}
+                                    <img
+                                        class="contact-tmpl-icon"
+                                        src="{{ appUrl }}icons/Generic-User24px.png"
+                                        alt=""
+                                        width="24"
+                                        height="24"
+                                    />
+                                    {{/if }}
+                                </td>
+                                <td class="tmpl-action-text">{{ tmplInvitationText }}</td>
+                            </tr>
+                        </table>
+
+                        <table border="0" style="margin-bottom: 24px;">
+                            <tr>
+                                <td style="vertical-align: top;">
+                                    <img
+                                        class="project-tmpl-icon"
+                                        src="{{projectUrl appUrl tmplProjectColor 'false' }}"
+                                        alt=""
+                                        width="24"
+                                        height="24"
+                                    />
+                                </td>
+                                <td class="project-tmpl-name">{{ tmplProjectName }}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- tmpl date -->
+                    {{#if tmplDate }}
+                    <div class="tmpl-time">On {{ tmplDate }}</div>
+                    {{/if }}
+
+                    <!-- tmpl link -->
+                    {{#if tmplProjectUrl }}
+                    <div class="tmpl-link">
+                        <div><span>Link to the project:</span></div>
+                        <p>
+                            <a id="tmpl-link-a" target="_blank" href="{{ tmplAnswerUrl }}">
+                                {{ tmplAnswerUrl }}
+                            </a>
+                        </p>
+                    </div>
+                    {{/if }}
+
+                    <div class="answer-section">
+                        <a class="answer-button" target="_blank" href="{{ tmplAnswerUrl }}">
+                            <img
+                                class="answer-icon"
+                                src="{{ appUrl }}icons/white/folder-clasify.png"
+                                alt=""
+                                width="24"
+                                height="24"
+                            />
+                            <span class="answer-button-text">Answer invitation</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer">
+                <div class="footer-icons">
+                    <a class="social-link" target="_blank" href="#">
+                        <img
+                            src="{{ appUrl }}icons/grey/facebook-notification-email.png"
+                            alt=""
+                            width="32"
+                            height="32"
+                        />
+                    </a>
+                    <a class="social-link" target="_blank" href="#">
+                        <img
+                            src="{{ appUrl }}icons/grey/youtube-notification-email.png"
+                            alt=""
+                            width="32"
+                            height="32"
+                        />
+                    </a>
+                    <a class="social-link" target="_blank" href="#">
+                        <img
+                            src="{{ appUrl }}icons/grey/twitter-notification-email.png"
+                            alt=""
+                            width="32"
+                            height="32"
+                        />
+                    </a>
+                </div>
+
+                <div class="footer-copy">
+                    <p>
+                        <a class="footer-link" style="color: #8a94a6;" target="_blank" href="{{ appUrl }}">
+                            &copy;Alldone GmbH 2020
+                        </a>
+                        •
+                        <a class="footer-link" style="color: #8a94a6;" target="_blank" href="{{ appImpressum }}">
+                            Impressum
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

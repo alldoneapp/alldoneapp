@@ -1,0 +1,13 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DismissibleItem component DismissibleItem empty snapshot test Should render correctly 1`] = `<View />`;
+
+exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 1`] = `<View />`;
+
+exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 2`] = `
+<View>
+  <Text />
+</View>
+`;
+
+exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 3`] = `<View />`;

@@ -1,0 +1,157 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly 1`] = `
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
+  style={
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#1A3289",
+        "borderRadius": 4,
+        "flexDirection": "row",
+        "opacity": 1,
+        "paddingLeft": 16,
+        "paddingRight": 24,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 40,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#FAFBFB",
+              "fontFamily": "alldone",
+              "fontSize": 20,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+      <Text
+        style={
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontStyle": "normal",
+              "letterSpacing": 0.8,
+              "lineHeight": 14,
+            },
+            Object {
+              "color": "#FAFBFB",
+              "paddingLeft": 14,
+            },
+          ]
+        }
+      >
+        Public
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
+`;
+
+exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly when is web 1`] = `
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
+  style={
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
+  }
+>
+  <View
+    accessible={true}
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#1A3289",
+        "borderRadius": 4,
+        "flexDirection": "row",
+        "opacity": 1,
+        "paddingLeft": 16,
+        "paddingRight": 24,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 40,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#FAFBFB",
+              "fontFamily": "alldone",
+              "fontSize": 20,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+      <Text
+        style={
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontStyle": "normal",
+              "letterSpacing": 0.8,
+              "lineHeight": 14,
+            },
+            Object {
+              "color": "#FAFBFB",
+              "paddingLeft": 14,
+            },
+          ]
+        }
+      >
+        Public
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
+`;

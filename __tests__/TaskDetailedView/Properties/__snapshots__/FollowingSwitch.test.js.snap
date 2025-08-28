@@ -1,0 +1,247 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`FollowingSwitch component should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "marginRight": 12,
+      }
+    }
+  >
+    <Text
+      style={
+        Object {
+          "color": "rgba(78, 93, 120, 1)",
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 16,
+          "letterSpacing": 0.32,
+          "lineHeight": 24,
+        }
+      }
+    >
+      No
+    </Text>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
+    style={
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      accessible={true}
+    >
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "backgroundColor": "rgba(231, 236, 239, 1)",
+            "borderColor": "rgba(231, 236, 239, 1)",
+            "borderRadius": 21,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "height": 24,
+            "paddingLeft": 1,
+            "paddingRight": 1,
+            "width": 42,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "backgroundColor": "white",
+              "borderRadius": 100,
+              "height": 20,
+              "width": 20,
+            }
+          }
+        />
+      </View>
+    </View>
+  </RNGestureHandlerButton>
+</View>
+`;
+
+exports[`FollowingSwitch component should render correctly after call onPress with state "yes" as false 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "marginRight": 12,
+      }
+    }
+  >
+    <Text
+      style={
+        Object {
+          "color": "rgba(78, 93, 120, 1)",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 16,
+          "letterSpacing": 0.16,
+          "lineHeight": 24,
+        }
+      }
+    >
+      Yes
+    </Text>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
+    style={
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      accessible={true}
+    >
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "backgroundColor": "rgba(231, 236, 239, 1)",
+            "borderColor": "rgba(231, 236, 239, 1)",
+            "borderRadius": 21,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "height": 24,
+            "paddingLeft": 1,
+            "paddingRight": 1,
+            "width": 42,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "backgroundColor": "white",
+              "borderRadius": 100,
+              "height": 20,
+              "width": 20,
+            }
+          }
+        />
+      </View>
+    </View>
+  </RNGestureHandlerButton>
+</View>
+`;
+
+exports[`FollowingSwitch component should render correctly after call onPress with state "yes" as true 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "marginRight": 12,
+      }
+    }
+  >
+    <Text
+      style={
+        Object {
+          "color": "rgba(78, 93, 120, 1)",
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 16,
+          "letterSpacing": 0.32,
+          "lineHeight": 24,
+        }
+      }
+    >
+      No
+    </Text>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
+    style={
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      accessible={true}
+    >
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "backgroundColor": "rgba(231, 236, 239, 1)",
+            "borderColor": "rgba(231, 236, 239, 1)",
+            "borderRadius": 21,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "height": 24,
+            "paddingLeft": 1,
+            "paddingRight": 1,
+            "width": 42,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "backgroundColor": "white",
+              "borderRadius": 100,
+              "height": 20,
+              "width": 20,
+            }
+          }
+        />
+      </View>
+    </View>
+  </RNGestureHandlerButton>
+</View>
+`;

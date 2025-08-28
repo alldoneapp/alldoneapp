@@ -1,0 +1,302 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`StatusPicker component StatusPicker snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "elevation": 3,
+      "flexDirection": "column",
+      "shadowColor": "rgba(78, 93, 120, 0.56)",
+      "shadowOffset": Object {
+        "height": 4,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 16,
+      "width": 305,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#091540",
+        "borderRadius": 4,
+        "flexDirection": "column",
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "flexDirection": "row",
+          "paddingLeft": 16,
+          "paddingRight": 8,
+          "paddingTop": 8,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "column",
+            "marginTop": 8,
+          }
+        }
+      >
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 18,
+                "lineHeight": 26,
+              },
+              Object {
+                "color": "white",
+              },
+            ]
+          }
+        >
+          Task status
+        </Text>
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 14,
+                "letterSpacing": 0.32,
+                "lineHeight": 22,
+              },
+              Object {
+                "color": "#8A94A6",
+                "width": 273,
+              },
+            ]
+          }
+        >
+          Choose a workflow step to move this task
+        </Text>
+      </View>
+    </View>
+    <View
+      style={
+        Object {
+          "marginTop": 20,
+          "paddingBottom": 8,
+          "paddingHorizontal": 16,
+        }
+      }
+    >
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "height": 40,
+            "justifyContent": "space-between",
+            "opacity": 1,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 40,
+            }
+          }
+        >
+          <View
+            style={
+              Array [
+                Object {
+                  "alignItems": "center",
+                  "borderColor": "white",
+                  "borderRadius": 4,
+                  "borderWidth": 2,
+                  "height": 20,
+                  "justifyContent": "center",
+                  "width": 20,
+                },
+                Object {
+                  "backgroundColor": undefined,
+                  "borderColor": "white",
+                },
+              ]
+            }
+          />
+          <Text
+            numberOfLines={1}
+            style={
+              Array [
+                Object {
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 16,
+                  "letterSpacing": 0.16,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "white",
+                  "marginLeft": 10,
+                },
+              ]
+            }
+          >
+            Open
+          </Text>
+        </View>
+      </View>
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "height": 40,
+            "justifyContent": "space-between",
+            "opacity": 1,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 40,
+            }
+          }
+        >
+          <View
+            style={
+              Array [
+                Object {
+                  "alignItems": "center",
+                  "height": 20,
+                  "justifyContent": "center",
+                  "width": 20,
+                },
+                undefined,
+              ]
+            }
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "white",
+                    "fontFamily": "alldone",
+                    "fontSize": 24,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+          </View>
+          <Text
+            numberOfLines={1}
+            style={
+              Array [
+                Object {
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 16,
+                  "letterSpacing": 0.16,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "white",
+                  "marginLeft": 10,
+                },
+              ]
+            }
+          >
+            Done
+          </Text>
+        </View>
+      </View>
+    </View>
+    <View
+      style={
+        Object {
+          "position": "absolute",
+          "right": 8,
+          "top": 8,
+        }
+      }
+    >
+      <RNGestureHandlerButton
+        collapsable={false}
+        onGestureEvent={[Function]}
+        onGestureHandlerEvent={[Function]}
+        onGestureHandlerStateChange={[Function]}
+        onHandlerStateChange={[Function]}
+        rippleColor={0}
+        style={
+          Array [
+            Object {
+              "overflow": "hidden",
+            },
+            undefined,
+          ]
+        }
+      >
+        <View
+          accessible={true}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+        </View>
+      </RNGestureHandlerButton>
+    </View>
+  </View>
+</View>
+`;

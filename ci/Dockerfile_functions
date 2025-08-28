@@ -1,0 +1,12 @@
+FROM node:18-alpine
+
+WORKDIR /functions
+
+RUN apk --no-cache add git bash
+
+ADD functions/package.json functions/package-lock.json ./
+
+RUN npm ci
+RUN npm install -g firebase-tools@13.29.3 --unsafe-perm
+
+# Updated for MCP server dependencies

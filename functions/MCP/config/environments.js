@@ -1,0 +1,23 @@
+// BEGIN-ENVS
+const GOOGLE_FIREBASE_WEB_API_KEY = process.env.GOOGLE_FIREBASE_WEB_API_KEY
+const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = process.env.GOOGLE_FIREBASE_WEB_AUTH_DOMAIN
+const GOOGLE_FIREBASE_WEB_PROJECT_ID = process.env.GOOGLE_FIREBASE_WEB_PROJECT_ID
+const GOOGLE_FIREBASE_STORAGE_BUCKET = process.env.GOOGLE_FIREBASE_STORAGE_BUCKET
+const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = process.env.GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID
+const GOOGLE_FIREBASE_WEB_APP_ID = process.env.GOOGLE_FIREBASE_WEB_APP_ID
+// END-ENVS
+
+const getEnvironmentConfig = () => {
+    return {
+        firebaseWeb: {
+            apiKey: GOOGLE_FIREBASE_WEB_API_KEY,
+            authDomain: GOOGLE_FIREBASE_WEB_AUTH_DOMAIN,
+            projectId: GOOGLE_FIREBASE_WEB_PROJECT_ID,
+            storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
+            messagingSenderId: GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID,
+            appId: GOOGLE_FIREBASE_WEB_APP_ID,
+        },
+    }
+}
+
+module.exports = { getEnvironmentConfig }

@@ -1,0 +1,592 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Should render correctly 1`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Object {
+      "alignSelf": "baseline",
+      "backgroundColor": "#E7ECEF",
+      "borderRadius": 14,
+      "flexDirection": "row",
+      "height": 26,
+      "overflow": "hidden",
+      "paddingBottom": 2,
+      "paddingLeft": 2,
+      "paddingRight": 2,
+      "paddingTop": 2,
+      "position": "relative",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderRadius": 12,
+        "elevation": 3,
+        "height": 22,
+        "position": "absolute",
+        "shadowColor": "#8A94A6",
+        "shadowOffset": Object {
+          "height": 0,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+        "transform": Array [
+          Object {
+            "translateX": 0,
+          },
+        ],
+        "width": 0,
+      }
+    }
+  />
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "justifyContent": "center",
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#007FFF",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.16,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Open
+        </Text>
+      </View>
+    </View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#8A94A6",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Pending
+        </Text>
+      </View>
+    </View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#8A94A6",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Done
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`MultiToggleSwitch component Test component functions after call updateState should render correctly 1`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Object {
+      "alignSelf": "baseline",
+      "backgroundColor": "#E7ECEF",
+      "borderRadius": 14,
+      "flexDirection": "row",
+      "height": 26,
+      "overflow": "hidden",
+      "paddingBottom": 2,
+      "paddingLeft": 2,
+      "paddingRight": 2,
+      "paddingTop": 2,
+      "position": "relative",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderRadius": 12,
+        "elevation": 3,
+        "height": 22,
+        "position": "absolute",
+        "shadowColor": "#8A94A6",
+        "shadowOffset": Object {
+          "height": 0,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+        "transform": Array [
+          Object {
+            "translateX": 0,
+          },
+        ],
+        "width": 0,
+      }
+    }
+  />
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "justifyContent": "center",
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#007FFF",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.16,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Open
+        </Text>
+      </View>
+    </View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#8A94A6",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Pending
+        </Text>
+      </View>
+    </View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#8A94A6",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Done
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`MultiToggleSwitch component Test component functions after call updateState should render correctly 2`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Object {
+      "alignSelf": "baseline",
+      "backgroundColor": "#E7ECEF",
+      "borderRadius": 14,
+      "flexDirection": "row",
+      "height": 26,
+      "overflow": "hidden",
+      "paddingBottom": 2,
+      "paddingLeft": 2,
+      "paddingRight": 2,
+      "paddingTop": 2,
+      "position": "relative",
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderRadius": 12,
+        "elevation": 3,
+        "height": 22,
+        "position": "absolute",
+        "shadowColor": "#8A94A6",
+        "shadowOffset": Object {
+          "height": 0,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+        "transform": Array [
+          Object {
+            "translateX": 0,
+          },
+        ],
+        "width": 0,
+      }
+    }
+  />
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "justifyContent": "center",
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#007FFF",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.16,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Open
+        </Text>
+      </View>
+    </View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#8A94A6",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Pending
+        </Text>
+      </View>
+    </View>
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+          }
+        }
+      >
+        <Text
+          style={
+            Object {
+              "alignItems": "center",
+              "color": "#8A94A6",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "fontWeight": "400",
+              "height": 22,
+              "justifyContent": "center",
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "paddingLeft": 12,
+              "paddingRight": 12,
+            }
+          }
+        >
+          Done
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;

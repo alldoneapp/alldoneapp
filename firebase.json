@@ -1,0 +1,92 @@
+{
+    "hosting": {
+        "public": "web-build",
+        "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+        "headers": [
+            {
+                "source": "**/*",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "private, no-cache, max-age=0"
+                    }
+                ]
+            }
+        ],
+        "rewrites": [
+            {
+                "source": "/mcpOAuthCallback",
+                "function": "mcpOAuthCallback"
+            },
+            {
+                "source": "/.well-known/oauth-authorization-server",
+                "function": "oauthAuthorizationServer"
+            },
+            {
+                "source": "/.well-known/oauth-authorization-server/mcpServer",
+                "function": "mcpServer"
+            },
+            {
+                "source": "/.well-known/oauth-protected-resource",
+                "function": "oauthProtectedResource"
+            },
+            {
+                "source": "/.well-known/oauth-protected-resource/mcpServer",
+                "function": "mcpServer"
+            },
+            {
+                "source": "/authorize",
+                "function": "mcpServer"
+            },
+            {
+                "source": "/token",
+                "function": "mcpServer"
+            },
+            {
+                "source": "/register",
+                "function": "mcpServer"
+            },
+            {
+                "source": "/mcpServer",
+                "function": "mcpServer"
+            },
+            {
+                "source": "/mcpServer/**",
+                "function": "mcpServer"
+            },
+            {
+                "source": "**",
+                "destination": "/index.html"
+            }
+        ]
+    },
+    "emulators": {
+        "functions": {
+            "port": 5001
+        },
+        "firestore": {
+            "port": 8080
+        },
+        "hosting": {
+            "port": 5000
+        },
+        "ui": {
+            "enabled": true
+        },
+        "auth": {
+            "port": 9099
+        },
+        "database": {
+            "port": 9000
+        },
+        "pubsub": {
+            "port": 8085
+        },
+        "storage": {
+            "port": 9199
+        }
+    },
+    "functions": {
+        "source": "functions"
+    }
+}

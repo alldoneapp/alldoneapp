@@ -1,0 +1,214 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "backgroundColor": "#091540",
+      "borderRadius": 4,
+      "elevation": 3,
+      "paddingBottom": 16,
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "paddingTop": 16,
+      "shadowColor": "rgba(78, 93, 120, 0.56)",
+      "shadowOffset": Object {
+        "height": 4,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 16,
+      "width": 305,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "marginBottom": 20,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 18,
+            "lineHeight": 26,
+          },
+          Object {
+            "color": "#ffffff",
+          },
+        ]
+      }
+    >
+      Testing
+    </Text>
+  </View>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
+  >
+    <Text
+      style={
+        Object {
+          "color": "#4E5D78",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+          "marginBottom": 4,
+        }
+      }
+    >
+      Text
+    </Text>
+    <TextInput
+      allowFontScaling={true}
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      placeholderTextColor="#8A94A6"
+      rejectResponderTermination={true}
+      style={
+        Object {
+          "borderColor": "#C6CDD2",
+          "borderRadius": 4,
+          "borderWidth": 1,
+          "color": "#ffffff",
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 16,
+          "letterSpacing": 0.32,
+          "lineHeight": 24,
+          "paddingHorizontal": 16,
+          "paddingVertical": 8,
+        }
+      }
+      underlineColorAndroid="transparent"
+      value=""
+    />
+  </View>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+        "justifyContent": "center",
+        "marginTop": 16,
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "#0D55CF",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "flexWrap": "nowrap",
+          "height": 40,
+          "justifyContent": "center",
+          "maxHeight": 40,
+          "minHeight": 40,
+          "opacity": 1,
+          "paddingHorizontal": 16,
+          "paddingVertical": 8,
+        }
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Object {
+              "alignSelf": "center",
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "letterSpacing": 0.8,
+              "lineHeight": 16,
+              "margin": 0,
+              "paddingHorizontal": 8,
+              "paddingVertical": 0,
+            },
+            Object {
+              "color": "#ffffff",
+            },
+            Object {},
+          ]
+        }
+      >
+        Save Text
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "position": "absolute",
+        "right": 8,
+        "top": 8,
+      }
+    }
+  >
+    <RNGestureHandlerButton
+      collapsable={false}
+      onGestureEvent={[Function]}
+      onGestureHandlerEvent={[Function]}
+      onGestureHandlerStateChange={[Function]}
+      onHandlerStateChange={[Function]}
+      rippleColor={0}
+      style={
+        Array [
+          Object {
+            "overflow": "hidden",
+          },
+          undefined,
+        ]
+      }
+    >
+      <View
+        accessible={true}
+        style={
+          Object {
+            "alignItems": "center",
+            "justifyContent": "center",
+            "opacity": 1,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+      </View>
+    </RNGestureHandlerButton>
+  </View>
+</View>
+`;

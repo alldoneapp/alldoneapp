@@ -1,0 +1,13 @@
+{
+    "headers": [
+        {
+            "source": "**/*",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "private, no-cache, max-age=0"
+                }
+            ]
+        }
+    ]
+}

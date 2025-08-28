@@ -1,0 +1,205 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Task Recurrence Button component Function hidePopover snapshot test should execute and render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "alignSelf": "flex-start",
+      "backgroundColor": "transparent",
+      "borderColor": "#C6CDD2",
+      "borderRadius": 4,
+      "borderStyle": "solid",
+      "borderWidth": 1,
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "height": 40,
+      "justifyContent": "center",
+      "maxHeight": 40,
+      "minHeight": 40,
+      "opacity": 1,
+      "paddingLeft": 8,
+      "paddingRight": 8,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "#8A94A6",
+          "fontFamily": "alldone",
+          "fontSize": 24,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`Task Recurrence Button component Function updateState snapshot test should execute and render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "alignSelf": "flex-start",
+      "backgroundColor": "transparent",
+      "borderColor": "#C6CDD2",
+      "borderRadius": 4,
+      "borderStyle": "solid",
+      "borderWidth": 1,
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "height": 40,
+      "justifyContent": "center",
+      "maxHeight": 40,
+      "minHeight": 40,
+      "opacity": 1,
+      "paddingLeft": 8,
+      "paddingRight": 8,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "#8A94A6",
+          "fontFamily": "alldone",
+          "fontSize": 24,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`Task Recurrence Button component Function updateState snapshot test should execute and render correctly 2`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "alignSelf": "flex-start",
+      "backgroundColor": "transparent",
+      "borderColor": "#C6CDD2",
+      "borderRadius": 4,
+      "borderStyle": "solid",
+      "borderWidth": 1,
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "height": 40,
+      "justifyContent": "center",
+      "maxHeight": 40,
+      "minHeight": 40,
+      "opacity": 1,
+      "paddingLeft": 8,
+      "paddingRight": 8,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "#8A94A6",
+          "fontFamily": "alldone",
+          "fontSize": 24,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`Task Recurrence Button component Task Points Button snapshot test should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "alignSelf": "flex-start",
+      "backgroundColor": "transparent",
+      "borderColor": "#C6CDD2",
+      "borderRadius": 4,
+      "borderStyle": "solid",
+      "borderWidth": 1,
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "height": 40,
+      "justifyContent": "center",
+      "maxHeight": 40,
+      "minHeight": 40,
+      "opacity": 1,
+      "paddingLeft": 8,
+      "paddingRight": 8,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Object {
+          "color": "#8A94A6",
+          "fontFamily": "alldone",
+          "fontSize": 24,
+          "opacity": 1,
+        }
+      }
+    >
+      
+    </Text>
+  </View>
+</View>
+`;

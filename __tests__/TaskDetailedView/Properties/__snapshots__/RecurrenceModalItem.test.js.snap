@@ -1,0 +1,66 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`RecurrenceModalItem component RecurrenceModalItem snapshot test should render correctly 1`] = `
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
+  onClick={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "opacity": 1,
+    }
+  }
+>
+  <View>
+    <Text
+      style={
+        Array [
+          Object {
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+          },
+          Object {
+            "color": "white",
+          },
+        ]
+      }
+    >
+      Never
+    </Text>
+  </View>
+  <View
+    style={
+      Object {
+        "marginLeft": "auto",
+        "opacity": 0,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "white",
+            "fontFamily": "alldone",
+            "fontSize": 24,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+</View>
+`;

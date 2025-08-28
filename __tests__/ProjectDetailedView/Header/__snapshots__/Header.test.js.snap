@@ -1,0 +1,172 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Detailed Project Header component Detailed Project Header snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "flexDirection": "column",
+      "height": 140,
+      "justifyContent": "space-between",
+      "paddingBottom": 24,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+        "justifyContent": "space-between",
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "flex": 1,
+          "flexDirection": "row",
+          "justifyContent": "space-between",
+          "opacity": 1,
+        }
+      }
+    >
+      <View
+        style={
+          Array [
+            Object {
+              "flexDirection": "row",
+              "justifyContent": "space-between",
+            },
+            Object {
+              "flex": 1,
+            },
+          ]
+        }
+      >
+        <View
+          style={
+            Object {
+              "flex": 1,
+              "marginRight": "auto",
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flex": 1,
+                "height": 64,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "backgroundColor": "white",
+                  "height": 32,
+                }
+              }
+            />
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "backgroundColor": "white",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 32,
+                  "justifyContent": "flex-start",
+                }
+              }
+            >
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 24,
+                      "lineHeight": 32,
+                    },
+                  ]
+                }
+              >
+                My Project
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View>
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "white",
+                "flexDirection": "row",
+                "justifyContent": "center",
+                "marginTop": 36,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                  },
+                ]
+              }
+            >
+              PROJECT
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": 12,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flexDirection": "row",
+      }
+    }
+  />
+</View>
+`;

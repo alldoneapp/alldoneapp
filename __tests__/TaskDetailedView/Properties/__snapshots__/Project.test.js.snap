@@ -1,0 +1,105 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Project component Project snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+      "maxHeight": 56,
+      "paddingLeft": 11,
+      "paddingVertical": 8,
+    }
+  }
+>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "height": 24,
+        "justifyContent": "center",
+        "marginRight": 8,
+        "width": 24,
+      }
+    }
+  >
+    <View>
+      <Text
+        style={
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "alldone",
+            "fontSize": 22,
+            "opacity": 1,
+          }
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+      ]
+    }
+  >
+    Project
+  </Text>
+  <View
+    style={
+      Object {
+        "marginLeft": "auto",
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "alignSelf": "flex-start",
+          "backgroundColor": "transparent",
+          "borderColor": "#C6CDD2",
+          "borderRadius": 4,
+          "borderStyle": "solid",
+          "borderWidth": 1,
+          "flexDirection": "row",
+          "flexWrap": "nowrap",
+          "height": 40,
+          "justifyContent": "center",
+          "maxHeight": 40,
+          "maxWidth": 240,
+          "minHeight": 40,
+          "opacity": 1,
+          "paddingLeft": 8,
+          "paddingRight": 8,
+          "paddingVertical": 8,
+        }
+      }
+    >
+      
+    </View>
+  </View>
+</View>
+`;

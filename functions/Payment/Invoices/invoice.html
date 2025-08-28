@@ -1,0 +1,116 @@
+<html>
+    <head>
+        <meta charset="utf8" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&display=swap"
+            rel="stylesheet"
+        />
+        <title>Alldone Invoice</title>
+        <style>
+            body {
+                width: 77.5%;
+                margin: auto;
+                font-weight: 300;
+                font-family: 'Roboto', sans-serif;
+                line-height: 15px;
+                letter-spacing: 0.02em;
+                font-style: normal;
+            }
+
+            body,
+            table {
+                font-size: 10.5px;
+            }
+
+            table {
+                margin-top: 25px;
+                font-weight: 400;
+            }
+
+            td {
+                width: 300px;
+            }
+
+            #content {
+                flex-direction: row;
+                overflow: auto;
+                margin-top: 70px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="content">
+            <img
+                src="https://firebasestorage.googleapis.com/v0/b/alldonestaging.appspot.com/o/logo%2FinvoiceLogo.png?alt=media&token=06097445-d086-4cb7-ad28-999f512be496"
+                style="width: 1.15in; float: left;"
+            />
+            <div style="float: right; text-align: end;">
+                <div>{{alldoneCompanyName}}</div>
+                <div>{{alldoneCompanyAddress}}</div>
+                <div>{{alldoneCompanyPostalCode}} {{alldoneCompanyCity}}</div>
+                <div>{{alldoneCompanyEmail}}</div>
+            </div>
+        </div>
+
+        <h4 style="text-align: center; margin-top: 26px;">INVOICE</h4>
+
+        <p style="text-align: right; margin-bottom: 24px;">{{alldoneCompanyCity}}, {{today}}</p>
+
+        <div>To:</div>
+        <div>{{name}}</div>
+        <div>{{line1}}</div>
+        <div>{{line2}}</div>
+        <div>{{line3}}</div>
+
+        <p style="margin-top: 28px; margin-bottom: 20px;">Invoice Number: {{invoiceNo}}</p>
+
+        <p>For the premium subscription of Alldone.app we are invoicing the following amount.</p>
+
+        <table>
+            <tbody>
+                <tr>
+                    <td>Time:</td>
+                    <td>{{startDate}} to {{endDate}}</td>
+                </tr>
+                <tr>
+                    <td>Users</td>
+                    <td>{{users}}</td>
+                </tr>
+                <tr>
+                    <td>Net price per user:</td>
+                    <td>{{netPrice}} EUR</td>
+                </tr>
+                <tr>
+                    <td>Total price (without VAT):</td>
+                    <td>{{totalPrice}} EUR</td>
+                </tr>
+                <tr>
+                    <td>VAT ({{vatToApply}}%):</td>
+                    <td>{{vat}} EUR</td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr style="margin-top: 100px;">
+                    <td>Total invoice amount:</td>
+                    <td>{{totalInvoice}} EUR</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p style="margin-bottom: 80px;">
+            Thank you for your service. If you have any questions or ideas please do not hesitate to reach out to me!
+        </p>
+
+        <div>{{alldoneCompanyOwner}}</div>
+        <div>{{alldoneCompanyOwnerPosition}}</div>
+
+        <div id="pageFooter" style="text-align: center; font-size: 8px; color: grey;">
+            {{alldoneCompanyName}} - {{alldoneCompanyCommercialRegisterNumber}} - Tax number {{alldoneCompanyTaxNumber}}
+            - VAT ID: {{alldoneCompanyVatId}}
+        </div>
+    </body>
+</html>

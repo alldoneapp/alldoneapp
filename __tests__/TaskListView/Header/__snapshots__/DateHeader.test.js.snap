@@ -1,0 +1,125 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DateHeader component DateHeader with text snapshot test should render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "paddingBottom": 8,
+        "paddingTop": 24,
+      },
+      undefined,
+      false,
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#FAFBFB",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "height": 24,
+        },
+        false,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "backgroundColor": "#EBF5FF",
+          "borderRadius": 4,
+          "height": 24,
+          "position": "absolute",
+          "width": "0%",
+        }
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 11,
+            "letterSpacing": 1.5,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+            "paddingLeft": 12,
+            "zIndex": 1,
+          },
+        ]
+      }
+    >
+      TODAY • 
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`DateHeader component Function animateProgress snapshot test should execute and render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "paddingBottom": 8,
+        "paddingTop": 24,
+      },
+      undefined,
+      false,
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#FAFBFB",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "height": 24,
+        },
+        false,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "backgroundColor": "#EBF5FF",
+          "borderRadius": 4,
+          "height": 24,
+          "position": "absolute",
+          "width": "0%",
+        }
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 11,
+            "letterSpacing": 1.5,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+            "paddingLeft": 12,
+            "zIndex": 1,
+          },
+        ]
+      }
+    >
+      TODAY • 
+    </Text>
+  </View>
+</View>
+`;

@@ -1,0 +1,6 @@
+{
+    "url": "https://my.alldone.app/",
+    "databaseURL": "https://alldonealeph.firebaseio.com",
+    "storageBucket": "alldonealeph.appspot.com",
+    "storageBackupBucket": "gs://alldonealeph-backups"
+}

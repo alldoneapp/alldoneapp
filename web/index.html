@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+    <link rel="manifest" href="/manifest.json" />
+    <!-- For Chrome for Android: -->
+    <link rel="icon" sizes="192x192" href="touch-icon-192x192.png" />
+    <!-- For iPhone 6 Plus with @3× display: -->
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png" />
+    <!-- For iPad with @2× display running iOS ≥ 7: -->
+    <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152x152.png" />
+    <!-- For iPad with @2× display running iOS ≤ 6: -->
+    <link rel="apple-touch-icon" sizes="144x144" href="apple-touch-icon-144x144.png" />
+    <!-- For iPhone with @2× display running iOS ≥ 7: -->
+    <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120x120.png" />
+    <!-- For iPhone with @2× display running iOS ≤ 6: -->
+    <link rel="apple-touch-icon" sizes="114x114" href="apple-touch-icon-144x144.png" />
+    <!-- For the iPad mini and the first- and second-generation iPad (@1× display) on iOS ≥ 7: -->
+    <link rel="apple-touch-icon" sizes="76x76" href="apple-touch-icon-76x76.png" />
+    <!-- For the iPad mini and the first- and second-generation iPad (@1× display) on iOS ≤ 6: -->
+    <link rel="apple-touch-icon" sizes="72x72" href="apple-touch-icon-72x72.png" />
+    <!-- For non-Retina iPhone, iPod Touch, and Android 2.1+ devices: -->
+    <link rel="apple-touch-icon" href="apple-touch-icon-57x57.png" /><!-- 57×57px -->
+    <head>
+        <!-- Google Tag Manager -->
+        <script>
+            function gtmFn(w, d, s, l, i) {
+                w[l] = w[l] || []
+                w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' })
+                var f = d.getElementsByTagName(s)[0],
+                    j = d.createElement(s),
+                    dl = l != 'dataLayer' ? '&l=' + l : ''
+                j.async = true
+                j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl
+                f.parentNode.insertBefore(j, f)
+            }
+            gtmFn(window, document, 'script', 'dataLayer', 'GTM-THM5BX5')
+        </script>
+        <!-- End Google Tag Manager -->
+
+        <!-- Google Analytics for Trial Conversion Tracking -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-GNT2NCRH9K"></script>
+        <script>
+            window.dataLayer = window.dataLayer || []
+            function gtag() {
+                dataLayer.push(arguments)
+            }
+            gtag('js', new Date())
+            gtag('config', 'G-GNT2NCRH9K', {
+                send_page_view: false,
+            })
+        </script>
+        <!-- End Google Analytics -->
+
+        <meta charset="utf-8" />
+        <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+        <!--
+  This viewport works for phones with notches.
+  It's optimized for gestures by disabling global zoom.
+ -->
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no"
+        />
+        <meta
+            viewport="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+            mobileAppIOS="true"
+        />
+        <meta name="full-screen" content="yes" />
+        <meta name="browsermode" content="application" />
+        <meta name="screen-orientation" content="portrait" />
+
+        <!-- <meta name="theme-color" content="#0A44A5" /> -->
+        <meta name="keywords" content="Alldone, Alldone.app, Project Management, Task Management, Collaboration Tool" />
+        <meta name="author" content="Alldone GmbH" />
+        <meta name="robots" content="index" />
+
+        <meta property="og:title" content="Alldone.app" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:description" content="Alldone.app - team productivity made simple." />
+        <meta property="og:url" content="https://my.alldone.app/" />
+        <meta property="og:site_name" content="Alldone.app" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@alldone_app" />
+
+        <link rel="canonical" href="https://my.alldone.app/" />
+
+        <meta http-equiv="cache-control" content="no-store" />
+        <meta http-equiv="expires" content="1" />
+        <meta http-equiv="pragma" content="no-store" />
+        <!--        <meta name="apple-mobile-web-app-capable" content="yes" />-->
+        <!--        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />-->
+        <!--        <meta name="apple-mobile-web-app-title" content="Alldone.app" />-->
+        <!--        <link rel="apple-touch-startup-image" href="apple-touch-icon-2048x2048.png" />-->
+
+        <script type="application/ld+json">
+            {
+                "@context": "http://schema.org",
+                "@type": "WebSite",
+                "url": "https://my.alldone.app/",
+                "headline": "Alldone.app",
+                "name": "Alldone.app",
+                "image": "https://my.alldone.app/home.png",
+                "keywords": "Alldone, Alldone.app, Project Management, Task Management, Collaboration Tool",
+                "description": "Alldone.app - team productivity made simple.",
+                "author": {
+                    "@type": "Organization",
+                    "name": "Alldone GmbH",
+                    "address": "Kolonnenstr. 8 10827 Berlin",
+                    "url": "https://my.alldone.app/",
+                    "contactPoint": [
+                        {
+                            "@type": "ContactPoint",
+                            "name": "Karsten Wysk",
+                            "email": "Karsten@AllDone.app",
+                            "contactType": "contact email"
+                        }
+                    ]
+                }
+            }
+        </script>
+        <script>
+            let color = '#fff'
+            const style = document.createElement('style')
+            if (
+                /(Mac|iPhone|iPod|iPad)/i.test(window.navigator.platform) &&
+                navigator.maxTouchPoints &&
+                navigator.maxTouchPoints > 2
+            ) {
+                color = '#000000'
+            }
+            style.innerHTML = `body {background-color: ${color}}`
+            document.head.appendChild(style)
+        </script>
+        <script src="/service-worker-handler.js"></script>
+        <title>%WEB_TITLE%</title>
+        <style>
+            /**
+       * Extend the react-native-web reset:
+       * https://github.com/necolas/react-native-web/blob/master/packages/react-native-web/src/exports/StyleSheet/initialRules.js
+       */
+            * {
+                flex-basis: auto !important;
+            }
+            html,
+            body,
+            #root {
+                width: 100%;
+                /* To smooth any scrolling behavior */
+                -webkit-overflow-scrolling: touch;
+                margin: 0px;
+                padding: 0px;
+                /* Allows content to fill the viewport and go beyond the bottom */
+                min-height: 100%;
+            }
+            #root {
+                flex-shrink: 0;
+                flex-basis: auto;
+                flex-grow: 1;
+                display: flex;
+                flex: 1;
+            }
+
+            html {
+                /* Without this fixed positioning the Root view show both vertical and horizontal scrollbars */
+                /*position: fixed;*/
+                scroll-behavior: smooth;
+                /* Prevent text size change on orientation change https://gist.github.com/tfausak/2222823#file-ios-8-web-app-html-L138 */
+                -webkit-text-size-adjust: 100%;
+                height: 100%;
+            }
+
+            body {
+                display: flex;
+                /* Allows you to scroll below the viewport; default value is visible */
+                overflow-y: auto;
+                overscroll-behavior-y: none;
+                text-rendering: optimizeLegibility;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+                -ms-overflow-style: scrollbar;
+                padding-top: env(safe-area-inset-top) !important;
+                padding-left: env(safe-area-inset-left) !important;
+                padding-right: env(safe-area-inset-right) !important;
+            }
+            .react-tiny-popover-container {
+                box-shadow: 0px 4px 16px rgba(78, 93, 120, 0.56);
+            }
+            /* Enable for apps that support dark-theme */
+            /*@media (prefers-color-scheme: dark) {
+        body {
+          background-color: black;
+        }
+      }*/
+        </style>
+    </head>
+
+    <body>
+        <!-- Google Tag Manager (noscript) -->
+        <noscript
+            ><iframe
+                src="https://www.googletagmanager.com/ns.html?id=GTM-THM5BX5"
+                height="0"
+                width="0"
+                style="display: none; visibility: hidden;"
+            ></iframe
+        ></noscript>
+        <!-- End Google Tag Manager (noscript) -->
+        <!--
+      A generic no script element with a reload button and a message.
+      Feel free to customize this however you'd like.
+    -->
+        <noscript>
+            <form
+                action=""
+                style="background-color: #fff; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;"
+            >
+                <div
+                    style="
+                        font-size: 18px;
+                        font-family: Helvetica, sans-serif;
+                        line-height: 24px;
+                        margin: 10%;
+                        width: 80%;
+                    "
+                >
+                    <p>Oh no! It looks like JavaScript is not enabled in your browser.</p>
+                    <p style="margin: 20px 0;">
+                        <button
+                            type="submit"
+                            style="
+                                background-color: #4630eb;
+                                border-radius: 100px;
+                                border: none;
+                                box-shadow: none;
+                                color: #fff;
+                                cursor: pointer;
+                                font-weight: bold;
+                                line-height: 20px;
+                                padding: 6px 16px;
+                            "
+                        >
+                            Reload
+                        </button>
+                    </p>
+                </div>
+            </form>
+        </noscript>
+        <!-- The root element for your Expo app. -->
+        <div id="root"></div>
+    </body>
+</html>

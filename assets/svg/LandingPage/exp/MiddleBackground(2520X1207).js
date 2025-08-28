@@ -1,0 +1,128 @@
+import * as React from 'react'
+
+function SvgMiddleBackground2520X1207(props) {
+    return (
+        <svg width={2520} height={1207} fill="none" {...props}>
+            <path
+                d="M2520 160.933v885.917l-767.32 157.44a56.056 56.056 0 01-16.8.87L0 1032.36V160.933L609.854 2.409A55.996 55.996 0 01628.666.808L2520 160.933z"
+                fill="url(#Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)"
+            />
+            <rect
+                opacity={0.08}
+                x={1960.52}
+                y={593.379}
+                width={33.483}
+                height={33.483}
+                rx={6}
+                transform="rotate(31.502 1960.52 593.379)"
+                fill="#45AFFC"
+            />
+            <rect
+                opacity={0.08}
+                x={653.775}
+                y={741.783}
+                width={21.794}
+                height={21.794}
+                rx={8}
+                transform="rotate(54.65 653.775 741.783)"
+                fill="#45AFFC"
+            />
+            <path
+                opacity={0.08}
+                d="M614.123 773.658c9.052-1.824 16.685 6.834 13.739 15.586l-9.943 29.536c-2.946 8.752-14.262 11.032-20.367 4.105l-20.608-23.379c-6.106-6.927-2.423-17.867 6.629-19.691l30.55-6.157zm-391-547.783c9.052-1.825 16.685 6.834 13.739 15.586l-9.943 29.536c-2.946 8.751-14.262 11.032-20.367 4.105l-20.608-23.379c-6.106-6.927-2.423-17.867 6.629-19.691l30.55-6.157zm-95 248c9.052-1.825 16.685 6.834 13.739 15.586l-9.943 29.536c-2.946 8.751-14.262 11.032-20.367 4.105l-20.608-23.379c-6.106-6.927-2.423-17.867 6.629-19.691l30.55-6.157zM1949.09 143.023c2.91-1.08 5.9 1.393 5.38 4.453l-1.75 10.326c-.52 3.059-4.15 4.41-6.54 2.431l-8.07-6.678c-2.39-1.979-1.74-5.804 1.17-6.884l9.81-3.648z"
+                fill="#ADF0D9"
+            />
+            <circle opacity={0.08} cx={1552} cy={138} r={25} fill="#48CADA" />
+            <circle opacity={0.08} cx={2282.5} cy={924.5} r={14.5} fill="#48CADA" />
+            <circle opacity={0.08} cx={1215} cy={578} r={25} fill="#48CADA" />
+            <circle opacity={0.08} cx={553} cy={440} r={11} fill="#06EEC1" />
+            <circle opacity={0.08} cx={134} cy={509} r={11} fill="#06EEC1" />
+            <circle opacity={0.08} cx={120.5} cy={468.5} r={23.5} fill="#06EEC1" />
+            <circle opacity={0.08} cx={296.5} cy={560.5} r={17.5} fill="#06EEC1" />
+            <circle opacity={0.08} cx={1931.5} cy={214.283} r={33.5} fill="#1DE686" />
+            <circle opacity={0.08} cx={572.5} cy={754.283} r={40.5} fill="#1DE686" />
+            <circle opacity={0.08} cx={191.5} cy={872.5} r={40.5} fill="#1DE686" />
+            <path
+                opacity={0.08}
+                d="M1943.34 557.455c15.51-3.127 28.59 11.714 23.54 26.713l-17.04 50.623c-5.05 15-24.44 18.908-34.91 7.036l-35.32-40.07c-10.46-11.873-4.15-30.622 11.37-33.749l52.36-10.553zm392.05-237.602c8.5-1.714 15.67 6.42 12.91 14.642l-9.34 27.747c-2.77 8.221-13.4 10.364-19.14 3.856l-19.36-21.963c-5.73-6.507-2.27-16.784 6.23-18.498l28.7-5.784zm-26.09 583.279c6.01-1.211 11.07 4.536 9.12 10.344l-6.6 19.601c-1.95 5.808-9.46 7.322-13.52 2.724l-13.67-15.515c-4.05-4.597-1.61-11.857 4.4-13.068l20.27-4.086zM1264.36 557.447c12.04-2.426 22.19 9.091 18.27 20.732l-13.22 39.287c-3.92 11.641-18.97 14.674-27.09 5.46l-27.41-31.097c-8.13-9.214-3.23-23.765 8.81-26.192l40.64-8.19z"
+                fill="#ADF0D9"
+            />
+            <rect
+                opacity={0.08}
+                x={1972.07}
+                y={173.783}
+                width={34.039}
+                height={34.039}
+                rx={4}
+                transform="rotate(45 1972.07 173.783)"
+                fill="#FFB59E"
+            />
+            <rect
+                opacity={0.08}
+                x={2285.58}
+                y={796.452}
+                width={60.251}
+                height={60.251}
+                rx={16}
+                transform="rotate(30 2285.58 796.452)"
+                fill="#FFB59E"
+            />
+            <rect
+                opacity={0.08}
+                x={539.582}
+                y={331}
+                width={83.165}
+                height={83.165}
+                rx={12}
+                transform="rotate(30 539.582 331)"
+                fill="#FFB59E"
+            />
+            <rect
+                opacity={0.08}
+                x={2370.58}
+                y={247}
+                width={83.165}
+                height={83.165}
+                rx={12}
+                transform="rotate(30 2370.58 247)"
+                fill="#FFB59E"
+            />
+            <rect
+                opacity={0.08}
+                x={150.83}
+                y={831.902}
+                width={41.511}
+                height={41.511}
+                rx={12}
+                transform="rotate(30 150.83 831.902)"
+                fill="#FFB59E"
+            />
+            <rect
+                opacity={0.08}
+                x={269.59}
+                y={192.938}
+                width={65.465}
+                height={65.465}
+                rx={12}
+                transform="rotate(66.381 269.59 192.938)"
+                fill="#FFB59E"
+            />
+            <defs>
+                <linearGradient
+                    id="Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__Middle-Background(2520x1207)_svg__paint0_linear"
+                    x1={998.198}
+                    y1={10.778}
+                    x2={998.198}
+                    y2={1034.35}
+                    gradientUnits="userSpaceOnUse"
+                >
+                    <stop stopColor="#0D55CF" />
+                    <stop offset={0.711} stopColor="#308CF5" />
+                    <stop offset={1} stopColor="#2D95FF" />
+                </linearGradient>
+            </defs>
+        </svg>
+    )
+}
+
+export default SvgMiddleBackground2520X1207

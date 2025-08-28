@@ -1,0 +1,25 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`TaskItemTags component TaskItemTags functions snapshot test check toggleVisibleTags function 1`] = `
+<Text>
+  Some text
+</Text>
+`;
+
+exports[`TaskItemTags component TaskItemTags functions snapshot test check updateState function 1`] = `
+<Text>
+  Some text
+</Text>
+`;
+
+exports[`TaskItemTags component TaskItemTags functions snapshot test check updateState function 2`] = `
+<Text>
+  Some text
+</Text>
+`;
+
+exports[`TaskItemTags component TaskItemTags snapshot test should render correctly 1`] = `
+<Text>
+  Some text
+</Text>
+`;

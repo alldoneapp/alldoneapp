@@ -1,0 +1,10 @@
+FROM node:12-alpine
+
+WORKDIR /app
+
+RUN apk --no-cache add git
+
+ADD package.json package-lock.json ./
+
+RUN npm ci
+RUN npm install -g expo-cli@6.1.x

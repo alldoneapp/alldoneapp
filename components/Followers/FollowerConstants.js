@@ -1,0 +1,10 @@
+export const MAX_USERS_TO_SHOW = 3
+export const FOLLOWER_USERS_TYPE = 'users'
+export const FOLLOWER_CONTACTS_TYPE = 'contacts'
+export const FOLLOWER_PROJECTS_TYPE = 'projects'
+export const FOLLOWER_GOALS_TYPE = 'goals'
+export const FOLLOWER_TASKS_TYPE = 'tasks'
+export const FOLLOWER_NOTES_TYPE = 'notes'
+export const FOLLOWER_TOPICS_TYPE = 'topics'
+export const FOLLOWER_SKILLS_TYPE = 'skills'
+export const FOLLOWER_ASSISTANTS_TYPE = 'assistants'

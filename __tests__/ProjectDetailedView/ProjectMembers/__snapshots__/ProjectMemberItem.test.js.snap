@@ -1,0 +1,221 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ProjectMemberItem component ProjectMemberItem snapshot test should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 64,
+      "justifyContent": "center",
+    }
+  }
+>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "alignItems": "center",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 64,
+        "justifyContent": "center",
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={Object {}}
+    >
+      <Image
+        source={
+          Object {
+            "uri": "http://path.to.photo",
+          }
+        }
+        style={
+          Object {
+            "borderRadius": 100,
+            "height": 40,
+            "width": 40,
+          }
+        }
+      />
+    </View>
+    <View
+      style={
+        Object {
+          "flex": 1,
+          "flexDirection": "column",
+          "justifyContent": "flex-start",
+          "marginLeft": 12,
+          "paddingTop": 2,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "justifyContent": "flex-start",
+            },
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 16,
+              "letterSpacing": 0.32,
+              "lineHeight": 24,
+            },
+          ]
+        }
+      >
+        Pepito
+      </Text>
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "flex-start",
+          }
+        }
+      >
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 12,
+                "letterSpacing": 0.48,
+                "lineHeight": 20,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+            ]
+          }
+        />
+        <View
+          style={
+            Object {
+              "backgroundColor": "#8A94A6",
+              "borderRadius": 50,
+              "height": 4,
+              "marginHorizontal": 8,
+              "width": 4,
+            }
+          }
+        />
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 12,
+                "letterSpacing": 0.48,
+                "lineHeight": 20,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+            ]
+          }
+        />
+      </View>
+    </View>
+    <View
+      style={
+        Object {
+          "marginLeft": 8,
+        }
+      }
+    >
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#E00000",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#E00000",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Object {
+                "alignSelf": "center",
+                "color": "#FFFFFF",
+                "flexWrap": "nowrap",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 14,
+                "letterSpacing": 0.8,
+                "lineHeight": 16,
+                "margin": 0,
+                "paddingHorizontal": 8,
+                "paddingVertical": 0,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+              Object {
+                "color": "#E00000",
+              },
+            ]
+          }
+        >
+          Kick user
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
