@@ -301,6 +301,40 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                 })
                 await taskService.initialize()
 
+                // Create feedUser object for the task creator - get actual user data
+                const creatorUserId = task.creatorUserId || task.userId
+                let feedUser
+                try {
+                    const userDoc = await admin.firestore().collection('users').doc(creatorUserId).get()
+                    if (userDoc.exists) {
+                        const userData = userDoc.data()
+                        feedUser = {
+                            uid: creatorUserId,
+                            id: creatorUserId,
+                            creatorId: creatorUserId,
+                            name: userData.name || userData.displayName || 'User',
+                            email: userData.email || '',
+                        }
+                    } else {
+                        feedUser = {
+                            uid: creatorUserId,
+                            id: creatorUserId,
+                            creatorId: creatorUserId,
+                            name: 'Unknown User',
+                            email: '',
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not get user data for recurring task feed, using defaults:', error)
+                    feedUser = {
+                        uid: creatorUserId,
+                        id: creatorUserId,
+                        creatorId: creatorUserId,
+                        name: 'Unknown User',
+                        email: '',
+                    }
+                }
+
                 try {
                     const result = await taskService.createAndPersistTask(
                         {
@@ -326,7 +360,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                                 aiTemperature: task.aiTemperature || null,
                                 aiSystemMessage: task.aiSystemMessage || null,
                             },
-                            feedUser: feedUserData,
+                            feedUser,
                         },
                         {
                             userId: assistantId,

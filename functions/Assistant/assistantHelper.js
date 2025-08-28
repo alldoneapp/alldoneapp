@@ -727,18 +727,43 @@ async function storeChunks(
                         const taskService = new TaskService({
                             database: admin.firestore(),
                             idGenerator: () => uuidv4(),
-                            enableFeeds: false, // Assistant tool calls don't need feeds in chat context
+                            enableFeeds: true, // Enable feeds so tasks appear in updates tab
                             enableValidation: true,
                             isCloudFunction: true,
                         })
                         await taskService.initialize()
 
-                        // Create feedUser object for consistency (even though feeds are disabled)
-                        const feedUser = {
-                            uid: creatorId,
-                            id: creatorId,
-                            name: 'User',
-                            email: '',
+                        // Create feedUser object for feed generation - get actual user data
+                        let feedUser
+                        try {
+                            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+                            if (userDoc.exists) {
+                                const userData = userDoc.data()
+                                feedUser = {
+                                    uid: creatorId,
+                                    id: creatorId,
+                                    creatorId: creatorId,
+                                    name: userData.name || userData.displayName || 'User',
+                                    email: userData.email || '',
+                                }
+                            } else {
+                                feedUser = {
+                                    uid: creatorId,
+                                    id: creatorId,
+                                    creatorId: creatorId,
+                                    name: 'Unknown User',
+                                    email: '',
+                                }
+                            }
+                        } catch (error) {
+                            console.warn('Could not get user data for assistant feed, using defaults:', error)
+                            feedUser = {
+                                uid: creatorId,
+                                id: creatorId,
+                                creatorId: creatorId,
+                                name: 'Unknown User',
+                                email: '',
+                            }
                         }
 
                         // Create task using unified service
