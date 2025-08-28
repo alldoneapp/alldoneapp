@@ -278,6 +278,8 @@ class TaskService {
                 if (feedData && this.options.enableFeeds) {
                     if (this.options.isCloudFunction) {
                         try {
+                            const admin = require('firebase-admin')
+                            const { loadFeedsGlobalState } = require('../GlobalState/globalState')
                             const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
                             const feedsTasks = require('../Feeds/tasksFeeds')
                             if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
@@ -286,6 +288,21 @@ class TaskService {
                                     feedsBatch.setProjectContext(finalProjectId)
                                 }
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
+                                // Load minimal global state required by feeds helpers (feedCreator and project)
+                                try {
+                                    const projectSnap = await this.options.database
+                                        .doc(`projects/${finalProjectId}`)
+                                        .get()
+                                    const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+                                    loadFeedsGlobalState(
+                                        admin,
+                                        admin,
+                                        creator,
+                                        { ...projectData, id: finalProjectId },
+                                        [],
+                                        null
+                                    )
+                                } catch (_) {}
                                 // Normalize estimations so CF feeds helper (OPEN_STEP = -1) gets a defined value
                                 const normalizedTaskForFeeds = (() => {
                                     try {
@@ -363,9 +380,26 @@ class TaskService {
                     // In Cloud Functions, also push through feeds pipeline to generate inner feeds
                     if (this.options.isCloudFunction) {
                         try {
+                            const admin = require('firebase-admin')
+                            const { loadFeedsGlobalState } = require('../GlobalState/globalState')
                             const feedsTasks = require('../Feeds/tasksFeeds')
                             if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
+                                // Load minimal global state required by feeds helpers (feedCreator and project)
+                                try {
+                                    const projectSnap = await this.options.database
+                                        .doc(`projects/${finalProjectId}`)
+                                        .get()
+                                    const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+                                    loadFeedsGlobalState(
+                                        admin,
+                                        admin,
+                                        creator,
+                                        { ...projectData, id: finalProjectId },
+                                        [],
+                                        null
+                                    )
+                                } catch (_) {}
                                 // Normalize estimations so CF feeds helper (OPEN_STEP = -1) gets a defined value
                                 const normalizedTaskForFeeds = (() => {
                                     try {
