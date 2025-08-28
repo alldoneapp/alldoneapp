@@ -517,11 +517,6 @@ class AlldoneSimpleMCPServer {
                                     description:
                                         'Get subtasks for specific parent task ID (requires includeSubtasks: true)',
                                 },
-                                bearerToken: {
-                                    type: 'string',
-                                    description:
-                                        'Optional Bearer token to authenticate this call when headers are unavailable',
-                                },
                             },
                             required: [],
                         },
@@ -748,24 +743,13 @@ class AlldoneSimpleMCPServer {
             projectId: specifiedProjectId,
             status = 'open',
             limit = 20,
-            bearerToken,
             date,
             includeSubtasks = false,
             parentId = null,
         } = args
 
-        // Get authenticated user from header or optional bearerToken arg
-        let userId
-        if (bearerToken) {
-            try {
-                userId = await this.getAuthenticatedUserFromToken(bearerToken)
-            } catch (e) {
-                console.error('bearerToken argument invalid:', e.message)
-            }
-        }
-        if (!userId) {
-            userId = await this.getAuthenticatedUserForClient(request)
-        }
+        // Get authenticated user from header
+        const userId = await this.getAuthenticatedUserForClient(request)
 
         // Use specified project or fall back to user's default project
         const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
@@ -1566,11 +1550,6 @@ class AlldoneSimpleMCPServer {
                                         type: 'string',
                                         description:
                                             'Get subtasks for specific parent task ID (requires includeSubtasks: true)',
-                                    },
-                                    bearerToken: {
-                                        type: 'string',
-                                        description:
-                                            'Optional Bearer token to authenticate this call when headers are unavailable',
                                     },
                                 },
                                 required: [],
