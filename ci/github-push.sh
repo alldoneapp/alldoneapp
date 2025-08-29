@@ -13,18 +13,51 @@ git remote add alldoneapp_github "https://${GITHUB_USER_ALLDONEAPP}:${GITHUB_TOK
 
 # Push with history to origin_github (safer force that checks remote state)
 git fetch origin_github master || true
-git push --force-with-lease origin_github HEAD:master || true
+
+# Ensure full history available relative to origin_github
+git fetch origin_github --prune --tags --unshallow || git fetch origin_github --deepen=100000 || true
+
+# Clean and repack local repository to avoid pack/unpack issues
+echo "Running git gc and repack before pushing to origin_github..."
+git gc --prune=now || true
+git repack -adf || true
+
+# Push with retries and exponential backoff
+MAX_ATTEMPTS=3
+DELAY=5
+ATTEMPT=1
+PUSH_SUCCESS=0
+while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+  echo "Pushing to origin_github (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+  if [ "$ATTEMPT" -eq 2 ]; then
+    echo "Enabling verbose git trace for diagnostics on attempt $ATTEMPT"
+    GIT_TRACE=1 GIT_CURL_VERBOSE=1 git push --force-with-lease origin_github HEAD:master && PUSH_SUCCESS=1 && break || true
+  else
+    git push --force-with-lease origin_github HEAD:master && PUSH_SUCCESS=1 && break || true
+  fi
+  echo "Push attempt $ATTEMPT failed, retrying in ${DELAY}s..."
+  sleep "$DELAY"
+  ATTEMPT=$((ATTEMPT+1))
+  DELAY=$((DELAY*2))
+done
+if [ "$PUSH_SUCCESS" -ne 1 ]; then
+  echo "WARNING: Failed to push to origin_github after $MAX_ATTEMPTS attempts. Continuing pipeline."
+fi
 
 # Push with history after July 18th, 2025 to alldoneapp_github (preserving authorship)
 git fetch alldoneapp_github master || true
+
+# Ensure full history available from origin
+git fetch --prune --tags --unshallow || git fetch --deepen=100000 || true
+git fetch origin master || true
 
 # Store original HEAD before we lose it
 ORIGINAL_HEAD=$(git rev-parse HEAD)
 echo "Original HEAD: $ORIGINAL_HEAD"
 
-# Find the first commit after July 18th, 2025
-CUTOFF_COMMIT=$(git rev-list --max-count=1 --before="2025-07-18" HEAD)
-echo "Cutoff commit (last commit before July 18th, 2025): $CUTOFF_COMMIT"
+# Find the last commit before July 18th, 2025 UTC on origin/master
+CUTOFF_COMMIT=$(git rev-list --max-count=1 --before="2025-07-18T00:00:00Z" origin/master)
+echo "Cutoff commit (last commit before July 18th, 2025 UTC): $CUTOFF_COMMIT"
 
 # Copy CI scripts to temp location before we remove everything
 mkdir -p /tmp/ci-backup
@@ -65,5 +98,9 @@ git push --force alldoneapp_github temp-branch:master || true
 
 # Restore CI scripts for the next step
 cp -r /tmp/ci-backup/ci/ . || true
+
+# Restore the original working tree for subsequent build steps
+echo "Restoring original working tree..."
+git checkout -f "$ORIGINAL_HEAD" || (echo "Failed to checkout original HEAD, attempting hard reset"; git reset --hard "$ORIGINAL_HEAD")
 
 echo "GitHub push process completed"
