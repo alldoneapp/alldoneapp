@@ -2049,79 +2049,83 @@ class AlldoneSimpleMCPServer {
                 // Initialize Firestore database instance for authorization endpoint
                 const db = admin.firestore()
 
-                // Check for recent authorization requests from the same client
+                // Check for recent authorization requests from the same client (only if client_id is provided)
                 console.log('🔍 Checking for recent authorization requests...')
-                const fiveMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))
-                const recentAuthSessions = await db
-                    .collection('oauthAuthSessions')
-                    .where('clientId', '==', client_id)
-                    .where('createdAt', '>', fiveMinutesAgo)
-                    .orderBy('createdAt', 'desc')
-                    .get()
+                if (!client_id) {
+                    console.log('⚠️ Skipping recent authorization lookup because client_id is missing')
+                } else {
+                    const fiveMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))
+                    const recentAuthSessions = await db
+                        .collection('oauthAuthSessions')
+                        .where('clientId', '==', client_id)
+                        .where('createdAt', '>', fiveMinutesAgo)
+                        .orderBy('createdAt', 'desc')
+                        .get()
 
-                if (!recentAuthSessions.empty) {
-                    console.log('⚠️ Recent authorization sessions found for this client:')
-                    recentAuthSessions.docs.forEach((doc, index) => {
-                        const data = doc.data()
-                        console.log(
-                            `   ${index + 1}. Auth Code: ${data.authCode}, Status: ${
-                                data.status
-                            }, Created: ${data.createdAt?.toDate()?.toISOString()}, State: ${data.state}`
-                        )
-                    })
-                    console.log(`📊 Total recent sessions for client ${client_id}: ${recentAuthSessions.size}`)
-
-                    // Check for duplicate pending sessions (same state parameter)
-                    if (state) {
-                        const duplicateStateCheck = recentAuthSessions.docs.filter(
-                            doc => doc.data().state === state && doc.data().status === 'pending'
-                        )
-                        if (duplicateStateCheck.length > 0) {
+                    if (!recentAuthSessions.empty) {
+                        console.log('⚠️ Recent authorization sessions found for this client:')
+                        recentAuthSessions.docs.forEach((doc, index) => {
+                            const data = doc.data()
                             console.log(
-                                '🚨 DUPLICATE REQUEST DETECTED: Same client_id and state parameter in recent pending sessions!'
+                                `   ${index + 1}. Auth Code: ${data.authCode}, Status: ${
+                                    data.status
+                                }, Created: ${data.createdAt?.toDate()?.toISOString()}, State: ${data.state}`
                             )
-                            console.log(
-                                '🔍 Duplicate sessions details:',
-                                duplicateStateCheck.map(doc => ({
-                                    authCode: doc.data().authCode,
-                                    createdAt: doc.data().createdAt?.toDate()?.toISOString(),
-                                    redirectUri: doc.data().redirectUri,
-                                }))
-                            )
+                        })
+                        console.log(`📊 Total recent sessions for client ${client_id}: ${recentAuthSessions.size}`)
 
-                            // Optional: Prevent very recent duplicates (within 30 seconds)
-                            const thirtySecondsAgo = new Date(Date.now() - 30 * 1000)
-                            const veryRecentDuplicates = duplicateStateCheck.filter(
-                                doc => doc.data().createdAt?.toDate() > thirtySecondsAgo
+                        // Check for duplicate pending sessions (same state parameter)
+                        if (state) {
+                            const duplicateStateCheck = recentAuthSessions.docs.filter(
+                                doc => doc.data().state === state && doc.data().status === 'pending'
                             )
-
-                            if (veryRecentDuplicates.length > 0) {
+                            if (duplicateStateCheck.length > 0) {
                                 console.log(
-                                    '⚠️ VERY RECENT DUPLICATE detected - considering redirect to existing session'
+                                    '🚨 DUPLICATE REQUEST DETECTED: Same client_id and state parameter in recent pending sessions!'
                                 )
-                                const existingSession = veryRecentDuplicates[0].data()
-                                console.log('🔄 Using existing session instead of creating new one:', {
-                                    existingAuthCode: existingSession.authCode,
-                                    existingSessionId: existingSession.sessionId,
-                                    createdAt: existingSession.createdAt?.toDate()?.toISOString(),
-                                })
+                                console.log(
+                                    '🔍 Duplicate sessions details:',
+                                    duplicateStateCheck.map(doc => ({
+                                        authCode: doc.data().authCode,
+                                        createdAt: doc.data().createdAt?.toDate()?.toISOString(),
+                                        redirectUri: doc.data().redirectUri,
+                                    }))
+                                )
 
-                                // Redirect to existing session
-                                const baseUrl = getBaseUrl()
-                                const loginUrl = `${baseUrl}/mcpServer/auth/login?session_id=${
-                                    existingSession.sessionId
-                                }&auth_code=${existingSession.authCode}&redirect_uri=${encodeURIComponent(
-                                    redirect_uri || ''
-                                )}&state=${state || ''}`
+                                // Optional: Prevent very recent duplicates (within 30 seconds)
+                                const thirtySecondsAgo = new Date(Date.now() - 30 * 1000)
+                                const veryRecentDuplicates = duplicateStateCheck.filter(
+                                    doc => doc.data().createdAt?.toDate() > thirtySecondsAgo
+                                )
 
-                                console.log('🔄 Redirecting to existing session instead of creating duplicate')
-                                res.redirect(loginUrl)
-                                return
+                                if (veryRecentDuplicates.length > 0) {
+                                    console.log(
+                                        '⚠️ VERY RECENT DUPLICATE detected - considering redirect to existing session'
+                                    )
+                                    const existingSession = veryRecentDuplicates[0].data()
+                                    console.log('🔄 Using existing session instead of creating new one:', {
+                                        existingAuthCode: existingSession.authCode,
+                                        existingSessionId: existingSession.sessionId,
+                                        createdAt: existingSession.createdAt?.toDate()?.toISOString(),
+                                    })
+
+                                    // Redirect to existing session
+                                    const baseUrl = getBaseUrl()
+                                    const loginUrl = `${baseUrl}/mcpServer/auth/login?session_id=${
+                                        existingSession.sessionId
+                                    }&auth_code=${existingSession.authCode}&redirect_uri=${encodeURIComponent(
+                                        redirect_uri || ''
+                                    )}&state=${state || ''}`
+
+                                    console.log('🔄 Redirecting to existing session instead of creating duplicate')
+                                    res.redirect(loginUrl)
+                                    return
+                                }
                             }
                         }
+                    } else {
+                        console.log('✅ No recent authorization sessions found for this client')
                     }
-                } else {
-                    console.log('✅ No recent authorization sessions found for this client')
                 }
 
                 // Check rate limits for authorization requests
