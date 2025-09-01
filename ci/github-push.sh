@@ -56,7 +56,7 @@ ORIGINAL_HEAD=$(git rev-parse HEAD)
 echo "Original HEAD: $ORIGINAL_HEAD"
 
 # Find the last commit before July 18th, 2025 UTC on origin/master
-CUTOFF_COMMIT=$(git rev-list --max-count=1 --before="2025-07-18T00:00:00Z" origin/master)
+CUTOFF_COMMIT=$(git rev-list --max-count=1 --before="2025-08-28T00:00:00Z" origin/master)
 echo "Cutoff commit (last commit before July 18th, 2025 UTC): $CUTOFF_COMMIT"
 
 # Copy CI scripts to temp location before we remove everything
