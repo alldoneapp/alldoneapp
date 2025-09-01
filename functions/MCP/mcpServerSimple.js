@@ -67,6 +67,7 @@ function getBaseUrl() {
     })
 
     // Decide by detected projectId; default to production if unknown
+    // I could replace it here with MCP_BASE_URL which should be now also set in the CI pipeline
     if (projectId === 'alldonealeph') {
         return 'https://alldonealeph.web.app'
     }

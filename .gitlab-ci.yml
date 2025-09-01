@@ -88,10 +88,11 @@ build_web_staging:
         - ls -la functions/MCP/config/environments.js || echo "MCP config file not found"
         - echo "DEBUG - Content before MCP replacement:"
         - grep -A 10 -B 5 "BEGIN-ENVS" functions/MCP/config/environments.js || echo "BEGIN-ENVS not found"
-        - echo "DEBUG - Environment variables being used for MCP:"
+        - echo "DEBUG - Environment variables being used for MCP (DEV):"
         - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_DEV:0:20}...
         - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV
         - echo "PROJECT_ID:" $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV
+        - echo "MCP_BASE_URL_DEV:" $MCP_BASE_URL_DEV
         - |
             sed -i '/BEGIN-ENVS/,/END-ENVS/c\
             const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\
@@ -99,7 +100,8 @@ build_web_staging:
             const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\
             const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\
             const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\
-            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"' functions/MCP/config/environments.js
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"\
+            const MCP_BASE_URL = "'"$MCP_BASE_URL_DEV"'"' functions/MCP/config/environments.js
         - echo "DEBUG - Content after MCP replacement:"
         - grep -A 10 -B 5 "GOOGLE_FIREBASE_WEB_API_KEY" functions/MCP/config/environments.js || echo "Replacement failed"
         - sed -i 's|__FIREBASE_API_KEY__|'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'|g; s|__FIREBASE_AUTH_DOMAIN__|'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'|g; s|__FIREBASE_DATABASE_URL__|'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'|g; s|__FIREBASE_PROJECT_ID__|'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'|g; s|__FIREBASE_STORAGE_BUCKET__|'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'|g; s|__FIREBASE_MESSAGING_SENDER_ID__|'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'|g; s|__FIREBASE_APP_ID__|'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'|g; s|__FIREBASE_MEASUREMENT_ID__|'"$GOOGLE_ANALYTICS_KEY_DEV"'|g' web/firebase-messaging-sw.js
@@ -192,10 +194,11 @@ deploy:cloud:functions:staging:
         - 'build_web_staging'
     before_script:
         - echo "DEBUG - Replacing MCP config for functions deployment"
-        - echo "Environment variables for MCP functions:"
+        - echo "Environment variables for MCP functions (DEV):"
         - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_DEV:0:20}...
         - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV
         - echo "PROJECT_ID:" $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV
+        - echo "MCP_BASE_URL_DEV:" $MCP_BASE_URL_DEV
         - |
             sed -i '/BEGIN-ENVS/,/END-ENVS/c\
             const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\
@@ -203,7 +206,8 @@ deploy:cloud:functions:staging:
             const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\
             const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\
             const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\
-            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"' functions/MCP/config/environments.js
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"\
+            const MCP_BASE_URL = "'"$MCP_BASE_URL_DEV"'"' functions/MCP/config/environments.js
         - echo "DEBUG - MCP config after replacement:"
         - grep -A 10 -B 5 "GOOGLE_FIREBASE_WEB_API_KEY" functions/MCP/config/environments.js || echo "Replacement failed"
         - cd functions
@@ -229,6 +233,20 @@ deploy:cloud:functions:production:
     needs:
         - 'build_web_production'
     before_script:
+        - echo "Environment variables for MCP functions (PROD):"
+        - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_PROD:0:20}...
+        - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD
+        - echo "PROJECT_ID:" $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD
+        - echo "MCP_BASE_URL_PROD:" $MCP_BASE_URL_PROD
+        - |
+            sed -i '/BEGIN-ENVS/,/END-ENVS/c\
+            const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD"'"\
+            const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_PROD"'"\
+            const MCP_BASE_URL = "'"$MCP_BASE_URL_PROD"'"' functions/MCP/config/environments.js
         - cd functions
         - ln -s /functions/node_modules node_modules
         - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
