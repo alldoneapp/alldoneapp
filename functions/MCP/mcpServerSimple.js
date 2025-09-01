@@ -36,15 +36,48 @@ function getBaseUrl() {
         return 'http://localhost:5000'
     }
 
-    const isProduction = inProductionEnvironment()
+    // Prefer deriving environment from the Functions runtime project ID to avoid CI param reliance
+    let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    if (!projectId) {
+        try {
+            const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+            if (cfg && cfg.projectId) projectId = cfg.projectId
+        } catch (_) {}
+    }
+    if (!projectId) {
+        try {
+            projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+        } catch (_) {}
+    }
 
     // Temporary debug log to diagnose environment selection for base URL
+    const isProduction = inProductionEnvironment()
+
     console.log('MCP getBaseUrl debug', {
         FUNCTIONS_EMULATOR: process.env.FUNCTIONS_EMULATOR,
         CURRENT_ENVIORNMENT: process.env.CURRENT_ENVIORNMENT,
         CURRENT_ENVIRONMENT: process.env.CURRENT_ENVIRONMENT,
+        GCLOUD_PROJECT: process.env.GCLOUD_PROJECT,
+        GCP_PROJECT: process.env.GCP_PROJECT,
+        FIREBASE_CONFIG_hasProjectId: (() => {
+            try {
+                const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+                return !!(cfg && cfg.projectId)
+            } catch (e) {
+                return false
+            }
+        })(),
+        detectedProjectId: projectId,
         isProduction: isProduction,
     })
+
+    // Decide by detected projectId first (Functions runtime reliable), then fallback to CI param
+    if (projectId === 'alldonealeph') {
+        return 'https://alldonealeph.web.app'
+    }
+    if (projectId === 'alldonestaging') {
+        return 'https://alldonestaging.web.app'
+    }
 
     if (isProduction) {
         return 'https://alldonealeph.web.app'
