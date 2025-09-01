@@ -38,6 +38,14 @@ function getBaseUrl() {
 
     const isProduction = inProductionEnvironment()
 
+    // Temporary debug log to diagnose environment selection for base URL
+    console.log('MCP getBaseUrl debug', {
+        FUNCTIONS_EMULATOR: process.env.FUNCTIONS_EMULATOR,
+        CURRENT_ENVIORNMENT: process.env.CURRENT_ENVIORNMENT,
+        CURRENT_ENVIRONMENT: process.env.CURRENT_ENVIRONMENT,
+        isProduction: isProduction,
+    })
+
     if (isProduction) {
         return 'https://alldonealeph.web.app'
     } else {
