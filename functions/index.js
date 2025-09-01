@@ -9,19 +9,33 @@ const firebaseConfig = require('./firebaseConfig.js')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
-    const { inProductionEnvironment } = require('./Utils/HelperFunctionsCloud.js')
-
     if (process.env.FUNCTIONS_EMULATOR) {
         return 'http://localhost:5000'
     }
 
-    const isProduction = inProductionEnvironment()
+    // Prefer deriving environment from the Functions runtime project ID
+    let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    if (!projectId) {
+        try {
+            const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+            if (cfg && cfg.projectId) projectId = cfg.projectId
+        } catch (_) {}
+    }
+    if (!projectId) {
+        try {
+            const admin = require('firebase-admin')
+            projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+        } catch (_) {}
+    }
 
-    if (isProduction) {
+    if (projectId === 'alldonealeph') {
         return 'https://alldonealeph.web.app'
-    } else {
+    }
+    if (projectId === 'alldonestaging') {
         return 'https://alldonestaging.web.app'
     }
+
+    return 'https://alldonealeph.web.app'
 }
 
 // Guard against duplicate initialization during Firebase CLI code analysis

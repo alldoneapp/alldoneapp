@@ -30,8 +30,6 @@ const crypto = require('crypto')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
-    const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud.js')
-
     if (process.env.FUNCTIONS_EMULATOR) {
         return 'http://localhost:5000'
     }
@@ -51,8 +49,6 @@ function getBaseUrl() {
     }
 
     // Temporary debug log to diagnose environment selection for base URL
-    const isProduction = inProductionEnvironment()
-
     console.log('MCP getBaseUrl debug', {
         FUNCTIONS_EMULATOR: process.env.FUNCTIONS_EMULATOR,
         CURRENT_ENVIORNMENT: process.env.CURRENT_ENVIORNMENT,
@@ -68,10 +64,9 @@ function getBaseUrl() {
             }
         })(),
         detectedProjectId: projectId,
-        isProduction: isProduction,
     })
 
-    // Decide by detected projectId first (Functions runtime reliable), then fallback to CI param
+    // Decide by detected projectId; default to production if unknown
     if (projectId === 'alldonealeph') {
         return 'https://alldonealeph.web.app'
     }
@@ -79,11 +74,7 @@ function getBaseUrl() {
         return 'https://alldonestaging.web.app'
     }
 
-    if (isProduction) {
-        return 'https://alldonealeph.web.app'
-    } else {
-        return 'https://alldonestaging.web.app'
-    }
+    return 'https://alldonealeph.web.app'
 }
 
 // Note: Firebase admin is already initialized by main functions/index.js
@@ -1461,6 +1452,7 @@ class AlldoneSimpleMCPServer {
                     console.log('🔐 MCP Initialize: Authentication required, returning HTTP 401')
 
                     const baseUrl = `${getBaseUrl()}/mcpServer`
+                    console.log('🔗 MCP Initialize 401 baseUrl:', baseUrl)
 
                     // This should be handled at the HTTP transport level, not here
                     // But since we're in the JSON-RPC handler, we'll throw an error that the HTTP handler will catch
@@ -1469,6 +1461,7 @@ class AlldoneSimpleMCPServer {
                     authError.headers = {
                         'WWW-Authenticate': `Bearer realm="mcp-server", error="invalid_token", error_description="Authentication required"`,
                         Link: `<${baseUrl}/.well-known/oauth-protected-resource>; rel="oauth-protected-resource"`,
+                        'Cache-Control': 'no-store',
                     }
                     authError.body = {
                         error: 'unauthorized',
@@ -1887,27 +1880,30 @@ class AlldoneSimpleMCPServer {
                 req.url === '/.well-known/oauth-authorization-server/mcpServer'
             ) {
                 const baseUrl = `${getBaseUrl()}/mcpServer`
+                console.log('🔎 OAuth AS metadata baseUrl:', baseUrl)
 
-                res.set('Content-Type', 'application/json; charset=utf-8').json({
-                    issuer: baseUrl,
-                    authorization_endpoint: `${baseUrl}/authorize`,
-                    token_endpoint: `${baseUrl}/token`,
-                    registration_endpoint: `${baseUrl}/register`,
-                    token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
-                    scopes_supported: ['read', 'write', 'mcp:tools'],
-                    response_types_supported: ['code'],
-                    grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
-                    subject_types_supported: ['public'],
-                    id_token_signing_alg_values_supported: ['RS256'],
-                    code_challenge_methods_supported: ['S256'],
-                    // MCP-specific extensions
-                    'x-mcp-recommended-flows': {
-                        user_interactions: 'authorization_code',
-                        service_to_service: 'client_credentials',
-                    },
-                    'x-mcp-auth-instructions':
-                        'For MCP clients: Use authorization_code for user interactions (with PKCE) or client_credentials for service-to-service (with API key).',
-                })
+                res.set('Content-Type', 'application/json; charset=utf-8')
+                    .set('Cache-Control', 'no-store')
+                    .json({
+                        issuer: baseUrl,
+                        authorization_endpoint: `${baseUrl}/authorize`,
+                        token_endpoint: `${baseUrl}/token`,
+                        registration_endpoint: `${baseUrl}/register`,
+                        token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
+                        scopes_supported: ['read', 'write', 'mcp:tools'],
+                        response_types_supported: ['code'],
+                        grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
+                        subject_types_supported: ['public'],
+                        id_token_signing_alg_values_supported: ['RS256'],
+                        code_challenge_methods_supported: ['S256'],
+                        // MCP-specific extensions
+                        'x-mcp-recommended-flows': {
+                            user_interactions: 'authorization_code',
+                            service_to_service: 'client_credentials',
+                        },
+                        'x-mcp-auth-instructions':
+                            'For MCP clients: Use authorization_code for user interactions (with PKCE) or client_credentials for service-to-service (with API key).',
+                    })
                 return
             }
 
@@ -1921,14 +1917,17 @@ class AlldoneSimpleMCPServer {
                 req.url === '/.well-known/oauth-protected-resource/mcpServer'
             ) {
                 const baseUrl = `${getBaseUrl()}/mcpServer`
+                console.log('🔎 OAuth PR metadata baseUrl:', baseUrl)
 
-                res.set('Content-Type', 'application/json; charset=utf-8').json({
-                    resource: baseUrl,
-                    authorization_servers: [baseUrl],
-                    scopes_supported: ['read', 'write', 'mcp:tools'],
-                    bearer_methods_supported: ['header'],
-                    resource_documentation: 'https://modelcontextprotocol.io',
-                })
+                res.set('Content-Type', 'application/json; charset=utf-8')
+                    .set('Cache-Control', 'no-store')
+                    .json({
+                        resource: baseUrl,
+                        authorization_servers: [baseUrl],
+                        scopes_supported: ['read', 'write', 'mcp:tools'],
+                        bearer_methods_supported: ['header'],
+                        resource_documentation: 'https://modelcontextprotocol.io',
+                    })
                 return
             }
 
