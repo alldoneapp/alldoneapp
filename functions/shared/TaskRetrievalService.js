@@ -265,8 +265,7 @@ class TaskRetrievalService {
                 count: tasks.length,
                 projectId,
                 status,
-                dateFilter: effectiveDateFilter,
-                dateFilterDescription,
+                dateFilter: dateFilterDescription,
                 includeSubtasks,
                 parentId,
                 query: {
@@ -388,6 +387,10 @@ class TaskRetrievalService {
             userPermissions = [FEED_PUBLIC_FOR_ALL],
         } = params
 
+        // For cross-project queries, ensure we always have proper date filtering
+        // Default to 'today' for open tasks to get today and overdue tasks only
+        const effectiveDate = date || (status === 'open' ? 'today' : null)
+
         try {
             console.log(`🔍 Multi-project task query for ${projectIds.length} projects:`, projectIds.slice(0, 5))
 
@@ -397,7 +400,10 @@ class TaskRetrievalService {
                     const projectParams = {
                         ...params,
                         projectId,
-                        limit: Math.min(limit * 2, 200), // Fetch more per project to allow proper cross-project sorting
+                        date: effectiveDate, // Ensure consistent date filtering across all projects
+                        // For cross-project queries, respect date filtering strictly and don't over-fetch
+                        // This ensures we only get tasks for the specific day requested
+                        limit: Math.min(limit, 200),
                     }
 
                     const result = await this.getTasks(projectParams)
@@ -487,17 +493,14 @@ class TaskRetrievalService {
             const limitedTasks = limit > 0 ? allTasks.slice(0, limit) : allTasks
 
             // Determine the effective date filter for the response
-            let effectiveDateFilter = date || (status === 'open' ? 'today' : null)
             let dateFilterDescription = ''
 
-            if (effectiveDateFilter === 'today') {
+            if (effectiveDate === 'today') {
                 dateFilterDescription =
                     status === 'open' ? 'Today and overdue tasks (dueDate <= end of today)' : 'Tasks completed today'
-            } else if (effectiveDateFilter) {
+            } else if (effectiveDate) {
                 dateFilterDescription =
-                    status === 'open'
-                        ? `Tasks due on ${effectiveDateFilter}`
-                        : `Tasks completed on ${effectiveDateFilter}`
+                    status === 'open' ? `Tasks due on ${effectiveDate}` : `Tasks completed on ${effectiveDate}`
             }
 
             const queriedProjects = projectResults
@@ -516,8 +519,7 @@ class TaskRetrievalService {
                 projectSummary,
                 queriedProjects,
                 status,
-                dateFilter: effectiveDateFilter,
-                dateFilterDescription,
+                dateFilter: dateFilterDescription,
                 includeSubtasks,
                 parentId,
                 query: {
