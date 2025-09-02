@@ -686,7 +686,10 @@ class AlldoneSimpleMCPServer {
                 const tokenDoc = await db.collection('oauthTokens').doc(accessToken).get()
 
                 if (!tokenDoc.exists) {
-                    throw new Error('Invalid access token')
+                    // For direct-login users, provide renewal link since token might have expired and been cleaned up
+                    throw new Error(
+                        `Invalid or expired access token. If you're using direct login, renew your token at: ${getBaseUrl()}/mcpServer/get-token`
+                    )
                 }
 
                 const tokenData = tokenDoc.data()
@@ -695,7 +698,15 @@ class AlldoneSimpleMCPServer {
                 if (tokenData.expiresAt.toDate() < new Date()) {
                     // Cleanup expired tokens when we encounter them
                     this.cleanupExpiredTokens().catch(console.error)
-                    throw new Error('Access token has expired')
+
+                    // Provide helpful renewal info for direct-login tokens
+                    if (tokenData.grantType === 'direct-login') {
+                        throw new Error(
+                            `Access token has expired. To renew your token, visit: ${getBaseUrl()}/mcpServer/get-token`
+                        )
+                    } else {
+                        throw new Error('Access token has expired')
+                    }
                 }
 
                 // Validate token has userId, except for client_credentials which may use service user
@@ -1206,6 +1217,327 @@ class AlldoneSimpleMCPServer {
             console.error('Error getting user default project:', error)
         }
         return null
+    }
+
+    // Generate HTML page for direct token login (simple browser-based flow)
+    generateDirectLoginPage() {
+        const config = getEnvironmentConfig()
+        const firebaseConfig = config.firebaseWeb
+        const baseUrl = getBaseUrl()
+
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Alldone MCP - Get Access Token</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        .logo {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin: 10px;
+        }
+        .button:hover {
+            background: #5a6fd8;
+        }
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+        }
+        .success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+        .info-box {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .refresh-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .refresh-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🚀 Alldone MCP</div>
+        <h2>Get Your Access Token</h2>
+        <p>Sign in with your Alldone account to generate your MCP access token for API usage.</p>
+        
+        <button id="loginBtn" class="button">Sign in with Google</button>
+        <div id="status"></div>
+        
+        <div class="info-box">
+            <div style="font-weight: bold; margin-bottom: 8px;">ℹ️ How it works:</div>
+            <ul style="margin: 0; padding-left: 20px;">
+                <li>Click "Sign in with Google" above</li>
+                <li>Your access token will be created automatically</li>
+                <li>Use the token for MCP API requests</li>
+                <li>Token expires in 30 days (come back here to renew)</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = ${JSON.stringify(firebaseConfig)};
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        const loginBtn = document.getElementById('loginBtn');
+        const status = document.getElementById('status');
+
+        function showStatus(message, type = 'success') {
+            status.innerHTML = \`<div class="status \${type}">\${message}</div>\`;
+        }
+
+        loginBtn.addEventListener('click', async () => {
+            try {
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Signing in...';
+                
+                const provider = new firebase.auth.GoogleAuthProvider();
+                provider.addScope('email');
+                provider.addScope('profile');
+                
+                const result = await auth.signInWithPopup(provider);
+                const user = result.user;
+                const firebaseToken = await user.getIdToken();
+                
+                console.log('🔑 Firebase authentication successful');
+                console.log('👤 User email:', user.email);
+                
+                // Send token creation request to backend
+                loginBtn.textContent = 'Creating access token...';
+                
+                const response = await fetch('${baseUrl}/mcpServer/get-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        firebaseToken: firebaseToken,
+                        email: user.email
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const expiresAt = new Date(data.expiresAt).toLocaleString();
+                    
+                    showStatus(\`
+                        <div style="font-weight: bold; color: #155724; margin-bottom: 12px;">
+                            ✅ Authentication Successful!
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            🎟️ Your MCP access token has been created and is ready to use.
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            ⏰ Token expires at: <strong>\${expiresAt}</strong> (30 days)
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            🔄 When your token expires after 30 days:
+                        </div>
+                        <div>
+                            Simply visit this page again: <a href="${baseUrl}/mcpServer/get-token" class="refresh-link" target="_blank">${baseUrl}/mcpServer/get-token</a>
+                        </div>
+                        <div style="margin-top: 12px; font-size: 14px; color: #666;">
+                            📝 Your access token is now available for MCP clients to use automatically.
+                        </div>
+                    \`, 'success');
+                } else {
+                    showStatus('❌ Token creation failed: ' + data.error, 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Sign in with Google';
+                }
+            } catch (error) {
+                console.error('Authentication error:', error);
+                showStatus('❌ Authentication failed: ' + error.message, 'error');
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Sign in with Google';
+            }
+        });
+    </script>
+</body>
+</html>`
+    }
+
+    // Handle direct token creation after Firebase authentication
+    async handleDirectTokenCreation(req, res) {
+        try {
+            console.log('🎟️ === PROCESSING DIRECT TOKEN CREATION ===')
+            const { firebaseToken, email } = req.body
+
+            if (!firebaseToken || !email) {
+                console.log('❌ Missing required parameters for direct token creation')
+                return res.status(400).json({
+                    success: false,
+                    error: 'Missing firebaseToken or email parameter',
+                })
+            }
+
+            // Verify the Firebase token
+            console.log('🔑 Verifying Firebase token...')
+            const decodedToken = await admin.auth().verifyIdToken(firebaseToken)
+            const userId = decodedToken.uid
+            console.log('✅ Firebase token verified for user:', userId)
+            console.log('👤 User email from token:', decodedToken.email)
+
+            if (decodedToken.email !== email) {
+                console.log('❌ Email mismatch in token verification')
+                return res.status(400).json({
+                    success: false,
+                    error: 'Email mismatch in token verification',
+                })
+            }
+
+            // Ensure direct-login client exists
+            const db = admin.firestore()
+            const directLoginClientId = 'direct-login'
+
+            console.log('🔍 Ensuring direct-login client exists...')
+            const clientDoc = await db.collection('oauthClients').doc(directLoginClientId).get()
+
+            if (!clientDoc.exists) {
+                console.log('📝 Creating direct-login client registration...')
+                const clientData = {
+                    clientId: directLoginClientId,
+                    clientSecret: 'direct-login-secret', // Fixed secret for direct login
+                    createdAt: admin.firestore.Timestamp.now(),
+                    redirectUris: [], // No redirects needed for direct login
+                    grantTypes: ['direct-login'], // Custom grant type
+                    scopes: ['read', 'write', 'mcp:tools'],
+                    tokenEndpointAuthMethod: 'none',
+                    autoRegistered: true,
+                    directLogin: true, // Mark as direct login client
+                }
+
+                await db.collection('oauthClients').doc(directLoginClientId).set(clientData)
+                console.log('✅ Direct-login client created successfully')
+            } else {
+                console.log('✅ Direct-login client already exists')
+            }
+
+            // Generate long-lived access token (30 days for direct login)
+            console.log('🎫 Generating long-lived access token...')
+            const accessToken = `mcp_access_${uuidv4()}`
+
+            console.log('🆔 Generated access token:', accessToken.substring(0, 20) + '...')
+
+            const now = admin.firestore.Timestamp.now()
+            const accessExpiry = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)) // 30 days
+
+            // Store access token (no refresh token needed for direct login)
+            const accessTokenData = {
+                accessToken,
+                refreshToken: null, // No refresh token for direct login
+                clientId: directLoginClientId,
+                userId: userId,
+                mcpSessionId: null, // Not needed for direct login
+                scope: 'read write mcp:tools',
+                grantType: 'direct-login',
+                createdAt: now,
+                expiresAt: accessExpiry,
+            }
+
+            console.log('💾 Storing access token in oauthTokens collection...')
+            await db.collection('oauthTokens').doc(accessToken).set(accessTokenData)
+            console.log('✅ Access token stored successfully')
+
+            // Store user authentication mapping for cross-session access
+            console.log('💾 Storing user authentication mapping...')
+            const authData = {
+                email,
+                userId,
+                accessToken, // Store current access token for lookup
+                timestamp: now,
+                expiresAt: accessExpiry, // 30-day expiry
+            }
+
+            await db.collection('mcpUserAuth').doc(email).set(authData)
+            console.log('✅ User authentication mapping stored successfully')
+
+            console.log('🎉 Direct token creation completed successfully:', {
+                userId: userId,
+                email: email,
+                accessTokenCreated: true,
+                authMappingCreated: true,
+                expiresAt: accessExpiry.toDate(),
+            })
+
+            // Return success response (no tokens exposed)
+            res.json({
+                success: true,
+                message: 'Access token created successfully',
+                userId: userId,
+                email: email,
+                expiresAt: accessExpiry.toDate().toISOString(), // For UI display
+                renewUrl: `${getBaseUrl()}/mcpServer/get-token`, // Point back to get-token for renewal
+            })
+        } catch (error) {
+            console.error('❌ Error in direct token creation:', error)
+            res.status(500).json({
+                success: false,
+                error: 'Token creation failed: ' + error.message,
+            })
+        }
     }
 
     // Cleanup expired tokens and auth sessions
@@ -2215,6 +2547,28 @@ class AlldoneSimpleMCPServer {
                 res.set('Content-Type', 'text/html')
                 res.send(authPage)
                 return
+            }
+
+            // Handle direct token generation endpoint - simple browser-based login
+            if (
+                req.path === '/get-token' ||
+                req.url?.includes('/get-token') ||
+                req.path === '/mcpServer/get-token' ||
+                req.url?.includes('/mcpServer/get-token')
+            ) {
+                console.log('🎟️ === DIRECT TOKEN REQUEST ===')
+                console.log('📋 Request method:', req.method)
+
+                if (req.method === 'GET') {
+                    // Serve the login page
+                    const loginPage = this.generateDirectLoginPage()
+                    res.set('Content-Type', 'text/html')
+                    res.send(loginPage)
+                    return
+                } else if (req.method === 'POST') {
+                    // Handle token creation after Firebase auth
+                    return await this.handleDirectTokenCreation(req, res)
+                }
             }
 
             // Handle OAuth authorization endpoint - integrates with Firebase Auth
