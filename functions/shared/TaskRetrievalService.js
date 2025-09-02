@@ -352,6 +352,188 @@ class TaskRetrievalService {
     }
 
     /**
+     * Get tasks from multiple projects
+     * @param {Object} params - Query parameters
+     * @param {Array} projectIds - Array of project IDs to query
+     * @param {Object} projectsData - Map of projectId -> project metadata
+     * @returns {Object} Aggregated query results
+     */
+    async getTasksFromMultipleProjects(params, projectIds, projectsData = {}) {
+        await this.ensureInitialized()
+
+        if (!projectIds || !Array.isArray(projectIds) || projectIds.length === 0) {
+            return {
+                success: true,
+                tasks: [],
+                subtasksByParent: {},
+                count: 0,
+                totalAcrossProjects: 0,
+                projectSummary: {},
+                queriedProjects: [],
+                query: {
+                    limit: params.limit || 20,
+                    actualCount: 0,
+                    hasMore: false,
+                },
+            }
+        }
+
+        const {
+            userId,
+            status = 'open',
+            date = null,
+            includeSubtasks = false,
+            parentId = null,
+            limit = 20,
+            userPermissions = [FEED_PUBLIC_FOR_ALL],
+        } = params
+
+        try {
+            console.log(`🔍 Multi-project task query for ${projectIds.length} projects:`, projectIds.slice(0, 5))
+
+            // Execute queries in parallel for all projects
+            const projectQueries = projectIds.map(async projectId => {
+                try {
+                    const projectParams = {
+                        ...params,
+                        projectId,
+                        limit: Math.min(limit * 2, 200), // Fetch more per project to allow proper cross-project sorting
+                    }
+
+                    const result = await this.getTasks(projectParams)
+                    return {
+                        projectId,
+                        projectName: projectsData[projectId]?.name || projectId,
+                        success: true,
+                        ...result,
+                    }
+                } catch (error) {
+                    console.warn(`Failed to get tasks from project ${projectId}:`, error.message)
+                    return {
+                        projectId,
+                        projectName: projectsData[projectId]?.name || projectId,
+                        success: false,
+                        tasks: [],
+                        count: 0,
+                        error: error.message,
+                    }
+                }
+            })
+
+            const projectResults = await Promise.all(projectQueries)
+
+            // Aggregate results
+            let allTasks = []
+            let allSubtasksByParent = {}
+            let projectSummary = {}
+            let totalAcrossProjects = 0
+
+            projectResults.forEach(result => {
+                if (result.success && result.tasks) {
+                    // Add project context to each task
+                    const tasksWithProjectInfo = result.tasks.map(task => ({
+                        ...task,
+                        projectId: result.projectId,
+                        projectName: result.projectName,
+                    }))
+
+                    allTasks = allTasks.concat(tasksWithProjectInfo)
+
+                    // Merge subtasks
+                    if (result.subtasksByParent) {
+                        allSubtasksByParent = { ...allSubtasksByParent, ...result.subtasksByParent }
+                    }
+
+                    projectSummary[result.projectId] = {
+                        projectName: result.projectName,
+                        taskCount: result.count,
+                        success: true,
+                    }
+
+                    totalAcrossProjects += result.count
+                } else {
+                    projectSummary[result.projectId] = {
+                        projectName: result.projectName,
+                        taskCount: 0,
+                        success: false,
+                        error: result.error,
+                    }
+                }
+            })
+
+            // Sort all tasks globally (matches existing sort patterns)
+            if (status === 'done') {
+                // For done tasks: order by completion date first, then sortIndex
+                allTasks.sort((a, b) => {
+                    const aCompleted = a.completed || 0
+                    const bCompleted = b.completed || 0
+                    if (aCompleted !== bCompleted) {
+                        return bCompleted - aCompleted // Desc
+                    }
+                    const aSortIndex = a.sortIndex || 0
+                    const bSortIndex = b.sortIndex || 0
+                    return bSortIndex - aSortIndex // Desc
+                })
+            } else {
+                // For open tasks: order by sortIndex (creation/priority order)
+                allTasks.sort((a, b) => {
+                    const aSortIndex = a.sortIndex || 0
+                    const bSortIndex = b.sortIndex || 0
+                    return bSortIndex - aSortIndex // Desc
+                })
+            }
+
+            // Apply global limit
+            const limitedTasks = limit > 0 ? allTasks.slice(0, limit) : allTasks
+
+            // Determine the effective date filter for the response
+            let effectiveDateFilter = date || (status === 'open' ? 'today' : null)
+            let dateFilterDescription = ''
+
+            if (effectiveDateFilter === 'today') {
+                dateFilterDescription =
+                    status === 'open' ? 'Today and overdue tasks (dueDate <= end of today)' : 'Tasks completed today'
+            } else if (effectiveDateFilter) {
+                dateFilterDescription =
+                    status === 'open'
+                        ? `Tasks due on ${effectiveDateFilter}`
+                        : `Tasks completed on ${effectiveDateFilter}`
+            }
+
+            const queriedProjects = projectResults
+                .filter(r => r.success)
+                .map(r => ({
+                    projectId: r.projectId,
+                    projectName: r.projectName,
+                }))
+
+            return {
+                success: true,
+                tasks: limitedTasks,
+                subtasksByParent: allSubtasksByParent,
+                count: limitedTasks.length,
+                totalAcrossProjects,
+                projectSummary,
+                queriedProjects,
+                status,
+                dateFilter: effectiveDateFilter,
+                dateFilterDescription,
+                includeSubtasks,
+                parentId,
+                query: {
+                    limit,
+                    actualCount: limitedTasks.length,
+                    hasMore: allTasks.length > limit,
+                    totalAvailable: allTasks.length,
+                },
+            }
+        } catch (error) {
+            console.error('Error retrieving tasks from multiple projects:', error)
+            throw new Error(`Failed to retrieve tasks from multiple projects: ${error.message}`)
+        }
+    }
+
+    /**
      * Get tasks with validation and error handling
      * @param {Object} params - Query parameters
      * @returns {Object} Query results

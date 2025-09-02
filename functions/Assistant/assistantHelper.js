@@ -845,6 +845,9 @@ async function storeChunks(
                         await taskRetrievalService.initialize()
 
                         // Extract parameters with defaults
+                        const allProjects = !!args.allProjects
+                        const includeArchived = !!args.includeArchived
+                        const includeCommunity = !!args.includeCommunity
                         const status = args.status || 'open'
                         const limit = Math.min(args.limit || 10, 50) // Cap at 50 for assistant usage
                         const date = args.date || 'today'
@@ -852,36 +855,196 @@ async function storeChunks(
                         const parentId = args.parentId || null
 
                         try {
-                            // Get tasks using unified service
-                            const result = await taskRetrievalService.getTasksWithValidation({
-                                projectId: projectId,
-                                userId: creatorId,
-                                status,
-                                date,
-                                includeSubtasks,
-                                parentId,
-                                limit,
-                                userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
-                            })
+                            let result
+
+                            if (allProjects) {
+                                console.log(`🌐 Assistant cross-project task query for user ${creatorId}`, {
+                                    includeArchived,
+                                    includeCommunity,
+                                    status,
+                                })
+
+                                // Get user data to understand project classifications
+                                const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+                                if (!userDoc.exists) {
+                                    throw new Error('User not found')
+                                }
+
+                                const userData = userDoc.data()
+                                const {
+                                    projectIds = [],
+                                    archivedProjectIds = [],
+                                    templateProjectIds = [],
+                                    guideProjectIds = [],
+                                } = userData
+
+                                // Determine which projects to include based on flags
+                                let targetProjectIds = [...projectIds] // Start with regular projects
+
+                                if (includeArchived) {
+                                    targetProjectIds.push(...archivedProjectIds)
+                                }
+
+                                if (includeCommunity) {
+                                    targetProjectIds.push(...templateProjectIds)
+                                    targetProjectIds.push(...guideProjectIds)
+                                } else {
+                                    // By default, exclude archived projects unless explicitly requested
+                                    targetProjectIds = targetProjectIds.filter(id => !archivedProjectIds.includes(id))
+                                }
+
+                                // Remove duplicates and ensure user still has access
+                                const uniqueProjectIds = [...new Set(targetProjectIds)]
+
+                                console.log(
+                                    `📊 Assistant project filtering: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
+                                )
+                                console.log(`🎯 Assistant selected ${uniqueProjectIds.length} projects for query`)
+
+                                if (uniqueProjectIds.length === 0) {
+                                    result = {
+                                        success: true,
+                                        tasks: [],
+                                        count: 0,
+                                        totalAcrossProjects: 0,
+                                        projectSummary: {},
+                                        queriedProjects: [],
+                                        crossProjectQuery: true,
+                                        message: 'No projects match the specified criteria',
+                                    }
+                                } else {
+                                    // Get project metadata for better display names
+                                    const projectDocs = await Promise.all(
+                                        uniqueProjectIds.map(async projectId => {
+                                            try {
+                                                const doc = await admin
+                                                    .firestore()
+                                                    .collection('projects')
+                                                    .doc(projectId)
+                                                    .get()
+                                                if (doc.exists) {
+                                                    const data = doc.data()
+                                                    // Verify user still has access
+                                                    if (data.userIds && data.userIds.includes(creatorId)) {
+                                                        return { id: projectId, ...data }
+                                                    }
+                                                }
+                                                return null
+                                            } catch (error) {
+                                                console.warn(`Could not access project ${projectId}:`, error.message)
+                                                return null
+                                            }
+                                        })
+                                    )
+
+                                    // Filter out inaccessible projects and create metadata map
+                                    const accessibleProjects = projectDocs.filter(p => p !== null)
+                                    const accessibleProjectIds = accessibleProjects.map(p => p.id)
+                                    const projectsData = accessibleProjects.reduce((acc, project) => {
+                                        acc[project.id] = { name: project.name, description: project.description }
+                                        return acc
+                                    }, {})
+
+                                    console.log(
+                                        `🔐 Assistant ${accessibleProjectIds.length} projects accessible after permission check`
+                                    )
+
+                                    // Use TaskRetrievalService multi-project method
+                                    result = await taskRetrievalService.getTasksFromMultipleProjects(
+                                        {
+                                            userId: creatorId,
+                                            status,
+                                            date,
+                                            includeSubtasks,
+                                            parentId,
+                                            limit,
+                                            userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                                        },
+                                        accessibleProjectIds,
+                                        projectsData
+                                    )
+
+                                    result.crossProjectQuery = true
+                                }
+                            } else {
+                                // Single project mode (existing behavior)
+                                result = await taskRetrievalService.getTasksWithValidation({
+                                    projectId: projectId,
+                                    userId: creatorId,
+                                    status,
+                                    date,
+                                    includeSubtasks,
+                                    parentId,
+                                    limit,
+                                    userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                                })
+                                result.crossProjectQuery = false
+                            }
 
                             // Format results for assistant response
                             let taskSummary = ''
                             if (result.tasks && result.tasks.length > 0) {
-                                taskSummary = `Found ${result.count} task(s):\n\n`
-                                result.tasks.forEach((task, index) => {
-                                    const dueInfo = task.dueDateFormatted ? ` (due: ${task.dueDateFormatted})` : ''
-                                    const doneInfo =
-                                        task.completedFormatted && status === 'done'
-                                            ? ` (completed: ${task.completedFormatted})`
-                                            : ''
-                                    taskSummary += `${index + 1}. ${task.name}${dueInfo}${doneInfo}\n`
-                                    if (task.description) {
-                                        taskSummary += `   ${task.description}\n`
-                                    }
-                                    taskSummary += '\n'
-                                })
+                                if (result.crossProjectQuery) {
+                                    // Cross-project formatting
+                                    const projectCount = result.queriedProjects ? result.queriedProjects.length : 1
+                                    taskSummary = `Found ${result.count} task(s) across ${projectCount} project(s):\n\n`
 
-                                // Add subtask info if included
+                                    // Group tasks by project
+                                    const tasksByProject = {}
+                                    result.tasks.forEach(task => {
+                                        const projectId = task.projectId || 'unknown'
+                                        const projectName = task.projectName || projectId
+                                        if (!tasksByProject[projectId]) {
+                                            tasksByProject[projectId] = {
+                                                name: projectName,
+                                                tasks: [],
+                                            }
+                                        }
+                                        tasksByProject[projectId].tasks.push(task)
+                                    })
+
+                                    let taskIndex = 1
+                                    Object.values(tasksByProject).forEach(project => {
+                                        taskSummary += `**${project.name}** (${project.tasks.length} task(s)):\n`
+                                        project.tasks.forEach(task => {
+                                            const dueInfo = task.dueDateFormatted
+                                                ? ` (due: ${task.dueDateFormatted})`
+                                                : ''
+                                            const doneInfo =
+                                                task.completedFormatted && status === 'done'
+                                                    ? ` (completed: ${task.completedFormatted})`
+                                                    : ''
+                                            taskSummary += `${taskIndex}. ${task.name}${dueInfo}${doneInfo}\n`
+                                            if (task.description) {
+                                                taskSummary += `   ${task.description}\n`
+                                            }
+                                            taskIndex++
+                                        })
+                                        taskSummary += '\n'
+                                    })
+
+                                    // Add cross-project summary
+                                    if (result.totalAcrossProjects > result.count) {
+                                        taskSummary += `Total across all projects: ${result.totalAcrossProjects} task(s) (showing ${result.count})\n`
+                                    }
+                                } else {
+                                    // Single project formatting (existing)
+                                    taskSummary = `Found ${result.count} task(s):\n\n`
+                                    result.tasks.forEach((task, index) => {
+                                        const dueInfo = task.dueDateFormatted ? ` (due: ${task.dueDateFormatted})` : ''
+                                        const doneInfo =
+                                            task.completedFormatted && status === 'done'
+                                                ? ` (completed: ${task.completedFormatted})`
+                                                : ''
+                                        taskSummary += `${index + 1}. ${task.name}${dueInfo}${doneInfo}\n`
+                                        if (task.description) {
+                                            taskSummary += `   ${task.description}\n`
+                                        }
+                                        taskSummary += '\n'
+                                    })
+                                }
+
+                                // Add subtask info if included (works for both single and cross-project)
                                 if (includeSubtasks && result.subtasksByParent) {
                                     const subtaskCount = Object.keys(result.subtasksByParent).reduce(
                                         (total, parentId) => total + result.subtasksByParent[parentId].length,
@@ -892,7 +1055,19 @@ async function storeChunks(
                                     }
                                 }
                             } else {
-                                taskSummary = `No ${status} tasks found for ${result.dateFilterDescription || date}.`
+                                if (result.crossProjectQuery) {
+                                    const projectCount = result.queriedProjects ? result.queriedProjects.length : 0
+                                    taskSummary = `No ${status} tasks found across ${projectCount} project(s) for ${
+                                        result.dateFilterDescription || date
+                                    }.`
+                                    if (result.message) {
+                                        taskSummary += `\n${result.message}`
+                                    }
+                                } else {
+                                    taskSummary = `No ${status} tasks found for ${
+                                        result.dateFilterDescription || date
+                                    }.`
+                                }
                             }
 
                             console.log('Retrieved tasks via tool call', {
@@ -1148,7 +1323,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])

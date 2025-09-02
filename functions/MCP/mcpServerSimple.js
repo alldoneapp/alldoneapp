@@ -536,13 +536,27 @@ class AlldoneSimpleMCPServer {
                     {
                         name: 'get_tasks',
                         description:
-                            'Get tasks from a project with advanced filtering and subtask support (requires OAuth 2.0 Bearer token authentication)',
+                            'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
                         inputSchema: {
                             type: 'object',
                             properties: {
                                 projectId: {
                                     type: 'string',
                                     description: 'Project ID (optional, uses user default project if not provided)',
+                                },
+                                allProjects: {
+                                    type: 'boolean',
+                                    description:
+                                        'Get tasks from all accessible projects (default: false). When true, ignores projectId parameter.',
+                                },
+                                includeArchived: {
+                                    type: 'boolean',
+                                    description: 'Include archived projects when using allProjects (default: false)',
+                                },
+                                includeCommunity: {
+                                    type: 'boolean',
+                                    description:
+                                        'Include community/template/guide projects when using allProjects (default: false)',
                                 },
                                 status: {
                                     type: 'string',
@@ -791,6 +805,9 @@ class AlldoneSimpleMCPServer {
     async getTasks(args, request) {
         const {
             projectId: specifiedProjectId,
+            allProjects = false,
+            includeArchived = false,
+            includeCommunity = false,
             status = 'open',
             limit = 20,
             date,
@@ -800,54 +817,176 @@ class AlldoneSimpleMCPServer {
 
         // Get authenticated user from header
         const userId = await this.getAuthenticatedUserForClient(request)
-
-        // Use specified project or fall back to user's default project
-        const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
-        if (!projectId) {
-            throw new Error(
-                'No project specified and no default project found. Please specify a projectId or set a default project.'
-            )
-        }
-
         const db = admin.firestore()
 
-        try {
-            // Verify user has access to project
-            const projectDoc = await db.collection('projects').doc(projectId).get()
-            if (!projectDoc.exists) {
-                throw new Error('Project not found')
-            }
-
-            const projectData = projectDoc.data()
-            const userIds = projectData.userIds || []
-            if (!userIds.includes(userId)) {
-                throw new Error('User does not have access to this project')
-            }
-
-            // Initialize TaskRetrievalService if not already done
-            if (!this.taskRetrievalService) {
-                const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-                this.taskRetrievalService = new TaskRetrievalService({
-                    database: db,
-                    moment: moment,
-                    isCloudFunction: true,
-                })
-                await this.taskRetrievalService.initialize()
-            }
-
-            // Use TaskRetrievalService to get tasks
-            const result = await this.taskRetrievalService.getTasksWithValidation({
-                projectId,
-                userId,
-                status,
-                date,
-                includeSubtasks,
-                parentId,
-                limit,
-                userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
+        // Initialize TaskRetrievalService if not already done
+        if (!this.taskRetrievalService) {
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            this.taskRetrievalService = new TaskRetrievalService({
+                database: db,
+                moment: moment,
+                isCloudFunction: true,
             })
+            await this.taskRetrievalService.initialize()
+        }
 
-            return result
+        try {
+            if (allProjects) {
+                console.log(`🌐 Cross-project task query for user ${userId}`, {
+                    includeArchived,
+                    includeCommunity,
+                    status,
+                })
+
+                // Get user data to understand project classifications
+                const userDoc = await db.collection('users').doc(userId).get()
+                if (!userDoc.exists) {
+                    throw new Error('User not found')
+                }
+
+                const userData = userDoc.data()
+                const {
+                    projectIds = [],
+                    archivedProjectIds = [],
+                    templateProjectIds = [],
+                    guideProjectIds = [],
+                } = userData
+
+                // Determine which projects to include based on flags
+                let targetProjectIds = [...projectIds] // Start with regular projects
+
+                if (includeArchived) {
+                    targetProjectIds.push(...archivedProjectIds)
+                }
+
+                if (includeCommunity) {
+                    targetProjectIds.push(...templateProjectIds)
+                    targetProjectIds.push(...guideProjectIds)
+                } else {
+                    // By default, exclude archived projects unless explicitly requested
+                    targetProjectIds = targetProjectIds.filter(id => !archivedProjectIds.includes(id))
+                }
+
+                // Remove duplicates and ensure user still has access
+                const uniqueProjectIds = [...new Set(targetProjectIds)]
+
+                console.log(
+                    `📊 Project filtering: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
+                )
+                console.log(`🎯 Selected ${uniqueProjectIds.length} projects for query`)
+
+                if (uniqueProjectIds.length === 0) {
+                    return {
+                        success: true,
+                        tasks: [],
+                        subtasksByParent: {},
+                        count: 0,
+                        totalAcrossProjects: 0,
+                        projectSummary: {},
+                        queriedProjects: [],
+                        message: 'No projects match the specified criteria',
+                        query: {
+                            limit,
+                            actualCount: 0,
+                            hasMore: false,
+                        },
+                    }
+                }
+
+                // Get project metadata for better display names
+                const projectDocs = await Promise.all(
+                    uniqueProjectIds.map(async projectId => {
+                        try {
+                            const doc = await db.collection('projects').doc(projectId).get()
+                            if (doc.exists) {
+                                const data = doc.data()
+                                // Verify user still has access
+                                if (data.userIds && data.userIds.includes(userId)) {
+                                    return { id: projectId, ...data }
+                                }
+                            }
+                            return null
+                        } catch (error) {
+                            console.warn(`Could not access project ${projectId}:`, error.message)
+                            return null
+                        }
+                    })
+                )
+
+                // Filter out inaccessible projects and create metadata map
+                const accessibleProjects = projectDocs.filter(p => p !== null)
+                const accessibleProjectIds = accessibleProjects.map(p => p.id)
+                const projectsData = accessibleProjects.reduce((acc, project) => {
+                    acc[project.id] = { name: project.name, description: project.description }
+                    return acc
+                }, {})
+
+                console.log(`🔐 ${accessibleProjectIds.length} projects accessible after permission check`)
+
+                // Use TaskRetrievalService multi-project method
+                const result = await this.taskRetrievalService.getTasksFromMultipleProjects(
+                    {
+                        userId,
+                        status,
+                        date,
+                        includeSubtasks,
+                        parentId,
+                        limit,
+                        userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
+                    },
+                    accessibleProjectIds,
+                    projectsData
+                )
+
+                return {
+                    ...result,
+                    crossProjectQuery: true,
+                    projectFilters: {
+                        includeArchived,
+                        includeCommunity,
+                        totalRegularProjects: projectIds.length,
+                        totalArchivedProjects: archivedProjectIds.length,
+                        totalCommunityProjects: templateProjectIds.length + guideProjectIds.length,
+                    },
+                }
+            } else {
+                // Single project mode (existing behavior)
+                const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
+                if (!projectId) {
+                    throw new Error(
+                        'No project specified and no default project found. Please specify a projectId or set a default project.'
+                    )
+                }
+
+                // Verify user has access to project
+                const projectDoc = await db.collection('projects').doc(projectId).get()
+                if (!projectDoc.exists) {
+                    throw new Error('Project not found')
+                }
+
+                const projectData = projectDoc.data()
+                const userIds = projectData.userIds || []
+                if (!userIds.includes(userId)) {
+                    throw new Error('User does not have access to this project')
+                }
+
+                // Use TaskRetrievalService to get tasks from single project
+                const result = await this.taskRetrievalService.getTasksWithValidation({
+                    projectId,
+                    userId,
+                    status,
+                    date,
+                    includeSubtasks,
+                    parentId,
+                    limit,
+                    userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
+                })
+
+                return {
+                    ...result,
+                    crossProjectQuery: false,
+                }
+            }
         } catch (error) {
             console.error('Error getting tasks:', error)
             throw new Error(`Failed to get tasks: ${error.message}`)
@@ -1577,6 +1716,21 @@ class AlldoneSimpleMCPServer {
                                     projectId: {
                                         type: 'string',
                                         description: 'Project ID (optional, uses user default project if not provided)',
+                                    },
+                                    allProjects: {
+                                        type: 'boolean',
+                                        description:
+                                            'Get tasks from all accessible projects (default: false). When true, ignores projectId parameter.',
+                                    },
+                                    includeArchived: {
+                                        type: 'boolean',
+                                        description:
+                                            'Include archived projects when using allProjects (default: false)',
+                                    },
+                                    includeCommunity: {
+                                        type: 'boolean',
+                                        description:
+                                            'Include community/template/guide projects when using allProjects (default: false)',
                                     },
                                     status: {
                                         type: 'string',
