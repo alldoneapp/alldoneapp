@@ -391,8 +391,8 @@ class CloudOAuthHandler {
 <body>
     <div class="container">
         <div class="logo">🚀 Alldone MCP</div>
-        <h2>Authenticate with Claude</h2>
-        <p>Sign in with your Alldone account to use the MCP server with Claude.ai</p>
+        <h2>Authenticate</h2>
+        <p>Sign in with your Alldone account to use the Alldone MCP server</p>
         ${
             authCode
                 ? `
@@ -493,7 +493,7 @@ class CloudOAuthHandler {
                     // Check if we need to redirect to Claude's callback
                     if (data.redirect_to) {
                         console.log('🔀 Redirecting browser to OAuth callback:', data.redirect_to);
-                        showStatus('✅ Authentication successful! Redirecting to Claude...', false);
+                        showStatus('✅ Authentication successful! Redirecting ...', false);
                         
                         // Redirect browser to Claude's callback URL with authorization code
                         setTimeout(() => {
