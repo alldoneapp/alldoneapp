@@ -1214,25 +1214,73 @@ class AlldoneSimpleMCPServer {
             const db = admin.firestore()
             const now = admin.firestore.Timestamp.now()
 
+            console.log('🧹 Starting comprehensive token cleanup...')
+
             // Clean up expired access tokens
             const expiredTokens = await db.collection('oauthTokens').where('expiresAt', '<', now).get()
+            console.log(`🗑️ Found ${expiredTokens.size} expired access tokens`)
 
-            const tokenCleanupPromises = expiredTokens.docs.map(doc => doc.ref.delete())
+            // Clean up expired refresh tokens
+            const expiredRefreshTokens = await db.collection('oauthRefreshTokens').where('expiresAt', '<', now).get()
+            console.log(`🗑️ Found ${expiredRefreshTokens.size} expired refresh tokens`)
 
             // Clean up expired auth sessions
             const expiredSessions = await db.collection('oauthAuthSessions').where('expiresAt', '<', now).get()
+            console.log(`🗑️ Found ${expiredSessions.size} expired auth sessions`)
 
-            const sessionCleanupPromises = expiredSessions.docs.map(doc => doc.ref.delete())
+            // Clean up orphaned access tokens (where refresh token no longer exists)
+            const allAccessTokens = await db.collection('oauthTokens').where('refreshToken', '!=', null).get()
+
+            const orphanedTokens = []
+            for (const tokenDoc of allAccessTokens.docs) {
+                const tokenData = tokenDoc.data()
+                if (tokenData.refreshToken) {
+                    const refreshDoc = await db.collection('oauthRefreshTokens').doc(tokenData.refreshToken).get()
+                    if (!refreshDoc.exists) {
+                        orphanedTokens.push(tokenDoc)
+                        console.log(`🔗 Found orphaned access token: ${tokenDoc.id.substring(0, 20)}...`)
+                    }
+                }
+            }
+            console.log(`🔗 Found ${orphanedTokens.length} orphaned access tokens`)
+
+            // Prepare all cleanup operations
+            const cleanupOperations = [
+                // Delete expired access tokens
+                ...expiredTokens.docs.map(doc => doc.ref.delete()),
+                // Delete expired refresh tokens
+                ...expiredRefreshTokens.docs.map(doc => doc.ref.delete()),
+                // Delete expired auth sessions
+                ...expiredSessions.docs.map(doc => doc.ref.delete()),
+                // Delete orphaned access tokens
+                ...orphanedTokens.map(doc => doc.ref.delete()),
+            ]
 
             // Clean up expired user sessions
             await this.userSessionManager.cleanupExpiredSessions()
 
-            // Execute all cleanups
-            await Promise.all([...tokenCleanupPromises, ...sessionCleanupPromises])
+            // Execute all cleanups in batches to avoid hitting Firestore limits
+            const batchSize = 100 // Firestore batch limit is 500, we use 100 for safety
+            for (let i = 0; i < cleanupOperations.length; i += batchSize) {
+                const batch = cleanupOperations.slice(i, i + batchSize)
+                await Promise.all(batch)
+                console.log(
+                    `🧹 Cleaned up batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+                        cleanupOperations.length / batchSize
+                    )}`
+                )
+            }
 
-            console.log(`Cleaned up ${expiredTokens.size} expired tokens and ${expiredSessions.size} expired sessions`)
+            const totalCleaned =
+                expiredTokens.size + expiredRefreshTokens.size + expiredSessions.size + orphanedTokens.length
+            console.log(`✅ Token cleanup completed: ${totalCleaned} items cleaned up`, {
+                expiredAccessTokens: expiredTokens.size,
+                expiredRefreshTokens: expiredRefreshTokens.size,
+                expiredAuthSessions: expiredSessions.size,
+                orphanedAccessTokens: orphanedTokens.length,
+            })
         } catch (error) {
-            console.error('Error during token cleanup:', error)
+            console.error('❌ Error during token cleanup:', error)
         }
     }
 
@@ -2924,54 +2972,136 @@ class AlldoneSimpleMCPServer {
                             return
                         } else if (grant_type === 'refresh_token') {
                             // Refresh Token Flow
+                            console.log('🔄 === REFRESH TOKEN FLOW ===')
+                            console.log('📋 Refresh token provided:', !!refresh_token)
+
                             if (!refresh_token) {
-                                res.status(400).json({ error: 'invalid_request' })
+                                console.log('❌ Missing refresh token')
+                                res.status(400).json({
+                                    error: 'invalid_request',
+                                    error_description: 'Missing refresh_token parameter',
+                                })
                                 return
                             }
 
                             // Look up refresh token
+                            console.log('🔍 Looking up refresh token...')
                             const refreshDoc = await db.collection('oauthRefreshTokens').doc(refresh_token).get()
                             if (!refreshDoc.exists) {
-                                res.status(400).json({ error: 'invalid_grant' })
+                                console.log('❌ Refresh token not found')
+                                res.status(400).json({
+                                    error: 'invalid_grant',
+                                    error_description: 'Refresh token not found or has been revoked',
+                                })
                                 return
                             }
 
                             const refreshData = refreshDoc.data()
+                            console.log('✅ Refresh token found:', {
+                                clientId: refreshData.clientId,
+                                userId: refreshData.userId,
+                                expiresAt: refreshData.expiresAt?.toDate(),
+                                scope: refreshData.scope,
+                            })
 
                             // Validate client
                             if (refreshData.clientId !== client_id) {
-                                res.status(401).json({ error: 'invalid_client' })
+                                console.log('❌ Client ID mismatch for refresh token')
+                                res.status(401).json({
+                                    error: 'invalid_client',
+                                    error_description: 'Refresh token does not belong to this client',
+                                })
                                 return
                             }
 
                             // Check expiration
                             if (refreshData.expiresAt.toDate() < new Date()) {
-                                res.status(400).json({ error: 'invalid_grant' })
+                                console.log('❌ Refresh token expired')
+                                // Clean up expired refresh token
+                                await db.collection('oauthRefreshTokens').doc(refresh_token).delete()
+                                res.status(400).json({
+                                    error: 'invalid_grant',
+                                    error_description: 'Refresh token has expired',
+                                })
                                 return
                             }
 
-                            // Issue new access token
+                            // Generate new tokens
                             const newAccessToken = `mcp_access_${uuidv4()}`
-                            await db
-                                .collection('oauthTokens')
-                                .doc(newAccessToken)
-                                .set({
-                                    accessToken: newAccessToken,
-                                    refreshToken: refresh_token,
-                                    clientId: refreshData.clientId,
-                                    userId: refreshData.userId,
-                                    mcpSessionId: refreshData.mcpSessionId,
-                                    scope: refreshData.scope,
-                                    createdAt: admin.firestore.Timestamp.now(),
-                                    expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 3600 * 1000)),
-                                })
+                            const newRefreshToken = `mcp_refresh_${uuidv4()}`
 
-                            res.json({
+                            console.log('🔄 Generating new token pair...')
+
+                            // Use batch operation for atomic token rotation
+                            const batch = db.batch()
+
+                            // Create new access token
+                            const newAccessTokenData = {
+                                accessToken: newAccessToken,
+                                refreshToken: newRefreshToken,
+                                clientId: refreshData.clientId,
+                                userId: refreshData.userId,
+                                mcpSessionId: refreshData.mcpSessionId,
+                                scope: refreshData.scope,
+                                grantType: 'refresh_token',
+                                createdAt: admin.firestore.Timestamp.now(),
+                                expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 3600 * 1000)), // 1 hour
+                            }
+                            batch.set(db.collection('oauthTokens').doc(newAccessToken), newAccessTokenData)
+
+                            // Create new refresh token with extended expiry
+                            const newRefreshTokenData = {
+                                refreshToken: newRefreshToken,
+                                clientId: refreshData.clientId,
+                                userId: refreshData.userId,
+                                mcpSessionId: refreshData.mcpSessionId,
+                                scope: refreshData.scope,
+                                createdAt: admin.firestore.Timestamp.now(),
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
+                                previousRefreshToken: refresh_token, // Audit trail
+                            }
+                            batch.set(db.collection('oauthRefreshTokens').doc(newRefreshToken), newRefreshTokenData)
+
+                            // Revoke old refresh token (token rotation security)
+                            batch.delete(db.collection('oauthRefreshTokens').doc(refresh_token))
+
+                            // Find and revoke old access tokens that used this refresh token
+                            const oldTokensQuery = await db
+                                .collection('oauthTokens')
+                                .where('refreshToken', '==', refresh_token)
+                                .get()
+
+                            console.log(`🧹 Revoking ${oldTokensQuery.size} old access tokens`)
+                            oldTokensQuery.docs.forEach(doc => {
+                                batch.delete(doc.ref)
+                            })
+
+                            // Commit all changes atomically
+                            await batch.commit()
+                            console.log('✅ Token rotation completed successfully')
+
+                            const tokenResponse = {
                                 access_token: newAccessToken,
                                 token_type: 'Bearer',
                                 expires_in: 3600,
                                 scope: refreshData.scope,
+                                refresh_token: newRefreshToken, // Include new refresh token
+                            }
+
+                            console.log('🎉 Refresh token flow successful:', {
+                                hasAccessToken: !!tokenResponse.access_token,
+                                hasRefreshToken: !!tokenResponse.refresh_token,
+                                tokenType: tokenResponse.token_type,
+                                expiresIn: tokenResponse.expires_in,
+                                scope: tokenResponse.scope,
+                                userId: refreshData.userId,
+                                clientId: client_id,
+                                oldTokensRevoked: oldTokensQuery.size,
                             })
+
+                            res.json(tokenResponse)
                             return
                         } else if (grant_type === 'client_credentials') {
                             // Client Credentials Flow - for MCP compliance (application-to-application)
