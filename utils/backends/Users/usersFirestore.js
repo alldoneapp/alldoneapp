@@ -626,6 +626,10 @@ export async function setUserRole(userId, role) {
     updateUserData(userId, { role }, null)
 }
 
+export async function setUserPhone(userId, phone) {
+    updateUserData(userId, { phone }, null)
+}
+
 export async function setUserNotificationEmail(userId, email) {
     getDb().doc(`users/${userId}`).update({ notificationEmail: email })
 }

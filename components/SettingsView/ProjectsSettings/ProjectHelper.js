@@ -70,6 +70,7 @@ import {
     setUserCompanyInProject,
     setUserDescription,
     setUserDescriptionInProject,
+    setUserPhone,
     setUserRole,
     setUserRoleInProject,
 } from '../../../utils/backends/Users/usersFirestore'

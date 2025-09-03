@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 
 import GlobalXP from './GlobalXP'
 import GlobalUserInfo from './GlobalUserInfo'
+import GlobalUserPhone from './GlobalUserPhone'
 import UserInfo from '../../../UserDetailedView/UserProperties/UserInfo'
 import useInProfileSettings from '../useInProfileSettings'
 import SharedHelper from '../../../../utils/SharedHelper'
@@ -15,6 +16,7 @@ export default function ProfileProperties({ user, projectId, projectIndex }) {
     const role = useSelector(state => state.loggedUser.role)
     const company = useSelector(state => state.loggedUser.company)
     const description = useSelector(state => state.loggedUser.description)
+    const phone = useSelector(state => state.loggedUser.phone)
     const inSettings = useInProfileSettings()
 
     return (
@@ -34,6 +36,7 @@ export default function ProfileProperties({ user, projectId, projectIndex }) {
             </View>
             <View style={{ flex: 1, width: smallScreen ? '100%' : '50%', marginLeft: smallScreen ? 0 : 36 }}>
                 <GlobalXP user={user} />
+                {inSettings && <GlobalUserPhone userId={loggedUserId} phone={phone} />}
             </View>
         </View>
     )

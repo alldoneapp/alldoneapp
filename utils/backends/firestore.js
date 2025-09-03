@@ -3070,6 +3070,7 @@ export function mapUserData(userId, user) {
         company: user.company ? user.company : '',
         role: user.role ? user.role : '',
         description: user.description ? user.description : '',
+        phone: user.phone ? user.phone : '',
         extendedDescription: user.extendedDescription
             ? user.extendedDescription
             : user.description
