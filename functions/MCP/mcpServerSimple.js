@@ -27,6 +27,7 @@ const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
+const { getEnvironmentConfig } = require('./config/environments.js')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
