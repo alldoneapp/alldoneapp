@@ -537,6 +537,10 @@ export const handleGSICredentialResponseOnLogin = async response => {
 }
 
 export function getDb() {
+    if (!db) {
+        console.warn('Firebase db not yet initialized, this may cause errors')
+        return null
+    }
     return db
 }
 

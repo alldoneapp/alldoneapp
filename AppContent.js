@@ -5,7 +5,6 @@ import { LogOut } from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
-import AppShell from './components/AppShell'
 import Backend from './utils/BackendBridge'
 import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
@@ -95,9 +94,11 @@ export default function AppContent() {
     return (
         <>
             {loggedIn === null ? (
-                <AppShell loadingStep={loadingStep} loadingMessage={loadingMessage}>
-                    {loadingStep > 0 ? null : <LoadingScreen text="Connecting to server..." />}
-                </AppShell>
+                loadingStep > 0 ? (
+                    <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
+                ) : (
+                    <LoadingScreen text="Connecting to server..." />
+                )
             ) : (
                 <>
                     {/*<CookieClickerPopup />*/}

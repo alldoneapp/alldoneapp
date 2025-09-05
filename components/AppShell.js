@@ -13,22 +13,22 @@ const AppShell = ({ loadingStep, loadingMessage, children }) => {
 
     return (
         <View style={styles.container}>
-            <div style={styles.appShell}>
-                <div style={styles.header}>
-                    <div style={styles.logo}></div>
-                    <div style={styles.nav}>
-                        <div style={styles.navItem}></div>
-                        <div style={styles.navItem}></div>
-                        <div style={styles.navItem}></div>
-                    </div>
-                </div>
-                <div style={styles.sidebar}>
-                    <div style={styles.sidebarItem}></div>
-                    <div style={styles.sidebarItem}></div>
-                    <div style={styles.sidebarItem}></div>
-                </div>
-                <div style={styles.content}>{children}</div>
-            </div>
+            <View style={styles.appShell}>
+                <View style={styles.header}>
+                    <View style={styles.logo} />
+                    <View style={styles.nav}>
+                        <View style={styles.navItem} />
+                        <View style={styles.navItem} />
+                        <View style={styles.navItem} />
+                    </View>
+                </View>
+                <View style={styles.sidebar}>
+                    <View style={styles.sidebarItem} />
+                    <View style={styles.sidebarItem} />
+                    <View style={styles.sidebarItem} />
+                </View>
+                <View style={styles.content}>{children}</View>
+            </View>
         </View>
     )
 }
@@ -39,62 +39,58 @@ const styles = StyleSheet.create({
         backgroundColor: '#ffffff',
     },
     appShell: {
-        display: 'flex',
+        flex: 1,
         flexDirection: 'column',
-        height: '100vh',
     },
     header: {
-        display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
-        height: '60px',
+        height: 60,
         backgroundColor: '#f8f9fa',
-        borderBottom: '1px solid #e9ecef',
-        padding: '0 20px',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e9ecef',
+        paddingHorizontal: 20,
     },
     logo: {
-        width: '120px',
-        height: '30px',
+        width: 120,
+        height: 30,
         backgroundColor: '#e9ecef',
-        borderRadius: '4px',
-        marginRight: '40px',
+        borderRadius: 4,
+        marginRight: 40,
     },
     nav: {
-        display: 'flex',
         flexDirection: 'row',
-        gap: '20px',
     },
     navItem: {
-        width: '80px',
-        height: '20px',
+        width: 80,
+        height: 20,
         backgroundColor: '#dee2e6',
-        borderRadius: '4px',
+        borderRadius: 4,
+        marginRight: 20,
     },
     sidebar: {
         position: 'absolute',
         left: 0,
-        top: '60px',
+        top: 60,
         bottom: 0,
-        width: '250px',
+        width: 250,
         backgroundColor: '#f8f9fa',
-        borderRight: '1px solid #e9ecef',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '16px',
+        borderRightWidth: 1,
+        borderRightColor: '#e9ecef',
+        padding: 20,
     },
     sidebarItem: {
         width: '100%',
-        height: '40px',
+        height: 40,
         backgroundColor: '#dee2e6',
-        borderRadius: '6px',
+        borderRadius: 6,
+        marginBottom: 16,
     },
     content: {
-        marginLeft: '250px',
-        marginTop: '60px',
+        marginLeft: 250,
+        marginTop: 60,
         flex: 1,
-        padding: '20px',
-        overflow: 'auto',
+        padding: 20,
     },
 })
 
