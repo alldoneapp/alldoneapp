@@ -25,7 +25,8 @@ export default function RemoveUser({ user }) {
     }
 
     const openDeleteUserModal = () => {
-        if (user.realTemplateProjectIds.length > 0) {
+        const templateIds = (user && (user.realTemplateProjectIds || user.templateProjectIds)) || []
+        if (templateIds.length > 0) {
             openModal()
         } else {
             dispatch(
@@ -34,7 +35,7 @@ export default function RemoveUser({ user }) {
                     object: {
                         headerText: 'Be careful, this action is permanent',
                         headerQuestion: `Do you really want to delete this account`,
-                        headerExclamationSentence: user.email,
+                        headerExclamationSentence: user && user.email,
                         user,
                     },
                 })
