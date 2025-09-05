@@ -47,6 +47,8 @@ import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsCom
 
 export const initialState = {
     loggedIn: null,
+    loadingStep: 0,
+    loadingMessage: 'Initializing...',
     loggedUser: {},
     currentUser: {},
     loggedUserProjects: [],
@@ -456,6 +458,9 @@ export const theReducer = (state = initialState, action) => {
         }
         case 'Store current user': {
             return { ...state, currentUser: action.currentUser }
+        }
+        case 'Update loading step': {
+            return { ...state, loadingStep: action.step, loadingMessage: action.message }
         }
         case 'Set selected nav item':
             return { ...state, selectedNavItem: action.navItem }

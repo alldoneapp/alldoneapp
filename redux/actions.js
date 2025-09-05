@@ -5,6 +5,15 @@ export const LogOut = () => {
     return action
 }
 
+export const updateLoadingStep = (step, message) => {
+    const action = {
+        type: 'Update loading step',
+        step,
+        message,
+    }
+    return action
+}
+
 export const setVersion = version => {
     const action = {
         type: 'Set Version',

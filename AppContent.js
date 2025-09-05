@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 
 import { LogOut } from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
+import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
 import Backend from './utils/BackendBridge'
 import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
@@ -23,6 +24,9 @@ import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoa
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
     const processedInitialURL = useSelector(state => state.processedInitialURL)
+    const loadingStep = useSelector(state => state.loadingStep)
+    const loadingMessage = useSelector(state => state.loadingMessage)
+    const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
 
     const logoutUser = async () => {
         store.dispatch(LogOut())
@@ -73,10 +77,25 @@ export default function AppContent() {
         }
     }, [])
 
+    // Defer loading of heavy components for better initial performance
+    useEffect(() => {
+        if (loggedIn && processedInitialURL) {
+            // Delay mounting heavy components by 100ms to allow UI to render first
+            const timer = setTimeout(() => {
+                setHeavyComponentsLoaded(true)
+            }, 100)
+            return () => clearTimeout(timer)
+        }
+    }, [loggedIn, processedInitialURL])
+
     return (
         <>
             {loggedIn === null ? (
-                <LoadingScreen text="Checking sign in status" />
+                loadingStep > 0 ? (
+                    <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
+                ) : (
+                    <LoadingScreen text="Checking sign in status" />
+                )
             ) : (
                 <>
                     {/*<CookieClickerPopup />*/}
@@ -86,8 +105,12 @@ export default function AppContent() {
                             <EndDayStatisticsModal />
                             <Shortcuts />
                             <InitLoadView />
-                            <MyDayTasksLoaders />
-                            <InFocusTaskWatcher />
+                            {heavyComponentsLoaded && (
+                                <>
+                                    <MyDayTasksLoaders />
+                                    <InFocusTaskWatcher />
+                                </>
+                            )}
                         </>
                     )}
 

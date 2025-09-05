@@ -316,6 +316,7 @@ $RECYCLE.BIN/
 
 # Test files
 components/UITestView.js
+__tests__/
 
 # Exclude VSCode files
 .vscode
@@ -359,3 +360,5 @@ alldone-mcp-server/.env.staging
 claude-code-config.json
 **/claude-code-config.json
 
+# Jest snapshot files (covered by __tests__/ but adding for any outside that directory)
+**/*.snap

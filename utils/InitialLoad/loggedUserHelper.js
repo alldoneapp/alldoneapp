@@ -12,7 +12,7 @@ import {
     updateLastLoggedUserDate,
     watchForceReload,
 } from '../backends/firestore'
-import { initLogInForLoggedUser, setProjectsInitialData } from '../../redux/actions'
+import { initLogInForLoggedUser, setProjectsInitialData, updateLoadingStep } from '../../redux/actions'
 import { getDateFormatFromCurrentLocation } from '../Geolocation/GeolocationHelper'
 import { getDeviceLanguage } from '../../i18n/TranslationService'
 import {
@@ -25,6 +25,11 @@ import {
     watchProjectData,
     watchProjectsChatNotifications,
 } from './initialLoadHelper'
+import { getProjectData } from '../backends/firestore'
+import { getProjectUsers } from '../backends/Users/usersFirestore'
+import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
+import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
+import { getProjectAssistants } from '../backends/Assistants/assistantsFirestore'
 import { storeVersion } from '../Observers'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
@@ -32,18 +37,38 @@ import NavigationService from '../NavigationService'
 import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumFirestore'
 
 function watchProjectsData(projectIds) {
-    projectIds.forEach(projectId => {
-        watchProjectData(projectId, true, false)
+    // Stagger watcher initialization to reduce initial Firebase load
+    projectIds.forEach((projectId, index) => {
+        setTimeout(() => {
+            watchProjectData(projectId, true, false)
+        }, index * 50) // 50ms delay between each watcher
     })
 }
 
 async function getInitialProjectsData(projectIds) {
-    const projectDataPromises = []
+    // Create batched promises for all projects to load data in parallel
+    const allPromises = []
+
     projectIds.forEach(projectId => {
-        projectDataPromises.push(getInitialProjectData(projectId))
+        // For each project, batch all its data requests
+        allPromises.push(
+            Promise.all([
+                getProjectData(projectId),
+                getProjectUsers(projectId, false),
+                getProjectContacts(projectId),
+                getProjectWorkstreams(projectId),
+                getProjectAssistants(projectId),
+            ]).then(([project, users, contacts, workstreams, assistants]) => ({
+                project,
+                users,
+                contacts,
+                workstreams,
+                assistants,
+            }))
+        )
     })
 
-    const projectsInitialData = await Promise.all(projectDataPromises)
+    const projectsInitialData = await Promise.all(allPromises)
 
     const projects = []
     const projectsMap = {}
@@ -69,6 +94,7 @@ async function getInitialProjectsData(projectIds) {
 
 async function loadInitialData() {
     const { loggedUser } = store.getState()
+    store.dispatch(updateLoadingStep(3, 'Loading projects...'))
     const projectsInitialData = await getInitialProjectsData(loggedUser.projectIds)
 
     const {
@@ -91,6 +117,7 @@ async function loadInitialData() {
 
     unwatchProjectsData(loggedUser.projectIds)
 
+    store.dispatch(updateLoadingStep(4, 'Setting up workspace...'))
     store.dispatch(
         setProjectsInitialData(
             projects,
@@ -103,8 +130,14 @@ async function loadInitialData() {
     )
 
     watchLoggedUserData(loggedUser)
-    watchProjectsData(loggedUser.projectIds)
-    watchProjectsChatNotifications()
+
+    // Defer non-critical watchers to improve initial load time
+    setTimeout(() => {
+        watchProjectsData(loggedUser.projectIds)
+        watchProjectsChatNotifications()
+    }, 200)
+
+    store.dispatch(updateLoadingStep(5, 'Finalizing...'))
 }
 
 const getDataForUpdateUser = async loggedUser => {
@@ -137,6 +170,8 @@ const getDataForUpdateUser = async loggedUser => {
 export async function loadInitialDataForLoggedUser(loggedUser) {
     unwatch('loggedUser')
 
+    store.dispatch(updateLoadingStep(1, 'Loading user data...'))
+
     initGoogleTagManager(loggedUser.uid)
     watchForceReload(loggedUser.uid, true)
     storeVersion()
@@ -145,31 +180,20 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     const userData = await getDataForUpdateUser(loggedUser)
 
-    // Check premium status with Stripe during login
-    try {
-        console.log('Checking premium status with Stripe for user:', loggedUser.uid)
-
-        // Debug: Check if tracking ID is available during login
-        const trackingId = localStorage.getItem('alldone_trial_tracking_id')
-        const timestamp = localStorage.getItem('alldone_trial_timestamp')
-        console.log('🔑 Login - Tracking ID status before premium check:', {
-            trackingId: trackingId ? `${trackingId.substring(0, 20)}...` : null,
-            timestamp,
-            age: timestamp ? `${Math.round((Date.now() - parseInt(timestamp)) / (1000 * 60))} minutes` : null,
-            userId: loggedUser.uid,
+    // Check premium status with Stripe in background (non-blocking)
+    checkUserPremiumStatusStripe()
+        .then(() => {
+            console.log('Premium status check completed (background)')
         })
-
-        await checkUserPremiumStatusStripe()
-        console.log('Premium status check completed')
-    } catch (error) {
-        console.warn('Premium status check failed during login:', error)
-        // Continue with login even if premium check fails
-    }
+        .catch(error => {
+            console.warn('Premium status check failed during login:', error)
+        })
 
     store.dispatch(initLogInForLoggedUser({ ...loggedUser, ...userData }))
 
     updateUserData(loggedUser.uid, userData, null)
 
+    store.dispatch(updateLoadingStep(2, 'Loading project data...'))
     await loadInitialData()
 
     initFCMonLoad()
