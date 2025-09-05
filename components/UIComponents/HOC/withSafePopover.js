@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Popover from 'react-tiny-popover'
 
 /**
@@ -11,26 +11,25 @@ import Popover from 'react-tiny-popover'
 export const withSafePopover = WrappedComponent => {
     return function SafePopoverWrapper(props) {
         const [isOpen, setIsOpen] = useState(false)
-        const [isUnmounted, setIsUnmounted] = useState(false)
+        const isUnmountedRef = useRef(false)
 
         useEffect(() => {
             return () => {
-                setIsUnmounted(true)
-                setIsOpen(false)
+                isUnmountedRef.current = true
             }
         }, [])
 
         const openPopover = useCallback(() => {
-            if (!isUnmounted) {
+            if (!isUnmountedRef.current) {
                 setIsOpen(true)
             }
-        }, [isUnmounted])
+        }, [])
 
         const closePopover = useCallback(() => {
-            if (!isUnmounted) {
+            if (!isUnmountedRef.current) {
                 setIsOpen(false)
             }
-        }, [isUnmounted])
+        }, [])
 
         return <WrappedComponent {...props} openPopover={openPopover} closePopover={closePopover} isOpen={isOpen} />
     }
