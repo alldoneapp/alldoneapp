@@ -44,7 +44,9 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         }
     }, [assistant?.uid, assistantProjectId])
 
-    if (!tasks || !assistant || !assistant.uid) return null
+    if (!tasks || !assistant || !assistant.uid) {
+        return null
+    }
 
     const { optionsLikeButtons, optionsInModal, showSubmenu } = getOptionsPresentationData(
         assistantProject,

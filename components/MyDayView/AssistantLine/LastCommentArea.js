@@ -42,7 +42,9 @@ export default function LastCommentArea() {
         projectIds
     )
 
-    if (!commentProject || !commentCreator) return null
+    if (!commentProject || !commentCreator) {
+        return null
+    }
 
     return (
         <View style={localStyles.container}>

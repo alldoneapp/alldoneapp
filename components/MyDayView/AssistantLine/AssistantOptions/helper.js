@@ -76,9 +76,12 @@ export const getCommentData = (
             return { commentCreator, commentProject, isAssistant }
         }
     }
+    const fallbackProject = project || ProjectHelper.getProjectById(defaultProjectId)
+    const fallbackAssistant = getAssistant(project?.assistantId || defaultAssistantId)
+
     return {
-        commentCreator: getAssistant(project?.assistantId || defaultAssistantId),
-        commentProject: project || ProjectHelper.getProjectById(defaultProjectId),
+        commentCreator: fallbackAssistant,
+        commentProject: fallbackProject,
         isAssistant: true,
         showNoComment: true,
     }

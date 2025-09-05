@@ -241,6 +241,9 @@ export const loadGlobalDataAndGetUser = async userId => {
     if (cachedUserData && cachedUserData.uid === userId) {
         console.log('Using cached user data for faster startup')
 
+        // Always load global data even when using cached user data
+        loadGlobalData()
+
         // Use cached data immediately, but refresh in background
         setTimeout(async () => {
             try {
