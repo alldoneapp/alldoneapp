@@ -51,7 +51,7 @@ export default function AdminPanelView({ navigation }) {
             dispatch([resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setShowAccessDeniedPopup(true)])
             navigation.navigate('Root')
         } else {
-            const tab = navigationTabs.includes(selectedTab) ? selectedTab : DV_TAB_ADMIN_PANEL_USER
+            const tab = navigationTabs.includes(selectedTab) ? selectedTab : DV_TAB_ADMIN_PANEL_ASSISTANTS
             dispatch([setSelectedNavItem(tab)])
         }
     }, [])
