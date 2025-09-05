@@ -35,6 +35,9 @@ import ProjectHelper from '../../components/SettingsView/ProjectsSettings/Projec
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../NavigationService'
 import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumFirestore'
+import UserDataCache from '../UserDataCache'
+import { isEqual } from 'lodash'
+import { storeLoggedUser } from '../../redux/actions'
 
 function watchProjectsData(projectIds) {
     // Stagger watcher initialization to reduce initial Firebase load
@@ -46,6 +49,38 @@ function watchProjectsData(projectIds) {
 }
 
 async function getInitialProjectsData(projectIds) {
+    // Check if we have cached project data first
+    const cachedData = UserDataCache.getCachedGlobalData()
+    if (
+        cachedData &&
+        cachedData.projectIds &&
+        JSON.stringify(cachedData.projectIds.sort()) === JSON.stringify(projectIds.sort())
+    ) {
+        console.log('Using cached project data for faster startup')
+
+        // Refresh cache in background
+        setTimeout(async () => {
+            try {
+                const freshData = await loadProjectsDataFromFirebase(projectIds)
+                if (!isEqual(freshData, cachedData.projectsInitialData)) {
+                    UserDataCache.setCachedGlobalData({ projectsInitialData: freshData, projectIds })
+                }
+            } catch (error) {
+                console.warn('Error refreshing project data:', error)
+            }
+        }, 2000)
+
+        return cachedData.projectsInitialData
+    }
+
+    // Load from Firebase and cache
+    const projectsInitialData = await loadProjectsDataFromFirebase(projectIds)
+    UserDataCache.setCachedGlobalData({ projectsInitialData, projectIds })
+
+    return projectsInitialData
+}
+
+async function loadProjectsDataFromFirebase(projectIds) {
     // Create batched promises for all projects to load data in parallel
     const allPromises = []
 
@@ -68,8 +103,15 @@ async function getInitialProjectsData(projectIds) {
         )
     })
 
-    const projectsInitialData = await Promise.all(allPromises)
+    return await Promise.all(allPromises)
+}
 
+async function loadInitialData() {
+    const { loggedUser } = store.getState()
+    store.dispatch(updateLoadingStep(3, 'Loading projects...'))
+    const projectsInitialData = await getInitialProjectsData(loggedUser.projectIds)
+
+    // Process the raw project data into organized structures
     const projects = []
     const projectsMap = {}
     const projectUsers = {}
@@ -77,7 +119,7 @@ async function getInitialProjectsData(projectIds) {
     const projectWorkstreams = {}
     const projectAssistants = {}
 
-    projectIds.forEach((projectId, index) => {
+    loggedUser.projectIds.forEach((projectId, index) => {
         const { project, users, contacts, workstreams, assistants } = projectsInitialData[index]
 
         project.index = index
@@ -88,23 +130,6 @@ async function getInitialProjectsData(projectIds) {
         projectWorkstreams[projectId] = workstreams
         projectAssistants[projectId] = assistants
     })
-
-    return { projects, projectsMap, projectUsers, projectContacts, projectWorkstreams, projectAssistants }
-}
-
-async function loadInitialData() {
-    const { loggedUser } = store.getState()
-    store.dispatch(updateLoadingStep(3, 'Loading projects...'))
-    const projectsInitialData = await getInitialProjectsData(loggedUser.projectIds)
-
-    const {
-        projects,
-        projectsMap,
-        projectUsers,
-        projectContacts,
-        projectWorkstreams,
-        projectAssistants,
-    } = projectsInitialData
 
     convertAnonymousProjectsIntoSharedProjects(
         projects,
@@ -209,9 +234,40 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 }
 
 export const loadGlobalDataAndGetUser = async userId => {
+    // Try to load from cache first for faster startup
+    const cachedUserData = UserDataCache.getCachedUserData()
+    const cachedGlobalData = UserDataCache.getCachedGlobalData()
+
+    if (cachedUserData && cachedUserData.uid === userId) {
+        console.log('Using cached user data for faster startup')
+
+        // Use cached data immediately, but refresh in background
+        setTimeout(async () => {
+            try {
+                const freshUser = await getUserData(userId, true)
+                if (freshUser && !isEqual(freshUser, cachedUserData)) {
+                    console.log('Updating cached user data with fresh data')
+                    UserDataCache.setCachedUserData(freshUser)
+                    store.dispatch(storeLoggedUser(freshUser))
+                }
+            } catch (error) {
+                console.warn('Error refreshing user data:', error)
+            }
+        }, 1000)
+
+        return cachedUserData
+    }
+
+    // No cache available, load from Firebase
     const promises = []
     promises.push(getUserData(userId, true))
     promises.push(loadGlobalData())
     const [user] = await Promise.all(promises)
+
+    // Cache the fresh data
+    if (user) {
+        UserDataCache.setCachedUserData(user)
+    }
+
     return user
 }

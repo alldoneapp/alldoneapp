@@ -5,6 +5,7 @@ import { LogOut } from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
+import AppShell from './components/AppShell'
 import Backend from './utils/BackendBridge'
 import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
@@ -56,7 +57,7 @@ export default function AppContent() {
 
     const onInitFirabase = async firebaseUser => {
         if (firebaseUser && !firebaseUser.isAnonymous) {
-            await tryLogIn(firebaseUser, 500)
+            await tryLogIn(firebaseUser, 0)
         } else {
             await logoutUser()
         }
@@ -70,8 +71,11 @@ export default function AppContent() {
     }
 
     useEffect(() => {
-        initIpRegistry()
         initFirebase()
+        // Initialize IP registry in background after Firebase auth
+        setTimeout(() => {
+            initIpRegistry()
+        }, 100)
         return () => {
             unwatch('userProjectWatcherUnsubKey')
         }
@@ -91,11 +95,9 @@ export default function AppContent() {
     return (
         <>
             {loggedIn === null ? (
-                loadingStep > 0 ? (
-                    <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
-                ) : (
-                    <LoadingScreen text="Checking sign in status" />
-                )
+                <AppShell loadingStep={loadingStep} loadingMessage={loadingMessage}>
+                    {loadingStep > 0 ? null : <LoadingScreen text="Connecting to server..." />}
+                </AppShell>
             ) : (
                 <>
                     {/*<CookieClickerPopup />*/}

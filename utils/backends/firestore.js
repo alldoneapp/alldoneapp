@@ -365,26 +365,48 @@ const firebaseConfig = {
 }
 
 export function initFirebase(onComplete) {
-    require('firebase/functions')
-    require('firebase/database')
-    require('firebase/storage')
+    // Load only critical modules first for faster initialization
     require('firebase/auth')
-    require('firebase/functions')
-    require('firebase/messaging')
-    require('firebase/analytics')
     require('firebase/firestore')
 
     firebase.initializeApp(firebaseConfig)
-    firebase.analytics()
-    functions = firebase.app().functions('europe-west1')
-    if (firebase.messaging.isSupported()) messaging = firebase.messaging()
-
     db = firebase.firestore()
-    notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
         onComplete(firebaseUser)
     })
+
+    // Load non-critical modules in background after authentication
+    setTimeout(() => {
+        loadDeferredFirebaseModules()
+    }, 100)
+}
+
+function loadDeferredFirebaseModules() {
+    try {
+        // Load functions
+        require('firebase/functions')
+        functions = firebase.app().functions('europe-west1')
+
+        // Load storage
+        require('firebase/storage')
+        notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
+
+        // Load messaging
+        require('firebase/messaging')
+        if (firebase.messaging.isSupported()) messaging = firebase.messaging()
+
+        // Load analytics
+        require('firebase/analytics')
+        firebase.analytics()
+
+        // Load database
+        require('firebase/database')
+
+        console.log('Deferred Firebase modules loaded')
+    } catch (error) {
+        console.warn('Error loading deferred Firebase modules:', error)
+    }
 }
 
 export function initGoogleTagManager(userId) {
