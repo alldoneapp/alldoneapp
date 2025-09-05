@@ -35,7 +35,7 @@ export default function AdminPanelView({ navigation }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
-    const navigationTabs = [DV_TAB_ADMIN_PANEL_USER, DV_TAB_ADMIN_PANEL_ASSISTANTS]
+    const navigationTabs = [DV_TAB_ADMIN_PANEL_ASSISTANTS, DV_TAB_ADMIN_PANEL_USER]
 
     const { overlay } = useCollapsibleSidebar()
 
