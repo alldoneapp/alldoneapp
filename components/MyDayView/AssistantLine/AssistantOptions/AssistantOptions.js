@@ -27,7 +27,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     )
 
     useEffect(() => {
-        if (assistantProjectId) {
+        if (assistantProjectId && assistant && assistant.uid) {
             const watcherKey = v4()
             watchAssistantTasks(
                 isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : assistantProjectId,
@@ -42,9 +42,9 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         } else {
             setTasks(null)
         }
-    }, [assistant.uid, assistantProjectId])
+    }, [assistant?.uid, assistantProjectId])
 
-    if (!tasks) return null
+    if (!tasks || !assistant || !assistant.uid) return null
 
     const { optionsLikeButtons, optionsInModal, showSubmenu } = getOptionsPresentationData(
         assistantProject,
