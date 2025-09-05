@@ -433,12 +433,12 @@ const localStyles = StyleSheet.create({
     },
     featuresGrid: {
         padding: 32,
-        gap: 16,
     },
     featureCard: {
         flexDirection: 'row',
         alignItems: 'center',
         padding: 16,
+        marginBottom: 16,
     },
     featureIconContainer: {
         width: 40,

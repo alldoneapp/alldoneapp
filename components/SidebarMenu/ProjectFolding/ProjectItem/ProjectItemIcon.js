@@ -37,6 +37,5 @@ const localStyles = StyleSheet.create({
         marginRight: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        letterSpacing: 0.5,
     },
 })

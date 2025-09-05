@@ -41,6 +41,7 @@ export default class GoalItemPresentation extends PureComponent {
     constructor(props) {
         super(props)
         const storeState = store.getState()
+        this.timeouts = []
         this.state = {
             blockAction: false,
             panColor: new Animated.Value(0),
@@ -107,9 +108,10 @@ export default class GoalItemPresentation extends PureComponent {
         const { extendedName, startingMilestoneDate, completionMilestoneDate, dateByDoneMilestone } = goal
 
         if (prevProps.goal.extendedName !== extendedName) {
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
                 this.needRenderTagsInNextLine()
             })
+            this.timeouts.push(timeoutId)
         }
 
         if (
@@ -139,6 +141,10 @@ export default class GoalItemPresentation extends PureComponent {
         Backend.unwatch(watcherKey)
         Backend.unwatch(this.childrenTasksWatcherKey)
         this.unsubscribe()
+
+        // Clear all timeouts to prevent state updates after unmount
+        this.timeouts.forEach(timeoutId => clearTimeout(timeoutId))
+        this.timeouts = []
     }
 
     updateState = () => {
@@ -194,12 +200,10 @@ export default class GoalItemPresentation extends PureComponent {
     }
 
     renderLeftSwipe = (progress, dragX) => {
-        this.setState({ panColor: dragX })
         return <View style={{ width: 150 }} />
     }
 
     renderRightSwipe = (progress, dragX) => {
-        this.setState({ panColor: dragX })
         return <View style={{ width: 150 }} />
     }
 
@@ -216,7 +220,7 @@ export default class GoalItemPresentation extends PureComponent {
 
     onRightSwipe = () => {
         this.itemSwipe.current.close()
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
             const { inParentGoal, isEmptyGoal, projectId, parentGoaltasks, goal, areObservedTask } = this.props
             const { currentUser } = store.getState()
             const isInTaskList = inParentGoal || isEmptyGoal
@@ -243,6 +247,7 @@ export default class GoalItemPresentation extends PureComponent {
                 store.dispatch([showFloatPopup(), setGoalSwipeMilestoneModalOpen(true)])
             }
         })
+        this.timeouts.push(timeoutId)
     }
 
     getTagsAmount = () => {

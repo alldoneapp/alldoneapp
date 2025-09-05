@@ -34,14 +34,6 @@ function GhostButton({ pressed, ...props }, ref) {
     )
 }
 
-GhostButton.propTypes = {
-    pressed: PropTypes.bool,
-}
-
-GhostButton.defaultProps = {
-    pressed: false,
-}
-
 const localStyles = StyleSheet.create({
     // Master button styles
     pressedSimple: {
@@ -53,4 +45,14 @@ const localStyles = StyleSheet.create({
     },
 })
 
-export default forwardRef(GhostButton)
+const GhostButtonWithRef = forwardRef(GhostButton)
+
+GhostButtonWithRef.propTypes = {
+    pressed: PropTypes.bool,
+}
+
+GhostButtonWithRef.defaultProps = {
+    pressed: false,
+}
+
+export default GhostButtonWithRef

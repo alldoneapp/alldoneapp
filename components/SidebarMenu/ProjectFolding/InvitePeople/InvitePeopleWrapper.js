@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Popover from 'react-tiny-popover'
 
 import InvitePeopleButton from './InvitePeopleButton'
@@ -14,6 +14,13 @@ export default function InvitePeopleWrapper({ projectColor, projectIndex }) {
     const closeModal = () => {
         setIsOpen(false)
     }
+
+    useEffect(() => {
+        return () => {
+            // Ensure popover is closed when component unmounts
+            setIsOpen(false)
+        }
+    }, [])
 
     return (
         <Popover

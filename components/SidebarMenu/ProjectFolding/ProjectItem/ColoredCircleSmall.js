@@ -28,6 +28,5 @@ const localStyles = StyleSheet.create({
         borderRadius: 100,
         alignItems: 'center',
         justifyContent: 'center',
-        letterSpacing: 0.5,
     },
 })

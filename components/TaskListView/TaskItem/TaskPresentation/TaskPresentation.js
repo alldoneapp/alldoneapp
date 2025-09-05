@@ -142,9 +142,17 @@ function TaskPresentation(
     }
 
     useEffect(() => {
+        let isMounted = true
+
         MyPlatform.getElementWidth(taskTagsSection.current).then(taskTagsWidth => {
-            setTaskTagsWidth(taskTagsWidth)
+            if (isMounted) {
+                setTaskTagsWidth(taskTagsWidth)
+            }
         })
+
+        return () => {
+            isMounted = false
+        }
     }, [task])
 
     const onLayoutChange = layout => {

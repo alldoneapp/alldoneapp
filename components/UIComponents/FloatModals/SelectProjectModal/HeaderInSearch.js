@@ -12,6 +12,7 @@ export default function Header({ activeTabIndex, changeTab, tabs }) {
                 const isNextShortcutTab = previousIndex === activeTabIndex
                 return (
                     <HeaderTab
+                        key={index}
                         text={translate(tab.name)}
                         onPress={() => {
                             changeTab(index)

@@ -10,7 +10,7 @@ export default function AllProjectsEmptyInboxText() {
 
     return (
         <View style={[localStyles.emptyInboxText, isMiddleScreen ? localStyles.emptyInboxTextMobile : undefined]}>
-            <Text style={[styles.body1, { color: colors.Text02 }]}>
+            <Text style={[styles.body1, { color: colors.Text02, textAlign: 'center' }]}>
                 {translate('Congrats - you have reached empty inbox across all your projects')}
             </Text>
         </View>
@@ -23,7 +23,6 @@ const localStyles = {
         alignItems: 'flex-start',
         flexDirection: 'row',
         marginBottom: 16,
-        textAlign: 'center',
     },
     emptyInboxTextMobile: {
         marginHorizontal: 16,

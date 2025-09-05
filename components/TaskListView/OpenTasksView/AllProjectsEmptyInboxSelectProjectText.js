@@ -10,7 +10,7 @@ export default function AllProjectsEmptyInboxSelectProjectText() {
 
     return (
         <View style={[localStyles.emptyInboxText, isMiddleScreen ? localStyles.emptyInboxTextMobile : undefined]}>
-            <Text style={[styles.body1, { color: colors.Text02 }]}>
+            <Text style={[styles.body1, { color: colors.Text02, textAlign: 'center' }]}>
                 {translate('Please select a project to add a new task')}
             </Text>
         </View>
@@ -22,7 +22,6 @@ const localStyles = {
         maxWidth: 700,
         alignItems: 'flex-start',
         flexDirection: 'row',
-        textAlign: 'center',
     },
     emptyInboxTextMobile: {
         marginHorizontal: 16,

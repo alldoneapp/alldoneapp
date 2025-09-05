@@ -43,9 +43,9 @@ const SvgComponent = props => (
                 y2="174.803"
                 gradientUnits="userSpaceOnUse"
             >
-                <stop stop-color="#FFEA00" />
-                <stop offset="0.5" stop-color="#FFC700" />
-                <stop offset="1" stop-color="#FFA500" />
+                <stop stopColor="#FFEA00" />
+                <stop offset="0.5" stopColor="#FFC700" />
+                <stop offset="1" stopColor="#FFA500" />
             </linearGradient>
             <linearGradient
                 id={'paint1_linear_2582_246' + props.id}
@@ -55,9 +55,9 @@ const SvgComponent = props => (
                 y2="154.957"
                 gradientUnits="userSpaceOnUse"
             >
-                <stop stop-color="#FFE900" />
-                <stop offset="0.5" stop-color="#FFC700" />
-                <stop offset="1" stop-color="#FFA600" />
+                <stop stopColor="#FFE900" />
+                <stop offset="0.5" stopColor="#FFC700" />
+                <stop offset="1" stopColor="#FFA600" />
             </linearGradient>
             <linearGradient
                 id={'paint2_linear_2582_246' + props.id}
@@ -67,9 +67,9 @@ const SvgComponent = props => (
                 y2="142.523"
                 gradientUnits="userSpaceOnUse"
             >
-                <stop stop-color="#FFAD00" />
-                <stop offset="0.5" stop-color="#FF8F00" />
-                <stop offset="1" stop-color="#FF7100" />
+                <stop stopColor="#FFAD00" />
+                <stop offset="0.5" stopColor="#FF8F00" />
+                <stop offset="1" stopColor="#FF7100" />
             </linearGradient>
         </defs>
     </svg>

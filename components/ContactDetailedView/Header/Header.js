@@ -197,7 +197,7 @@ const localStyles = StyleSheet.create({
     },
     bottomHeader: {
         flexDirection: 'row',
-        justifyItems: 'flex-end',
+        alignItems: 'flex-end',
     },
     backButtonMobile: {
         left: -16,

@@ -3,15 +3,63 @@ import { Text, View } from 'react-native'
 
 export default function Icon({ style, accessibilityLabel, size, color, onPress, name }) {
     const text = FONT_MAP[name]
+
+    // Separate layout styles (for View) from text styles
+    const viewStyle = style
+        ? {
+              alignItems: style.alignItems,
+              justifyContent: style.justifyContent,
+              margin: style.margin,
+              marginTop: style.marginTop,
+              marginBottom: style.marginBottom,
+              marginLeft: style.marginLeft,
+              marginRight: style.marginRight,
+              marginHorizontal: style.marginHorizontal,
+              marginVertical: style.marginVertical,
+              padding: style.padding,
+              paddingTop: style.paddingTop,
+              paddingBottom: style.paddingBottom,
+              paddingLeft: style.paddingLeft,
+              paddingRight: style.paddingRight,
+              paddingHorizontal: style.paddingHorizontal,
+              paddingVertical: style.paddingVertical,
+              width: style.width,
+              height: style.height,
+              minWidth: style.minWidth,
+              minHeight: style.minHeight,
+              maxWidth: style.maxWidth,
+              maxHeight: style.maxHeight,
+              flex: style.flex,
+              flexDirection: style.flexDirection,
+              flexWrap: style.flexWrap,
+              flexGrow: style.flexGrow,
+              flexShrink: style.flexShrink,
+              flexBasis: style.flexBasis,
+              position: style.position,
+              top: style.top,
+              left: style.left,
+              right: style.right,
+              bottom: style.bottom,
+              zIndex: style.zIndex,
+              backgroundColor: style.backgroundColor,
+              borderRadius: style.borderRadius,
+              borderWidth: style.borderWidth,
+              borderColor: style.borderColor,
+              opacity: style.opacity,
+          }
+        : {}
+
+    const textColor = color || (style && style.color)
+
     return (
-        <View style={style}>
+        <View style={viewStyle}>
             <Text
                 accessibilityLabel={accessibilityLabel}
                 style={{
                     fontFamily: 'alldone',
                     opacity: 1,
                     fontSize: size,
-                    color: color,
+                    color: textColor,
                 }}
                 onPress={onPress}
             >
