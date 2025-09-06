@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -20,14 +20,29 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
     const dispatch = useDispatch()
+    const isUnmountedRef = useRef(false)
+    const showModalRef = useRef(false)
 
     const openModal = () => {
-        setShowModal(true)
-        dispatch(showFloatPopup())
+        console.debug('GoalCommentsWrapper: openModal called', {
+            goalId: goal?.id,
+            isUnmounted: isUnmountedRef.current,
+        })
+        if (!isUnmountedRef.current) {
+            setShowModal(true)
+            dispatch(showFloatPopup())
+        }
     }
 
     const closeModal = () => {
+        console.debug('GoalCommentsWrapper: closeModal called', {
+            goalId: goal?.id,
+            isUnmounted: isUnmountedRef.current,
+            isQuillTagEditorOpen,
+            openModals,
+        })
         if (
+            !isUnmountedRef.current &&
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
             !openModals[BOT_OPTION_MODAL_ID] &&
@@ -39,8 +54,35 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
         }
     }
 
+    const handleClickOutside = () => {
+        console.debug('GoalCommentsWrapper: onClickOutside', { goalId: goal?.id, isUnmounted: isUnmountedRef.current })
+        closeModal()
+    }
+
+    useEffect(() => {
+        console.debug('GoalCommentsWrapper: mounted', { goalId: goal?.id })
+        showModalRef.current = showModal
+    }, [showModal])
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+            // Close modal immediately to prevent any pending operations
+            if (showModalRef.current) {
+                console.debug('GoalCommentsWrapper: unmount cleanup, hiding float popup', { goalId: goal?.id })
+                dispatch(hideFloatPopup())
+            }
+            console.debug('GoalCommentsWrapper: unmounted', { goalId: goal?.id })
+        }
+    }, [dispatch])
+
     const addComment = async (comment, mentions, isPrivate, hasKarma) => {
+        console.debug('GoalCommentsWrapper: addComment start', {
+            goalId: goal?.id,
+            isUnmounted: isUnmountedRef.current,
+        })
         if (
+            !isUnmountedRef.current &&
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
             !openModals[BOT_OPTION_MODAL_ID] &&
@@ -48,14 +90,18 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            createObjectMessage(projectId, goal.id, comment, 'goals', null, null, null)
+            await createObjectMessage(projectId, goal.id, comment, 'goals', null, null, null)
 
-            if (!assistantEnabled) closeModal()
+            if (!isUnmountedRef.current && !assistantEnabled) {
+                closeModal()
+            }
         }
+        console.debug('GoalCommentsWrapper: addComment end', { goalId: goal?.id, isUnmounted: isUnmountedRef.current })
     }
 
-    return (
+    return showModal && !isUnmountedRef.current ? (
         <Popover
+            key={`goal-comments-${goal.id}-${showModal}`}
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -69,8 +115,8 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
                     externalAssistantId={goal.assistantId}
                 />
             }
-            onClickOutside={closeModal}
-            isOpen={showModal}
+            onClickOutside={handleClickOutside}
+            isOpen={showModal && !isUnmountedRef.current}
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
             align={'end'}
@@ -79,7 +125,7 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
         >
             <ObjectCommentsTag
                 commentsData={commentsData}
-                isOpen={showModal}
+                isOpen={showModal && !isUnmountedRef.current}
                 onOpen={openModal}
                 onClose={closeModal}
                 accessibilityLabel={'social-text-block'}
@@ -87,5 +133,15 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
                 disabled={disabled}
             />
         </Popover>
+    ) : (
+        <ObjectCommentsTag
+            commentsData={commentsData}
+            isOpen={false}
+            onOpen={openModal}
+            onClose={closeModal}
+            accessibilityLabel={'social-text-block'}
+            style={tagStyle}
+            disabled={disabled}
+        />
     )
 }

@@ -47,7 +47,7 @@ export default function GoalDateTagButton({
 
     const firstTask = isEmptyGoal ? { dueDate: assigneesReminderDate[currentUserId] } : parentGoaltasks[0]
 
-    return (
+    return visiblePopover ? (
         <Popover
             content={
                 <DueDateModal
@@ -66,7 +66,7 @@ export default function GoalDateTagButton({
                 />
             }
             onClickOutside={hidePopover}
-            isOpen={visiblePopover}
+            isOpen={true}
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
             align={'end'}
@@ -74,11 +74,13 @@ export default function GoalDateTagButton({
         >
             <DateTag
                 date={date}
-                onPress={showPopover}
+                onPress={hidePopover}
                 icon={'calendar'}
                 disabled={disabled}
                 style={{ marginLeft: 8 }}
             />
         </Popover>
+    ) : (
+        <DateTag date={date} onPress={showPopover} icon={'calendar'} disabled={disabled} style={{ marginLeft: 8 }} />
     )
 }

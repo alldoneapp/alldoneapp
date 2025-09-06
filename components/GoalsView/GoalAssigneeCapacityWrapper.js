@@ -35,7 +35,7 @@ export default function GoalAssigneeCapacityWrapper({
         }
     }
 
-    return (
+    return isOpen ? (
         <Popover
             content={
                 <GoalAssigneeCapacityModal
@@ -49,16 +49,24 @@ export default function GoalAssigneeCapacityWrapper({
             align={'start'}
             position={['bottom']}
             onClickOutside={closeModal}
-            isOpen={isOpen}
+            isOpen={true}
             contentLocation={mobile ? null : undefined}
         >
             <GoalAssigneeCapacityTag
-                openModal={openModal}
+                openModal={closeModal}
                 assignee={assignee}
                 capacity={capacity}
                 containerStyle={[{ marginLeft: 8, marginRight: 0 }, tagStyle]}
                 disabled={disabled}
             />
         </Popover>
+    ) : (
+        <GoalAssigneeCapacityTag
+            openModal={openModal}
+            assignee={assignee}
+            capacity={capacity}
+            containerStyle={[{ marginLeft: 8, marginRight: 0 }, tagStyle]}
+            disabled={disabled}
+        />
     )
 }
