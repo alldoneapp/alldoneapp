@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { forwardRef, useImperativeHandle } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import {
@@ -17,17 +17,20 @@ import { useDispatch, useSelector } from 'react-redux'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 
-const NavigationBarItem = ({
-    children,
-    feedAmount,
-    invitationsAmount,
-    selected,
-    expandPicker,
-    isMobile,
-    isSecondary,
-    forceTabletMargins,
-    isNextShortcutTab,
-}) => {
+const NavigationBarItem = (
+    {
+        children,
+        feedAmount,
+        invitationsAmount,
+        selected,
+        expandPicker,
+        isMobile,
+        isSecondary,
+        forceTabletMargins,
+        isNextShortcutTab,
+    },
+    ref
+) => {
     useTranslator()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -64,6 +67,10 @@ const NavigationBarItem = ({
         dismissAllPopups(true, true, true)
         dispatch(actionsToDispatch)
     }
+
+    useImperativeHandle(ref, () => ({
+        onPress,
+    }))
 
     return (
         <TouchableOpacity
@@ -113,7 +120,7 @@ const NavigationBarItem = ({
     )
 }
 
-export default NavigationBarItem
+export default forwardRef(NavigationBarItem)
 
 const localStyles = StyleSheet.create({
     container: {

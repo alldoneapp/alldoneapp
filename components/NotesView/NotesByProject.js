@@ -118,118 +118,137 @@ export default class NotesByProject extends PureComponent {
         this.notesCounter = 0
 
         const updateNotes = changes => {
-            this.setState(state => {
-                const notes = { ...state.notes }
-                const datesToSort = new Set()
-                let lastEditedDateRemoved = false
+            // Compute state updates first; schedule side-effects in setState callback
+            let finalLastEditedDate = 0
+            this.setState(
+                state => {
+                    const notes = { ...state.notes }
+                    const datesToSort = new Set()
+                    let lastEditedDateRemoved = false
 
-                for (let change of changes) {
-                    const noteId = change.doc.id
-                    const type = change.type
-                    const noteAdded = type === 'added'
-                    const noteModified = type === 'modified'
+                    for (let change of changes) {
+                        const noteId = change.doc.id
+                        const type = change.type
+                        const noteAdded = type === 'added'
+                        const noteModified = type === 'modified'
 
-                    const note = Backend.mapNoteData(noteId, change.doc.data())
-                    const editedTimestamp = note.lastEditionDate
-                    const date = moment(editedTimestamp).format('YYYYMMDD')
+                        const note = Backend.mapNoteData(noteId, change.doc.data())
+                        const editedTimestamp = note.lastEditionDate
+                        const date = moment(editedTimestamp).format('YYYYMMDD')
 
-                    const addNote = () => {
-                        if (!notes[date]) notes[date] = []
-                        notes[date] = notes[date].concat(note)
-                        this.datesForNotes[noteId] = date
-                        if (notes[date].length > 1) datesToSort.add(date)
-                    }
+                        const addNote = () => {
+                            if (!notes[date]) notes[date] = []
+                            notes[date] = notes[date].concat(note)
+                            this.datesForNotes[noteId] = date
+                            if (notes[date].length > 1) datesToSort.add(date)
+                        }
 
-                    const deleteDate = date => {
-                        if (notes[date].length <= 1) {
-                            if (notes[date].length === 0) delete notes[date]
-                            datesToSort.delete(date)
+                        const deleteDate = date => {
+                            if (notes[date].length <= 1) {
+                                if (notes[date].length === 0) delete notes[date]
+                                datesToSort.delete(date)
+                            }
+                        }
+
+                        if (noteModified) {
+                            const oldDate = this.datesForNotes[noteId]
+                            notes[oldDate] = notes[oldDate].filter(noteItem => noteItem.id !== noteId)
+                            if (oldDate !== date) deleteDate(oldDate)
+                            if (inAllProjects && lastEditedDate < editedTimestamp) lastEditedDate = editedTimestamp
+                            addNote()
+                        } else if (noteAdded) {
+                            this.notesCounter++
+                            if (inAllProjects && lastEditedDate < editedTimestamp) lastEditedDate = editedTimestamp
+                            if (!this.datesForNotes[noteId]) addNote()
+                        } else {
+                            this.notesCounter--
+                            notes[date] = notes[date].filter(noteItem => noteItem.id !== noteId)
+                            delete this.datesForNotes[noteId]
+                            deleteDate(date)
+                            if (inAllProjects && lastEditedDate === editedTimestamp) {
+                                lastEditedDateRemoved = true
+                            }
                         }
                     }
 
-                    if (noteModified) {
-                        const oldDate = this.datesForNotes[noteId]
-                        notes[oldDate] = notes[oldDate].filter(noteItem => noteItem.id !== noteId)
-                        if (oldDate !== date) deleteDate(oldDate)
-                        if (inAllProjects && lastEditedDate < editedTimestamp) lastEditedDate = editedTimestamp
-                        addNote()
-                    } else if (noteAdded) {
-                        this.notesCounter++
-                        if (inAllProjects && lastEditedDate < editedTimestamp) lastEditedDate = editedTimestamp
-                        if (!this.datesForNotes[noteId]) addNote()
-                    } else {
-                        this.notesCounter--
-                        notes[date] = notes[date].filter(noteItem => noteItem.id !== noteId)
-                        delete this.datesForNotes[noteId]
-                        deleteDate(date)
-                        if (inAllProjects && lastEditedDate === editedTimestamp) {
-                            lastEditedDateRemoved = true
+                    for (let date of datesToSort) {
+                        notes[date].sort(sortNotesFn)
+                    }
+
+                    if (inAllProjects) {
+                        if (this.notesCounter === 0) {
+                            lastEditedDate = moment('01-01-1970', 'DD-MM-YYYY').valueOf()
+                        } else if (lastEditedDateRemoved) {
+                            const notesList = Object.values(notes).flat()
+                            notesList.sort(sortNotesFn)
+                            lastEditedDate = notesList[0].lastEditionDate
                         }
+                        finalLastEditedDate = lastEditedDate
                     }
-                }
 
-                for (let date of datesToSort) {
-                    notes[date].sort(sortNotesFn)
-                }
-
-                if (inAllProjects) {
-                    if (this.notesCounter === 0) {
-                        lastEditedDate = moment('01-01-1970', 'DD-MM-YYYY').valueOf()
-                    } else if (lastEditedDateRemoved) {
-                        const notesList = Object.values(notes).flat()
-                        notesList.sort(sortNotesFn)
-                        lastEditedDate = notesList[0].lastEditionDate
+                    return { notes }
+                },
+                () => {
+                    // Side-effects moved out of updater to avoid React warning about updates inside update functions
+                    if (inAllProjects) {
+                        setLastEditNoteDate(finalLastEditedDate)
                     }
-                    setLastEditNoteDate(lastEditedDate)
+                    store.dispatch(stopLoadingData())
+                    store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
+                    // Debug: validate side-effects run post state update
+                    console.debug(
+                        '[NotesByProject] post-setState(updateNotes): dispatched setNotesAmounts and stopLoadingData'
+                    )
                 }
-
-                store.dispatch(stopLoadingData())
-                store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
-
-                return { notes }
-            })
+            )
         }
 
         const updateStickyNotes = changes => {
-            this.setState(state => {
-                let stickyNotes = [...state.stickyNotes]
-                let needToSortNotes = false
+            this.setState(
+                state => {
+                    let stickyNotes = [...state.stickyNotes]
+                    let needToSortNotes = false
 
-                for (let change of changes) {
-                    const noteId = change.doc.id
-                    const type = change.type
-                    const noteAdded = type === 'added'
-                    const noteModified = type === 'modified'
+                    for (let change of changes) {
+                        const noteId = change.doc.id
+                        const type = change.type
+                        const noteAdded = type === 'added'
+                        const noteModified = type === 'modified'
 
-                    const note = Backend.mapNoteData(noteId, change.doc.data())
+                        const note = Backend.mapNoteData(noteId, change.doc.data())
 
-                    if (noteModified) {
-                        for (let i = 0; i < stickyNotes.length; i++) {
-                            const noteItem = stickyNotes[i]
-                            if (noteItem.id === noteId) {
-                                stickyNotes[i] = note
-                                if (stickyNotes.length > 1) needToSortNotes = true
-                                break
+                        if (noteModified) {
+                            for (let i = 0; i < stickyNotes.length; i++) {
+                                const noteItem = stickyNotes[i]
+                                if (noteItem.id === noteId) {
+                                    stickyNotes[i] = note
+                                    if (stickyNotes.length > 1) needToSortNotes = true
+                                    break
+                                }
                             }
+                        } else if (noteAdded) {
+                            this.stickyCounter++
+                            stickyNotes.push(note)
+                            if (stickyNotes.length > 1) needToSortNotes = true
+                        } else {
+                            this.stickyCounter--
+                            stickyNotes = stickyNotes.filter(noteItem => noteItem.id !== noteId)
+                            if (stickyNotes.length <= 1) needToSortNotes = false
                         }
-                    } else if (noteAdded) {
-                        this.stickyCounter++
-                        stickyNotes.push(note)
-                        if (stickyNotes.length > 1) needToSortNotes = true
-                    } else {
-                        this.stickyCounter--
-                        stickyNotes = stickyNotes.filter(noteItem => noteItem.id !== noteId)
-                        if (stickyNotes.length <= 1) needToSortNotes = false
                     }
-                }
 
-                if (needToSortNotes) {
-                    stickyNotes.sort(sortNotesFn)
-                }
+                    if (needToSortNotes) {
+                        stickyNotes.sort(sortNotesFn)
+                    }
 
-                store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
-                return { stickyNotes }
-            })
+                    return { stickyNotes }
+                },
+                () => {
+                    store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
+                    // Debug: validate side-effects run post state update
+                    console.debug('[NotesByProject] post-setState(updateStickyNotes): dispatched setNotesAmounts')
+                }
+            )
         }
 
         if (inAllProjects) {

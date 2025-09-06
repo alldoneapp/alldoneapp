@@ -51,7 +51,7 @@ export default function DateTagButton({
         }
     }
 
-    return (
+    return visiblePopover ? (
         <Popover
             content={
                 <DueDateModal
@@ -64,7 +64,7 @@ export default function DateTagButton({
                 />
             }
             onClickOutside={delayHidePopover}
-            isOpen={visiblePopover}
+            isOpen={true}
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
             align={'end'}
@@ -74,11 +74,21 @@ export default function DateTagButton({
                 date={moment(date).format(getDateFormat())}
                 style={style}
                 isMobile={isMobile}
-                onPress={showPopover}
+                onPress={hidePopover}
                 icon={icon}
                 outline={outline}
                 disabled={disabled}
             />
         </Popover>
+    ) : (
+        <DateTag
+            date={moment(date).format(getDateFormat())}
+            style={style}
+            isMobile={isMobile}
+            onPress={showPopover}
+            icon={icon}
+            outline={outline}
+            disabled={disabled}
+        />
     )
 }

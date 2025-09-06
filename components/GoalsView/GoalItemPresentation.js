@@ -62,6 +62,7 @@ export default class GoalItemPresentation extends PureComponent {
         }
         this.itemSwipe = React.createRef()
         this.childrenTasksWatcherKey = v4()
+        this.backlinksWatcherKey = v4()
     }
 
     setTasksAmount = tasksAmount => {
@@ -87,7 +88,8 @@ export default class GoalItemPresentation extends PureComponent {
                 } else if (parentObjectType === 'notes') {
                     this.setState({ backlinksNotesCount: parentsAmount, backlinkNoteObject: aloneParentObject })
                 }
-            }
+            },
+            this.backlinksWatcherKey
         )
 
         if (milestoneId && !inParentGoal && !isEmptyGoal) {
@@ -140,6 +142,7 @@ export default class GoalItemPresentation extends PureComponent {
         const watcherKey = milestoneId + goal.id
         Backend.unwatch(watcherKey)
         Backend.unwatch(this.childrenTasksWatcherKey)
+        Backend.unwatchBacklinksCount(goal.id, this.backlinksWatcherKey)
         this.unsubscribe()
 
         // Clear all timeouts to prevent state updates after unmount
