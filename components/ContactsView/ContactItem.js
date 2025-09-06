@@ -278,7 +278,7 @@ export default class ContactItem extends Component {
 
                         <TouchableOpacity
                             style={localStyles.userData}
-                            onPress={!blockOpen && this.onOpenDV}
+                            onPress={blockOpen ? undefined : this.onOpenDV}
                             disabled={blockOpen}
                             activeOpacity={blockOpen ? 1 : 0.5}
                         >

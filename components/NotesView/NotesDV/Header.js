@@ -140,6 +140,12 @@ export default class Header extends Component {
         )
     }
 
+    componentWillUnmount() {
+        if (this.state && this.state.unsubscribe) {
+            this.state.unsubscribe()
+        }
+    }
+
     updateState = () => {
         const storeState = store.getState()
 
