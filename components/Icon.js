@@ -3,8 +3,18 @@ import { Text, View } from 'react-native'
 
 export default function Icon({ style, accessibilityLabel, size, color, onPress, name }) {
     const text = FONT_MAP[name]
+
+    // Create a copy of style without the text-only properties that cause React warnings
+    let viewStyle = style
+    if (style && (style.color || style.textAlign || style.letterSpacing)) {
+        viewStyle = { ...style }
+        delete viewStyle.color
+        delete viewStyle.textAlign
+        delete viewStyle.letterSpacing
+    }
+
     return (
-        <View style={style}>
+        <View style={viewStyle}>
             <Text
                 accessibilityLabel={accessibilityLabel}
                 style={{
