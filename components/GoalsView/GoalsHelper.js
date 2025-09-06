@@ -492,7 +492,7 @@ export function isPrivateGoal(goal, customUserId) {
 }
 
 const filterGoalsInMilestone = (goalsToShowAmount, milestoneDate, goals, assigneesIdsToShow, inDone, milestoneId) => {
-    const milestoneGoals = []
+    const candidateGoals = []
     for (let i = 0; i < goals.length; i++) {
         const goal = goals[i]
         const {
@@ -513,11 +513,18 @@ const filterGoalsInMilestone = (goalsToShowAmount, milestoneDate, goals, assigne
         const belongsToAnAssigneeToShow = assigneesIds.some(assigneeId => assigneesIdsToShow.includes(assigneeId))
 
         if (belongsToMilestone && belongsToAnAssigneeToShow) {
-            milestoneGoals.push(goal)
-            if (goalsToShowAmount && goalsToShowAmount <= milestoneGoals.length) break
+            candidateGoals.push(goal)
         }
     }
-    return milestoneGoals
+
+    const sortedGoals = sortBy(candidateGoals, [
+        goal => goal.sortIndexByMilestone && goal.sortIndexByMilestone[milestoneId],
+    ]).reverse()
+
+    if (goalsToShowAmount && goalsToShowAmount > 0) {
+        return sortedGoals.slice(0, goalsToShowAmount)
+    }
+    return sortedGoals
 }
 
 const processMilestonesAndGoalsToCountAndShow = (
