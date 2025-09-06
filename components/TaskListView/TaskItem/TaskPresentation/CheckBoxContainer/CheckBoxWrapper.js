@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -40,6 +40,31 @@ function CheckBoxWrapper(
     const [isOpen, setIsOpen] = useState(false)
     const [showAnimation, setShowAnimation] = useState(false)
     const checkBoxIdRef = useRef(v4())
+    const isUnmountedRef = useRef(false)
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+        }
+    }, [])
+
+    const safeSetIsOpen = value => {
+        if (!isUnmountedRef.current) {
+            setIsOpen(value)
+        }
+    }
+
+    const safeSetChecked = value => {
+        if (!isUnmountedRef.current) {
+            setChecked(value)
+        }
+    }
+
+    const safeSetShowAnimation = value => {
+        if (!isUnmountedRef.current) {
+            setShowAnimation(value)
+        }
+    }
 
     const {
         id: taskId,
@@ -130,7 +155,7 @@ function CheckBoxWrapper(
     }
 
     const openModal = () => {
-        setIsOpen(true)
+        safeSetIsOpen(true)
     }
 
     const closeModal = () => {
@@ -141,8 +166,8 @@ function CheckBoxWrapper(
             !openModals[RECORD_SCREEN_MODAL_ID] &&
             !openModals[MENTION_MODAL_ID]
         ) {
-            setIsOpen(false)
-            setChecked(false)
+            safeSetIsOpen(false)
+            safeSetChecked(false)
         }
     }
 
@@ -165,7 +190,7 @@ function CheckBoxWrapper(
                         pending={pending}
                         cancelPopover={closeModal}
                         checkBoxIdRef={checkBoxIdRef}
-                        setVisiblePopover={setIsOpen}
+                        setVisiblePopover={safeSetIsOpen}
                     />
                 }
                 onClickOutside={closeModal}
@@ -196,7 +221,7 @@ function CheckBoxWrapper(
                 visible={showAnimation}
                 onAnimationComplete={() => {
                     console.log('Animation completed callback')
-                    setShowAnimation(false)
+                    safeSetShowAnimation(false)
                 }}
             />
         </>
