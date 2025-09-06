@@ -18,9 +18,11 @@ class Button extends Component {
             showFloatPopup: storeState.showFloatPopup,
             unsubscribe: store.subscribe(this.updateState),
         }
+        this._isMounted = false
     }
 
     componentDidMount() {
+        this._isMounted = true
         const {
             type,
             title,
@@ -79,12 +81,15 @@ class Button extends Component {
     }
 
     componentWillUnmount() {
+        this._isMounted = false
         this.state.unsubscribe()
     }
 
     updateState = () => {
         const storeState = store.getState()
-
+        if (!this._isMounted) {
+            return
+        }
         this.setState({
             showShortcuts: storeState.showShortcuts,
             showFloatPopup: storeState.showFloatPopup,

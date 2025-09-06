@@ -69,28 +69,37 @@ function MoreButtonWrapper(
 
     return (
         <View style={wrapperStyle}>
-            <Popover
-                content={
-                    customModal || (
-                        <MoreButtonModal
-                            formType={formType}
-                            object={object}
-                            objectType={objectType}
-                            closePopover={closeModal}
-                            delayClosePopover={delayCloseModal}
-                            children={children}
-                        />
-                    )
-                }
-                align={popupAlign || 'start'}
-                position={popupPosition || ['bottom', 'right', 'left', 'top']}
-                isOpen={isOpen}
-                contentLocation={mobile ? null : undefined}
-                padding={0}
-                onClickOutside={delayCloseModal}
-            >
+            {isOpen ? (
+                <Popover
+                    content={
+                        customModal || (
+                            <MoreButtonModal
+                                formType={formType}
+                                object={object}
+                                objectType={objectType}
+                                closePopover={closeModal}
+                                delayClosePopover={delayCloseModal}
+                                children={children}
+                            />
+                        )
+                    }
+                    align={popupAlign || 'start'}
+                    position={popupPosition || ['bottom', 'right', 'left', 'top']}
+                    isOpen={true}
+                    contentLocation={mobile ? null : undefined}
+                    padding={0}
+                    onClickOutside={delayCloseModal}
+                >
+                    <MoreButton
+                        onPress={delayCloseModal}
+                        buttonStyle={buttonStyle}
+                        disabled={disabled}
+                        shortcut={shortcut}
+                    />
+                </Popover>
+            ) : (
                 <MoreButton onPress={openModal} buttonStyle={buttonStyle} disabled={disabled} shortcut={shortcut} />
-            </Popover>
+            )}
         </View>
     )
 }
