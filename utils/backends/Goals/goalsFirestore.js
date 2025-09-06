@@ -114,14 +114,27 @@ export function watchAllGoals(projectId, watcherKey, ownerId) {
         .where('isPublicFor', 'array-contains-any', allowUserIds)
         .where('ownerId', '==', ownerId)
 
-    globalWatcherUnsub[watcherKey] = query.onSnapshot(goalsData => {
-        const goals = []
-        goalsData.forEach(doc => {
-            const goal = mapGoalData(doc.id, doc.data())
-            goals.push(goal)
-        })
-        store.dispatch([setGoalsInProject(projectId, goals), stopLoadingData()])
-    })
+    globalWatcherUnsub[watcherKey] = query.onSnapshot(
+        goalsData => {
+            try {
+                const goals = []
+                goalsData.forEach(doc => {
+                    const goal = mapGoalData(doc.id, doc.data())
+                    goals.push(goal)
+                })
+                store.dispatch([setGoalsInProject(projectId, goals), stopLoadingData()])
+            } catch (err) {
+                console.error('watchAllGoals: snapshot handler error', { projectId, ownerId, watcherKey, err })
+                // Ensure spinner decrements on unexpected handler errors
+                store.dispatch(stopLoadingData())
+            }
+        },
+        err => {
+            console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
+            // Ensure spinner decrements on snapshot errors
+            store.dispatch(stopLoadingData())
+        }
+    )
 }
 
 async function getGoalsInDoneMilestone(projectId, milestoneId, idsOfGoalsToExclude) {
@@ -251,25 +264,36 @@ export function watchAllMilestones(projectId, watcherKey, ownerId) {
         .collection(`goalsMilestones/${projectId}/milestonesItems`)
         .where('ownerId', '==', ownerId)
         .orderBy('date', 'asc')
-        .onSnapshot(milestonesData => {
-            const milestones = []
-            const openMilestones = []
-            let doneMilestone = []
-            milestonesData.forEach(doc => {
-                const milestone = mapMilestoneData(doc.id, doc.data())
-                milestones.push(milestone)
-                milestone.done ? doneMilestone.push(milestone) : openMilestones.push(milestone)
-            })
+        .onSnapshot(
+            milestonesData => {
+                try {
+                    const milestones = []
+                    const openMilestones = []
+                    let doneMilestone = []
+                    milestonesData.forEach(doc => {
+                        const milestone = mapMilestoneData(doc.id, doc.data())
+                        milestones.push(milestone)
+                        milestone.done ? doneMilestone.push(milestone) : openMilestones.push(milestone)
+                    })
 
-            doneMilestone = sortBy(doneMilestone, [item => item.doneDate])
-            doneMilestone.reverse()
+                    doneMilestone = sortBy(doneMilestone, [item => item.doneDate])
+                    doneMilestone.reverse()
 
-            store.dispatch([
-                setOpenMilestonesInProject(projectId, openMilestones),
-                setDoneMilestonesInProject(projectId, doneMilestone),
-                stopLoadingData(),
-            ])
-        })
+                    store.dispatch([
+                        setOpenMilestonesInProject(projectId, openMilestones),
+                        setDoneMilestonesInProject(projectId, doneMilestone),
+                        stopLoadingData(),
+                    ])
+                } catch (err) {
+                    console.error('watchAllMilestones: snapshot handler error', { projectId, ownerId, watcherKey, err })
+                    store.dispatch(stopLoadingData())
+                }
+            },
+            err => {
+                console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
+                store.dispatch(stopLoadingData())
+            }
+        )
 }
 
 export function watchMilestones(projectId, callback, milestonesInDone, watcherKey, ownerId) {
