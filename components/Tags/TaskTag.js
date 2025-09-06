@@ -131,7 +131,7 @@ export default function TaskTag({
             {!isLoading && (name || isDeleted) ? (
                 <View style={localStyles.subContainer}>
                     <TouchableOpacity
-                        style={[localStyles.button, { maxWidth: maxWidth - tagsWidth }]}
+                        style={[localStyles.button, { maxWidth: Math.max(0, maxWidth - tagsWidth) }]}
                         onPress={onPress}
                         disabled={disabled || !loggedUserCanUpdateObject}
                     >
@@ -315,11 +315,9 @@ const localStyles = StyleSheet.create({
         borderRadius: 50,
     },
     button: {
-        ...styles.subtitle2,
         flexDirection: 'row',
         alignItems: 'center',
         height: 24,
-        fontSize: 18,
         overflow: 'hidden',
     },
     name: {

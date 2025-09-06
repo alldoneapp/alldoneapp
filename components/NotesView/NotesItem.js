@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
@@ -47,6 +47,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
     const [blockOpen, setBlockOpen] = useState(false)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const showNewTaskPopup = useRef(false)
+    const isUnmountedRef = useRef(false)
+    const rightSwipeTimeoutRef = useRef(null)
     const [renderFlag, setRenderFlag] = useState(false)
     const itemSwipe = useRef()
     const theme = getTheme(Themes, loggedUser.themeName, 'RootView.StickyItem')
@@ -64,6 +66,17 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
         extrapolate: 'clamp',
     })
     const highlightColor = note.hasStar.toLowerCase() !== '#ffffff' ? backColorHighlight : backColor
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+            if (rightSwipeTimeoutRef.current) {
+                clearTimeout(rightSwipeTimeoutRef.current)
+            }
+            // Debug: track unmount to diagnose setState-after-unmount
+            console.debug('NotesItem unmounted', { noteId: note.id })
+        }
+    }, [])
 
     const openObjectNote = () => {
         dispatch(startLoadingData())
@@ -118,7 +131,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
 
     const onRightSwipe = () => {
         itemSwipe.current.close()
-        setTimeout(() => {
+        rightSwipeTimeoutRef.current = setTimeout(() => {
             storeModal(RICH_CREATE_TASK_MODAL_ID)
             showNewTaskPopup.current = true
         })
@@ -140,6 +153,10 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
     const cancelPopover = () => {
         removeModal(RICH_CREATE_TASK_MODAL_ID)
         showNewTaskPopup.current = false
+        if (isUnmountedRef.current) {
+            console.warn('NotesItem.cancelPopover called after unmount', { noteId: note.id })
+            return
+        }
         forceRender()
     }
 
