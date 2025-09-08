@@ -12,6 +12,7 @@ import { DV_TAB_ROOT_TASKS } from '../utils/TabNavigationConstants'
 class ParsingTextInput extends Component {
     constructor(props) {
         super(props)
+        this._isMounted = false
 
         this.state = {
             text: [],
@@ -35,6 +36,7 @@ class ParsingTextInput extends Component {
     }
 
     componentDidMount() {
+        this._isMounted = true
         const vals = this.props.value.split(' ')
 
         this.focus()
@@ -43,6 +45,11 @@ class ParsingTextInput extends Component {
     }
 
     componentWillUnmount() {
+        const { unsubscribe } = this.state
+        if (typeof unsubscribe === 'function') {
+            unsubscribe()
+        }
+        this._isMounted = false
         store.dispatch(setTaskTitleInEditMode(false))
     }
 
@@ -93,6 +100,7 @@ class ParsingTextInput extends Component {
     onLayout = async () => {
         if (this.visibleText !== undefined) {
             const inputWidth = await MyPlatform.getElementWidth(this.visibleText.current)
+            if (!this._isMounted) return
             this.setState({ inputWidth })
         }
     }
@@ -184,6 +192,7 @@ class ParsingTextInput extends Component {
         )
     }
     updateState = () => {
+        if (!this._isMounted) return
         this.setState({
             taskTitleInEditMode: store.getState().taskTitleInEditMode,
         })

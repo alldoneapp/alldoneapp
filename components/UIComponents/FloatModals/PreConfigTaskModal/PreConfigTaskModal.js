@@ -72,6 +72,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             aiSystemMessage: task ? task.aiSystemMessage : currentAssistant ? currentAssistant.instructions : '',
             recurrence: task ? task.recurrence : RECURRENCE_NEVER,
             startDate: getInitialStartDate(),
+            sendWhatsApp: task ? task.sendWhatsApp : false,
         }
     }, [task, currentAssistant])
 
@@ -95,6 +96,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [aiSystemMessage, setAiSystemMessage] = useState(initialState.aiSystemMessage)
     const [recurrence, setRecurrence] = useState(initialState.recurrence)
     const [startDate, setStartDate] = useState(initialState.startDate)
+    const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
 
     const handleSetStartDate = useCallback(value => {
         console.log('PreConfigTaskModal - handleSetStartDate called with:', {
@@ -157,8 +159,9 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       userTimezone: parseInt(moment().format('Z')), // Store user's timezone offset
                       creatorUserId: loggedUser.uid, // Store the creator's user ID
                       activatedInProjectId: currentProjectId,
+                      sendWhatsApp,
                   }
-                : { name, type: taskType, prompt: '', variables: [], link, recurrence }
+                : { name, type: taskType, prompt: '', variables: [], link, recurrence, sendWhatsApp }
         setTimeout(() => {
             uploadNewPreConfigTask(projectId, assistantId, newTask)
         }, 1000)
@@ -195,8 +198,18 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       userTimezone: parseInt(moment().format('Z')), // Store user's timezone offset
                       creatorUserId: loggedUser.uid, // Store the creator's user ID
                       activatedInProjectId: currentProjectId,
+                      sendWhatsApp,
                   }
-                : { ...task, name, type: taskType, prompt: '', variables: [], link, recurrence: recurrence ?? null }
+                : {
+                      ...task,
+                      name,
+                      type: taskType,
+                      prompt: '',
+                      variables: [],
+                      link,
+                      recurrence: recurrence ?? null,
+                      sendWhatsApp,
+                  }
         updatePreConfigTask(projectId, assistantId, updatedTask)
         closeModal()
     }
@@ -296,6 +309,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     setRecurrence={handleSetRecurrence}
                     startDate={startDate}
                     setStartDate={handleSetStartDate}
+                    sendWhatsApp={sendWhatsApp}
+                    setSendWhatsApp={setSendWhatsApp}
                 />
             )}
         </View>

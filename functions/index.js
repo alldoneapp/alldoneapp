@@ -1259,6 +1259,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
         cors: true,
     },
     async request => {
+        console.log('🚀 generatePreConfigTaskResultSecondGen called in emulator!')
         const { data, auth } = request
         if (auth) {
             const { generatePreConfigTaskResult } = require('./Assistant/assistantPreConfigTaskTopic')

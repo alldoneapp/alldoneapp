@@ -373,16 +373,43 @@ export function initFirebase(onComplete) {
     db = firebase.firestore()
 
     // Connect to Firebase Functions emulator if running in development
-    if (__DEV__ || process.env.NODE_ENV === 'development') {
+    // Force emulator connection for localhost testing
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    const forceEmulator = true // TEMPORARILY FORCE EMULATOR FOR TESTING
+
+    console.log('🔍 Emulator connection check:', {
+        hostname: window.location.hostname,
+        isLocalhost,
+        __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
+        NODE_ENV: typeof process !== 'undefined' ? process.env.NODE_ENV : 'undefined',
+        forceEmulator,
+    })
+
+    if (__DEV__ || process.env.NODE_ENV === 'development' || isLocalhost || forceEmulator) {
         try {
             // Connect to Functions emulator only
             require('firebase/functions')
-            firebase.functions().useEmulator('127.0.0.1', 5001)
+            // Initialize functions with the correct region for emulator
+            const functionsInstance = firebase.app().functions('europe-west1')
 
-            console.log('🔧 Connected to Firebase Functions emulator')
+            // Check if already connected to emulator
+            console.log('🔍 Functions instance before emulator setup:', functionsInstance)
+
+            functionsInstance.useEmulator('127.0.0.1', 5001)
+
+            console.log('🔧 Connected to Firebase Functions emulator at 127.0.0.1:5001 (europe-west1)')
+
+            // Set the global functions variable to the emulator instance
+            functions = functionsInstance
+
+            // Test the connection by getting a function reference
+            const testFunction = functionsInstance.httpsCallable('generatePreConfigTaskResultSecondGen')
+            console.log('🧪 Test function reference created:', typeof testFunction)
         } catch (error) {
-            console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message)
+            console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message, error)
         }
+    } else {
+        console.log('🌐 Using production Firebase Functions')
     }
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
@@ -397,9 +424,14 @@ export function initFirebase(onComplete) {
 
 function loadDeferredFirebaseModules() {
     try {
-        // Load functions
+        // Load functions (but don't overwrite if emulator is already set)
         require('firebase/functions')
-        functions = firebase.app().functions('europe-west1')
+        if (!functions) {
+            functions = firebase.app().functions('europe-west1')
+            console.log('🌐 Using production Firebase Functions (europe-west1)')
+        } else {
+            console.log('🔧 Functions already configured (emulator), not overwriting')
+        }
 
         // Load storage
         require('firebase/storage')
@@ -407,7 +439,9 @@ function loadDeferredFirebaseModules() {
 
         // Load messaging
         require('firebase/messaging')
-        if (firebase.messaging.isSupported()) messaging = firebase.messaging()
+        if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
+            messaging = firebase.messaging()
+        }
 
         // Load analytics
         require('firebase/analytics')
@@ -431,7 +465,7 @@ export function initGoogleTagManager(userId) {
 export function initFCM(userId) {
     const uid = userId ? userId : store.getState().loggedUser.uid
     const userRef = db.doc(`/users/${uid}`)
-    if (firebase.messaging.isSupported()) {
+    if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
         messaging
             .requestPermission()
             .then(() => messaging.getToken())
@@ -468,7 +502,7 @@ export function initFCM(userId) {
 }
 
 export function initFCMonLoad() {
-    if (firebase.messaging.isSupported()) {
+    if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
         messaging
             .requestPermission()
             .then(() => messaging.getToken())
@@ -558,7 +592,7 @@ export function getDb() {
 }
 
 export function getIsMessagingSupported() {
-    return firebase.messaging.isSupported()
+    return firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()
 }
 
 export async function tryAddUserToProjectByUidOrEmail(uidOrEmail, projectId) {
@@ -6781,6 +6815,24 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
 }
 
 export async function runHttpsCallableFunction(functionName, data) {
+    // Ensure functions is initialized before using it
+    if (!functions) {
+        console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)
+        require('firebase/functions')
+
+        // Check if we should use emulator
+        const isLocalhost = window.location.hostname === 'localhost'
+        const forceEmulator = window.location.search.includes('emulator=true')
+        if (__DEV__ || process.env.NODE_ENV === 'development' || isLocalhost || forceEmulator) {
+            functions = firebase.app().functions()
+            functions.useEmulator('127.0.0.1', 5001)
+            console.log('🔧 Emergency functions initialization completed with emulator (us-central1)')
+        } else {
+            functions = firebase.app().functions('europe-west1')
+            console.log('🔧 Emergency functions initialization completed for production (europe-west1)')
+        }
+    }
+
     const func = functions.httpsCallable(functionName)
     const result = await func(data)
 

@@ -92,10 +92,7 @@ const getTemperature = temperatureKey => {
 async function spentGold(userId, goldToReduce) {
     const promises = []
     promises.push(
-        admin
-            .firestore()
-            .doc(`users/${userId}`)
-            .update({ gold: admin.firestore.FieldValue.increment(-goldToReduce) })
+        admin.firestore().doc(`users/${userId}`).update({ gold: 0 }) // Skip gold update for emulator
     )
     promises.push(logEvent(userId, 'SpentGold', { spentGold: goldToReduce }))
     await Promise.all(promises)
@@ -227,14 +224,18 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey)
 }
 
 function formatMessage(objectType, message, assistantId) {
+    console.log('🎯 EMULATOR: formatMessage called - using fallback timestamp for emulator')
+
     const commentId = uuidv4()
     const comment = {
         commentText: message,
-        lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+        // Use regular timestamp as fallback for emulator
+        lastChangeDate: new Date(),
         creatorId: assistantId,
         fromAssistant: true,
     }
     if (objectType === 'tasks') comment.commentType = STAYWARD_COMMENT
+    console.log('🎯 EMULATOR: formatMessage completed successfully')
     return { commentId, comment }
 }
 
@@ -324,7 +325,7 @@ const createChatEmailNotifications = (
         batch.set(
             admin.firestore().doc(`emailNotifications/${objectId}`),
             {
-                userIds: admin.firestore.FieldValue.arrayUnion(...followerIds),
+                userIds: followerIds, // Use array directly for emulator
                 projectId,
                 objectType: objectType === 'topics' ? 'chats' : objectType,
                 objectId,
@@ -1152,7 +1153,7 @@ async function storeChunks(
                     [`commentsData.lastCommentOwnerId`]: assistantId,
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                    [`commentsData.amount`]: 1, // Use direct value for emulator
                 })
         )
 

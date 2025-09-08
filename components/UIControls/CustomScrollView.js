@@ -13,6 +13,7 @@ const CustomScrollView = (
         scrollOnLayout,
         containerStyle,
         nativeID,
+        style,
         ...props
     },
     ref
@@ -60,8 +61,10 @@ const CustomScrollView = (
         },
     }))
 
+    const { style: _ignoredStyle, ...scrollProps } = props
+
     return (
-        <View style={[{ flex: 1 }, containerStyle]} ref={containerRef} nativeID={nativeID}>
+        <View style={[{ flex: 1 }, containerStyle, style]} ref={containerRef} nativeID={nativeID}>
             <ScrollView
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
@@ -73,7 +76,7 @@ const CustomScrollView = (
                         if (onScroll) onScroll(event)
                     },
                 })}
-                {...props}
+                {...scrollProps}
             >
                 {children}
             </ScrollView>

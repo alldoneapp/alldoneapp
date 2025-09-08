@@ -565,6 +565,55 @@ async function executeAssistantTask(projectId, assistantId, task) {
             }
         )
 
+        // Send WhatsApp notification if enabled
+        if (task.sendWhatsApp) {
+            try {
+                // Get the creator's phone number
+                const creatorDoc = await admin.firestore().doc(`users/${creatorUserId}`).get()
+                const creatorPhone = creatorDoc.data()?.phone
+
+                if (creatorPhone) {
+                    const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
+                    const whatsappService = new TwilioWhatsAppService()
+
+                    // Send task completion notification
+                    const whatsappResult = await whatsappService.sendTaskCompletionNotification(
+                        creatorPhone,
+                        {
+                            name: task.name,
+                            recurrence: task.recurrence,
+                            type: 'recurring',
+                        },
+                        'Task completed successfully by Alldone Assistant.',
+                        'https://alldonealeph.web.app'
+                    )
+
+                    console.log('WhatsApp notification result:', {
+                        taskId: task.id,
+                        taskName: task.name,
+                        creatorUserId,
+                        creatorPhone: creatorPhone.substring(0, 5) + '***', // Log partial phone for privacy
+                        success: whatsappResult.success,
+                        message: whatsappResult.message,
+                    })
+                } else {
+                    console.log('No phone number found for WhatsApp notification:', {
+                        taskId: task.id,
+                        taskName: task.name,
+                        creatorUserId,
+                    })
+                }
+            } catch (whatsappError) {
+                console.error('Error sending WhatsApp notification (task execution continues):', {
+                    error: whatsappError.message,
+                    taskId: task.id,
+                    taskName: task.name,
+                    creatorUserId,
+                })
+                // Continue execution even if WhatsApp fails
+            }
+        }
+
         // Update the lastExecuted timestamp - store in UTC
         const utcNow = admin.firestore.FieldValue.serverTimestamp()
         await admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`).update({

@@ -21,7 +21,7 @@ async function generatePreConfigTaskResult(
     language,
     aiSettings
 ) {
-    console.log('generatePreConfigTaskResult called with:', {
+    console.log('🎯 EMULATOR: generatePreConfigTaskResult called with:', {
         userId,
         projectId,
         objectId,
@@ -113,6 +113,145 @@ async function generatePreConfigTaskResult(
         )
 
         if (aiCommentText) await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+
+        // Send WhatsApp notification if this was triggered from a task with WhatsApp enabled
+        console.log('🎯 EMULATOR: About to check WhatsApp notification for task completion')
+        try {
+            await sendTaskCompletionWhatsAppNotification(userId, projectId, assistantId, objectId, aiCommentText)
+        } catch (whatsappError) {
+            console.error('🎯 EMULATOR: Error sending WhatsApp notification for non-recurring task:', {
+                error: whatsappError.message,
+                userId,
+                projectId,
+                assistantId,
+                objectId,
+            })
+            // Continue execution even if WhatsApp fails
+        }
+    }
+}
+
+/**
+ * Send WhatsApp notification for task completion if enabled
+ * @param {string} userId - User ID who triggered the task
+ * @param {string} projectId - Project ID
+ * @param {string} assistantId - Assistant ID
+ * @param {string} taskId - Task/Object ID
+ * @param {string} aiResult - AI generated result
+ */
+async function sendTaskCompletionWhatsAppNotification(userId, projectId, assistantId, taskId, aiResult) {
+    const admin = require('firebase-admin')
+
+    try {
+        // Check both project-specific and global assistant tasks for WhatsApp enabled tasks
+        const GLOBAL_PROJECT_ID = 'globalProject'
+
+        // Query both collections
+        const [projectTasksSnapshot, globalTasksSnapshot] = await Promise.all([
+            admin.firestore().collection(`assistantTasks/${projectId}/preConfigTasks`).get(),
+            admin.firestore().collection(`assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`).get(),
+        ])
+
+        let relevantTask = null
+
+        // Combine all tasks from both collections
+        const allTasks = [
+            ...projectTasksSnapshot.docs.map(doc => ({ doc, source: 'project' })),
+            ...globalTasksSnapshot.docs.map(doc => ({ doc, source: 'global' })),
+        ]
+
+        // Debug: Log all assistant tasks to see what's in the database
+        console.log('🎯 EMULATOR: Total assistant tasks found:', {
+            project: projectTasksSnapshot.docs.length,
+            global: globalTasksSnapshot.docs.length,
+            total: allTasks.length,
+        })
+
+        // Look through all assistant tasks (project + global) to find one that might match this execution
+        for (const taskEntry of allTasks) {
+            const taskDoc = taskEntry.doc
+            const taskData = taskDoc.data()
+            const source = taskEntry.source
+
+            console.log('🎯 EMULATOR: Checking task:', {
+                taskId: taskDoc.id,
+                name: taskData.name,
+                sendWhatsApp: taskData.sendWhatsApp,
+                recurrence: taskData.recurrence,
+                hasWhatsApp: !!taskData.sendWhatsApp,
+                isNonRecurring: taskData.recurrence === 'never',
+                source: source,
+                assistantId: taskData.assistantId,
+            })
+
+            // For non-recurring tasks, we check if WhatsApp is enabled AND assistant matches
+            if (taskData.sendWhatsApp && taskData.recurrence === 'never' && taskData.assistantId === assistantId) {
+                relevantTask = { id: taskDoc.id, source, ...taskData }
+                console.log('🎯 EMULATOR: Found matching WhatsApp task:', {
+                    name: relevantTask.name,
+                    source: relevantTask.source,
+                    assistantId: relevantTask.assistantId,
+                })
+                break
+            }
+        }
+
+        // If no relevant task found with WhatsApp enabled, skip notification
+        if (!relevantTask) {
+            console.log('No WhatsApp-enabled task found for notification:', {
+                userId,
+                projectId,
+                assistantId,
+                taskId,
+            })
+            return
+        }
+
+        // Get user's phone number
+        const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+        const userPhone = userDoc.data()?.phone
+
+        if (!userPhone) {
+            console.log('No phone number found for WhatsApp notification:', {
+                userId,
+                taskId: relevantTask.id,
+                taskName: relevantTask.name,
+            })
+            return
+        }
+
+        // Send WhatsApp notification
+        const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
+        const whatsappService = new TwilioWhatsAppService()
+
+        const whatsappResult = await whatsappService.sendTaskCompletionNotification(
+            userPhone,
+            {
+                name: relevantTask.name,
+                recurrence: relevantTask.recurrence,
+                type: 'one-time',
+            },
+            aiResult || 'Task completed successfully by Alldone Assistant.',
+            'https://alldonealeph.web.app'
+        )
+
+        console.log('WhatsApp notification result for non-recurring task:', {
+            taskId: relevantTask.id,
+            taskName: relevantTask.name,
+            userId,
+            userPhone: userPhone.substring(0, 5) + '***', // Log partial phone for privacy
+            success: whatsappResult.success,
+            message: whatsappResult.message,
+        })
+    } catch (error) {
+        console.error('Error in sendTaskCompletionWhatsAppNotification:', {
+            error: error.message,
+            userId,
+            projectId,
+            assistantId,
+            taskId,
+        })
+        throw error
     }
 }
 

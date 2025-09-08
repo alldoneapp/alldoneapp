@@ -107,6 +107,8 @@ const MemoizedModalContent = memo(
         disableButton,
         closeModal,
         handleStartTimeChange,
+        sendWhatsApp,
+        setSendWhatsApp,
     }) => {
         const handleModalClick = useCallback(e => {
             const target = e.target
@@ -183,6 +185,23 @@ const MemoizedModalContent = memo(
                             openVariableModal={openVariableModal}
                             removeVariable={removeVariable}
                         />
+                        <View style={localStyles.recurrenceContainer}>
+                            <View style={{ marginRight: 8 }}>
+                                <Icon name="message-circle" size={24} color={colors.Text03} />
+                            </View>
+                            <Text style={[styles.subtitle2, { color: colors.Text03 }]}>
+                                {translate('WhatsApp notification')}
+                            </Text>
+                            <View style={{ marginLeft: 'auto' }}>
+                                <TouchableOpacity
+                                    style={[localStyles.checkboxContainer, sendWhatsApp && localStyles.checkboxActive]}
+                                    onPress={() => !disabled && setSendWhatsApp(!sendWhatsApp)}
+                                    disabled={disabled}
+                                >
+                                    {sendWhatsApp && <Icon name="check" size={16} color={colors.Primary500} />}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                         <RecurrencePickerArea
                             recurrence={recurrence}
                             setRecurrence={setRecurrence}
@@ -371,6 +390,7 @@ const MemoizedModalContent = memo(
             prevProps.aiTemperature === nextProps.aiTemperature &&
             prevProps.aiSystemMessage === nextProps.aiSystemMessage &&
             prevProps.link === nextProps.link &&
+            prevProps.sendWhatsApp === nextProps.sendWhatsApp &&
             compareArrays(prevProps.variables, nextProps.variables)
         )
     }
@@ -408,6 +428,8 @@ export default function TaskModal({
     setRecurrence,
     startDate,
     setStartDate,
+    sendWhatsApp = false,
+    setSendWhatsApp,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -697,6 +719,8 @@ export default function TaskModal({
                         disableButton={disableButton}
                         closeModal={closeModal}
                         handleStartTimeChange={memoizedHandleStartTimeChange}
+                        sendWhatsApp={sendWhatsApp}
+                        setSendWhatsApp={setSendWhatsApp}
                     />
                 </View>
             )}
@@ -761,5 +785,19 @@ const localStyles = StyleSheet.create({
     },
     selectedTimeOption: {
         backgroundColor: colors.Primary500,
+    },
+    checkboxContainer: {
+        width: 24,
+        height: 24,
+        borderRadius: 4,
+        borderWidth: 2,
+        borderColor: colors.Text03,
+        backgroundColor: 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    checkboxActive: {
+        backgroundColor: colors.Secondary300,
+        borderColor: colors.Primary500,
     },
 })

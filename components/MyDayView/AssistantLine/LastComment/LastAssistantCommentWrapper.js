@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -31,12 +31,21 @@ export default function LastAssistantCommentWrapper({
     const assistantEnabled = useSelector(state => state.assistantEnabled)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
+    const isUnmountedRef = useRef(false)
     const dispatch = useDispatch()
 
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+        }
+    }, [])
+
     const openModal = () => {
-        setAModalIsOpen?.(true)
-        setShowModal(true)
-        dispatch(showFloatPopup())
+        if (!isUnmountedRef.current) {
+            setAModalIsOpen?.(true)
+            setShowModal(true)
+            dispatch(showFloatPopup())
+        }
     }
 
     const closeModal = () => {
@@ -51,13 +60,13 @@ export default function LastAssistantCommentWrapper({
         ) {
             if (setAModalIsOpen) {
                 setTimeout(() => {
-                    setAModalIsOpen(false)
+                    if (!isUnmountedRef.current) setAModalIsOpen(false)
                 }, 400)
             }
 
-            setShowModal(false)
+            if (!isUnmountedRef.current) setShowModal(false)
             setTimeout(() => {
-                dispatch(hideFloatPopup())
+                if (!isUnmountedRef.current) dispatch(hideFloatPopup())
             })
         }
     }
@@ -78,7 +87,7 @@ export default function LastAssistantCommentWrapper({
 
     const parsedComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true)
 
-    return (
+    return showModal ? (
         <Popover
             content={
                 <RichCommentModal
@@ -93,7 +102,7 @@ export default function LastAssistantCommentWrapper({
                 />
             }
             onClickOutside={closeModal}
-            isOpen={showModal}
+            isOpen={true}
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
             align={'end'}
@@ -108,5 +117,13 @@ export default function LastAssistantCommentWrapper({
                 projectId={projectId}
             />
         </Popover>
+    ) : (
+        <LastAssistantComment
+            isNew={isNew}
+            onPress={openModal}
+            commentText={parsedComment}
+            objectName={objectName}
+            projectId={projectId}
+        />
     )
 }

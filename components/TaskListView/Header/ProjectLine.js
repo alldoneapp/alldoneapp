@@ -113,9 +113,9 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
         </TouchableOpacity>
     )
 
-    return (
+    return isOpen ? (
         <Popover
-            isOpen={isOpen}
+            isOpen={true}
             position={mobile ? ['bottom'] : ['bottom', 'top', 'right', 'left']}
             align="start"
             padding={4}
@@ -140,25 +140,25 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
                     : args => popoverToSafePosition(args, mobile)
             }
             content={
-                isOpen && (
-                    <SelectProjectModalInSearch
-                        projectId={project.id}
-                        closePopover={closePopover}
-                        projects={loggedUserProjects}
-                        headerText={translate('Switch project')}
-                        subheaderText={translate('Select the project to switch to')}
-                        setSelectedProjectId={onProjectClick}
-                        positionInPlace={true}
-                        showGuideTab={true}
-                        showTemplateTab={loggedUser.realTemplateProjectIds.length > 0}
-                        showArchivedTab={true}
-                        showAllProjects={true}
-                    />
-                )
+                <SelectProjectModalInSearch
+                    projectId={project.id}
+                    closePopover={closePopover}
+                    projects={loggedUserProjects}
+                    headerText={translate('Switch project')}
+                    subheaderText={translate('Select the project to switch to')}
+                    setSelectedProjectId={onProjectClick}
+                    positionInPlace={true}
+                    showGuideTab={true}
+                    showTemplateTab={loggedUser.realTemplateProjectIds.length > 0}
+                    showArchivedTab={true}
+                    showAllProjects={true}
+                />
             }
         >
             {trigger}
         </Popover>
+    ) : (
+        trigger
     )
 }
 

@@ -22,6 +22,7 @@ import { Dismissible } from 'react-dismissible'
 class SocialTextInput extends Component {
     constructor(props) {
         super(props)
+        this._isMounted = false
         const storeState = store.getState()
 
         this.state = {
@@ -51,6 +52,7 @@ class SocialTextInput extends Component {
     }
 
     componentDidMount() {
+        this._isMounted = true
         this.setState({ mounted: true })
         store.dispatch(setTaskTitleInEditMode(false))
     }
@@ -64,6 +66,11 @@ class SocialTextInput extends Component {
     }
 
     componentWillUnmount() {
+        const { unsubscribe } = this.state
+        if (typeof unsubscribe === 'function') {
+            unsubscribe()
+        }
+        this._isMounted = false
         store.dispatch(setTaskTitleInEditMode(false))
     }
 
@@ -143,6 +150,7 @@ class SocialTextInput extends Component {
             const containerWidth = await MyPlatform.getElementWidth(this.mainContainer.current)
             const buttonsContainerWidth = await MyPlatform.getElementWidth(this.buttonsContainer.current)
             // 36 is the amount for horizontal padding and border
+            if (!this._isMounted) return
             this.setState({ inputWidth: containerWidth - buttonsContainerWidth - 36 })
         }
     }
@@ -314,6 +322,7 @@ class SocialTextInput extends Component {
     }
 
     updateState = () => {
+        if (!this._isMounted) return
         const storeState = store.getState()
         this.setState({
             inputFocus: storeState.taskTitleInEditMode,
