@@ -21,14 +21,15 @@ async function generatePreConfigTaskResult(
     language,
     aiSettings
 ) {
-    console.log('🎯 EMULATOR: generatePreConfigTaskResult called with:', {
+    console.log('🤖 ASSISTANT TASK EXECUTION: Starting task generation:', {
         userId,
         projectId,
         objectId,
         assistantId,
-        prompt,
+        promptLength: prompt?.length,
         language,
-        aiSettings,
+        hasAiSettings: !!aiSettings,
+        aiSettingsProvided: aiSettings,
     })
 
     const promises = []
@@ -53,16 +54,31 @@ async function generatePreConfigTaskResult(
     }
     promises.push(getUserData(userId))
     const [settings, user] = await Promise.all(promises)
-    console.log('Retrieved settings and user:', { settings, userGold: user.gold })
+    console.log('🤖 ASSISTANT TASK EXECUTION: Retrieved settings and user:', {
+        settings: {
+            model: settings?.model,
+            temperature: settings?.temperature,
+            hasInstructions: !!settings?.instructions,
+            displayName: settings?.displayName,
+            allowedToolsCount: settings?.allowedTools?.length || 0,
+        },
+        userGold: user.gold,
+    })
 
     if (user.gold > 0) {
         const { model, temperature, instructions, displayName } = settings
-        console.log('Using AI settings:', {
+        console.log('🤖 ASSISTANT TASK EXECUTION: Final AI settings for execution:', {
             model,
+            modelName: model,
+            tokensPerGold: require('./assistantHelper').getTokensPerGold
+                ? require('./assistantHelper').getTokensPerGold(model)
+                : 'unknown',
             temperature,
-            instructions,
+            hasInstructions: !!instructions,
+            instructionsLength: instructions?.length,
             displayName,
             language,
+            userCurrentGold: user.gold,
         })
 
         // Validate settings before proceeding
@@ -112,7 +128,21 @@ async function generatePreConfigTaskResult(
             displayName
         )
 
-        if (aiCommentText) await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+        if (aiCommentText) {
+            console.log('🤖 ASSISTANT TASK EXECUTION: About to reduce gold:', {
+                userId,
+                userCurrentGold: user.gold,
+                model,
+                aiCommentTextLength: aiCommentText.length,
+                contextMessagesCount: contextMessages.length,
+                estimatedTokensPerGold: require('./assistantHelper').getTokensPerGold
+                    ? require('./assistantHelper').getTokensPerGold(model)
+                    : 'unknown',
+            })
+            await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+        } else {
+            console.log('🤖 ASSISTANT TASK EXECUTION: No AI comment text generated, skipping gold reduction')
+        }
 
         // Send WhatsApp notification if this was triggered from a task with WhatsApp enabled
         console.log('🎯 EMULATOR: About to check WhatsApp notification for task completion')

@@ -90,60 +90,140 @@ const getTemperature = temperatureKey => {
 }
 
 async function spentGold(userId, goldToReduce) {
-    const promises = []
-    promises.push(
-        admin.firestore().doc(`users/${userId}`).update({ gold: 0 }) // Skip gold update for emulator
-    )
-    promises.push(logEvent(userId, 'SpentGold', { spentGold: goldToReduce }))
-    await Promise.all(promises)
+    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce })
+
+    // Check if FieldValue.increment is available
+    if (admin.firestore.FieldValue && admin.firestore.FieldValue.increment) {
+        console.log('🔋 GOLD COST TRACKING: Using FieldValue.increment')
+        const promises = []
+        promises.push(
+            admin
+                .firestore()
+                .doc(`users/${userId}`)
+                .update({
+                    gold: admin.firestore.FieldValue.increment(-goldToReduce),
+                })
+        )
+        promises.push(logEvent(userId, 'SpentGold', { spentGold: goldToReduce }))
+        await Promise.all(promises)
+    } else {
+        console.log('🔋 GOLD COST TRACKING: FieldValue.increment not available, using manual calculation')
+        // Fallback for emulator: get current gold, then update manually
+        const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+        const currentGold = userDoc.data()?.gold || 0
+        const newGold = Math.max(0, currentGold - goldToReduce)
+
+        console.log('🔋 GOLD COST TRACKING: Manual calculation:', { currentGold, goldToReduce, newGold })
+
+        const promises = []
+        promises.push(admin.firestore().doc(`users/${userId}`).update({ gold: newGold }))
+        promises.push(logEvent(userId, 'SpentGold', { spentGold: goldToReduce }))
+        await Promise.all(promises)
+    }
 }
 
 const reduceGoldWhenChatWithAI = async (userId, userCurrentGold, aiModel, aiCommentText, contextMessages) => {
-    console.log('Starting gold reduction process:', {
+    console.log('🔋 GOLD COST TRACKING: Starting gold reduction process:', {
         userId,
         userCurrentGold,
         aiModel,
+        modelName: getModel(aiModel),
+        tokensPerGold: getTokensPerGold(aiModel),
         textLength: aiCommentText?.length,
         contextMessagesCount: contextMessages?.length,
     })
 
     const tokens = calculateTokens(aiCommentText, contextMessages, aiModel)
-    console.log('Calculated tokens:', tokens)
+    console.log('🔋 GOLD COST TRACKING: Token calculation complete:', {
+        totalTokens: tokens,
+        aiModel,
+        tokensPerGold: getTokensPerGold(aiModel),
+    })
 
     const goldToReduce = calculateGoldToReduce(userCurrentGold, tokens, aiModel)
-    console.log('Gold to reduce:', goldToReduce)
+    console.log('🔋 GOLD COST TRACKING: Gold calculation complete:', {
+        goldToReduce,
+        userCurrentGold,
+        costPerToken: 1 / getTokensPerGold(aiModel),
+        totalCost: tokens / getTokensPerGold(aiModel),
+        cappedAtUserGold: goldToReduce < tokens / getTokensPerGold(aiModel),
+    })
 
     await spentGold(userId, goldToReduce)
-    console.log('Gold reduction completed')
+    console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
 }
 
 const calculateTokens = (aiText, contextMessages, modelKey) => {
-    console.log('Calculating tokens for model:', modelKey)
+    console.log('🧮 TOKEN CALCULATION: Starting for model:', modelKey)
+
+    const aiTextLength = aiText?.length || 0
+    const contextMessageDetails = contextMessages.map((msg, index) => ({
+        index,
+        type: msg[0],
+        length: msg[1]?.length || 0,
+    }))
+
+    console.log('🧮 TOKEN CALCULATION: Input details:', {
+        modelKey,
+        aiTextLength,
+        contextMessagesCount: contextMessages.length,
+        contextMessageDetails,
+        encodeMessageGap: ENCODE_MESSAGE_GAP,
+    })
 
     // For Sonar models, use character count
     if (modelKey && modelKey.startsWith('MODEL_SONAR')) {
-        let totalChars = aiText.length
+        let totalChars = aiTextLength
+        let contextChars = 0
         contextMessages.forEach(msg => {
-            totalChars += msg[1].length
+            const msgLength = msg[1]?.length || 0
+            contextChars += msgLength
+            totalChars += msgLength
         })
-        const tokens =
-            Math.ceil(totalChars / CHARACTERS_PER_TOKEN_SONAR) + (contextMessages.length + 1) * ENCODE_MESSAGE_GAP
-        console.log('Sonar model token calculation:', {
+        const baseTokens = Math.ceil(totalChars / CHARACTERS_PER_TOKEN_SONAR)
+        const gapTokens = (contextMessages.length + 1) * ENCODE_MESSAGE_GAP
+        const tokens = baseTokens + gapTokens
+
+        console.log('🧮 TOKEN CALCULATION: Sonar model result:', {
             totalChars,
-            tokensCalculated: tokens,
+            aiTextChars: aiTextLength,
+            contextChars,
+            charactersPerToken: CHARACTERS_PER_TOKEN_SONAR,
+            baseTokens,
+            gapTokens,
+            totalTokens: tokens,
         })
         return tokens
     }
 
     // For other models, use token encoding
     const encoding = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-    let tokens = encoding.encode(aiText).length + ENCODE_MESSAGE_GAP
-    contextMessages.forEach(msg => {
-        tokens += encoding.encode(msg[1]).length + ENCODE_MESSAGE_GAP
+    let aiTokens = encoding.encode(aiText).length
+    let contextTokens = 0
+    let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
+
+    contextMessages.forEach((msg, index) => {
+        const msgTokens = encoding.encode(msg[1]).length
+        contextTokens += msgTokens
+        gapTokens += ENCODE_MESSAGE_GAP
+        console.log(`🧮 TOKEN CALCULATION: Context message ${index} (${msg[0]}): ${msgTokens} tokens`)
     })
+
+    const totalTokens = aiTokens + contextTokens + gapTokens
     encoding.free()
-    console.log('OpenAI model token calculation:', tokens)
-    return tokens
+
+    console.log('🧮 TOKEN CALCULATION: OpenAI model result:', {
+        aiTokens,
+        contextTokens,
+        gapTokens,
+        totalTokens,
+        breakdown: {
+            aiResponse: aiTokens,
+            contextMessages: contextTokens,
+            encodingGaps: gapTokens,
+        },
+    })
+    return totalTokens
 }
 
 const calculateGoldToReduce = (userGold, totalTokens, model) => {
@@ -1287,17 +1367,29 @@ async function getAssistantForChat(projectId, assistantId) {
 
 // New function to get task-level settings or fall back to assistant settings
 async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
-    console.log('getTaskOrAssistantSettings called with:', { projectId, taskId, assistantId })
+    console.log('⚙️ ASSISTANT SETTINGS: Getting task or assistant settings:', { projectId, taskId, assistantId })
 
     // Get task data first
     const taskRef = admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`)
     const taskDoc = await taskRef.get()
     const task = taskDoc.data()
-    console.log('Task data:', task)
+    console.log('⚙️ ASSISTANT SETTINGS: Task data:', {
+        hasTask: !!task,
+        taskAiModel: task?.aiModel,
+        taskAiTemperature: task?.aiTemperature,
+        hasTaskAiSystemMessage: !!task?.aiSystemMessage,
+    })
 
     // Get assistant settings
     const assistant = await getAssistantForChat(projectId, assistantId)
-    console.log('Assistant data:', assistant)
+    console.log('⚙️ ASSISTANT SETTINGS: Assistant data:', {
+        hasAssistant: !!assistant,
+        assistantModel: assistant?.model,
+        assistantTemperature: assistant?.temperature,
+        hasAssistantInstructions: !!assistant?.instructions,
+        assistantDisplayName: assistant?.displayName,
+        allowedToolsCount: assistant?.allowedTools?.length || 0,
+    })
 
     // Return task settings if they exist, otherwise use assistant settings with defaults
     const settings = {
@@ -1309,7 +1401,19 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         allowedTools: Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
     }
 
-    console.log('Final settings:', settings)
+    console.log('⚙️ ASSISTANT SETTINGS: Final resolved settings:', {
+        finalModel: settings.model,
+        finalTemperature: settings.temperature,
+        hasInstructions: !!settings.instructions,
+        displayName: settings.displayName,
+        allowedTools: settings.allowedTools,
+        modelTokensPerGold: getTokensPerGold(settings.model),
+        settingsSource: {
+            model: task && task.aiModel ? 'task' : 'assistant',
+            temperature: task && task.aiTemperature ? 'task' : 'assistant',
+            instructions: task && task.aiSystemMessage ? 'task' : 'assistant',
+        },
+    })
     return settings
 }
 
