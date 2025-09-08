@@ -37,7 +37,9 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
     const [comment, setComment] = useState('')
     const [commentIsPrivate, setCommentIsPrivate] = useState(false)
     const [hasKarma, setHasKarma] = useState(false)
-    const [estimation, setEstimation] = useState(task.estimations[OPEN_STEP])
+    const initialEstimation =
+        task && task.estimations && task.estimations[OPEN_STEP] !== undefined ? task.estimations[OPEN_STEP] : 0
+    const [estimation, setEstimation] = useState(initialEstimation)
     const [dateTimestamp, setDateTimestamp] = useState(0)
     const [dateText, setDateText] = useState('')
 
@@ -163,7 +165,16 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
         hidePopover()
         updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
             const needToCreateFolloUpTask = dateTimestamp
-            const estimations = { [OPEN_STEP]: estimation }
+            if (estimation === undefined) {
+                // Defensive logging to validate missing OPEN_STEP estimation on some tasks (e.g., MCP-created)
+                // Ensures we never write undefined to Firestore maps
+                console.warn('[FollowUpModal] Undefined estimation detected; defaulting to 0.', {
+                    taskId: task?.id,
+                    projectId,
+                })
+            }
+            const safeEstimation = estimation ?? 0
+            const estimations = { [OPEN_STEP]: safeEstimation }
             moveTasksFromOpen(
                 projectId,
                 task,
@@ -174,7 +185,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
                 checkBoxId
             )
             if (needToCreateFolloUpTask) {
-                createFollowUpTask(projectId, task, dateTimestamp, commentWithAttachments, estimation)
+                createFollowUpTask(projectId, task, dateTimestamp, commentWithAttachments, safeEstimation)
             }
         })
     }

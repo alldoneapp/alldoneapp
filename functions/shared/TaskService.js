@@ -272,7 +272,27 @@ class TaskService {
                 // Direct write if no batch support
                 const taskRef = this.options.database.collection(`items/${finalProjectId}/tasks`).doc(taskId)
 
-                await taskRef.set(task)
+                // Normalize estimations for cross-environment compatibility
+                const taskToPersist = (() => {
+                    try {
+                        const estimations = task && task.estimations ? { ...task.estimations } : {}
+                        const openKeyValue = estimations['Open']
+                        const numericKeyValue = estimations['-1']
+                        const baseOpenValue =
+                            typeof numericKeyValue === 'number'
+                                ? numericKeyValue
+                                : typeof openKeyValue === 'number'
+                                ? openKeyValue
+                                : 0
+                        if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
+                        if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
+                        return { ...task, estimations }
+                    } catch (_) {
+                        return task
+                    }
+                })()
+
+                await taskRef.set(taskToPersist)
 
                 // Persist feeds using Cloud Functions feeds pipeline when available
                 if (feedData && this.options.enableFeeds) {
@@ -390,7 +410,27 @@ class TaskService {
                 // Batch write
                 const taskRef = this.options.database.collection(`items/${finalProjectId}/tasks`).doc(taskId)
 
-                batch.set ? batch.set(taskRef, task) : batch.add(() => taskRef.set(task))
+                // Normalize estimations for cross-environment compatibility
+                const taskToPersist = (() => {
+                    try {
+                        const estimations = task && task.estimations ? { ...task.estimations } : {}
+                        const openKeyValue = estimations['Open']
+                        const numericKeyValue = estimations['-1']
+                        const baseOpenValue =
+                            typeof numericKeyValue === 'number'
+                                ? numericKeyValue
+                                : typeof openKeyValue === 'number'
+                                ? openKeyValue
+                                : 0
+                        if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
+                        if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
+                        return { ...task, estimations }
+                    } catch (_) {
+                        return task
+                    }
+                })()
+
+                batch.set ? batch.set(taskRef, taskToPersist) : batch.add(() => taskRef.set(taskToPersist))
 
                 // Add feed data to batch if available
                 if (feedData && this.options.enableFeeds) {
