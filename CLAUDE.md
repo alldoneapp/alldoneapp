@@ -15,6 +15,7 @@ npm run web                  # Start web version
 npm run android             # Run on Android
 npm run ios                 # Run on iOS
 npm run start-clean         # Start with cache reset
+firebase emulators:start --only functions --inspect-functions #start firebase functions emulator wiht auto-check for updates
 
 # Testing
 npm test                    # Run Jest tests

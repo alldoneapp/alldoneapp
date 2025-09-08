@@ -372,6 +372,19 @@ export function initFirebase(onComplete) {
     firebase.initializeApp(firebaseConfig)
     db = firebase.firestore()
 
+    // Connect to Firebase Functions emulator if running in development
+    if (__DEV__ || process.env.NODE_ENV === 'development') {
+        try {
+            // Connect to Functions emulator only
+            require('firebase/functions')
+            firebase.functions().useEmulator('127.0.0.1', 5001)
+
+            console.log('🔧 Connected to Firebase Functions emulator')
+        } catch (error) {
+            console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message)
+        }
+    }
+
     firebase.auth().onAuthStateChanged(firebaseUser => {
         onComplete(firebaseUser)
     })
