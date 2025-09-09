@@ -69,6 +69,12 @@ class TaskSearchService {
             throw new Error('At least one search criterion is required (taskId, taskName, projectName, or projectId)')
         }
 
+        // Validate search criteria quality
+        const validationError = this.validateSearchCriteria(searchCriteria)
+        if (validationError) {
+            throw new Error(validationError)
+        }
+
         // Get user's accessible projects
         const userProjects = await this.getUserProjects(userId)
         if (userProjects.length === 0) {
@@ -111,11 +117,119 @@ class TaskSearchService {
             return unique
         }, [])
 
+        // Apply result limits and quality filtering
+        const filteredMatches = this.filterAndLimitResults(uniqueMatches, searchCriteria)
+
         return {
-            matches: uniqueMatches,
+            matches: filteredMatches,
             searchCriteria,
-            totalFound: uniqueMatches.length,
+            totalFound: filteredMatches.length,
+            totalBeforeFiltering: uniqueMatches.length,
         }
+    }
+
+    /**
+     * Validate search criteria for quality and meaningfulness
+     */
+    validateSearchCriteria(searchCriteria) {
+        const { taskId, taskName, projectName, projectId } = searchCriteria
+
+        // Validate task name
+        if (taskName !== undefined) {
+            if (typeof taskName !== 'string') {
+                return 'taskName must be a string'
+            }
+            const trimmed = taskName.trim()
+            if (trimmed.length < 2) {
+                return 'taskName must be at least 2 characters long'
+            }
+            if (trimmed.length > 100) {
+                return 'taskName must be less than 100 characters'
+            }
+            // Check for overly generic terms
+            const genericTerms = ['task', 'todo', 'item', 'work', 'project', 'a', 'an', 'the', 'do', 'get']
+            if (genericTerms.includes(trimmed.toLowerCase())) {
+                return `taskName "${trimmed}" is too generic. Please be more specific.`
+            }
+        }
+
+        // Validate project name
+        if (projectName !== undefined) {
+            if (typeof projectName !== 'string') {
+                return 'projectName must be a string'
+            }
+            const trimmed = projectName.trim()
+            if (trimmed.length < 2) {
+                return 'projectName must be at least 2 characters long'
+            }
+            if (trimmed.length > 100) {
+                return 'projectName must be less than 100 characters'
+            }
+        }
+
+        // Validate task ID
+        if (taskId !== undefined) {
+            if (typeof taskId !== 'string') {
+                return 'taskId must be a string'
+            }
+            const trimmed = taskId.trim()
+            if (trimmed.length === 0) {
+                return 'taskId cannot be empty'
+            }
+        }
+
+        // Validate project ID
+        if (projectId !== undefined) {
+            if (typeof projectId !== 'string') {
+                return 'projectId must be a string'
+            }
+            const trimmed = projectId.trim()
+            if (trimmed.length === 0) {
+                return 'projectId cannot be empty'
+            }
+        }
+
+        return null // No validation errors
+    }
+
+    /**
+     * Filter results by quality and apply limits
+     */
+    filterAndLimitResults(matches, searchCriteria) {
+        const { taskId } = searchCriteria
+
+        // If searching by direct ID, return at most 1 result (exact match)
+        if (taskId) {
+            const exactMatch = matches.find(m => m.task.id === taskId)
+            return exactMatch ? [exactMatch] : []
+        }
+
+        // Group matches by relevance tiers
+        const excellentMatches = matches.filter(m => m.matchScore >= 200) // Exact/near exact matches
+        const goodMatches = matches.filter(m => m.matchScore >= 100 && m.matchScore < 200) // Strong partial matches
+        const fairMatches = matches.filter(m => m.matchScore >= 50 && m.matchScore < 100) // Weaker matches
+
+        // Prioritize higher quality matches, but allow some lower quality if needed
+        let resultMatches = []
+
+        if (excellentMatches.length > 0) {
+            // If we have excellent matches, prefer those
+            resultMatches = excellentMatches.slice(0, 5) // Max 5 excellent matches
+
+            // Add a few good matches if we have room
+            if (resultMatches.length < 3) {
+                resultMatches = resultMatches.concat(goodMatches.slice(0, 3 - resultMatches.length))
+            }
+        } else if (goodMatches.length > 0) {
+            // No excellent matches, use good matches
+            resultMatches = goodMatches.slice(0, 10) // Max 10 good matches
+        } else {
+            // Only fair matches available
+            resultMatches = fairMatches.slice(0, 15) // Max 15 fair matches
+        }
+
+        // Final limit to prevent overwhelming results
+        return resultMatches.slice(0, 20) // Absolute maximum of 20 results
     }
 
     /**
@@ -205,7 +319,9 @@ class TaskSearchService {
                     const task = { id: taskDoc.id, ...taskDoc.data() }
                     const matchScore = this.scoreMatch(task, project, searchCriteria)
 
-                    if (matchScore > 0) {
+                    // Only include tasks that have meaningful matches (not just the completion bonus)
+                    const MINIMUM_SCORE_THRESHOLD = 50
+                    if (matchScore >= MINIMUM_SCORE_THRESHOLD) {
                         matches.push({
                             task,
                             projectId: project.id,
@@ -230,39 +346,57 @@ class TaskSearchService {
      */
     scoreMatch(task, project, searchCriteria) {
         let score = 0
-        const { taskName, projectName, projectId } = searchCriteria
+        let hasActualMatch = false
+        const { taskId, taskName, projectName, projectId } = searchCriteria
+
+        // Direct ID matching (highest priority)
+        if (taskId && task.id === taskId) {
+            score += 1000 // Perfect match
+            hasActualMatch = true
+        }
 
         // Project matching
         if (projectId && project.id === projectId) {
             score += 100 // Exact project ID match
+            hasActualMatch = true
         } else if (projectName && project.name) {
-            const lowerProjectName = projectName.toLowerCase()
+            const lowerProjectName = projectName.toLowerCase().trim()
             const lowerTaskProjectName = project.name.toLowerCase()
 
             if (lowerTaskProjectName === lowerProjectName) {
                 score += 80 // Exact project name match
+                hasActualMatch = true
             } else if (lowerTaskProjectName.includes(lowerProjectName)) {
                 score += 50 // Partial project name match
+                hasActualMatch = true
             }
         }
 
         // Task name matching
         if (taskName && task.name) {
-            const lowerTaskName = taskName.toLowerCase()
+            const lowerTaskName = taskName.toLowerCase().trim()
             const lowerActualName = task.name.toLowerCase()
 
             if (lowerActualName === lowerTaskName) {
                 score += 200 // Exact task name match
+                hasActualMatch = true
             } else if (lowerActualName.includes(lowerTaskName)) {
-                score += 150 // Partial task name match
+                score += 100 // Partial task name match
+                hasActualMatch = true
             } else if (this.fuzzyMatch(lowerActualName, lowerTaskName)) {
-                score += 50 // Fuzzy match
+                score += 30 // Fuzzy match (reduced from 50)
+                hasActualMatch = true
             }
         }
 
-        // Boost score for tasks that aren't completed (more likely to be updated)
-        if (!task.completed) {
-            score += 10
+        // Only add completion bonus if there's an actual match with search criteria
+        if (hasActualMatch && !task.completed) {
+            score += 5 // Small bonus for incomplete tasks (reduced from 10)
+        }
+
+        // If no search criteria provided, give small score to all tasks (for direct ID lookups)
+        if (!taskId && !taskName && !projectName && !projectId) {
+            score = 1 // Very low score for "match all" scenarios
         }
 
         return score
@@ -292,9 +426,14 @@ class TaskSearchService {
      * Simple fuzzy matching for typos and variations
      */
     fuzzyMatch(text1, text2) {
-        // Simple fuzzy matching - can be enhanced with more sophisticated algorithms
+        // Only do fuzzy matching for strings of reasonable length
+        if (text1.length < 3 || text2.length < 3) {
+            return false
+        }
+
+        // Require higher similarity for meaningful matches
         const similarity = this.calculateSimilarity(text1, text2)
-        return similarity > 0.6 // 60% similarity threshold
+        return similarity > 0.8 // 80% similarity threshold (increased from 60%)
     }
 
     /**
