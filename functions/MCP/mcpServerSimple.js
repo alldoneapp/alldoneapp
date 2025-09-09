@@ -536,13 +536,26 @@ class AlldoneSimpleMCPServer {
                     },
                     {
                         name: 'update_task',
-                        description: 'Update an existing task (requires OAuth 2.0 Bearer token authentication)',
+                        description:
+                            'Update an existing task using flexible search criteria (requires OAuth 2.0 Bearer token authentication)',
                         inputSchema: {
                             type: 'object',
                             properties: {
                                 taskId: {
                                     type: 'string',
-                                    description: 'Task ID to update (required)',
+                                    description: 'Task ID to update (optional, for direct lookup)',
+                                },
+                                taskName: {
+                                    type: 'string',
+                                    description: 'Full or partial task name to search (optional)',
+                                },
+                                projectName: {
+                                    type: 'string',
+                                    description: 'Full or partial project name to search (optional)',
+                                },
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Project ID to search within (optional)',
                                 },
                                 name: {
                                     type: 'string',
@@ -560,10 +573,6 @@ class AlldoneSimpleMCPServer {
                                     type: 'boolean',
                                     description: 'Mark task as complete/incomplete (optional)',
                                 },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Move task to different project (optional)',
-                                },
                                 parentId: {
                                     type: 'string',
                                     description: 'Set parent task ID for subtasks (optional, null to remove parent)',
@@ -573,7 +582,7 @@ class AlldoneSimpleMCPServer {
                                     description: 'Reassign task to different user (optional)',
                                 },
                             },
-                            required: ['taskId'],
+                            required: [],
                         },
                     },
                     {
@@ -862,62 +871,128 @@ class AlldoneSimpleMCPServer {
     async updateTask(args, request) {
         const {
             taskId,
+            taskName,
+            projectName,
+            projectId: targetProjectId,
             name,
             description,
             dueDate,
             completed,
-            projectId: targetProjectId,
             parentId,
             userId: targetUserId,
         } = args
-
-        if (!taskId) {
-            throw new Error('Task ID is required')
-        }
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
         const db = admin.firestore()
 
-        // Get the existing task to validate access and get current project
-        let currentTask
-        let currentProjectId
+        // Step 1: Task Discovery - find the task using flexible search criteria
+        const searchResult = await this.findTargetTask(args, userId, db)
 
-        // Try to find the task in user's projects
-        const userDoc = await db.collection('users').doc(userId).get()
-        if (!userDoc.exists) {
-            throw new Error('User not found')
+        if (searchResult.matches.length === 0) {
+            const criteria = []
+            if (taskId) criteria.push(`taskId: ${taskId}`)
+            if (taskName) criteria.push(`taskName: "${taskName}"`)
+            if (projectName) criteria.push(`projectName: "${projectName}"`)
+            if (targetProjectId) criteria.push(`projectId: ${targetProjectId}`)
+
+            throw new Error(
+                `No tasks found matching search criteria: ${criteria.join(', ')}. ` +
+                    'Try being more specific or check the task/project names.'
+            )
         }
 
-        const userData = userDoc.data()
-        const userProjectIds = userData.projectIds || []
+        if (searchResult.matches.length > 1) {
+            return this.handleMultipleMatches(searchResult)
+        }
 
-        // Search for the task across user's projects
-        let taskFound = false
-        for (const projectId of userProjectIds) {
-            try {
-                const taskDoc = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
-                if (taskDoc.exists) {
-                    currentTask = { id: taskId, ...taskDoc.data() }
-                    currentProjectId = projectId
-                    taskFound = true
-                    break
-                }
-            } catch (error) {
-                // Continue searching in other projects
-                continue
+        // Step 2: Task Update - perform the actual update
+        const {
+            task: currentTask,
+            projectId: currentProjectId,
+            projectName: currentProjectName,
+        } = searchResult.matches[0]
+
+        return this.performTaskUpdate(
+            currentTask,
+            currentProjectId,
+            currentProjectName,
+            {
+                name,
+                description,
+                dueDate,
+                completed,
+                parentId,
+                targetUserId,
+                targetProjectId,
+            },
+            userId,
+            db
+        )
+    }
+
+    /**
+     * Find target task using flexible search criteria
+     */
+    async findTargetTask(searchCriteria, userId, db) {
+        // Initialize TaskSearchService if not already done
+        if (!this.taskSearchService) {
+            const TaskSearchService = require('../shared/TaskSearchService')
+            this.taskSearchService = new TaskSearchService({
+                database: db,
+                isCloudFunction: true,
+            })
+            await this.taskSearchService.initialize()
+        }
+
+        return await this.taskSearchService.findTasksBySearchCriteria(userId, searchCriteria)
+    }
+
+    /**
+     * Handle case where multiple tasks match search criteria
+     */
+    handleMultipleMatches(searchResult) {
+        const { matches } = searchResult
+
+        let message = `Found ${matches.length} tasks matching your search criteria:\n\n`
+
+        matches.slice(0, 5).forEach((match, index) => {
+            // Limit to 5 results
+            message += `${index + 1}. "${match.task.name}" (Project: ${match.projectName})\n`
+            if (match.task.description) {
+                message += `   Description: ${match.task.description.substring(0, 100)}${
+                    match.task.description.length > 100 ? '...' : ''
+                }\n`
             }
+            message += `   ID: ${match.task.id}\n\n`
+        })
+
+        if (matches.length > 5) {
+            message += `... and ${matches.length - 5} more matches.\n\n`
         }
 
-        if (!taskFound || !currentTask) {
-            throw new Error('Task not found or access denied')
-        }
+        message +=
+            'Please be more specific in your search criteria, or use the exact task ID to update a specific task.'
 
-        // Use target project or current project
-        const projectId = targetProjectId || currentProjectId
-        if (targetProjectId && !userProjectIds.includes(targetProjectId)) {
-            throw new Error('Access denied to target project')
+        return {
+            success: false,
+            message,
+            matches: matches.map(m => ({
+                taskId: m.task.id,
+                taskName: m.task.name,
+                projectId: m.projectId,
+                projectName: m.projectName,
+                matchScore: m.matchScore,
+            })),
+            totalMatches: matches.length,
         }
+    }
+
+    /**
+     * Perform the actual task update
+     */
+    async performTaskUpdate(currentTask, currentProjectId, currentProjectName, updateFields, userId, db) {
+        const { name, description, dueDate, completed, parentId, targetUserId, targetProjectId } = updateFields
 
         // Build update object with only provided fields
         const updateData = {}
@@ -937,24 +1012,41 @@ class AlldoneSimpleMCPServer {
             }
         }
 
+        // Validate target project access if moving
+        if (targetProjectId && targetProjectId !== currentProjectId) {
+            const userDoc = await db.collection('users').doc(userId).get()
+            const userData = userDoc.data()
+            const userProjectIds = userData.projectIds || []
+
+            if (!userProjectIds.includes(targetProjectId)) {
+                throw new Error('Access denied to target project')
+            }
+        }
+
         // Handle project move
         if (targetProjectId && targetProjectId !== currentProjectId) {
-            // Delete from old project and create in new project
             try {
                 // Create updated task in new project
                 const updatedTask = { ...currentTask, ...updateData, projectId: targetProjectId }
                 delete updatedTask.id
 
-                await db.doc(`items/${targetProjectId}/tasks/${taskId}`).set(updatedTask)
+                await db.doc(`items/${targetProjectId}/tasks/${currentTask.id}`).set(updatedTask)
 
                 // Delete from old project
-                await db.doc(`items/${currentProjectId}/tasks/${taskId}`).delete()
+                await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).delete()
+
+                // Get new project name
+                const newProjectDoc = await db.collection('projects').doc(targetProjectId).get()
+                const newProjectName = newProjectDoc.exists ? newProjectDoc.data().name : targetProjectId
 
                 return {
                     success: true,
-                    taskId: taskId,
-                    message: `Task updated and moved to project ${targetProjectId}`,
-                    task: { id: taskId, ...updatedTask },
+                    taskId: currentTask.id,
+                    message: `Task "${currentTask.name}" updated and moved from "${currentProjectName}" to "${newProjectName}"`,
+                    task: { id: currentTask.id, ...updatedTask },
+                    moved: true,
+                    oldProject: { id: currentProjectId, name: currentProjectName },
+                    newProject: { id: targetProjectId, name: newProjectName },
                 }
             } catch (error) {
                 console.error('Error moving task between projects:', error)
@@ -964,16 +1056,34 @@ class AlldoneSimpleMCPServer {
 
         // Update in current project
         try {
-            const updatedTask = { ...currentTask, ...updateData }
-            delete updatedTask.id
+            if (Object.keys(updateData).length > 0) {
+                await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).update(updateData)
+            }
 
-            await db.doc(`items/${projectId}/tasks/${taskId}`).update(updateData)
+            const updatedTask = { ...currentTask, ...updateData }
+
+            // Build success message showing what changed
+            const changes = []
+            if (name !== undefined) changes.push(`name to "${name}"`)
+            if (description !== undefined) changes.push('description')
+            if (dueDate !== undefined) changes.push('due date')
+            if (completed !== undefined) changes.push(completed ? 'marked as complete' : 'marked as incomplete')
+            if (targetUserId !== undefined) changes.push(`assigned to ${targetUserId}`)
+            if (parentId !== undefined) changes.push('parent task')
+
+            let message = `Task "${currentTask.name}" updated successfully`
+            if (changes.length > 0) {
+                message += ` (${changes.join(', ')})`
+            }
+            message += ` in project "${currentProjectName}"`
 
             return {
                 success: true,
-                taskId: taskId,
-                message: 'Task updated successfully',
-                task: { id: taskId, ...updatedTask },
+                taskId: currentTask.id,
+                message,
+                task: { id: currentTask.id, ...updatedTask },
+                project: { id: currentProjectId, name: currentProjectName },
+                changes: changes,
             }
         } catch (error) {
             console.error('Error updating task:', error)
@@ -2256,13 +2366,26 @@ class AlldoneSimpleMCPServer {
                         },
                         {
                             name: 'update_task',
-                            description: 'Update an existing task (requires OAuth 2.0 Bearer token authentication)',
+                            description:
+                                'Update an existing task using flexible search criteria (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
                                     taskId: {
                                         type: 'string',
-                                        description: 'Task ID to update (required)',
+                                        description: 'Task ID to update (optional, for direct lookup)',
+                                    },
+                                    taskName: {
+                                        type: 'string',
+                                        description: 'Full or partial task name to search (optional)',
+                                    },
+                                    projectName: {
+                                        type: 'string',
+                                        description: 'Full or partial project name to search (optional)',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Project ID to search within (optional)',
                                     },
                                     name: {
                                         type: 'string',
@@ -2280,10 +2403,6 @@ class AlldoneSimpleMCPServer {
                                         type: 'boolean',
                                         description: 'Mark task as complete/incomplete (optional)',
                                     },
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Move task to different project (optional)',
-                                    },
                                     parentId: {
                                         type: 'string',
                                         description:
@@ -2294,7 +2413,7 @@ class AlldoneSimpleMCPServer {
                                         description: 'Reassign task to different user (optional)',
                                     },
                                 },
-                                required: ['taskId'],
+                                required: [],
                             },
                         },
                         {

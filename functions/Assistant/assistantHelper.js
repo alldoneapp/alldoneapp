@@ -1209,9 +1209,13 @@ async function storeChunks(
                             continue
                         }
 
-                        const taskId = (args.taskId || '').toString().trim()
-                        if (!taskId) {
-                            const replaced = commentText.replace(updateTaskMatch[0], 'Missing required field: taskId')
+                        // Validate that at least one search criterion is provided
+                        const { taskId, taskName, projectName, projectId: searchProjectId } = args
+                        if (!taskId && !taskName && !projectName && !searchProjectId) {
+                            const replaced = commentText.replace(
+                                updateTaskMatch[0],
+                                'At least one search criterion is required (taskId, taskName, projectName, or projectId)'
+                            )
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1225,38 +1229,63 @@ async function storeChunks(
                             (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
 
                         try {
-                            // Get existing task first to validate access
                             const db = admin.firestore()
-                            let currentTask = null
-                            let currentProjectId = null
 
-                            // Get user's project IDs
-                            const userDoc = await db.collection('users').doc(creatorId).get()
-                            if (!userDoc.exists) {
-                                throw new Error('User not found')
+                            // Initialize TaskSearchService
+                            const TaskSearchService = require('../shared/TaskSearchService')
+                            const taskSearchService = new TaskSearchService({
+                                database: db,
+                                isCloudFunction: true,
+                            })
+                            await taskSearchService.initialize()
+
+                            // Step 1: Find the task using flexible search criteria
+                            const searchResult = await taskSearchService.findTasksBySearchCriteria(creatorId, {
+                                taskId,
+                                taskName,
+                                projectName,
+                                projectId: searchProjectId,
+                            })
+
+                            if (searchResult.matches.length === 0) {
+                                const criteria = []
+                                if (taskId) criteria.push(`taskId: ${taskId}`)
+                                if (taskName) criteria.push(`taskName: "${taskName}"`)
+                                if (projectName) criteria.push(`projectName: "${projectName}"`)
+                                if (searchProjectId) criteria.push(`projectId: ${searchProjectId}`)
+
+                                throw new Error(
+                                    `No tasks found matching search criteria: ${criteria.join(', ')}. ` +
+                                        'Try being more specific or check the task/project names.'
+                                )
                             }
-                            const userData = userDoc.data()
-                            const userProjectIds = userData.projectIds || []
 
-                            // Search for task in user's projects
-                            for (const searchProjectId of userProjectIds) {
-                                try {
-                                    const taskDoc = await db.doc(`items/${searchProjectId}/tasks/${taskId}`).get()
-                                    if (taskDoc.exists) {
-                                        currentTask = { id: taskId, ...taskDoc.data() }
-                                        currentProjectId = searchProjectId
-                                        break
-                                    }
-                                } catch (error) {
-                                    continue
+                            if (searchResult.matches.length > 1) {
+                                // Handle multiple matches - show user the options
+                                let errorMessage = `Found ${searchResult.matches.length} tasks matching your search criteria:\n`
+
+                                searchResult.matches.slice(0, 3).forEach((match, index) => {
+                                    errorMessage += `${index + 1}. "${match.task.name}" (Project: ${
+                                        match.projectName
+                                    })\n`
+                                })
+
+                                if (searchResult.matches.length > 3) {
+                                    errorMessage += `... and ${searchResult.matches.length - 3} more matches.\n`
                                 }
+
+                                errorMessage += 'Please be more specific in your search criteria.'
+                                throw new Error(errorMessage)
                             }
 
-                            if (!currentTask) {
-                                throw new Error('Task not found or access denied')
-                            }
+                            // Step 2: Update the found task
+                            const {
+                                task: currentTask,
+                                projectId: currentProjectId,
+                                projectName: currentProjectName,
+                            } = searchResult.matches[0]
 
-                            // Build update object
+                            // Build update object with only provided fields
                             const updateData = {}
                             if (args.name !== undefined) updateData.name = args.name.toString()
                             if (args.description !== undefined) updateData.description = args.description.toString()
@@ -1274,17 +1303,18 @@ async function storeChunks(
 
                             // Update the task
                             if (Object.keys(updateData).length > 0) {
-                                await db.doc(`items/${currentProjectId}/tasks/${taskId}`).update(updateData)
+                                await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).update(updateData)
                             }
 
                             console.log('Updated task via tool call', {
                                 projectId: currentProjectId,
-                                taskId: taskId,
+                                taskId: currentTask.id,
+                                taskName: currentTask.name,
                                 updateFields: Object.keys(updateData),
+                                searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
                             })
 
-                            // Build confirmation message
-                            let confirmationMessage = `Updated task: ${currentTask.name}`
+                            // Build confirmation message showing what was found and changed
                             const changes = []
                             if (args.name !== undefined) changes.push(`name to "${args.name}"`)
                             if (args.description !== undefined) changes.push('description')
@@ -1293,6 +1323,8 @@ async function storeChunks(
                                 changes.push(args.completed ? 'marked as complete' : 'marked as incomplete')
                             }
                             if (args.userId !== undefined) changes.push(`assigned to ${args.userId}`)
+
+                            let confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
                             if (changes.length > 0) {
                                 confirmationMessage += ` (${changes.join(', ')})`
                             }
@@ -1567,7 +1599,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskId":"task123","completed":true} or TOOL:update_task {"taskId":"task456","name":"New name","description":"Updated description"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])
