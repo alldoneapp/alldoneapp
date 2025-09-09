@@ -126,7 +126,7 @@ class TwilioWhatsAppService {
     }
 
     /**
-     * Send task completion notification via WhatsApp
+     * Send task completion notification via WhatsApp using Content Template
      * @param {string} userPhone - User's phone number
      * @param {Object} taskData - Task information
      * @param {string} taskResult - AI-generated task result
@@ -149,43 +149,64 @@ class TwilioWhatsAppService {
         }
 
         try {
-            // Create message content
-            const taskType = taskData.recurrence && taskData.recurrence !== 'never' ? 'Recurring' : 'One-time'
-            const completionTime = new Date().toLocaleString('en-US', {
-                timeZone: 'UTC',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
+            const client = this._initializeTwilioClient()
+            const formattedTo = this._formatWhatsAppNumber(userPhone)
+
+            // Truncate result for WhatsApp message (limit to 1000 chars)
+            const truncatedResult = taskResult.length > 1000 ? taskResult.substring(0, 1000) + '...' : taskResult
+
+            // Content variables for the template - only task result is needed
+            const contentVariables = JSON.stringify({
+                1: truncatedResult || 'Task completed successfully',
             })
 
-            // Truncate result for WhatsApp message (WhatsApp has 1600 char limit)
-            const truncatedResult = taskResult.length > 300 ? taskResult.substring(0, 300) + '...' : taskResult
+            console.log('Sending WhatsApp message with Content Template:', {
+                from: this.twilioWhatsAppFrom,
+                to: formattedTo,
+                contentSid: 'HXc38ef95cc1d0b10aad7186d7ec0a8961',
+                contentVariables,
+                timestamp: new Date().toISOString(),
+            })
 
-            const message = `🤖 *Alldone Task Completed*
+            const response = await client.messages.create({
+                contentSid: 'HXc38ef95cc1d0b10aad7186d7ec0a8961',
+                contentVariables,
+                from: this.twilioWhatsAppFrom,
+                to: formattedTo,
+            })
 
-📋 *Task:* ${taskData.name}
-⏰ *Type:* ${taskType} task
-🕒 *Completed:* ${completionTime} UTC
+            console.log('WhatsApp message sent successfully with template:', {
+                sid: response.sid,
+                status: response.status,
+                to: formattedTo,
+                timestamp: new Date().toISOString(),
+            })
 
-${truncatedResult ? `📝 *Result:*\n${truncatedResult}\n\n` : ''}📱 View full details: ${appUrl}
-
-Powered by Alldone Assistant 🚀`
-
-            return await this.sendWhatsAppMessage(userPhone, message)
+            return {
+                success: true,
+                sid: response.sid,
+                status: response.status,
+                to: formattedTo,
+                message: 'WhatsApp message sent successfully using content template',
+            }
         } catch (error) {
-            console.error('Error creating task completion WhatsApp message:', {
+            console.error('Failed to send WhatsApp message with template:', {
                 error: error.message,
+                code: error.code,
+                status: error.status,
                 userPhone,
                 taskName: taskData?.name,
                 timestamp: new Date().toISOString(),
+                stack: error.stack,
             })
 
             return {
                 success: false,
                 error: error.message,
-                message: 'Failed to create task completion notification',
+                code: error.code,
+                status: error.status,
+                to: userPhone,
+                message: 'Failed to send WhatsApp message with content template',
             }
         }
     }

@@ -48,7 +48,7 @@ Spinner.propTypes = {
     spinnerSize: PropTypes.number,
     containerColor: PropTypes.string,
     spinnerColor: PropTypes.string,
-    containerStyle: PropTypes.object,
+    containerStyle: PropTypes.oneOfType([PropTypes.object, PropTypes.array, PropTypes.number]),
 }
 
 Spinner.defaultProps = {

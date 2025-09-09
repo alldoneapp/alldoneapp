@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
@@ -17,8 +17,21 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [visiblePopover, setVisiblePopover] = useState(false)
+    const isUnmountedRef = useRef(false)
+    const hideTimeoutRef = useRef(null)
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current)
+                hideTimeoutRef.current = null
+            }
+        }
+    }, [])
 
     const hidePopover = () => {
+        if (isUnmountedRef.current) return
         setVisiblePopover(false)
         dispatch(hideFloatPopup())
     }
@@ -29,12 +42,13 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
             e.stopPropagation()
         }
 
-        setTimeout(async () => {
+        hideTimeoutRef.current = setTimeout(async () => {
             hidePopover()
         })
     }
 
     const showPopover = () => {
+        if (isUnmountedRef.current) return
         setVisiblePopover(true)
         dispatch(showFloatPopup())
     }
@@ -44,7 +58,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
         ContactsHelper.getAndAssignUserPrivacy(projectIndex, object)
     }
 
-    return (
+    return visiblePopover ? (
         <Popover
             content={
                 <PrivacyModal
@@ -57,7 +71,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                 />
             }
             onClickOutside={delayHidePopover}
-            isOpen={visiblePopover}
+            isOpen={true}
             position={['left', 'right', 'top', 'bottom']}
             padding={4}
             align={'end'}
@@ -102,6 +116,45 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                 )}
             </TouchableOpacity>
         </Popover>
+    ) : (
+        <TouchableOpacity onPress={showPopover} disabled={disabled} accessible={false}>
+            {outline ? (
+                <View style={[localStyles.outlineContainer, style]}>
+                    <Icon
+                        name={object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? 'unlock' : 'lock'}
+                        size={14}
+                        color={colors.UtilityBlue200}
+                        style={localStyles.outlineIcon}
+                    />
+                </View>
+            ) : (
+                <View style={[localStyles.container, style]}>
+                    {object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? (
+                        <Icon name={'unlock'} size={16} color={colors.Text03} style={localStyles.icon} />
+                    ) : (
+                        <View style={{ marginHorizontal: 2 }}>
+                            <ButtonUsersGroup projectId={projectId} users={object.isPublicFor} inTag={true} />
+                        </View>
+                    )}
+                    <Text
+                        style={[
+                            styles.subtitle2,
+                            !smallScreenNavigation && !isMobile && localStyles.text,
+                            windowTagStyle(),
+                        ]}
+                    >
+                        {smallScreenNavigation || isMobile
+                            ? ''
+                            : object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
+                            ? translate('Public')
+                            : translate('Private')}
+                    </Text>
+                    {smallScreenNavigation && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (
+                        <Icon name={'lock'} size={16} color={colors.Text03} style={localStyles.icon} />
+                    )}
+                </View>
+            )}
+        </TouchableOpacity>
     )
 }
 

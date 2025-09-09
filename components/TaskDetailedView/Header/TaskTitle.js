@@ -18,12 +18,18 @@ class TaskTitle extends Component {
         super(props)
         const storeState = store.getState()
 
+        this._isMounted = false
+
         this.state = {
             taskTitle: this.props.title,
             selectedTab: storeState.selectedNavItem,
             taskTitleInEditMode: storeState.taskTitleInEditMode,
             unsubscribe: store.subscribe(this.updateState),
         }
+    }
+
+    componentDidMount() {
+        this._isMounted = true
     }
 
     getMaxHeight = () => {
@@ -33,18 +39,25 @@ class TaskTitle extends Component {
 
     componentDidUpdate(prevProps) {
         const { title } = this.props
-        if (prevProps.title !== title) {
+        if (prevProps.title !== title && this._isMounted) {
             this.setState({ taskTitle: title })
         }
     }
 
     componentWillUnmount() {
-        this.state.unsubscribe()
+        this._isMounted = false
+        if (this.state.unsubscribe) {
+            this.state.unsubscribe()
+        }
     }
 
     onTitleLayoutChange = ({ nativeEvent }) => {
         const maxHeight = this.getMaxHeight()
         const { layout } = nativeEvent
+
+        if (!this._isMounted) {
+            return
+        }
 
         if (layout.height > maxHeight && !this.state.showEllipsis) {
             this.setState({ showEllipsis: true })
@@ -88,7 +101,9 @@ class TaskTitle extends Component {
                                 } else {
                                     setTaskName(projectId, task.id, value, task, taskTitle)
                                 }
-                                this.setState({ taskTitle: value })
+                                if (this._isMounted) {
+                                    this.setState({ taskTitle: value })
+                                }
                             }}
                             normalStyle={[styles.title4, { color: colors.Text01, whiteSpace: 'pre' }]}
                             hashtagStyle={styles.title6}
@@ -112,6 +127,10 @@ class TaskTitle extends Component {
     }
 
     updateState = () => {
+        if (!this._isMounted) {
+            console.debug('[TaskTitle] updateState called after unmount')
+            return
+        }
         const storeState = store.getState()
         this.setState({
             selectedTab: storeState.selectedNavItem,
