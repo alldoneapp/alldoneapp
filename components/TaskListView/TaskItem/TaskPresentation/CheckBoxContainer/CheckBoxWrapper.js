@@ -30,6 +30,7 @@ function CheckBoxWrapper(
         highlightColor,
         accessGranted,
         pending,
+        showWorkflowIndicator,
     },
     ref
 ) {
@@ -211,6 +212,7 @@ function CheckBoxWrapper(
                     highlightColor={highlightColor}
                     accessGranted={accessGranted}
                     pending={pending}
+                    showWorkflowIndicator={showWorkflowIndicator}
                     onCheckboxPress={onCheckboxPress}
                     checkBoxIdRef={checkBoxIdRef}
                     checked={checked}

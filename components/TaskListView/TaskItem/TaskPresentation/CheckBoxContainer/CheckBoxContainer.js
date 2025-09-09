@@ -16,12 +16,14 @@ export default function CheckBoxContainer({
     highlightColor,
     accessGranted,
     pending,
+    showWorkflowIndicator,
     onCheckboxPress,
     checkBoxIdRef,
     checked,
     loggedUserCanUpdateObject,
 }) {
-    const neeToShowAnInteractionModal = !isSubtask && (pending || isToReviewTask || isSuggested || isObservedTask)
+    const neeToShowAnInteractionModal =
+        !isSubtask && (pending || isToReviewTask || isSuggested || isObservedTask || showWorkflowIndicator)
 
     return (
         <TouchableOpacity

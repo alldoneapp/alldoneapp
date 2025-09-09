@@ -24,6 +24,7 @@ import {
     checkIfInMyDayOpenTab,
 } from '../../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import useLastAddedTaskColor from '../../useLastAddedTaskColor'
+import useGetTaskWorkflow from '../../../../utils/useGetTaskWorkflow'
 import CheckBoxWrapper from './CheckBoxContainer/CheckBoxWrapper'
 import TitleContainer from './TitleContainer/TitleContainer'
 import TaskTagsContainerByTime from './TaskTagsContainerByTime'
@@ -73,6 +74,8 @@ function TaskPresentation(
     const taskTagsSection = useRef()
     const checkBoxRef = useRef(null)
 
+    const workflow = useGetTaskWorkflow(projectId, task)
+
     const inMyDay = checkIfInMyDay(
         selectedProjectIndex,
         showAllProjectsByTime,
@@ -97,6 +100,10 @@ function TaskPresentation(
 
     const isActiveTask = activeTaskId === task.id
 
+    const hasWorkflow = workflow && Object.keys(workflow).length > 0
+    const showWorkflowIndicator = hasWorkflow && task.done === false && !task.parentId
+
+    // Task placement logic - workflow tasks assigned to others go to pending section
     const pending =
         task.userIds?.length > 1 &&
         (task.userIds?.[task.userIds?.length - 1] !== currentUserId || route === 'GoalDetailedView') &&
@@ -268,6 +275,7 @@ function TaskPresentation(
                                     highlightColor={highlightColor}
                                     accessGranted={accessGranted}
                                     pending={pending}
+                                    showWorkflowIndicator={showWorkflowIndicator}
                                 />
                                 {!inMyDayAndNotSubtask && task?.gmailData && (
                                     <GmailTag

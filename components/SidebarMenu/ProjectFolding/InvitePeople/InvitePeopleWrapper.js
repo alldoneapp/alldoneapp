@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Popover from 'react-tiny-popover'
 
 import InvitePeopleButton from './InvitePeopleButton'
@@ -6,31 +6,46 @@ import InvitePeopleModal from './InvitePeopleModal'
 
 export default function InvitePeopleWrapper({ projectColor, projectIndex }) {
     const [isOpen, setIsOpen] = useState(false)
+    const isUnmountedRef = useRef(false)
+
+    const safeSetIsOpen = value => {
+        if (!isUnmountedRef.current) {
+            setIsOpen(value)
+        } else {
+            console.debug('[InvitePeopleWrapper] Ignored setIsOpen after unmount')
+        }
+    }
 
     const openModal = () => {
-        setIsOpen(true)
+        safeSetIsOpen(true)
     }
 
     const closeModal = () => {
-        setIsOpen(false)
+        safeSetIsOpen(false)
     }
 
     useEffect(() => {
         return () => {
-            // Ensure popover is closed when component unmounts
-            setIsOpen(false)
+            isUnmountedRef.current = true
         }
     }, [])
 
     return (
-        <Popover
-            content={<InvitePeopleModal projectIndex={projectIndex} closeModal={closeModal} />}
-            align={'start'}
-            position={['bottom']}
-            onClickOutside={closeModal}
-            isOpen={isOpen}
-        >
-            <InvitePeopleButton projectColor={projectColor} openModal={openModal} />
-        </Popover>
+        <>
+            {isOpen ? (
+                <Popover
+                    content={<InvitePeopleModal projectIndex={projectIndex} closeModal={closeModal} />}
+                    align={'start'}
+                    position={['bottom']}
+                    onClickOutside={closeModal}
+                    disableReposition
+                    isOpen
+                >
+                    <InvitePeopleButton projectColor={projectColor} openModal={openModal} />
+                </Popover>
+            ) : (
+                <InvitePeopleButton projectColor={projectColor} openModal={openModal} />
+            )}
+        </>
     )
 }

@@ -43,6 +43,9 @@ export default class WorkflowModal extends Component {
         super(props)
         const storeState = store.getState()
 
+        this._isMounted = false
+        this._timeouts = new Set()
+
         this.state = {
             inComments: false,
             inEstimation: false,
@@ -74,6 +77,7 @@ export default class WorkflowModal extends Component {
     }
 
     componentDidMount() {
+        this._isMounted = true
         storeModal(WORKFLOW_MODAL_ID)
         document.addEventListener('keydown', this.followUpModalOnEnter)
 
@@ -166,10 +170,33 @@ export default class WorkflowModal extends Component {
         removeModal(WORKFLOW_MODAL_ID)
         document.removeEventListener('keydown', this.followUpModalOnEnter)
         this.state.unsubscribe()
+        this._isMounted = false
+        // Clear any pending timeouts
+        this._timeouts.forEach(id => clearTimeout(id))
+        this._timeouts.clear()
+    }
+
+    setSafeState = updater => {
+        if (this._isMounted) {
+            this.setState(updater)
+        } else {
+            console.debug('[WorkflowModal] setState called after unmount ignored')
+        }
+    }
+
+    scheduleTimeout = (fn, delay = 0) => {
+        const id = setTimeout(() => {
+            this._timeouts.delete(id)
+            fn()
+        }, delay)
+        this._timeouts.add(id)
+        return id
     }
 
     updateState = () => {
         const storeState = store.getState()
+
+        if (!this._isMounted) return
 
         this.setState({
             currentUser: storeState.currentUser,
@@ -178,49 +205,49 @@ export default class WorkflowModal extends Component {
     }
 
     getCommentAndFiles = (comment, mentions, isPrivate, hasKarma) => {
-        setTimeout(() => {
-            this.setState({ comment, mentions, isPrivate, hasKarma, inComments: false })
+        this.scheduleTimeout(() => {
+            this.setSafeState({ comment, mentions, isPrivate, hasKarma, inComments: false })
         })
     }
 
     closeCommentsPopover = e => {
-        setTimeout(() => {
+        this.scheduleTimeout(() => {
             const { isQuillTagEditorOpen, openModals } = store.getState()
             if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
                 if (e) {
                     e.preventDefault()
                     e.stopPropagation()
                 }
-                this.setState({ inComments: false })
+                this.setSafeState({ inComments: false })
             }
         })
     }
 
     blockButtons = () => {
-        this.setState({ disabledMainButtons: true })
+        this.setSafeState({ disabledMainButtons: true })
     }
 
     removeComment = () => {
-        this.setState({ comment: '', mentions: [], files: [] })
+        this.setSafeState({ comment: '', mentions: [], files: [] })
     }
 
     removeFile = index => {
         const newFiles = [...this.state.files]
         newFiles.splice(index, 1)
-        this.setState({ files: newFiles })
+        this.setSafeState({ files: newFiles })
     }
 
     setAssigneeEstimationModal = estimation => {
         const { estimations } = this.state
-        this.setState({ estimation, estimations: { ...estimations, [OPEN_STEP]: estimation } })
+        this.setSafeState({ estimation, estimations: { ...estimations, [OPEN_STEP]: estimation } })
     }
 
     closeAssigneeEstimationModal = () => {
-        this.setState({ inEstimation: false })
+        this.setSafeState({ inEstimation: false })
     }
 
     openAssigneeEstimationModal = () => {
-        this.setState({ inEstimation: true })
+        this.setSafeState({ inEstimation: true })
     }
 
     setReviewerEstimationModal = estimation => {
@@ -229,23 +256,23 @@ export default class WorkflowModal extends Component {
         const stepsEntries = Object.entries(steps).sort(chronoEntriesOrder)
         const stepId = stepsEntries[currentStep][0]
 
-        this.setState({ estimations: { ...estimations, [stepId]: estimation } })
+        this.setSafeState({ estimations: { ...estimations, [stepId]: estimation } })
     }
 
     closeReviewerEstimationModal = () => {
-        this.setState({ inEstimationReviewer: false })
+        this.setSafeState({ inEstimationReviewer: false })
     }
 
     openReviewerEstimationModal = () => {
-        this.setState({ inEstimationReviewer: true })
+        this.setSafeState({ inEstimationReviewer: true })
     }
 
     closeWorkFlowSelection = () => {
-        this.setState({ inWorkflowSelection: false })
+        this.setSafeState({ inWorkflowSelection: false })
     }
 
     openWorkFlowSelection = () => {
-        this.setState({ inWorkflowSelection: true })
+        this.setSafeState({ inWorkflowSelection: true })
     }
 
     onPressClose = () => {
@@ -253,7 +280,7 @@ export default class WorkflowModal extends Component {
     }
 
     selectStep = (stepIndex, hideModal = false) => {
-        this.setState({ selectedNextStep: stepIndex, inWorkflowSelection: hideModal, selectedCustomStep: true })
+        this.setSafeState({ selectedNextStep: stepIndex, inWorkflowSelection: hideModal, selectedCustomStep: true })
     }
 
     setAutoEstimation = autoEstimation => {
@@ -309,6 +336,7 @@ export default class WorkflowModal extends Component {
     }
 
     followUpModalOnEnter = e => {
+        if (!this._isMounted) return
         const {
             inComments,
             inEstimation,
@@ -320,7 +348,7 @@ export default class WorkflowModal extends Component {
 
         if (e.key === 'Enter' && !inComments && !inEstimation && !inEstimationReviewer) {
             if (inWorkflowSelection || inCalendar) {
-                this.setState({
+                this.setSafeState({
                     inComments: false,
                     inEstimation: false,
                     inWorkflowSelection: false,

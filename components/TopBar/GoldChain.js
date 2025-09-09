@@ -57,7 +57,7 @@ export default function GoldChain() {
     const { left, top } = position
 
     return (
-        <View style={{ pointerEvents: 'none', position: 'absolute', left, top }}>
+        <View pointerEvents="none" style={{ position: 'absolute', left, top }}>
             <Lottie
                 lottieRef={animationRef}
                 animationData={goldAnimation}

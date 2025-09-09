@@ -141,11 +141,33 @@ export async function watchTask(projectId, taskId, watcherKey, callback) {
 }
 
 export const updateTaskEditionData = async (projectId, taskId, editorId) => {
-    await getDb().runTransaction(async transaction => {
-        const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
-        const doc = await transaction.get(ref)
-        if (doc.exists) transaction.update(ref, { lastEditionDate: Date.now(), lastEditorId: editorId })
-    })
+    const maxAttempts = 3
+    let attempt = 0
+    let delayMs = 100 + Math.floor(Math.random() * 100)
+
+    /* Retry transaction on concurrency errors */
+    while (attempt < maxAttempts) {
+        try {
+            await getDb().runTransaction(async transaction => {
+                const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
+                const doc = await transaction.get(ref)
+                if (doc.exists) transaction.update(ref, { lastEditionDate: Date.now(), lastEditorId: editorId })
+            })
+            return
+        } catch (error) {
+            const code = error && error.code
+            if ((code === 'failed-precondition' || code === 'aborted') && attempt < maxAttempts - 1) {
+                // Exponential backoff with jitter
+                await new Promise(resolve => setTimeout(resolve, delayMs))
+                delayMs = Math.min(1000, delayMs * 2 + Math.floor(Math.random() * 50))
+                attempt++
+                // Optional: keep minimal debug for diagnosis
+                // console.debug(`[updateTaskEditionData] Retry ${attempt} after ${code}`)
+                continue
+            }
+            throw error
+        }
+    }
 }
 
 const updateEditionData = data => {
