@@ -2255,6 +2255,49 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
+                            name: 'update_task',
+                            description: 'Update an existing task (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    taskId: {
+                                        type: 'string',
+                                        description: 'Task ID to update (required)',
+                                    },
+                                    name: {
+                                        type: 'string',
+                                        description: 'New task name (optional)',
+                                    },
+                                    description: {
+                                        type: 'string',
+                                        description: 'New task description (optional)',
+                                    },
+                                    dueDate: {
+                                        type: 'number',
+                                        description: 'New due date as timestamp (optional)',
+                                    },
+                                    completed: {
+                                        type: 'boolean',
+                                        description: 'Mark task as complete/incomplete (optional)',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Move task to different project (optional)',
+                                    },
+                                    parentId: {
+                                        type: 'string',
+                                        description:
+                                            'Set parent task ID for subtasks (optional, null to remove parent)',
+                                    },
+                                    userId: {
+                                        type: 'string',
+                                        description: 'Reassign task to different user (optional)',
+                                    },
+                                },
+                                required: ['taskId'],
+                            },
+                        },
+                        {
                             name: 'get_tasks',
                             description:
                                 'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
@@ -2385,6 +2428,9 @@ class AlldoneSimpleMCPServer {
                     switch (name) {
                         case 'create_task':
                             result = await this.createTask(args, httpReq)
+                            break
+                        case 'update_task':
+                            result = await this.updateTask(args, httpReq)
                             break
                         case 'get_tasks':
                             result = await this.getTasks(args, httpReq)
