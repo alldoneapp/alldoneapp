@@ -1174,6 +1174,145 @@ async function storeChunks(
                             toolAlreadyExecuted = true
                         }
                     }
+
+                    // Check for update_task tool
+                    const updateTaskMatch = commentText.match(/TOOL:\s*update_task\s*(\{[\s\S]*?\})/)
+                    if (updateTaskMatch) {
+                        console.log('Detected TOOL:update_task invocation')
+                        // Fetch assistant to check allowed tools
+                        const assistant = await getAssistantForChat(projectId, assistantId)
+                        const allowed = Array.isArray(assistant.allowedTools)
+                            ? assistant.allowedTools.includes('update_task')
+                            : false
+                        if (!allowed) {
+                            console.log('Assistant not allowed to use update_task tool')
+                            const replaced = commentText.replace(updateTaskMatch[0], 'Tool not permitted: update_task')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Parse JSON args
+                        const argsJson = updateTaskMatch[1]
+                        let args = {}
+                        try {
+                            args = JSON.parse(argsJson)
+                        } catch (e) {
+                            console.error('Failed to parse update_task args JSON', e)
+                            const replaced = commentText.replace(updateTaskMatch[0], 'Failed to parse tool arguments')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        const taskId = (args.taskId || '').toString().trim()
+                        if (!taskId) {
+                            const replaced = commentText.replace(updateTaskMatch[0], 'Missing required field: taskId')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Determine creatorId (the user interacting with the assistant)
+                        const creatorId =
+                            requestUserId ||
+                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
+
+                        try {
+                            // Get existing task first to validate access
+                            const db = admin.firestore()
+                            let currentTask = null
+                            let currentProjectId = null
+
+                            // Get user's project IDs
+                            const userDoc = await db.collection('users').doc(creatorId).get()
+                            if (!userDoc.exists) {
+                                throw new Error('User not found')
+                            }
+                            const userData = userDoc.data()
+                            const userProjectIds = userData.projectIds || []
+
+                            // Search for task in user's projects
+                            for (const searchProjectId of userProjectIds) {
+                                try {
+                                    const taskDoc = await db.doc(`items/${searchProjectId}/tasks/${taskId}`).get()
+                                    if (taskDoc.exists) {
+                                        currentTask = { id: taskId, ...taskDoc.data() }
+                                        currentProjectId = searchProjectId
+                                        break
+                                    }
+                                } catch (error) {
+                                    continue
+                                }
+                            }
+
+                            if (!currentTask) {
+                                throw new Error('Task not found or access denied')
+                            }
+
+                            // Build update object
+                            const updateData = {}
+                            if (args.name !== undefined) updateData.name = args.name.toString()
+                            if (args.description !== undefined) updateData.description = args.description.toString()
+                            if (args.dueDate !== undefined) updateData.dueDate = args.dueDate
+                            if (args.userId !== undefined) updateData.userId = args.userId.toString()
+                            if (args.parentId !== undefined) updateData.parentId = args.parentId
+                            if (args.completed !== undefined) {
+                                updateData.completed = !!args.completed
+                                if (updateData.completed) {
+                                    updateData.completedDate = Date.now()
+                                } else {
+                                    updateData.completedDate = null
+                                }
+                            }
+
+                            // Update the task
+                            if (Object.keys(updateData).length > 0) {
+                                await db.doc(`items/${currentProjectId}/tasks/${taskId}`).update(updateData)
+                            }
+
+                            console.log('Updated task via tool call', {
+                                projectId: currentProjectId,
+                                taskId: taskId,
+                                updateFields: Object.keys(updateData),
+                            })
+
+                            // Build confirmation message
+                            let confirmationMessage = `Updated task: ${currentTask.name}`
+                            const changes = []
+                            if (args.name !== undefined) changes.push(`name to "${args.name}"`)
+                            if (args.description !== undefined) changes.push('description')
+                            if (args.dueDate !== undefined) changes.push('due date')
+                            if (args.completed !== undefined) {
+                                changes.push(args.completed ? 'marked as complete' : 'marked as incomplete')
+                            }
+                            if (args.userId !== undefined) changes.push(`assigned to ${args.userId}`)
+                            if (changes.length > 0) {
+                                confirmationMessage += ` (${changes.join(', ')})`
+                            }
+
+                            // Replace tool line with confirmation
+                            const replaced = commentText.replace(updateTaskMatch[0], confirmationMessage)
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        } catch (error) {
+                            console.error('Error updating task via tool call:', error)
+                            const errorMsg = `Error updating task: ${error.message}`
+                            const replaced = commentText.replace(updateTaskMatch[0], errorMsg)
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        }
+                    }
                 } catch (err) {
                     console.error('Error while processing tool call', err)
                 }
@@ -1428,7 +1567,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskId":"task123","completed":true} or TOOL:update_task {"taskId":"task456","name":"New name","description":"Updated description"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])

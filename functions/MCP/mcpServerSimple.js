@@ -535,6 +535,48 @@ class AlldoneSimpleMCPServer {
                         },
                     },
                     {
+                        name: 'update_task',
+                        description: 'Update an existing task (requires OAuth 2.0 Bearer token authentication)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                taskId: {
+                                    type: 'string',
+                                    description: 'Task ID to update (required)',
+                                },
+                                name: {
+                                    type: 'string',
+                                    description: 'New task name (optional)',
+                                },
+                                description: {
+                                    type: 'string',
+                                    description: 'New task description (optional)',
+                                },
+                                dueDate: {
+                                    type: 'number',
+                                    description: 'New due date as timestamp (optional)',
+                                },
+                                completed: {
+                                    type: 'boolean',
+                                    description: 'Mark task as complete/incomplete (optional)',
+                                },
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Move task to different project (optional)',
+                                },
+                                parentId: {
+                                    type: 'string',
+                                    description: 'Set parent task ID for subtasks (optional, null to remove parent)',
+                                },
+                                userId: {
+                                    type: 'string',
+                                    description: 'Reassign task to different user (optional)',
+                                },
+                            },
+                            required: ['taskId'],
+                        },
+                    },
+                    {
                         name: 'get_tasks',
                         description:
                             'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
@@ -628,6 +670,9 @@ class AlldoneSimpleMCPServer {
                 switch (name) {
                     case 'create_task':
                         result = await this.createTask(args, request)
+                        break
+                    case 'update_task':
+                        result = await this.updateTask(args, request)
                         break
                     case 'get_tasks':
                         result = await this.getTasks(args, request)
@@ -811,6 +856,128 @@ class AlldoneSimpleMCPServer {
         } catch (error) {
             console.error('Error creating task:', error)
             throw new Error(`Failed to create task: ${error.message}`)
+        }
+    }
+
+    async updateTask(args, request) {
+        const {
+            taskId,
+            name,
+            description,
+            dueDate,
+            completed,
+            projectId: targetProjectId,
+            parentId,
+            userId: targetUserId,
+        } = args
+
+        if (!taskId) {
+            throw new Error('Task ID is required')
+        }
+
+        // Get authenticated user automatically from client session
+        const userId = await this.getAuthenticatedUserForClient(request)
+        const db = admin.firestore()
+
+        // Get the existing task to validate access and get current project
+        let currentTask
+        let currentProjectId
+
+        // Try to find the task in user's projects
+        const userDoc = await db.collection('users').doc(userId).get()
+        if (!userDoc.exists) {
+            throw new Error('User not found')
+        }
+
+        const userData = userDoc.data()
+        const userProjectIds = userData.projectIds || []
+
+        // Search for the task across user's projects
+        let taskFound = false
+        for (const projectId of userProjectIds) {
+            try {
+                const taskDoc = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
+                if (taskDoc.exists) {
+                    currentTask = { id: taskId, ...taskDoc.data() }
+                    currentProjectId = projectId
+                    taskFound = true
+                    break
+                }
+            } catch (error) {
+                // Continue searching in other projects
+                continue
+            }
+        }
+
+        if (!taskFound || !currentTask) {
+            throw new Error('Task not found or access denied')
+        }
+
+        // Use target project or current project
+        const projectId = targetProjectId || currentProjectId
+        if (targetProjectId && !userProjectIds.includes(targetProjectId)) {
+            throw new Error('Access denied to target project')
+        }
+
+        // Build update object with only provided fields
+        const updateData = {}
+        if (name !== undefined) updateData.name = name
+        if (description !== undefined) updateData.description = description
+        if (dueDate !== undefined) updateData.dueDate = dueDate
+        if (targetUserId !== undefined) updateData.userId = targetUserId
+        if (parentId !== undefined) updateData.parentId = parentId
+
+        // Handle completion status
+        if (completed !== undefined) {
+            updateData.completed = completed
+            if (completed) {
+                updateData.completedDate = Date.now()
+            } else {
+                updateData.completedDate = null
+            }
+        }
+
+        // Handle project move
+        if (targetProjectId && targetProjectId !== currentProjectId) {
+            // Delete from old project and create in new project
+            try {
+                // Create updated task in new project
+                const updatedTask = { ...currentTask, ...updateData, projectId: targetProjectId }
+                delete updatedTask.id
+
+                await db.doc(`items/${targetProjectId}/tasks/${taskId}`).set(updatedTask)
+
+                // Delete from old project
+                await db.doc(`items/${currentProjectId}/tasks/${taskId}`).delete()
+
+                return {
+                    success: true,
+                    taskId: taskId,
+                    message: `Task updated and moved to project ${targetProjectId}`,
+                    task: { id: taskId, ...updatedTask },
+                }
+            } catch (error) {
+                console.error('Error moving task between projects:', error)
+                throw new Error(`Failed to move task: ${error.message}`)
+            }
+        }
+
+        // Update in current project
+        try {
+            const updatedTask = { ...currentTask, ...updateData }
+            delete updatedTask.id
+
+            await db.doc(`items/${projectId}/tasks/${taskId}`).update(updateData)
+
+            return {
+                success: true,
+                taskId: taskId,
+                message: 'Task updated successfully',
+                task: { id: taskId, ...updatedTask },
+            }
+        } catch (error) {
+            console.error('Error updating task:', error)
+            throw new Error(`Failed to update task: ${error.message}`)
         }
     }
 
@@ -3569,7 +3736,7 @@ class AlldoneSimpleMCPServer {
                     // Check if this is a tools/call request for an authenticated tool
                     if (req.method === 'POST' && req.body && req.body.method === 'tools/call') {
                         const toolName = req.body.params?.name
-                        const authenticatedTools = ['create_task', 'get_tasks', 'get_user_projects']
+                        const authenticatedTools = ['create_task', 'update_task', 'get_tasks', 'get_user_projects']
 
                         if (authenticatedTools.includes(toolName)) {
                             const baseUrl = `${getBaseUrl()}/mcpServer`

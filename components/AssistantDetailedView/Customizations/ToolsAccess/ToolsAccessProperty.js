@@ -12,6 +12,7 @@ export default function ToolsAccessProperty({ disabled, projectId, assistant }) 
     const availableTools = useMemo(
         () => [
             { key: 'create_task', label: translate('Create new task') },
+            { key: 'update_task', label: translate('Update task') },
             { key: 'get_tasks', label: translate('Get tasks') },
         ],
         []
