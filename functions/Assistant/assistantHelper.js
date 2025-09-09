@@ -1287,17 +1287,28 @@ async function storeChunks(
 
                             // Build update object with only provided fields
                             const updateData = {}
-                            if (args.name !== undefined) updateData.name = args.name.toString()
+                            if (args.name !== undefined) {
+                                updateData.name = args.name.toString()
+                                updateData.extendedName = args.name.toString() // Alldone requires both fields
+                            }
                             if (args.description !== undefined) updateData.description = args.description.toString()
                             if (args.dueDate !== undefined) updateData.dueDate = args.dueDate
                             if (args.userId !== undefined) updateData.userId = args.userId.toString()
                             if (args.parentId !== undefined) updateData.parentId = args.parentId
                             if (args.completed !== undefined) {
-                                updateData.completed = !!args.completed
-                                if (updateData.completed) {
+                                const isCompleted = !!args.completed
+                                updateData.done = isCompleted
+                                updateData.inDone = isCompleted
+                                if (isCompleted) {
+                                    updateData.completed = Date.now() // Completion timestamp
                                     updateData.completedDate = Date.now()
+                                    updateData.completedTime = new Date().toTimeString().substring(0, 5)
+                                    updateData.currentReviewerId = 'Done' // Set reviewer to Done step
                                 } else {
+                                    updateData.completed = null
                                     updateData.completedDate = null
+                                    updateData.completedTime = null
+                                    updateData.currentReviewerId = currentTask.userId || creatorId // Reset to task owner
                                 }
                             }
 

@@ -996,7 +996,10 @@ class AlldoneSimpleMCPServer {
 
         // Build update object with only provided fields
         const updateData = {}
-        if (name !== undefined) updateData.name = name
+        if (name !== undefined) {
+            updateData.name = name
+            updateData.extendedName = name // Alldone requires both name and extendedName to be updated
+        }
         if (description !== undefined) updateData.description = description
         if (dueDate !== undefined) updateData.dueDate = dueDate
         if (targetUserId !== undefined) updateData.userId = targetUserId
@@ -1004,11 +1007,18 @@ class AlldoneSimpleMCPServer {
 
         // Handle completion status
         if (completed !== undefined) {
-            updateData.completed = completed
+            updateData.done = completed
+            updateData.inDone = completed
             if (completed) {
+                updateData.completed = Date.now() // Completion timestamp
                 updateData.completedDate = Date.now()
+                updateData.completedTime = new Date().toTimeString().substring(0, 5)
+                updateData.currentReviewerId = 'Done' // Set reviewer to Done step
             } else {
+                updateData.completed = null
                 updateData.completedDate = null
+                updateData.completedTime = null
+                updateData.currentReviewerId = currentTask.userId || userId // Reset to task owner
             }
         }
 
@@ -1057,10 +1067,23 @@ class AlldoneSimpleMCPServer {
         // Update in current project
         try {
             if (Object.keys(updateData).length > 0) {
-                await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).update(updateData)
+                console.log('Attempting to update task with data:', {
+                    taskId: currentTask.id,
+                    projectId: currentProjectId,
+                    updateData: updateData,
+                })
+
+                const docRef = db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`)
+                await docRef.update(updateData)
+
+                console.log('Task update completed successfully')
             }
 
-            const updatedTask = { ...currentTask, ...updateData }
+            // Read the actual updated task from database to get current state
+            const updatedTaskDoc = await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).get()
+            const updatedTask = updatedTaskDoc.exists
+                ? { id: currentTask.id, ...updatedTaskDoc.data() }
+                : { ...currentTask, ...updateData }
 
             // Build success message showing what changed
             const changes = []
