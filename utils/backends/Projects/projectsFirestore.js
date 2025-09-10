@@ -109,3 +109,84 @@ export const setProjectAssistant = async (projectId, assistantId, needGenerateUp
     await tryAddFollower(projectId, followProjectData, batch)
     batch.commit()
 }
+
+// Helper function to generate project prefix from project name
+export function generateProjectPrefix(projectName) {
+    if (!projectName || projectName.length === 0) {
+        return 'TA' // Default fallback
+    }
+
+    // Remove non-alphabetic characters and get first 2 letters
+    const cleanName = projectName.replace(/[^a-zA-Z]/g, '')
+
+    if (cleanName.length === 0) {
+        return 'TA' // Fallback if no letters found
+    }
+
+    // Get first 2 letters, convert to uppercase
+    const prefix = cleanName.substring(0, 2).toUpperCase()
+    return prefix.length === 1 ? prefix + 'A' : prefix
+}
+
+// Initialize task ID counter for a project if it doesn't exist
+export async function initializeProjectTaskCounter(projectId) {
+    const projectRef = getDb().doc(`projects/${projectId}`)
+
+    try {
+        await getDb().runTransaction(async transaction => {
+            const projectDoc = await transaction.get(projectRef)
+
+            if (projectDoc.exists && !projectDoc.data().hasOwnProperty('taskIdCounter')) {
+                transaction.update(projectRef, { taskIdCounter: 0 })
+            }
+        })
+    } catch (error) {
+        console.error('Error initializing task counter for project:', projectId, error)
+    }
+}
+
+// Generate next task ID for a project and increment counter
+export async function getNextTaskId(projectId) {
+    const projectRef = getDb().doc(`projects/${projectId}`)
+
+    try {
+        return await getDb().runTransaction(async transaction => {
+            const projectDoc = await transaction.get(projectRef)
+
+            if (!projectDoc.exists) {
+                throw new Error(`Project ${projectId} not found`)
+            }
+
+            const projectData = projectDoc.data()
+            const currentCounter = projectData.taskIdCounter || 0
+            const nextCounter = currentCounter + 1
+
+            // Update the counter
+            transaction.update(projectRef, { taskIdCounter: nextCounter })
+
+            // Generate the human-readable ID
+            const prefix = generateProjectPrefix(projectData.name)
+            const humanReadableId = `${prefix}-${nextCounter}`
+
+            return humanReadableId
+        })
+    } catch (error) {
+        console.error('Error generating task ID for project:', projectId, error)
+
+        // Fallback strategy: try to get project data for prefix, use timestamp for number
+        try {
+            const projectDoc = await getDb().doc(`projects/${projectId}`).get()
+            if (projectDoc.exists) {
+                const prefix = generateProjectPrefix(projectDoc.data().name)
+                const timestamp = Date.now().toString().slice(-4)
+                return `${prefix}-${timestamp}`
+            }
+        } catch (fallbackError) {
+            console.error('Error in fallback ID generation:', fallbackError)
+        }
+
+        // Ultimate fallback
+        const timestamp = Date.now().toString().slice(-4)
+        return `TA-${timestamp}`
+    }
+}

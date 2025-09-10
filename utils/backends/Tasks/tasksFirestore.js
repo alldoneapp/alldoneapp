@@ -129,6 +129,7 @@ import { DV_TAB_ROOT_TASKS, DV_TAB_TASK_PROPERTIES } from '../../TabNavigationCo
 import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
 import { getAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
+import { getNextTaskId } from '../Projects/projectsFirestore'
 
 export async function watchTask(projectId, taskId, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = getDb()
@@ -280,6 +281,15 @@ export async function uploadNewTask(
 
         updateEditionData(taskCopy)
 
+        // Generate human-readable ID for all tasks (including subtasks)
+        try {
+            taskCopy.humanReadableId = await getNextTaskId(projectId)
+        } catch (error) {
+            console.error('Failed to generate human-readable task ID:', error)
+            // Continue without human-readable ID if generation fails
+            taskCopy.humanReadableId = null
+        }
+
         const { loggedUser } = store.getState()
 
         storeLastAddedTaskId(taskId)
@@ -381,6 +391,14 @@ export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpPr
         subTask.parentGoalIsPublicFor = task.parentGoalIsPublicFor
         subTask.lockKey = task.lockKey
         subTask.assistantId = task.assistantId
+
+        // Generate human-readable ID for subtask
+        try {
+            subTask.humanReadableId = await getNextTaskId(projectId)
+        } catch (error) {
+            console.error('Failed to generate human-readable subtask ID:', error)
+            subTask.humanReadableId = null
+        }
 
         updateEditionData(subTask)
         batch.set(getDb().collection(`items/${projectId}/tasks`).doc(newTaskId), {
