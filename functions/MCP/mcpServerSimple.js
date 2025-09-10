@@ -994,106 +994,45 @@ class AlldoneSimpleMCPServer {
     async performTaskUpdate(currentTask, currentProjectId, currentProjectName, updateFields, userId, db) {
         const { name, description, dueDate, completed, parentId, targetUserId, targetProjectId } = updateFields
 
-        // Build update object with only provided fields
-        const updateData = {}
-        if (name !== undefined) {
-            updateData.name = name
-            updateData.extendedName = name // Alldone requires both name and extendedName to be updated
-        }
-        if (description !== undefined) updateData.description = description
-        if (dueDate !== undefined) updateData.dueDate = dueDate
-        if (targetUserId !== undefined) updateData.userId = targetUserId
-        if (parentId !== undefined) updateData.parentId = parentId
+        // Initialize TaskService for consistent update logic and feed generation
+        const { TaskService } = require('../shared/TaskService')
+        const taskService = new TaskService({
+            database: db,
+            moment: moment,
+            isCloudFunction: true,
+            enableFeeds: true,
+            enableValidation: false, // Skip validation since we already validated
+        })
+        await taskService.initialize()
 
-        // Handle completion status
-        if (completed !== undefined) {
-            updateData.done = completed
-            updateData.inDone = completed
-            if (completed) {
-                updateData.completed = Date.now() // Completion timestamp
-                updateData.completedDate = Date.now()
-                updateData.completedTime = new Date().toTimeString().substring(0, 5)
-                updateData.currentReviewerId = 'Done' // Set reviewer to Done step
-            } else {
-                updateData.completed = null
-                updateData.completedDate = null
-                updateData.completedTime = null
-                updateData.currentReviewerId = currentTask.userId || userId // Reset to task owner
-            }
-        }
+        // Create feedUser object from userId
+        const feedUser = { uid: userId, id: userId }
 
-        // Validate target project access if moving
-        if (targetProjectId && targetProjectId !== currentProjectId) {
-            const userDoc = await db.collection('users').doc(userId).get()
-            const userData = userDoc.data()
-            const userProjectIds = userData.projectIds || []
-
-            if (!userProjectIds.includes(targetProjectId)) {
-                throw new Error('Access denied to target project')
-            }
-        }
-
-        // Handle project move
-        if (targetProjectId && targetProjectId !== currentProjectId) {
-            try {
-                // Create updated task in new project
-                const updatedTask = { ...currentTask, ...updateData, projectId: targetProjectId }
-                delete updatedTask.id
-
-                await db.doc(`items/${targetProjectId}/tasks/${currentTask.id}`).set(updatedTask)
-
-                // Delete from old project
-                await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).delete()
-
-                // Get new project name
-                const newProjectDoc = await db.collection('projects').doc(targetProjectId).get()
-                const newProjectName = newProjectDoc.exists ? newProjectDoc.data().name : targetProjectId
-
-                return {
-                    success: true,
-                    taskId: currentTask.id,
-                    message: `Task "${currentTask.name}" updated and moved from "${currentProjectName}" to "${newProjectName}"`,
-                    task: { id: currentTask.id, ...updatedTask },
-                    moved: true,
-                    oldProject: { id: currentProjectId, name: currentProjectName },
-                    newProject: { id: targetProjectId, name: newProjectName },
-                }
-            } catch (error) {
-                console.error('Error moving task between projects:', error)
-                throw new Error(`Failed to move task: ${error.message}`)
-            }
-        }
-
-        // Update in current project
         try {
-            if (Object.keys(updateData).length > 0) {
-                console.log('Attempting to update task with data:', {
-                    taskId: currentTask.id,
-                    projectId: currentProjectId,
-                    updateData: updateData,
-                })
+            // Use TaskService for update with proper feed generation
+            const result = await taskService.updateAndPersistTask({
+                taskId: currentTask.id,
+                projectId: currentProjectId,
+                currentTask: currentTask,
+                name: name,
+                description: description,
+                dueDate: dueDate,
+                completed: completed,
+                userId: targetUserId,
+                parentId: parentId,
+                feedUser: feedUser,
+            })
 
-                const docRef = db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`)
-                await docRef.update(updateData)
-
-                console.log('Task update completed successfully')
-            }
-
-            // Read the actual updated task from database to get current state
-            const updatedTaskDoc = await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).get()
-            const updatedTask = updatedTaskDoc.exists
-                ? { id: currentTask.id, ...updatedTaskDoc.data() }
-                : { ...currentTask, ...updateData }
+            console.log('Task updated via TaskService:', {
+                taskId: currentTask.id,
+                projectId: currentProjectId,
+                changes: result.changes,
+                feedGenerated: !!result.feedData,
+                persisted: result.persisted,
+            })
 
             // Build success message showing what changed
-            const changes = []
-            if (name !== undefined) changes.push(`name to "${name}"`)
-            if (description !== undefined) changes.push('description')
-            if (dueDate !== undefined) changes.push('due date')
-            if (completed !== undefined) changes.push(completed ? 'marked as complete' : 'marked as incomplete')
-            if (targetUserId !== undefined) changes.push(`assigned to ${targetUserId}`)
-            if (parentId !== undefined) changes.push('parent task')
-
+            const changes = result.changes || []
             let message = `Task "${currentTask.name}" updated successfully`
             if (changes.length > 0) {
                 message += ` (${changes.join(', ')})`
@@ -1104,13 +1043,133 @@ class AlldoneSimpleMCPServer {
                 success: true,
                 taskId: currentTask.id,
                 message,
-                task: { id: currentTask.id, ...updatedTask },
+                task: result.updatedTask || { id: currentTask.id, ...currentTask },
                 project: { id: currentProjectId, name: currentProjectName },
                 changes: changes,
             }
         } catch (error) {
-            console.error('Error updating task:', error)
-            throw new Error(`Failed to update task: ${error.message}`)
+            console.error('TaskService update failed, falling back to direct update:', error)
+
+            // Fallback to original direct update logic if TaskService fails
+            const updateData = {}
+            if (name !== undefined) {
+                updateData.name = name
+                updateData.extendedName = name // Alldone requires both name and extendedName to be updated
+            }
+            if (description !== undefined) updateData.description = description
+            if (dueDate !== undefined) updateData.dueDate = dueDate
+            if (targetUserId !== undefined) updateData.userId = targetUserId
+            if (parentId !== undefined) updateData.parentId = parentId
+
+            // Handle completion status
+            if (completed !== undefined) {
+                updateData.done = completed
+                updateData.inDone = completed
+                if (completed) {
+                    updateData.completed = Date.now() // Completion timestamp
+                    updateData.completedDate = Date.now()
+                    updateData.completedTime = new Date().toTimeString().substring(0, 5)
+                    updateData.currentReviewerId = 'Done' // Set reviewer to Done step
+                } else {
+                    updateData.completed = null
+                    updateData.completedDate = null
+                    updateData.completedTime = null
+                    updateData.currentReviewerId = currentTask.userId || userId // Reset to task owner
+                }
+            }
+
+            // Validate target project access if moving
+            if (targetProjectId && targetProjectId !== currentProjectId) {
+                const userDoc = await db.collection('users').doc(userId).get()
+                const userData = userDoc.data()
+                const userProjectIds = userData.projectIds || []
+
+                if (!userProjectIds.includes(targetProjectId)) {
+                    throw new Error('Access denied to target project')
+                }
+            }
+
+            // Handle project move
+            if (targetProjectId && targetProjectId !== currentProjectId) {
+                try {
+                    // Create updated task in new project
+                    const updatedTask = { ...currentTask, ...updateData, projectId: targetProjectId }
+                    delete updatedTask.id
+
+                    await db.doc(`items/${targetProjectId}/tasks/${currentTask.id}`).set(updatedTask)
+
+                    // Delete from old project
+                    await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).delete()
+
+                    // Get new project name
+                    const newProjectDoc = await db.collection('projects').doc(targetProjectId).get()
+                    const newProjectName = newProjectDoc.exists ? newProjectDoc.data().name : targetProjectId
+
+                    return {
+                        success: true,
+                        taskId: currentTask.id,
+                        message: `Task "${currentTask.name}" updated and moved from "${currentProjectName}" to "${newProjectName}"`,
+                        task: { id: currentTask.id, ...updatedTask },
+                        moved: true,
+                        oldProject: { id: currentProjectId, name: currentProjectName },
+                        newProject: { id: targetProjectId, name: newProjectName },
+                    }
+                } catch (error) {
+                    console.error('Error moving task between projects:', error)
+                    throw new Error(`Failed to move task: ${error.message}`)
+                }
+            }
+
+            // Update in current project (fallback without feeds)
+            try {
+                if (Object.keys(updateData).length > 0) {
+                    console.log('Fallback: Attempting to update task with data (no feeds):', {
+                        taskId: currentTask.id,
+                        projectId: currentProjectId,
+                        updateData: updateData,
+                    })
+
+                    const docRef = db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`)
+                    await docRef.update(updateData)
+
+                    console.log('Fallback: Task update completed successfully (no feeds generated)')
+                }
+
+                // Read the actual updated task from database to get current state
+                const updatedTaskDoc = await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).get()
+                const updatedTask = updatedTaskDoc.exists
+                    ? { id: currentTask.id, ...updatedTaskDoc.data() }
+                    : { ...currentTask, ...updateData }
+
+                // Build success message showing what changed
+                const changes = []
+                if (name !== undefined) changes.push(`name to "${name}"`)
+                if (description !== undefined) changes.push('description')
+                if (dueDate !== undefined) changes.push('due date')
+                if (completed !== undefined) changes.push(completed ? 'marked as complete' : 'marked as incomplete')
+                if (targetUserId !== undefined) changes.push(`assigned to ${targetUserId}`)
+                if (parentId !== undefined) changes.push('parent task')
+
+                let message = `Task "${currentTask.name}" updated successfully`
+                if (changes.length > 0) {
+                    message += ` (${changes.join(', ')})`
+                }
+                message += ` in project "${currentProjectName}" (fallback: no feeds generated)`
+
+                return {
+                    success: true,
+                    taskId: currentTask.id,
+                    message,
+                    task: { id: currentTask.id, ...updatedTask },
+                    project: { id: currentProjectId, name: currentProjectName },
+                    changes: changes,
+                }
+            } catch (fallbackError) {
+                console.error('Fallback update also failed:', fallbackError)
+                throw new Error(
+                    `Failed to update task (both TaskService and fallback failed): ${fallbackError.message}`
+                )
+            }
         }
     }
 

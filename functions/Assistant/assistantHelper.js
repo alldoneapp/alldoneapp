@@ -1312,32 +1312,85 @@ async function storeChunks(
                                 }
                             }
 
-                            // Update the task
-                            if (Object.keys(updateData).length > 0) {
-                                await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).update(updateData)
-                            }
-
-                            console.log('Updated task via tool call', {
-                                projectId: currentProjectId,
-                                taskId: currentTask.id,
-                                taskName: currentTask.name,
-                                updateFields: Object.keys(updateData),
-                                searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
+                            // Initialize TaskService for consistent update logic and feed generation
+                            const { TaskService } = require('../shared/TaskService')
+                            const taskService = new TaskService({
+                                database: db,
+                                moment: require('moment'),
+                                isCloudFunction: true,
+                                enableFeeds: true,
+                                enableValidation: false, // Skip validation since we already validated
                             })
+                            await taskService.initialize()
 
-                            // Build confirmation message showing what was found and changed
-                            const changes = []
-                            if (args.name !== undefined) changes.push(`name to "${args.name}"`)
-                            if (args.description !== undefined) changes.push('description')
-                            if (args.dueDate !== undefined) changes.push('due date')
-                            if (args.completed !== undefined) {
-                                changes.push(args.completed ? 'marked as complete' : 'marked as incomplete')
-                            }
-                            if (args.userId !== undefined) changes.push(`assigned to ${args.userId}`)
+                            // Create feedUser object from creatorId
+                            const feedUser = { uid: creatorId, id: creatorId }
 
-                            let confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
-                            if (changes.length > 0) {
-                                confirmationMessage += ` (${changes.join(', ')})`
+                            try {
+                                // Use TaskService for update with proper feed generation
+                                const result = await taskService.updateAndPersistTask({
+                                    taskId: currentTask.id,
+                                    projectId: currentProjectId,
+                                    currentTask: currentTask,
+                                    name: args.name,
+                                    description: args.description,
+                                    dueDate: args.dueDate,
+                                    completed: args.completed,
+                                    userId: args.userId,
+                                    parentId: args.parentId,
+                                    feedUser: feedUser,
+                                })
+
+                                console.log('Updated task via TaskService tool call', {
+                                    projectId: currentProjectId,
+                                    taskId: currentTask.id,
+                                    taskName: currentTask.name,
+                                    changes: result.changes,
+                                    feedGenerated: !!result.feedData,
+                                    persisted: result.persisted,
+                                    searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
+                                })
+
+                                // Build confirmation message showing what was found and changed
+                                const changes = result.changes || []
+                                let confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
+                                if (changes.length > 0) {
+                                    confirmationMessage += ` (${changes.join(', ')})`
+                                }
+                            } catch (taskServiceError) {
+                                console.error(
+                                    'TaskService update failed in Assistant, falling back to direct update:',
+                                    taskServiceError
+                                )
+
+                                // Fallback to direct update without feeds if TaskService fails
+                                if (Object.keys(updateData).length > 0) {
+                                    await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).update(updateData)
+                                }
+
+                                console.log('Updated task via direct update (fallback, no feeds)', {
+                                    projectId: currentProjectId,
+                                    taskId: currentTask.id,
+                                    taskName: currentTask.name,
+                                    updateFields: Object.keys(updateData),
+                                    searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
+                                })
+
+                                // Build confirmation message showing what was found and changed
+                                const changes = []
+                                if (args.name !== undefined) changes.push(`name to "${args.name}"`)
+                                if (args.description !== undefined) changes.push('description')
+                                if (args.dueDate !== undefined) changes.push('due date')
+                                if (args.completed !== undefined) {
+                                    changes.push(args.completed ? 'marked as complete' : 'marked as incomplete')
+                                }
+                                if (args.userId !== undefined) changes.push(`assigned to ${args.userId}`)
+
+                                let confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
+                                if (changes.length > 0) {
+                                    confirmationMessage += ` (${changes.join(', ')})`
+                                }
+                                confirmationMessage += ` (fallback: no feeds generated)`
                             }
 
                             // Replace tool line with confirmation

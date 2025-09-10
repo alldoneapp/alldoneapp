@@ -618,6 +618,505 @@ class TaskService {
     }
 
     /**
+     * Update an existing task with feed generation
+     * @param {Object} params - Task update parameters
+     * @param {string} params.taskId - Task ID to update (required)
+     * @param {string} params.projectId - Project ID (required)
+     * @param {Object} params.currentTask - Current task object (required)
+     * @param {string} params.name - New task name (optional)
+     * @param {string} params.description - New description (optional)
+     * @param {number} params.dueDate - New due date timestamp (optional)
+     * @param {boolean} params.completed - Completion status (optional)
+     * @param {string} params.userId - New assigned user ID (optional)
+     * @param {string} params.parentId - New parent task ID (optional)
+     * @param {Object} params.feedUser - User object for feed creation
+     * @param {Object} context - Additional context
+     * @returns {Object} Complete task update result
+     */
+    async updateTask(params, context = {}) {
+        await this.ensureInitialized()
+
+        const {
+            taskId,
+            projectId,
+            currentTask,
+            name,
+            description,
+            dueDate,
+            completed,
+            userId,
+            parentId,
+            feedUser,
+            ...otherParams
+        } = params
+
+        // Validate required parameters
+        if (!taskId || typeof taskId !== 'string') {
+            throw new Error('Task ID is required for updates')
+        }
+        if (!projectId || typeof projectId !== 'string') {
+            throw new Error('Project ID is required for updates')
+        }
+        if (!currentTask || typeof currentTask !== 'object') {
+            throw new Error('Current task object is required for updates')
+        }
+
+        // Build update object with only provided fields
+        const updateData = {}
+        const changes = []
+
+        if (name !== undefined) {
+            updateData.name = String(name)
+            updateData.extendedName = String(name) // Alldone requires both fields
+            changes.push(`name to "${name}"`)
+        }
+        if (description !== undefined) {
+            updateData.description = String(description)
+            changes.push('description')
+        }
+        if (dueDate !== undefined) {
+            updateData.dueDate = dueDate
+            changes.push('due date')
+        }
+        if (userId !== undefined) {
+            updateData.userId = String(userId)
+            changes.push(`assigned to ${userId}`)
+        }
+        if (parentId !== undefined) {
+            updateData.parentId = parentId
+            changes.push('parent task')
+        }
+
+        // Handle completion status
+        if (completed !== undefined) {
+            const isCompleted = !!completed
+            updateData.done = isCompleted
+            updateData.inDone = isCompleted
+            if (isCompleted) {
+                updateData.completed = Date.now()
+                updateData.completedDate = Date.now()
+                updateData.completedTime = new Date().toTimeString().substring(0, 5)
+                updateData.currentReviewerId = 'Done'
+                changes.push('marked as complete')
+            } else {
+                updateData.completed = null
+                updateData.completedDate = null
+                updateData.completedTime = null
+                updateData.currentReviewerId = currentTask.userId || updateData.userId || 'Open'
+                changes.push('marked as incomplete')
+            }
+        }
+
+        // Apply other update parameters
+        Object.keys(otherParams).forEach(key => {
+            if (otherParams[key] !== undefined) {
+                updateData[key] = otherParams[key]
+                changes.push(key)
+            }
+        })
+
+        // Create updated task object for feed generation
+        const updatedTask = { ...currentTask, ...updateData }
+
+        // Generate feed data if enabled and feedUser provided
+        let feedData = null
+        if (this.options.enableFeeds && feedUser && changes.length > 0) {
+            try {
+                // Generate entry text based on changes
+                let entryText = 'updated task'
+                if (changes.length > 0) {
+                    if (changes.length === 1) {
+                        entryText = changes[0].includes('marked as')
+                            ? changes[0]
+                            : `updated task ${changes[0].split(' ')[0]}`
+                    } else {
+                        const changeTypes = changes.map(c => c.split(' ')[0]).join(', ')
+                        entryText = `updated task (${changeTypes})`
+                    }
+                }
+
+                // Get existing task feed object for visibility/followers
+                let taskFeedObject = null
+                if (this.options.database) {
+                    try {
+                        const feedObjectRef = this.options.database.doc(
+                            `feedsObjectsLastStates/${projectId}/tasks/${taskId}`
+                        )
+                        const feedObjectSnap = await feedObjectRef.get()
+                        if (feedObjectSnap.exists) {
+                            taskFeedObject = feedObjectSnap.data()
+                        }
+                    } catch (error) {
+                        console.warn('TaskService: Could not retrieve existing feed object:', error.message)
+                    }
+                }
+
+                // If no existing feed object, create a basic one
+                if (!taskFeedObject) {
+                    const { generateTaskObjectModel } = TaskFeedGenerator
+                    taskFeedObject = generateTaskObjectModel(Date.now(), updatedTask, taskId)
+                    taskFeedObject.isPublicFor = [TaskFeedGenerator.FEED_PUBLIC_FOR_ALL]
+                }
+
+                feedData = await this.createTaskFeed('updated', {
+                    projectId,
+                    taskId,
+                    feedUser,
+                    taskFeedObject,
+                    entryText,
+                })
+            } catch (feedError) {
+                console.error('Feed creation failed for task update:', feedError)
+                // Continue without feed if it fails
+            }
+        }
+
+        return {
+            updateData,
+            updatedTask,
+            feedData,
+            taskId,
+            changes,
+            success: true,
+            message:
+                changes.length > 0
+                    ? `Task "${currentTask.name}" updated successfully (${changes.join(', ')})`
+                    : `Task "${currentTask.name}" processed (no changes made)`,
+        }
+    }
+
+    /**
+     * Persist task update to database with feed generation
+     * @param {Object} updateResult - Result from updateTask()
+     * @param {Object} options - Persistence options
+     * @returns {Promise} Persistence result
+     */
+    async persistTaskUpdate(updateResult, options = {}) {
+        await this.ensureInitialized()
+
+        if (!this.options.database) {
+            throw new Error('Database interface not configured')
+        }
+
+        const { updateData, updatedTask, feedData, taskId } = updateResult
+        const { projectId, batch: externalBatch, feedUser } = options
+
+        const finalProjectId = projectId || updatedTask.projectId
+        if (!finalProjectId) {
+            throw new Error('Project ID is required for task update persistence')
+        }
+
+        // Validate task ID
+        if (!taskId || typeof taskId !== 'string' || taskId.trim() === '') {
+            console.error('TaskService update persistence error: invalid taskId', {
+                taskId,
+                updateResultKeys: Object.keys(updateResult),
+                updatedTask_keys: updatedTask ? Object.keys(updatedTask).slice(0, 10) : 'no task',
+            })
+            throw new Error(`Invalid task ID for update persistence: "${taskId}". Task ID must be a non-empty string.`)
+        }
+
+        try {
+            // Use external batch if provided, or create new one
+            const batch =
+                externalBatch ||
+                (this.options.batchWrapper ? new this.options.batchWrapper(this.options.database) : null)
+
+            if (!batch && !externalBatch) {
+                // Direct write if no batch support
+                const taskRef = this.options.database.collection(`items/${finalProjectId}/tasks`).doc(taskId)
+
+                // Only update if there are actual changes
+                if (Object.keys(updateData).length > 0) {
+                    // Normalize estimations for cross-environment compatibility
+                    const updateDataToApply = (() => {
+                        try {
+                            const normalizedUpdate = { ...updateData }
+                            if (normalizedUpdate.estimations) {
+                                const estimations = { ...normalizedUpdate.estimations }
+                                const openKeyValue = estimations['Open']
+                                const numericKeyValue = estimations['-1']
+                                const baseOpenValue =
+                                    typeof numericKeyValue === 'number'
+                                        ? numericKeyValue
+                                        : typeof openKeyValue === 'number'
+                                        ? openKeyValue
+                                        : 0
+                                if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
+                                if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
+                                normalizedUpdate.estimations = estimations
+                            }
+                            return normalizedUpdate
+                        } catch (_) {
+                            return updateData
+                        }
+                    })()
+
+                    await taskRef.update(updateDataToApply)
+                }
+
+                // Persist feeds using Cloud Functions feeds pipeline when available
+                if (feedData && this.options.enableFeeds) {
+                    if (this.options.isCloudFunction) {
+                        try {
+                            const admin = require('firebase-admin')
+                            const { loadFeedsGlobalState } = require('../GlobalState/globalState')
+                            const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+                            const feedsTasks = require('../Feeds/tasksFeeds')
+                            if (feedsTasks && typeof feedsTasks.createTaskUpdatedFeed === 'function') {
+                                const feedsBatch = new BatchWrapper(this.options.database)
+                                if (feedsBatch.setProjectContext) {
+                                    feedsBatch.setProjectContext(finalProjectId)
+                                }
+                                const creator = feedUser || { uid: updatedTask.userId, id: updatedTask.userId }
+                                // Load minimal global state required by feeds helpers
+                                let projectUsersIds = []
+                                try {
+                                    const projectSnap = await this.options.database
+                                        .doc(`projects/${finalProjectId}`)
+                                        .get()
+                                    const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+                                    projectUsersIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
+                                    loadFeedsGlobalState(
+                                        admin,
+                                        admin,
+                                        creator,
+                                        { ...projectData, id: finalProjectId },
+                                        [],
+                                        null
+                                    )
+                                } catch (_) {}
+                                // Normalize estimations so CF feeds helper gets proper values
+                                const normalizedTaskForFeeds = (() => {
+                                    try {
+                                        const estimations =
+                                            updatedTask && updatedTask.estimations
+                                                ? { ...updatedTask.estimations }
+                                                : { Open: 0 }
+                                        if (estimations['-1'] === undefined) {
+                                            const openValue = estimations['Open']
+                                            estimations['-1'] = typeof openValue === 'number' ? openValue : 0
+                                        }
+                                        return { ...updatedTask, estimations }
+                                    } catch (_) {
+                                        return updatedTask
+                                    }
+                                })()
+                                await feedsTasks.createTaskUpdatedFeed(
+                                    finalProjectId,
+                                    normalizedTaskForFeeds,
+                                    taskId,
+                                    feedsBatch,
+                                    creator,
+                                    true,
+                                    { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
+                                )
+                                if (feedsBatch.commit) {
+                                    await feedsBatch.commit()
+                                }
+                            } else {
+                                console.warn('TaskService: Feeds module missing createTaskUpdatedFeed function')
+                                // Fallback: persist last state only
+                                try {
+                                    const feedObjectRef = this.options.database.doc(
+                                        `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
+                                    )
+                                    await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
+                                } catch (fallbackError) {
+                                    console.error('Failed to persist feed object as fallback:', fallbackError)
+                                }
+                            }
+                        } catch (feedPersistError) {
+                            console.error('TaskService: Failed to persist update feeds via pipeline:', feedPersistError)
+                            // Fallback: persist last state only
+                            try {
+                                const feedObjectRef = this.options.database.doc(
+                                    `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
+                                )
+                                await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
+                            } catch (fallbackError) {
+                                console.error('Failed to persist feed object as fallback:', fallbackError)
+                            }
+                        }
+                    } else {
+                        // Non-cloud environments: persist last state only
+                        try {
+                            const feedObjectRef = this.options.database.doc(
+                                `feedsObjectsLastStates/${finalProjectId}/tasks/${taskId}`
+                            )
+                            await feedObjectRef.set(feedData.taskFeedObject, { merge: true })
+                        } catch (feedError) {
+                            console.error('Failed to persist feed object directly:', feedError)
+                        }
+                    }
+                }
+            } else {
+                // Batch write
+                const taskRef = this.options.database.collection(`items/${finalProjectId}/tasks`).doc(taskId)
+
+                // Only add to batch if there are actual changes
+                if (Object.keys(updateData).length > 0) {
+                    // Normalize estimations for cross-environment compatibility
+                    const updateDataToApply = (() => {
+                        try {
+                            const normalizedUpdate = { ...updateData }
+                            if (normalizedUpdate.estimations) {
+                                const estimations = { ...normalizedUpdate.estimations }
+                                const openKeyValue = estimations['Open']
+                                const numericKeyValue = estimations['-1']
+                                const baseOpenValue =
+                                    typeof numericKeyValue === 'number'
+                                        ? numericKeyValue
+                                        : typeof openKeyValue === 'number'
+                                        ? openKeyValue
+                                        : 0
+                                if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
+                                if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
+                                normalizedUpdate.estimations = estimations
+                            }
+                            return normalizedUpdate
+                        } catch (_) {
+                            return updateData
+                        }
+                    })()
+
+                    batch.update
+                        ? batch.update(taskRef, updateDataToApply)
+                        : batch.add(() => taskRef.update(updateDataToApply))
+                }
+
+                // Add feed data to batch if available
+                if (feedData && this.options.enableFeeds) {
+                    console.log('TaskService: Adding update feed data to batch for task:', taskId)
+                    if (batch.feedObjects) {
+                        // Store feed data with context needed for persistence
+                        batch.feedObjects[taskId] = {
+                            feedObject: feedData.taskFeedObject,
+                            projectId: finalProjectId,
+                            objectType: 'tasks',
+                            currentDateFormated: feedData.currentDateFormated,
+                        }
+                        console.log('TaskService: Successfully added update feed data to batch.feedObjects')
+                    } else {
+                        console.warn('TaskService: batch.feedObjects is not available for update feeds')
+                    }
+
+                    // In Cloud Functions, also push through feeds pipeline to generate inner feeds
+                    if (this.options.isCloudFunction) {
+                        try {
+                            const admin = require('firebase-admin')
+                            const { loadFeedsGlobalState } = require('../GlobalState/globalState')
+                            const feedsTasks = require('../Feeds/tasksFeeds')
+                            if (feedsTasks && typeof feedsTasks.createTaskUpdatedFeed === 'function') {
+                                const creator = feedUser || { uid: updatedTask.userId, id: updatedTask.userId }
+                                // Load minimal global state required by feeds helpers
+                                let projectUsersIds = []
+                                try {
+                                    const projectSnap = await this.options.database
+                                        .doc(`projects/${finalProjectId}`)
+                                        .get()
+                                    const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+                                    projectUsersIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
+                                    loadFeedsGlobalState(
+                                        admin,
+                                        admin,
+                                        creator,
+                                        { ...projectData, id: finalProjectId },
+                                        [],
+                                        null
+                                    )
+                                } catch (_) {}
+                                // Normalize estimations so CF feeds helper gets proper values
+                                const normalizedTaskForFeeds = (() => {
+                                    try {
+                                        const estimations =
+                                            updatedTask && updatedTask.estimations
+                                                ? { ...updatedTask.estimations }
+                                                : { Open: 0 }
+                                        if (estimations['-1'] === undefined) {
+                                            const openValue = estimations['Open']
+                                            estimations['-1'] = typeof openValue === 'number' ? openValue : 0
+                                        }
+                                        return { ...updatedTask, estimations }
+                                    } catch (_) {
+                                        return updatedTask
+                                    }
+                                })()
+                                await feedsTasks.createTaskUpdatedFeed(
+                                    finalProjectId,
+                                    normalizedTaskForFeeds,
+                                    taskId,
+                                    batch,
+                                    creator,
+                                    true,
+                                    { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
+                                )
+                            } else {
+                                console.warn('TaskService: Feeds module missing createTaskUpdatedFeed function (batch)')
+                            }
+                        } catch (feedPersistError) {
+                            console.error(
+                                'TaskService: Failed to enqueue update feeds via pipeline (batch):',
+                                feedPersistError
+                            )
+                        }
+                    }
+                } else {
+                    console.log('TaskService: Not adding update feed data:', {
+                        hasFeedData: !!feedData,
+                        enableFeeds: this.options.enableFeeds,
+                        taskId,
+                    })
+                }
+
+                // Commit batch if we created it
+                if (!externalBatch && batch.commit) {
+                    await batch.commit()
+                }
+            }
+
+            return {
+                ...updateResult,
+                persisted: true,
+                projectId: finalProjectId,
+            }
+        } catch (error) {
+            console.error('Task update persistence failed:', error)
+            throw new Error(`Failed to persist task update: ${error.message}`)
+        }
+    }
+
+    /**
+     * Complete task update with persistence
+     * @param {Object} params - Task update parameters
+     * @param {Object} context - Update context
+     * @param {Object} options - Additional options
+     * @returns {Promise<Object>} Complete update result
+     */
+    async updateAndPersistTask(params, context = {}, options = {}) {
+        const updateResult = await this.updateTask(params, context)
+
+        // Only persist if there are actual changes
+        if (updateResult.changes.length > 0) {
+            // Ensure projectId is available for persistence
+            const persistOptions = {
+                ...options,
+                projectId: options.projectId || params.projectId || context.projectId,
+                // Pass feedUser forward so persistence can generate inner feeds in CF
+                feedUser: params.feedUser,
+            }
+
+            return await this.persistTaskUpdate(updateResult, persistOptions)
+        }
+
+        return {
+            ...updateResult,
+            persisted: false,
+            message: updateResult.message + ' (no database changes needed)',
+        }
+    }
+
+    /**
      * Update task service configuration
      * @param {Object} newOptions - New configuration options
      */
