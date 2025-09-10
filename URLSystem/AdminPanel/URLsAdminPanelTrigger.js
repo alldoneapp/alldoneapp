@@ -8,6 +8,7 @@ class URLsAdminPanelTrigger {
         return {
             [URL_ADMIN_PANEL_USER]: new RegExp('^/admin/user$'),
             [URL_ADMIN_PANEL_ASSISTANTS]: new RegExp('^/admin/assistants$'),
+            URL_ADMIN_PANEL_DEFAULT: new RegExp('^/admin$'),
         }
     }
 
@@ -32,6 +33,8 @@ class URLsAdminPanelTrigger {
             case URL_ADMIN_PANEL_USER:
                 return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_USER)
             case URL_ADMIN_PANEL_ASSISTANTS:
+                return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_ASSISTANTS)
+            case 'URL_ADMIN_PANEL_DEFAULT':
                 return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_ASSISTANTS)
         }
     }

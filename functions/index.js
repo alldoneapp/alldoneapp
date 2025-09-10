@@ -80,7 +80,7 @@ exports.mcpServer = onRequest(
 exports.wellKnownOAuth = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -136,7 +136,7 @@ exports.wellKnownOAuth = onRequest(
 exports.oauthAuthorizationServer = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -171,7 +171,7 @@ exports.oauthAuthorizationServer = onRequest(
 exports.oauthProtectedResource = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MB',
         region: 'europe-west1',
         cors: {
             origin: true,

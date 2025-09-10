@@ -9,7 +9,7 @@ import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import useOnHover from '../../hooks/UseOnHover'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
-import { DV_TAB_ADMIN_PANEL_USER } from '../../utils/TabNavigationConstants'
+import { DV_TAB_ADMIN_PANEL_ASSISTANTS } from '../../utils/TabNavigationConstants'
 import { navigateToAdmin } from '../../redux/actions'
 import NavigationService from '../../utils/NavigationService'
 
@@ -21,7 +21,7 @@ export default function AdminItem() {
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.Marketplace')
 
     const onPress = () => {
-        dispatch(navigateToAdmin({ selectedNavItem: DV_TAB_ADMIN_PANEL_USER }))
+        dispatch(navigateToAdmin({ selectedNavItem: DV_TAB_ADMIN_PANEL_ASSISTANTS }))
         NavigationService.navigate('AdminPanelView')
     }
 
