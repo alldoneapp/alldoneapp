@@ -722,6 +722,13 @@ class TaskService {
         let feedData = null
         if (this.options.enableFeeds && feedUser && changes.length > 0) {
             try {
+                console.log('TaskService: Generating update feeds for task:', {
+                    taskId,
+                    projectId,
+                    changes,
+                    enableFeeds: this.options.enableFeeds,
+                    hasFeedUser: !!feedUser,
+                })
                 // Generate entry text based on changes
                 let entryText = 'updated task'
                 if (changes.length > 0) {
@@ -763,12 +770,25 @@ class TaskService {
                     taskId,
                     feedUser,
                     taskFeedObject,
+                    updateType: undefined, // Use default FEED_TASK_UPDATED
                     entryText,
                 })
+
+                console.log('TaskService: Successfully created update feed data:', {
+                    hasFeedData: !!feedData,
+                    feedId: feedData?.feedId,
+                    entryText: feedData?.feed?.entryText,
+                })
             } catch (feedError) {
-                console.error('Feed creation failed for task update:', feedError)
+                console.error('TaskService: Feed creation failed for task update:', feedError)
                 // Continue without feed if it fails
             }
+        } else {
+            console.log('TaskService: Skipping feed generation for update:', {
+                enableFeeds: this.options.enableFeeds,
+                hasFeedUser: !!feedUser,
+                changesCount: changes.length,
+            })
         }
 
         return {
@@ -857,6 +877,12 @@ class TaskService {
 
                 // Persist feeds using Cloud Functions feeds pipeline when available
                 if (feedData && this.options.enableFeeds) {
+                    console.log('TaskService: Starting feed persistence for update (direct):', {
+                        taskId,
+                        projectId: finalProjectId,
+                        isCloudFunction: this.options.isCloudFunction,
+                        hasFeedData: !!feedData,
+                    })
                     if (this.options.isCloudFunction) {
                         try {
                             const admin = require('firebase-admin')
@@ -987,6 +1013,12 @@ class TaskService {
 
                 // Add feed data to batch if available
                 if (feedData && this.options.enableFeeds) {
+                    console.log('TaskService: Starting feed persistence for update (batch):', {
+                        taskId,
+                        projectId: finalProjectId,
+                        isCloudFunction: this.options.isCloudFunction,
+                        hasFeedData: !!feedData,
+                    })
                     console.log('TaskService: Adding update feed data to batch for task:', taskId)
                     if (batch.feedObjects) {
                         // Store feed data with context needed for persistence

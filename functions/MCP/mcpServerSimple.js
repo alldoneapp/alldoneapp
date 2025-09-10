@@ -1009,6 +1009,7 @@ class AlldoneSimpleMCPServer {
         const feedUser = { uid: userId, id: userId }
 
         try {
+            console.log('MCP: Using TaskService for task update with feed generation')
             // Use TaskService for update with proper feed generation
             const result = await taskService.updateAndPersistTask({
                 taskId: currentTask.id,
