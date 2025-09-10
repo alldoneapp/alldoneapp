@@ -364,6 +364,15 @@ const firebaseConfig = {
     measurementId: GOOGLE_ANALYTICS_KEY, // This is for production
 }
 
+// Helper function to determine if we should use Firebase Functions emulator
+function shouldUseEmulator() {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    const forceEmulator = window.location.search.includes('emulator=true')
+    const isDev = __DEV__ || process.env.NODE_ENV === 'development'
+
+    return isLocalhost || forceEmulator || isDev
+}
+
 export function initFirebase(onComplete) {
     // Load only critical modules first for faster initialization
     require('firebase/auth')
@@ -372,20 +381,22 @@ export function initFirebase(onComplete) {
     firebase.initializeApp(firebaseConfig)
     db = firebase.firestore()
 
-    // Connect to Firebase Functions emulator if running in development
-    // Force emulator connection for localhost testing
+    // Determine if we should use Firebase Functions emulator
+    const useEmulator = shouldUseEmulator()
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    const forceEmulator = true // TEMPORARILY FORCE EMULATOR FOR TESTING
+    const forceEmulator = window.location.search.includes('emulator=true')
 
-    console.log('🔍 Emulator connection check:', {
+    console.log('🔍 Firebase Functions connection check:', {
         hostname: window.location.hostname,
         isLocalhost,
         __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
         NODE_ENV: typeof process !== 'undefined' ? process.env.NODE_ENV : 'undefined',
         forceEmulator,
+        useEmulator,
+        environment: CURRENT_ENVIORNMENT,
     })
 
-    if (__DEV__ || process.env.NODE_ENV === 'development' || isLocalhost || forceEmulator) {
+    if (useEmulator) {
         try {
             // Connect to Functions emulator only
             require('firebase/functions')
@@ -6820,13 +6831,13 @@ export async function runHttpsCallableFunction(functionName, data) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)
         require('firebase/functions')
 
-        // Check if we should use emulator
-        const isLocalhost = window.location.hostname === 'localhost'
-        const forceEmulator = window.location.search.includes('emulator=true')
-        if (__DEV__ || process.env.NODE_ENV === 'development' || isLocalhost || forceEmulator) {
-            functions = firebase.app().functions()
+        // Use the same helper function for consistent environment detection
+        const useEmulator = shouldUseEmulator()
+
+        if (useEmulator) {
+            functions = firebase.app().functions('europe-west1')
             functions.useEmulator('127.0.0.1', 5001)
-            console.log('🔧 Emergency functions initialization completed with emulator (us-central1)')
+            console.log('🔧 Emergency functions initialization completed with emulator (europe-west1)')
         } else {
             functions = firebase.app().functions('europe-west1')
             console.log('🔧 Emergency functions initialization completed for production (europe-west1)')
