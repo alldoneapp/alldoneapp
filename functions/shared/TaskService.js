@@ -24,8 +24,8 @@ async function loadDependencies() {
                 TaskFeedGenerator = require('./TaskFeedGenerator')
                 // Import getNextTaskId for human readable ID generation
                 try {
-                    const projectsFirestore = require('../../utils/backends/Projects/projectsFirestore')
-                    getNextTaskId = projectsFirestore.getNextTaskId
+                    const taskIdGenerator = require('./taskIdGenerator')
+                    getNextTaskId = taskIdGenerator.getNextTaskId
                 } catch (error) {
                     console.warn('TaskService: Failed to load getNextTaskId function:', error.message)
                     getNextTaskId = null
@@ -42,11 +42,18 @@ async function loadDependencies() {
                 TaskFeedGenerator = tfg
                 // Try to import getNextTaskId for React Native/Web
                 try {
+                    // In React Native/Web environment, try the original path first
                     const projectsFirestore = await import('../../utils/backends/Projects/projectsFirestore')
                     getNextTaskId = projectsFirestore.getNextTaskId
                 } catch (error) {
-                    console.warn('TaskService: Failed to load getNextTaskId function:', error.message)
-                    getNextTaskId = null
+                    // Fallback to Cloud Functions version
+                    try {
+                        const taskIdGenerator = await import('./taskIdGenerator')
+                        getNextTaskId = taskIdGenerator.getNextTaskId
+                    } catch (fallbackError) {
+                        console.warn('TaskService: Failed to load getNextTaskId function:', fallbackError.message)
+                        getNextTaskId = null
+                    }
                 }
             }
         } catch (error) {
