@@ -1,22 +1,17 @@
 const admin = require('firebase-admin')
+const { getEnvFunctions } = require('../envFunctionsHelper')
 
 /**
  * Service for sending WhatsApp messages using Twilio API
  */
 class TwilioWhatsAppService {
     constructor() {
-        // Load environment variables from .env file if in emulator
-        if (process.env.FUNCTIONS_EMULATOR) {
-            require('dotenv').config()
-        }
+        // Load environment variables using our unified helper
+        const envFunctions = getEnvFunctions()
 
-        // Try Firebase Functions config first, then environment variables
-        const functions = require('firebase-functions')
-
-        this.twilioAccountSid = functions.config().twilio?.account_sid || process.env.TWILIO_ACCOUNT_SID
-        this.twilioAuthToken = functions.config().twilio?.auth_token || process.env.TWILIO_AUTH_TOKEN
-        this.twilioWhatsAppFrom =
-            functions.config().twilio?.whatsapp_from || process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'
+        this.twilioAccountSid = envFunctions.TWILIO_ACCOUNT_SID
+        this.twilioAuthToken = envFunctions.TWILIO_AUTH_TOKEN
+        this.twilioWhatsAppFrom = envFunctions.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'
 
         // Initialize Twilio client lazily
         this.client = null
