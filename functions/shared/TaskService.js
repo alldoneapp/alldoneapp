@@ -11,7 +11,7 @@
  */
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
-let TaskModelBuilder, TaskValidator, TaskFeedGenerator
+let TaskModelBuilder, TaskValidator, TaskFeedGenerator, getNextTaskId
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
@@ -22,6 +22,14 @@ async function loadDependencies() {
                 TaskModelBuilder = require('./TaskModelBuilder')
                 TaskValidator = require('./TaskValidator')
                 TaskFeedGenerator = require('./TaskFeedGenerator')
+                // Import getNextTaskId for human readable ID generation
+                try {
+                    const projectsFirestore = require('../../utils/backends/Projects/projectsFirestore')
+                    getNextTaskId = projectsFirestore.getNextTaskId
+                } catch (error) {
+                    console.warn('TaskService: Failed to load getNextTaskId function:', error.message)
+                    getNextTaskId = null
+                }
             } else {
                 // Fall back to ES6 imports (React Native/Web)
                 const [tmb, tv, tfg] = await Promise.all([
@@ -32,6 +40,14 @@ async function loadDependencies() {
                 TaskModelBuilder = tmb
                 TaskValidator = tv
                 TaskFeedGenerator = tfg
+                // Try to import getNextTaskId for React Native/Web
+                try {
+                    const projectsFirestore = await import('../../utils/backends/Projects/projectsFirestore')
+                    getNextTaskId = projectsFirestore.getNextTaskId
+                } catch (error) {
+                    console.warn('TaskService: Failed to load getNextTaskId function:', error.message)
+                    getNextTaskId = null
+                }
             }
         } catch (error) {
             console.error('Failed to load TaskService dependencies:', error)
@@ -142,10 +158,24 @@ class TaskService {
             throw new Error(`Failed to generate valid task ID: "${taskId}"`)
         }
 
+        // Generate human readable ID if projectId is provided and function is available
+        let humanReadableId = params.humanReadableId || null
+        if (!humanReadableId && params.projectId && getNextTaskId) {
+            try {
+                humanReadableId = await getNextTaskId(params.projectId)
+                console.log('TaskService: Generated human readable ID:', humanReadableId)
+            } catch (error) {
+                console.warn('TaskService: Failed to generate human readable ID:', error.message)
+                // Continue without human readable ID if generation fails
+                humanReadableId = null
+            }
+        }
+
         const task = TaskModelBuilder.createTaskObject({
             ...params,
             taskId,
             now,
+            humanReadableId,
             moment: this.options.moment,
         })
 

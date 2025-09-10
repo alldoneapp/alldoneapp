@@ -65,6 +65,7 @@ function buildTaskObject({
     genericData = null,
     suggestedBy = null,
     autoEstimation = null,
+    humanReadableId = null,
 }) {
     // Validation
     if (!name || !name.trim()) {
@@ -184,6 +185,9 @@ function buildTaskObject({
         // Review workflow
         inReview: null,
         toReview: null,
+
+        // Human readable ID (if generated)
+        humanReadableId: humanReadableId,
     }
 
     return task
