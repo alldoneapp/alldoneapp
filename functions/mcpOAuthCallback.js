@@ -66,7 +66,7 @@ async function storeUserAuthByEmail(email, userId, sessionId) {
 exports.mcpOAuthCallback = onRequest(
     {
         timeoutSeconds: 300,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,

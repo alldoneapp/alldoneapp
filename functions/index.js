@@ -50,7 +50,7 @@ try {
 exports.mcpServer = onRequest(
     {
         timeoutSeconds: 300,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: {
             origin: true, // Allow all origins for debugging
@@ -80,7 +80,7 @@ exports.mcpServer = onRequest(
 exports.wellKnownOAuth = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -136,7 +136,7 @@ exports.wellKnownOAuth = onRequest(
 exports.oauthAuthorizationServer = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -171,7 +171,7 @@ exports.oauthAuthorizationServer = onRequest(
 exports.oauthProtectedResource = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -201,7 +201,7 @@ exports.oauthProtectedResource = onRequest(
 exports.authorize = onRequest(
     {
         timeoutSeconds: 300,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -262,7 +262,7 @@ exports.authorize = onRequest(
 exports.token = onRequest(
     {
         timeoutSeconds: 300,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -326,7 +326,7 @@ exports.token = onRequest(
 exports.register = onRequest(
     {
         timeoutSeconds: 300,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -379,7 +379,7 @@ exports.register = onRequest(
 exports.updateCreditCardNumberSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -398,7 +398,7 @@ exports.updateCreditCardNumberSecondGen = onCall(
 exports.createCompanySubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -436,7 +436,7 @@ exports.createCompanySubscriptionSecondGen = onCall(
 exports.removeUserFromSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -455,7 +455,7 @@ exports.removeUserFromSubscriptionSecondGen = onCall(
 exports.addedPaidUsersToSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -474,7 +474,7 @@ exports.addedPaidUsersToSubscriptionSecondGen = onCall(
 exports.addedPaidUsersWhenActivateSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -493,7 +493,7 @@ exports.addedPaidUsersWhenActivateSubscriptionSecondGen = onCall(
 exports.removePaidUsersFromSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -512,7 +512,7 @@ exports.removePaidUsersFromSubscriptionSecondGen = onCall(
 exports.addedUsersToSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -531,7 +531,7 @@ exports.addedUsersToSubscriptionSecondGen = onCall(
 exports.addedUsersWhenActivateSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -555,7 +555,7 @@ exports.addedUsersWhenActivateSubscriptionSecondGen = onCall(
 exports.cancelSubscriptionSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -574,7 +574,7 @@ exports.cancelSubscriptionSecondGen = onCall(
 exports.webhookSecondGen = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -589,7 +589,7 @@ exports.webhookSecondGen = onRequest(
 exports.checkUserPremiumStatus = onCall(
     {
         timeoutSeconds: 30,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -609,7 +609,7 @@ exports.checkUserPremiumStatus = onCall(
 exports.createStripePortalSession = onCall(
     {
         timeoutSeconds: 30,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -629,7 +629,7 @@ exports.createStripePortalSession = onCall(
 exports.linkStripeAccount = onCall(
     {
         timeoutSeconds: 30,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -649,7 +649,7 @@ exports.linkStripeAccount = onCall(
 exports.handleStripeWebhook = onRequest(
     {
         timeoutSeconds: 30,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -662,7 +662,7 @@ exports.dailyPremiumStatusCheck = onSchedule(
     {
         schedule: '0 2 * * *',
         timeZone: 'UTC',
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
     },
     async context => {
@@ -674,7 +674,7 @@ exports.dailyPremiumStatusCheck = onSchedule(
 exports.webhook = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -687,7 +687,7 @@ exports.webhook = onRequest(
 exports.updateMollieSubscription = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -706,7 +706,7 @@ exports.updateMollieSubscription = onCall(
 exports.sendMonthlyInvoiceSecondGen = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -719,7 +719,7 @@ exports.sendMonthlyInvoiceSecondGen = onRequest(
 exports.sendMonthlyInvoice = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -736,7 +736,7 @@ exports.resetUserFreePlanSecondGen = onSchedule(
         timeZone: 'Europe/Berlin',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
     },
     async event => {
         const admin = require('firebase-admin')
@@ -753,7 +753,7 @@ exports.autoCancelSubscriptionsSecondGen = onSchedule(
         timeZone: 'UTC',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
     },
     async event => {
         const { autoCancelSubscription } = require('./Payment/CancelSubscriptions')
@@ -766,7 +766,7 @@ exports.autoCancelSubscriptionsSecondGen = onSchedule(
 exports.indexProjectsRecordsInAlgoliaSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -785,7 +785,7 @@ exports.indexProjectsRecordsInAlgoliaSecondGen = onCall(
 exports.proccessAlgoliaRecordsWhenUnlockGoalSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -809,7 +809,7 @@ exports.checkAndRemoveInactiveObjectsFromAlgoliaSecondGen = onSchedule(
         timeZone: 'Europe/Berlin',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
     },
     async event => {
         const { checkAndRemoveInactiveObjectsFromAlgolia } = require('./AlgoliaGlobalSearchHelper')
@@ -825,7 +825,7 @@ exports.checkAndRemoveProjectsWithoutActivityFromAlgoliaSecondGen = onSchedule(
         timeZone: 'UTC',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
     },
     async event => {
         const { checkAndRemoveProjectsWithoutActivityFromAlgolia } = require('./AlgoliaGlobalSearchHelper')
@@ -837,7 +837,7 @@ exports.onStartIndexingAlgoliaTasksSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/tasks`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -852,7 +852,7 @@ exports.onStartIndexingAlgoliaGoalsSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/goals`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -867,7 +867,7 @@ exports.onStartIndexingAlgoliaNotesSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/notes`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -882,7 +882,7 @@ exports.onStartIndexingAlgoliaContactsSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/contacts`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -897,7 +897,7 @@ exports.onStartIndexingAlgoliaAssistantsSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/assistants`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -912,7 +912,7 @@ exports.onStartIndexingAlgoliaChatsSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/chats`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -927,7 +927,7 @@ exports.onStartIndexingAlgoliaUsersSecondGen = onDocumentCreated(
     {
         document: `algoliaIndexation/{projectId}/objectTypes/users`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -942,7 +942,7 @@ exports.onEndIndexingAlgoliaFullSearchSecondGen = onDocumentUpdated(
     {
         document: `algoliaFullSearchIndexation/{projectId}`,
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -958,7 +958,7 @@ exports.onEndIndexingAlgoliaFullSearchSecondGen = onDocumentUpdated(
 exports.sendUserJoinsToGuideEmailSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -984,7 +984,7 @@ exports.sendUserJoinsToGuideEmailSecondGen = onCall(
 exports.copyTemplateObjectsSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1035,7 +1035,7 @@ exports.updateTemplatesObjectsDatesSecondGen = onSchedule(
         timeZone: 'Europe/Berlin',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
     },
     async event => {
         const admin = require('firebase-admin')
@@ -1053,7 +1053,7 @@ exports.checkIfEditedNotesNeedBeCopiedSecondGen = onSchedule(
         timeZone: 'Europe/Berlin',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
     },
     async event => {
         const admin = require('firebase-admin')
@@ -1069,7 +1069,7 @@ exports.checkIfDeletedNotesNeedBeCleanedSecondGen = onSchedule(
         timeZone: 'Europe/Berlin',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
     },
     async event => {
         const admin = require('firebase-admin')
@@ -1083,7 +1083,7 @@ exports.checkIfDeletedNotesNeedBeCleanedSecondGen = onSchedule(
 exports.earnGoldSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1107,7 +1107,7 @@ exports.resetDailyGoldLimitSecondGen = onSchedule(
         timeZone: 'UTC',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
     },
     async event => {
         const { resetDailyGoldLimit } = require('./Gold/goldHelper')
@@ -1122,7 +1122,7 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
         timeZone: 'Europe/Berlin',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
     },
     async context => {
         const { addMonthlyGoldToAllUsers } = require('./Gold/goldHelper')
@@ -1135,7 +1135,7 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
 exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1189,7 +1189,7 @@ exports.askToBotSecondGen = onCall(
 exports.generateBotWelcomeMessageSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1215,7 +1215,7 @@ exports.generateBotWelcomeMessageSecondGen = onCall(
 exports.generateBotWelcomeMessageToUserSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1254,7 +1254,7 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
 exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1294,7 +1294,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
 exports.generateBotAdvaiceSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1333,7 +1333,7 @@ exports.generateBotAdvaiceSecondGen = onCall(
 exports.generateBotDailyTopicCommentSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1378,7 +1378,7 @@ exports.generateBotDailyTopicCommentSecondGen = onCall(
 exports.convertVideosSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '4GB',
+        memory: '4GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1399,7 +1399,7 @@ exports.removeOldVideosSecondGen = onSchedule(
     {
         schedule: '5 0 * * 0',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1415,7 +1415,7 @@ exports.onCreateProjectSecondGen = onDocumentCreated(
     {
         document: `/projects/{projectId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1429,7 +1429,7 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
     {
         document: 'projects/{projectId}',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1447,7 +1447,7 @@ exports.onDeleteProjectSecondGen = onDocumentDeleted(
     {
         document: 'projects/{projectId}',
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1463,7 +1463,7 @@ exports.onCreateUserSecondGen = onDocumentCreated(
     {
         document: `/users/{userId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1478,7 +1478,7 @@ exports.onUpdateUserSecondGen = onDocumentUpdated(
     {
         document: 'users/{userId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1492,7 +1492,7 @@ exports.onDeleteUserSecondGen = onDocumentDeleted(
     {
         document: 'users/{userId}',
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1509,7 +1509,7 @@ exports.onCreateChatSecondGen = onDocumentCreated(
     {
         document: `chatObjects/{projectId}/chats/{chatId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1524,7 +1524,7 @@ exports.onUpdateChatSecondGen = onDocumentUpdated(
     {
         document: 'chatObjects/{projectId}/chats/{chatId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1538,7 +1538,7 @@ exports.onDeleteChatSecondGen = onDocumentDeleted(
     {
         document: 'chatObjects/{projectId}/chats/{chatId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1555,7 +1555,7 @@ exports.onCreateTaskSecondGen = onDocumentCreated(
     {
         document: `items/{projectId}/tasks/{taskId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1570,7 +1570,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
         document: 'items/{projectId}/tasks/{taskId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1584,7 +1584,7 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
     {
         document: 'items/{projectId}/tasks/{taskId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1601,7 +1601,7 @@ exports.onCreateAssistantSecondGen = onDocumentCreated(
     {
         document: `assistants/{projectId}/items/{assistantId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1616,7 +1616,7 @@ exports.onUpdateAssistantSecondGen = onDocumentUpdated(
     {
         document: 'assistants/{projectId}/items/{assistantId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1630,7 +1630,7 @@ exports.onDeleteAssistantSecondGen = onDocumentDeleted(
     {
         document: 'assistants/{projectId}/items/{assistantId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1647,7 +1647,7 @@ exports.onCreateAssistantTaskSecondGen = onDocumentCreated(
     {
         document: `assistantTasks/{projectId}/{assistantId}/{assistantTaskId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1662,7 +1662,7 @@ exports.onUpdateAssistantTaskSecondGen = onDocumentUpdated(
     {
         document: `assistantTasks/{projectId}/{assistantId}/{assistantTaskId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1676,7 +1676,7 @@ exports.onDeleteAssistantTaskSecondGen = onDocumentDeleted(
     {
         document: `assistantTasks/{projectId}/{assistantId}/{assistantTaskId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1692,7 +1692,7 @@ exports.onCreateContactSecondGen = onDocumentCreated(
     {
         document: `projectsContacts/{projectId}/contacts/{contactId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1707,7 +1707,7 @@ exports.onUpdateContactSecondGen = onDocumentUpdated(
     {
         document: 'projectsContacts/{projectId}/contacts/{contactId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1721,7 +1721,7 @@ exports.onDeleteContactSecondGen = onDocumentDeleted(
     {
         document: 'projectsContacts/{projectId}/contacts/{contactId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1738,7 +1738,7 @@ exports.onCreateGoalSecondGen = onDocumentCreated(
     {
         document: `goals/{projectId}/items/{goalId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1753,7 +1753,7 @@ exports.onUpdateGoalSecondGen = onDocumentUpdated(
     {
         document: 'goals/{projectId}/items/{goalId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1767,7 +1767,7 @@ exports.onDeleteGoalSecondGen = onDocumentDeleted(
     {
         document: 'goals/{projectId}/items/{goalId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1784,7 +1784,7 @@ exports.onDeleteSkillSecondGen = onDocumentDeleted(
     {
         document: 'skills/{projectId}/items/{skillId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1801,7 +1801,7 @@ exports.onCreateNoteSecondGen = onDocumentCreated(
     {
         document: `noteItems/{projectId}/notes/{noteId}`,
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1816,7 +1816,7 @@ exports.onUpdateNoteSecondGen = onDocumentUpdated(
     {
         document: 'noteItems/{projectId}/notes/{noteId}',
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1830,7 +1830,7 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
     {
         document: 'noteItems/{projectId}/notes/{noteId}',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -1846,7 +1846,7 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
 exports.deleteUserSecondGen = onCall(
     {
         timeoutSeconds: 30,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1886,7 +1886,7 @@ exports.sendPushNotificationSecondGen = onCall(
 exports.onRemoveWorkstreamSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1906,7 +1906,7 @@ exports.onRemoveWorkstreamSecondGen = onCall(
 exports.addCalendarEventsToTasksSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         minInstances: 0, //inProduction ? 5 : 1,
         region: 'europe-west1',
         cors: true,
@@ -1926,7 +1926,7 @@ exports.addCalendarEventsToTasksSecondGen = onCall(
 exports.removeOldCalendarTasksSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -1945,7 +1945,7 @@ exports.removeOldCalendarTasksSecondGen = onCall(
 exports.onCopyProjectSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -2047,7 +2047,7 @@ exports.resetInvoiceNumbersSecondGen = onSchedule(
         timeZone: 'UTC',
         region: 'europe-west1',
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
     },
     async event => {
         const { resetInvoiceNumbers } = require('./Utils/invoiceNumbers.js')
@@ -2071,7 +2071,7 @@ exports.checkForDemoteStickyNotesSecondGen = onSchedule(
     {
         schedule: 'every 30 minutes',
         timeoutSeconds: 540,
-        memory: '2GB',
+        memory: '2GiB',
         region: 'europe-west1',
     },
     async event => {
@@ -2108,7 +2108,7 @@ exports.sanityCheckSecondGen = onRequest(
 exports.getLinkPreviewDataSecondGen = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         minInstances: 0, //inProduction ? 5 : 1,
         region: 'europe-west1',
     },
@@ -2126,7 +2126,7 @@ exports.checkRecurringAssistantTasks = onSchedule(
     {
         schedule: '*/5 * * * *', // Run every 5 minutes
         timeoutSeconds: 540,
-        memory: '1GB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async event => {
