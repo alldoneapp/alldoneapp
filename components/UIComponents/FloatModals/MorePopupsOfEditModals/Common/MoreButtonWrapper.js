@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import MoreButton from './MoreButton'
@@ -38,22 +38,38 @@ function MoreButtonWrapper(
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const [isOpen, setIsOpen] = useState(false)
     const dispatch = useDispatch()
+    const timeoutsRef = useRef([])
+    const isUnmountedRef = useRef(false)
 
     useImperativeHandle(ref, () => ({
         close: () => closeModal(),
     }))
 
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+            timeoutsRef.current.forEach(id => clearTimeout(id))
+            timeoutsRef.current = []
+        }
+    }, [])
+
+    const safeSetIsOpen = value => {
+        if (!isUnmountedRef.current) {
+            setIsOpen(value)
+        }
+    }
+
     const openModal = () => {
         storeModal(MORE_BUTTON_EDITS_MODAL_ID)
         dispatch(showFloatPopup())
-        setIsOpen(true)
+        safeSetIsOpen(true)
         onOpenModal?.()
     }
 
     const closeModal = () => {
         removeModal(MORE_BUTTON_EDITS_MODAL_ID)
         dispatch(hideFloatPopup())
-        setIsOpen(false)
+        safeSetIsOpen(false)
         onCloseModal?.()
     }
 
@@ -61,34 +77,48 @@ function MoreButtonWrapper(
         e?.preventDefault?.()
         e?.stopPropagation?.()
         if (!openModals[MENTION_MODAL_ID]) {
-            setTimeout(() => {
+            const id = setTimeout(() => {
                 closeModal()
             })
+            timeoutsRef.current.push(id)
         }
     }
 
     return (
         <View style={wrapperStyle}>
-            <Popover
-                content={
-                    customModal || (
-                        <MoreButtonModal
-                            formType={formType}
-                            object={object}
-                            objectType={objectType}
-                            closePopover={closeModal}
-                            delayClosePopover={delayCloseModal}
-                            children={children}
-                        />
-                    )
-                }
-                align={modalAlign ? modalAlign : 'end'}
-                position={['bottom', 'left', 'right', 'top']}
-                isOpen={isOpen}
-                contentLocation={isMiddleScreen ? null : undefined}
-                padding={4}
-                onClickOutside={delayCloseModal}
-            >
+            {isOpen ? (
+                <Popover
+                    content={
+                        customModal || (
+                            <MoreButtonModal
+                                formType={formType}
+                                object={object}
+                                objectType={objectType}
+                                closePopover={closeModal}
+                                delayClosePopover={delayCloseModal}
+                                children={children}
+                            />
+                        )
+                    }
+                    align={modalAlign ? modalAlign : 'end'}
+                    position={['bottom', 'left', 'right', 'top']}
+                    isOpen={true}
+                    contentLocation={isMiddleScreen ? null : undefined}
+                    padding={4}
+                    onClickOutside={delayCloseModal}
+                    disableReposition
+                >
+                    <MoreButton
+                        onPress={openModal}
+                        buttonStyle={buttonStyle}
+                        disabled={disabled}
+                        shortcut={shortcut}
+                        inMentionModal={inMentionModal}
+                        noBorder={noBorder}
+                        iconSize={iconSize}
+                    />
+                </Popover>
+            ) : (
                 <MoreButton
                     onPress={openModal}
                     buttonStyle={buttonStyle}
@@ -98,7 +128,7 @@ function MoreButtonWrapper(
                     noBorder={noBorder}
                     iconSize={iconSize}
                 />
-            </Popover>
+            )}
         </View>
     )
 }

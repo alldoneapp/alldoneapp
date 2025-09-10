@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -11,38 +11,58 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const [isOpen, setIsOpen] = useState(false)
+    const isUnmountedRef = useRef(false)
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+        }
+    }, [])
+
+    const safeSetIsOpen = value => {
+        if (!isUnmountedRef.current) {
+            setIsOpen(value)
+        }
+    }
 
     const openModal = () => {
-        setIsOpen(true)
+        safeSetIsOpen(true)
         dispatch(showFloatPopup())
     }
 
     const closeModal = () => {
-        setIsOpen(false)
+        safeSetIsOpen(false)
         dispatch(hideFloatPopup())
     }
 
     return (
-        <Popover
-            content={
-                gold > 0 ? (
-                    <PreConfigTaskGeneratorModal
-                        projectId={projectId}
-                        closeModal={closeModal}
-                        task={task}
-                        assistant={assistant}
-                    />
-                ) : (
-                    <RunOutOfGoldAssistantModal closeModal={closeModal} />
-                )
-            }
-            align={'start'}
-            position={['bottom', 'left', 'right', 'top']}
-            onClickOutside={closeModal}
-            isOpen={isOpen}
-            contentLocation={null}
-        >
-            <OptionButton text={text} icon={icon} containerStyle={containerStyle} onPress={openModal} />
-        </Popover>
+        <>
+            {isOpen ? (
+                <Popover
+                    content={
+                        gold > 0 ? (
+                            <PreConfigTaskGeneratorModal
+                                projectId={projectId}
+                                closeModal={closeModal}
+                                task={task}
+                                assistant={assistant}
+                            />
+                        ) : (
+                            <RunOutOfGoldAssistantModal closeModal={closeModal} />
+                        )
+                    }
+                    align={'start'}
+                    position={['bottom', 'left', 'right', 'top']}
+                    onClickOutside={closeModal}
+                    isOpen
+                    contentLocation={null}
+                    disableReposition
+                >
+                    <OptionButton text={text} icon={icon} containerStyle={containerStyle} onPress={openModal} />
+                </Popover>
+            ) : (
+                <OptionButton text={text} icon={icon} containerStyle={containerStyle} onPress={openModal} />
+            )}
+        </>
     )
 }

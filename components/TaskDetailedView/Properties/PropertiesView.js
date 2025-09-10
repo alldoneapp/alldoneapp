@@ -31,6 +31,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import Premium from './Premium'
 import InFocus from './InFocus'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
+import TaskId from './TaskId'
 
 export default function PropertiesView({ project, task, loggedUser }) {
     const [creator, setCreator] = useState({})
@@ -196,6 +197,7 @@ export default function PropertiesView({ project, task, loggedUser }) {
                         )}
 
                         <CreatedBy createdDate={task.created} creator={creator} />
+                        <TaskId task={task} />
                     </View>
                 </View>
             )}

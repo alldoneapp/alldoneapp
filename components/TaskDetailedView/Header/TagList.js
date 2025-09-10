@@ -9,6 +9,7 @@ import { FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import CopyLinkButton from '../../UIControls/CopyLinkButton'
 import PrivacyTag from '../../Tags/PrivacyTag'
 import ProjectTag from '../../Tags/ProjectTag'
+import TaskIdTag from '../../Tags/TaskIdTag'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
@@ -35,6 +36,17 @@ export default function TagList({ projectId, task }) {
                 <View style={{ marginRight: 12 }}>
                     <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
                 </View>
+                {task.humanReadableId && (
+                    <View style={{ marginRight: 12 }}>
+                        <TaskIdTag
+                            taskId={task.id}
+                            projectId={projectId}
+                            humanReadableId={task.humanReadableId}
+                            disabled={!accessGranted}
+                            isMobile={isMobile}
+                        />
+                    </View>
+                )}
                 <View style={{ marginRight: 12 }}>
                     <PrivacyTag
                         projectId={projectId}
