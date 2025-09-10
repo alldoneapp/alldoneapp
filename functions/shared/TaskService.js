@@ -935,7 +935,11 @@ class TaskService {
                                     feedsBatch,
                                     creator,
                                     true,
-                                    { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
+                                    {
+                                        feedCreator: creator,
+                                        project: { id: finalProjectId, userIds: projectUsersIds },
+                                        entryText: feedData.feed.entryText,
+                                    }
                                 )
                                 if (feedsBatch.commit) {
                                     await feedsBatch.commit()
@@ -1081,7 +1085,11 @@ class TaskService {
                                     batch,
                                     creator,
                                     true,
-                                    { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
+                                    {
+                                        feedCreator: creator,
+                                        project: { id: finalProjectId, userIds: projectUsersIds },
+                                        entryText: feedData.feed.entryText,
+                                    }
                                 )
                             } else {
                                 console.warn('TaskService: Feeds module missing createTaskUpdatedFeed function (batch)')

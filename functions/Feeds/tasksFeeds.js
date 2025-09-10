@@ -21,6 +21,7 @@ const {
     FEED_TASK_HIGHLIGHTED_CHANGED,
     FEED_TASK_RECURRENCE_CHANGED,
     FEED_TASK_ASSIGNEE_ESTIMATION_CHANGED,
+    FEED_TASK_UPDATED,
 } = require('./FeedsConstants')
 const { generateTaskObjectModel, updateTasksFeedsAmountOfSubtasks } = require('./tasksFeedsHelper')
 const {
@@ -470,6 +471,59 @@ async function createTaskAssigneeEstimationChangedFeed(
     )
 }
 
+async function createTaskUpdatedFeed(
+    projectId,
+    task,
+    taskId,
+    batch,
+    feedUser,
+    needGenerateNotification,
+    contextOverrides = {}
+) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
+    if (!taskFeedObject) return
+
+    // Use provided entry text or create a generic one with subtask awareness
+    let entryText = contextOverrides.entryText
+    if (!entryText) {
+        const isSubtask = taskFeedObject.parentId ? true : false
+        entryText = isSubtask ? 'updated subtask' : 'updated task'
+    }
+
+    const isSubtask = taskFeedObject.parentId ? true : false
+    const { feed, feedId } = generateFeedModel({
+        feedType: contextOverrides.feedType || FEED_TASK_UPDATED,
+        lastChangeDate: currentMilliseconds,
+        entryText: entryText,
+        feedUser,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    // Set parentName if available (similar to createTaskCreatedFeed)
+    if (task && task.parentName) {
+        taskFeedObject.parentName = task.parentName
+    } else {
+        taskFeedObject.parentName = taskFeedObject.parentName || ''
+    }
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        taskId,
+        'tasks',
+        taskFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification,
+        contextOverrides
+    )
+}
+
 module.exports = {
     createTaskCreatedFeed,
     createTaskFollowedFeed,
@@ -480,4 +534,5 @@ module.exports = {
     createTaskHighlightedChangedFeed,
     createTaskRecurrenceChangedFeed,
     createTaskAssigneeEstimationChangedFeed,
+    createTaskUpdatedFeed,
 }
