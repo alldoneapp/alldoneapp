@@ -643,7 +643,16 @@ class AlldoneSimpleMCPServer {
                             'Get list of projects accessible to authenticated user (requires OAuth 2.0 Bearer token authentication)',
                         inputSchema: {
                             type: 'object',
-                            properties: {},
+                            properties: {
+                                includeArchived: {
+                                    type: 'boolean',
+                                    description: 'Include archived projects (default: false)',
+                                },
+                                includeCommunity: {
+                                    type: 'boolean',
+                                    description: 'Include community/template/guide projects (default: false)',
+                                },
+                            },
                             required: [],
                         },
                     },
@@ -1368,34 +1377,99 @@ class AlldoneSimpleMCPServer {
     async getUserProjects(args, request) {
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
+        const { includeArchived = false, includeCommunity = false } = args
 
         const db = admin.firestore()
 
         try {
-            console.log('Getting projects for userId:', userId)
+            console.log('Getting projects for userId:', userId, { includeArchived, includeCommunity })
 
-            // Get projects where user is a member (matching main Alldone logic)
-            const snapshot = await db.collection('projects').where('userIds', 'array-contains', userId).get()
+            // Get user data to understand project classifications
+            const userDoc = await db.collection('users').doc(userId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
 
-            console.log('Found projects for user:', snapshot.size)
+            const userData = userDoc.data()
+            const { projectIds = [], archivedProjectIds = [], templateProjectIds = [], guideProjectIds = [] } = userData
+
+            // Determine which projects to include based on flags
+            let targetProjectIds = [...projectIds] // Start with regular projects
+
+            if (includeArchived) {
+                targetProjectIds.push(...archivedProjectIds)
+            }
+
+            if (includeCommunity) {
+                targetProjectIds.push(...templateProjectIds)
+                targetProjectIds.push(...guideProjectIds)
+            }
+
+            // Remove duplicates
+            const uniqueProjectIds = [...new Set(targetProjectIds)]
+
+            console.log(
+                `📊 Project filtering: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
+            )
+            console.log(`🎯 Selected ${uniqueProjectIds.length} projects for query`)
+
+            if (uniqueProjectIds.length === 0) {
+                return {
+                    success: true,
+                    projects: [],
+                    count: 0,
+                    projectFilters: {
+                        includeArchived,
+                        includeCommunity,
+                        totalRegularProjects: projectIds.length,
+                        totalArchivedProjects: archivedProjectIds.length,
+                        totalCommunityProjects: templateProjectIds.length + guideProjectIds.length,
+                    },
+                }
+            }
+
+            // Fetch the actual project documents
+            const projectPromises = uniqueProjectIds.map(id => db.collection('projects').doc(id).get())
+            const projectDocs = await Promise.all(projectPromises)
 
             const projects = []
-            snapshot.forEach(doc => {
-                const data = doc.data()
-                console.log('Found project:', { id: doc.id, name: data.name, userIds: data.userIds })
-                projects.push({
-                    id: doc.id,
-                    name: data.name,
-                    description: data.description || '',
-                    createdAt: data.createdAt,
-                    userIds: data.userIds || [],
-                })
+            projectDocs.forEach(doc => {
+                if (doc.exists) {
+                    const data = doc.data()
+                    // Determine project type for additional metadata
+                    let projectType = 'regular'
+                    if (archivedProjectIds.includes(doc.id)) {
+                        projectType = 'archived'
+                    } else if (templateProjectIds.includes(doc.id)) {
+                        projectType = 'template'
+                    } else if (guideProjectIds.includes(doc.id)) {
+                        projectType = 'guide'
+                    }
+
+                    projects.push({
+                        id: doc.id,
+                        name: data.name,
+                        description: data.description || '',
+                        createdAt: data.createdAt,
+                        userIds: data.userIds || [],
+                        projectType: projectType,
+                    })
+                }
             })
+
+            console.log(`Found ${projects.length} accessible projects for user`)
 
             return {
                 success: true,
                 projects: projects,
                 count: projects.length,
+                projectFilters: {
+                    includeArchived,
+                    includeCommunity,
+                    totalRegularProjects: projectIds.length,
+                    totalArchivedProjects: archivedProjectIds.length,
+                    totalCommunityProjects: templateProjectIds.length + guideProjectIds.length,
+                },
             }
         } catch (error) {
             console.error('Error getting user projects:', error)
@@ -2558,7 +2632,16 @@ class AlldoneSimpleMCPServer {
                                 'Get list of projects accessible to authenticated user (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
-                                properties: {},
+                                properties: {
+                                    includeArchived: {
+                                        type: 'boolean',
+                                        description: 'Include archived projects (default: false)',
+                                    },
+                                    includeCommunity: {
+                                        type: 'boolean',
+                                        description: 'Include community/template/guide projects (default: false)',
+                                    },
+                                },
                                 required: [],
                             },
                         },
