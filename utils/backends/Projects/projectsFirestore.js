@@ -116,16 +116,21 @@ export function generateProjectPrefix(projectName) {
         return 'TA' // Default fallback
     }
 
-    // Remove non-alphabetic characters and get first 2 letters
+    // Remove non-alphabetic characters and get first and last letters
     const cleanName = projectName.replace(/[^a-zA-Z]/g, '')
 
     if (cleanName.length === 0) {
         return 'TA' // Fallback if no letters found
     }
 
-    // Get first 2 letters, convert to uppercase
-    const prefix = cleanName.substring(0, 2).toUpperCase()
-    return prefix.length === 1 ? prefix + 'A' : prefix
+    // Get first and last letters, convert to uppercase
+    let prefix
+    if (cleanName.length === 1) {
+        prefix = cleanName + 'A' // If only one letter, append 'A'
+    } else {
+        prefix = (cleanName[0] + cleanName[cleanName.length - 1]).toUpperCase()
+    }
+    return prefix
 }
 
 // Initialize task ID counter for a project if it doesn't exist
