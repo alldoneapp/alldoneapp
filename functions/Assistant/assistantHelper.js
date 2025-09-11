@@ -1175,6 +1175,113 @@ async function storeChunks(
                         }
                     }
 
+                    // Check for get_focus_task tool
+                    const getFocusTaskMatch = commentText.match(/TOOL:\s*get_focus_task\s*(\{[\s\S]*?\})/)
+                    if (getFocusTaskMatch) {
+                        console.log('Detected TOOL:get_focus_task invocation')
+                        // Fetch assistant to check allowed tools
+                        const assistant = await getAssistantForChat(projectId, assistantId)
+                        const allowed = Array.isArray(assistant.allowedTools)
+                            ? assistant.allowedTools.includes('get_focus_task')
+                            : false
+                        if (!allowed) {
+                            console.log('Assistant not allowed to use get_focus_task tool')
+                            const replaced = commentText.replace(
+                                getFocusTaskMatch[0],
+                                'Tool not permitted: get_focus_task'
+                            )
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Parse JSON args
+                        const argsJson = getFocusTaskMatch[1]
+                        let args = {}
+                        try {
+                            args = JSON.parse(argsJson)
+                        } catch (e) {
+                            console.error('Failed to parse get_focus_task args JSON', e)
+                            const replaced = commentText.replace(getFocusTaskMatch[0], 'Failed to parse tool arguments')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Determine creatorId (the user interacting with the assistant)
+                        const creatorId =
+                            requestUserId ||
+                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
+
+                        // Initialize FocusTaskService for assistant tool calls
+                        const { FocusTaskService } = require('../shared/FocusTaskService')
+                        const focusTaskService = new FocusTaskService({
+                            database: admin.firestore(),
+                            moment: require('moment'),
+                            isCloudFunction: true,
+                        })
+                        await focusTaskService.initialize()
+
+                        // Extract parameters
+                        const contextProjectId = args.projectId || projectId
+
+                        try {
+                            const result = await focusTaskService.getFocusTask(creatorId, contextProjectId)
+
+                            // Format results for assistant response
+                            let focusTaskSummary = ''
+                            if (result.focusTask) {
+                                focusTaskSummary = `**Focus Task**: ${result.focusTask.name}`
+                                if (
+                                    result.focusTask.projectName &&
+                                    result.focusTask.projectName !== result.focusTask.projectId
+                                ) {
+                                    focusTaskSummary += ` (Project: ${result.focusTask.projectName})`
+                                }
+                                if (result.focusTask.description) {
+                                    focusTaskSummary += `\n**Description**: ${result.focusTask.description}`
+                                }
+                                if (result.focusTask.dueDate) {
+                                    const dueDate = new Date(result.focusTask.dueDate)
+                                    focusTaskSummary += `\n**Due**: ${dueDate.toLocaleDateString()}`
+                                }
+                                if (result.wasNewTaskSet) {
+                                    focusTaskSummary += '\n\n*This task was automatically set as your new focus task.*'
+                                } else {
+                                    focusTaskSummary += '\n\n*This is your current focus task.*'
+                                }
+                            } else {
+                                focusTaskSummary = 'No focus task available - no open tasks found'
+                            }
+
+                            console.log('Retrieved focus task via tool call', {
+                                projectId: contextProjectId,
+                                focusTaskId: result.focusTask?.id,
+                                focusTaskName: result.focusTask?.name,
+                                wasNewTaskSet: result.wasNewTaskSet,
+                            })
+
+                            // Replace tool line with focus task summary
+                            const replaced = commentText.replace(getFocusTaskMatch[0], focusTaskSummary.trim())
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        } catch (error) {
+                            console.error('Error getting focus task via tool call:', error)
+                            const errorMsg = `Error retrieving focus task: ${error.message}`
+                            const replaced = commentText.replace(getFocusTaskMatch[0], errorMsg)
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        }
+                    }
+
                     // Check for update_task tool
                     const updateTaskMatch = commentText.match(/TOOL:\s*update_task\s*(\{[\s\S]*?\})/)
                     if (updateTaskMatch) {
@@ -1663,7 +1770,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])

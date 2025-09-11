@@ -657,6 +657,21 @@ class AlldoneSimpleMCPServer {
                         },
                     },
                     {
+                        name: 'get_focus_task',
+                        description:
+                            'Get the current focus task for the user, or find and set a new one if none exists (requires OAuth 2.0 Bearer token authentication)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Project context for finding new focus task (optional)',
+                                },
+                            },
+                            required: [],
+                        },
+                    },
+                    {
                         name: 'delete_authentication_data',
                         description:
                             'Delete all OAuth 2.0 authentication data for the current user (revokes all Bearer tokens and sessions)',
@@ -697,6 +712,9 @@ class AlldoneSimpleMCPServer {
                         break
                     case 'get_user_projects':
                         result = await this.getUserProjects(args, request)
+                        break
+                    case 'get_focus_task':
+                        result = await this.getFocusTask(args, request)
                         break
                     case 'delete_authentication_data':
                         result = await this.deleteAuthenticationData(args, request)
@@ -1616,6 +1634,7 @@ class AlldoneSimpleMCPServer {
                     availableTools: [
                         'create_task',
                         'get_tasks',
+                        'get_focus_task',
                         'get_user_projects',
                         'delete_authentication_data',
                         'get_current_user_info',
@@ -1625,6 +1644,40 @@ class AlldoneSimpleMCPServer {
         } catch (error) {
             console.error('Error getting current user info:', error)
             throw new Error(`Failed to get user information: ${error.message}`)
+        }
+    }
+
+    async getFocusTask(args, request) {
+        const { projectId } = args
+
+        // Get authenticated user automatically from client session
+        const userId = await this.getAuthenticatedUserForClient(request)
+        const db = admin.firestore()
+
+        // Initialize FocusTaskService if not already done
+        if (!this.focusTaskService) {
+            const { FocusTaskService } = require('../shared/FocusTaskService')
+            this.focusTaskService = new FocusTaskService({
+                database: db,
+                moment: moment,
+                isCloudFunction: true,
+            })
+            await this.focusTaskService.initialize()
+        }
+
+        try {
+            // Get focus task (current or new)
+            const result = await this.focusTaskService.getFocusTask(userId, projectId)
+
+            return {
+                success: result.success,
+                focusTask: result.focusTask,
+                wasNewTaskSet: result.wasNewTaskSet,
+                message: result.message,
+            }
+        } catch (error) {
+            console.error('Error getting focus task:', error)
+            throw new Error(`Failed to get focus task: ${error.message}`)
         }
     }
 
@@ -2646,6 +2699,21 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
+                            name: 'get_focus_task',
+                            description:
+                                'Get the current focus task for the user, or find and set a new one if none exists (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Project context for finding new focus task (optional)',
+                                    },
+                                },
+                                required: [],
+                            },
+                        },
+                        {
                             name: 'delete_authentication_data',
                             description:
                                 'Delete all OAuth 2.0 authentication data for the current user (revokes all Bearer tokens and sessions)',
@@ -2722,6 +2790,9 @@ class AlldoneSimpleMCPServer {
                             break
                         case 'get_user_projects':
                             result = await this.getUserProjects(args, httpReq)
+                            break
+                        case 'get_focus_task':
+                            result = await this.getFocusTask(args, httpReq)
                             break
                         case 'delete_authentication_data':
                             result = await this.deleteAuthenticationData(args, httpReq)
@@ -4067,7 +4138,13 @@ class AlldoneSimpleMCPServer {
                     // Check if this is a tools/call request for an authenticated tool
                     if (req.method === 'POST' && req.body && req.body.method === 'tools/call') {
                         const toolName = req.body.params?.name
-                        const authenticatedTools = ['create_task', 'update_task', 'get_tasks', 'get_user_projects']
+                        const authenticatedTools = [
+                            'create_task',
+                            'update_task',
+                            'get_tasks',
+                            'get_user_projects',
+                            'get_focus_task',
+                        ]
 
                         if (authenticatedTools.includes(toolName)) {
                             const baseUrl = `${getBaseUrl()}/mcpServer`
