@@ -165,18 +165,11 @@ class TaskService {
             throw new Error(`Failed to generate valid task ID: "${taskId}"`)
         }
 
-        // Generate human readable ID if projectId is provided and function is available
+        // Human readable ID will be generated asynchronously in onCreate trigger
+        // This improves task creation performance by removing the blocking transaction
         let humanReadableId = params.humanReadableId || null
-        if (!humanReadableId && params.projectId && getNextTaskId) {
-            try {
-                humanReadableId = await getNextTaskId(params.projectId)
-                console.log('TaskService: Generated human readable ID:', humanReadableId)
-            } catch (error) {
-                console.warn('TaskService: Failed to generate human readable ID:', error.message)
-                // Continue without human readable ID if generation fails
-                humanReadableId = null
-            }
-        }
+        // Only generate synchronously if explicitly provided humanReadableId
+        // Otherwise, let the onCreate trigger handle it in background
 
         const task = TaskModelBuilder.createTaskObject({
             ...params,
