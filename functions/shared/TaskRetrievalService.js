@@ -306,6 +306,54 @@ class TaskRetrievalService {
                         : `Tasks completed on ${effectiveDateFilter}`
             }
 
+            // Resolve user's current focus task position within results (single-project)
+            let focusTaskInResults = false
+            let focusTaskIndex = null
+            let focusTask = null
+            try {
+                if (userId) {
+                    const userDoc = await this.options.database.collection('users').doc(userId).get()
+                    if (userDoc.exists) {
+                        const ud = userDoc.data()
+                        const focusId = ud.inFocusTaskId
+                        const focusProjectId = ud.inFocusTaskProjectId
+                        if (focusId && focusProjectId) {
+                            if (focusProjectId === projectId) {
+                                const idx = projectedTasks.findIndex(
+                                    t => (selectMinimalFields ? t.documentId : t.id) === focusId
+                                )
+                                if (idx > -1) {
+                                    focusTaskInResults = true
+                                    focusTaskIndex = idx
+                                    focusTask = projectedTasks[idx]
+                                } else {
+                                    focusTask = {
+                                        documentId: focusId,
+                                        projectId: projectId,
+                                        name: undefined,
+                                    }
+                                }
+                            } else {
+                                focusTask = {
+                                    documentId: focusId,
+                                    projectId: focusProjectId,
+                                    name: undefined,
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // Build a small summary string including focus task info
+            let summary = `Found ${projectedTasks.length} task(s)`
+            if (dateFilterDescription) summary += ` (${dateFilterDescription})`
+            if (focusTask) {
+                summary += focusTaskInResults
+                    ? `; Focus task is in this list at position ${focusTaskIndex + 1}`
+                    : `; Focus task is not in this list`
+            }
+
             return {
                 success: true,
                 tasks: projectedTasks,
@@ -314,6 +362,7 @@ class TaskRetrievalService {
                 projectId,
                 status,
                 dateFilter: dateFilterDescription,
+                summary,
                 includeSubtasks,
                 parentId,
                 query: {
@@ -321,6 +370,9 @@ class TaskRetrievalService {
                     actualCount: projectedTasks.length,
                     hasMore: projectedTasks.length === perProjectLimit, // Approximation
                 },
+                focusTask,
+                focusTaskInResults,
+                focusTaskIndex,
             }
         } catch (error) {
             console.error('Error retrieving tasks:', error)
@@ -558,6 +610,35 @@ class TaskRetrievalService {
                     projectName: r.projectName,
                 }))
 
+            // Determine user's focus task and whether it's in the aggregated results
+            let focusTask = null
+            let focusTaskInResults = false
+            try {
+                if (userId) {
+                    const userDoc = await this.options.database.collection('users').doc(userId).get()
+                    if (userDoc.exists) {
+                        const ud = userDoc.data()
+                        const focusId = ud.inFocusTaskId
+                        const focusProjectId = ud.inFocusTaskProjectId
+                        if (focusId && focusProjectId) {
+                            // Try to find it in allTasks
+                            const idx = allTasks.findIndex(t => (selectMinimalFields ? t.documentId : t.id) === focusId)
+                            if (idx > -1) {
+                                focusTaskInResults = true
+                                focusTask = allTasks[idx]
+                            } else {
+                                focusTask = { documentId: focusId, projectId: focusProjectId, name: undefined }
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // Build a short summary that mentions the focus task presence
+            let summary = `Found ${allTasks.length} task(s) across ${queriedProjects.length} project(s)`
+            if (dateFilterDescription) summary += ` (${dateFilterDescription})`
+            if (focusTask) summary += focusTaskInResults ? '; Focus task is included' : '; Focus task not included'
+
             return {
                 success: true,
                 tasks: allTasks,
@@ -568,6 +649,7 @@ class TaskRetrievalService {
                 queriedProjects,
                 status,
                 dateFilter: dateFilterDescription,
+                summary,
                 includeSubtasks,
                 parentId,
                 query: {
@@ -576,6 +658,8 @@ class TaskRetrievalService {
                     hasMore: false,
                     totalAvailable: allTasks.length,
                 },
+                focusTask,
+                focusTaskInResults,
             }
         } catch (error) {
             console.error('Error retrieving tasks from multiple projects:', error)
