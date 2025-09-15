@@ -1232,7 +1232,9 @@ async function storeChunks(
                         const contextProjectId = args.projectId || projectId
 
                         try {
-                            const result = await focusTaskService.getFocusTask(creatorId, contextProjectId)
+                            const result = await focusTaskService.getFocusTask(creatorId, contextProjectId, {
+                                selectMinimalFields: true,
+                            })
 
                             // Format results for assistant response
                             let focusTaskSummary = ''

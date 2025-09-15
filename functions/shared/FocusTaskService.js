@@ -353,8 +353,10 @@ class FocusTaskService {
      * @param {string} projectId - Current project context (optional)
      * @returns {Object} Focus task result
      */
-    async getFocusTask(userId, projectId = null) {
+    async getFocusTask(userId, projectId = null, options = {}) {
         await this.ensureInitialized()
+
+        const selectMinimalFields = !!options.selectMinimalFields
 
         let currentFocusTask = await this.getCurrentFocusTask(userId)
         let wasNewTaskSet = false
@@ -385,16 +387,28 @@ class FocusTaskService {
             console.warn('Could not fetch project name for focus task:', error.message)
         }
 
+        const fullFocusTask = { ...currentFocusTask, projectName }
+
+        const minimalFocusTask = selectMinimalFields
+            ? {
+                  documentId: fullFocusTask.id,
+                  projectId: fullFocusTask.projectId,
+                  projectName: fullFocusTask.projectName,
+                  name: fullFocusTask.name,
+                  humanReadableId: fullFocusTask.humanReadableId || fullFocusTask.human_readable_id || null,
+                  dueDate: fullFocusTask.dueDate || null,
+                  sortIndex: fullFocusTask.sortIndex || 0,
+                  parentGoal: fullFocusTask.parentId || fullFocusTask.parentGoalId || null,
+              }
+            : fullFocusTask
+
         return {
             success: true,
-            focusTask: {
-                ...currentFocusTask,
-                projectName,
-            },
+            focusTask: minimalFocusTask,
             wasNewTaskSet,
             message: wasNewTaskSet
-                ? `New focus task set: ${currentFocusTask.name}`
-                : `Current focus task: ${currentFocusTask.name}`,
+                ? `New focus task set: ${fullFocusTask.name}`
+                : `Current focus task: ${fullFocusTask.name}`,
         }
     }
 

@@ -1672,7 +1672,7 @@ class AlldoneSimpleMCPServer {
 
         try {
             // Get focus task (current or new)
-            const result = await this.focusTaskService.getFocusTask(userId, projectId)
+            const result = await this.focusTaskService.getFocusTask(userId, projectId, { selectMinimalFields: true })
 
             return {
                 success: result.success,
