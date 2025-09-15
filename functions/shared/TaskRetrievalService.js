@@ -84,13 +84,7 @@ class TaskRetrievalService {
 
         let query = this.options.database.collection(`items/${projectId}/tasks`)
 
-        // Filter by user permissions
-        if (userPermissions && userPermissions.length > 0) {
-            query = query.where('isPublicFor', 'array-contains-any', userPermissions)
-        }
-
-        // Exclude deleted tasks (align with main app)
-        query = query.where('isDeleted', '==', false)
+        // Visibility and deletion: do not filter here to match structured query across projects
 
         // Filter by subtasks
         if (parentId) {
@@ -103,7 +97,8 @@ class TaskRetrievalService {
 
         // Filter by status
         if (status === 'open') {
-            query = query.where('done', '==', false).where('inDone', '==', false)
+            // Align with structured query: only inDone == false
+            query = query.where('inDone', '==', false)
         } else if (status === 'done') {
             query = query.where('done', '==', true).where('inDone', '==', true)
         }
@@ -453,7 +448,6 @@ class TaskRetrievalService {
                 .collection(`items/${projectId}/tasks`)
                 .where('parentId', 'in', parentIds.slice(0, 10)) // Firestore 'in' limit is 10
                 .where('isSubtask', '==', true)
-                .where('isPublicFor', 'array-contains-any', userPermissions)
                 .orderBy('sortIndex', 'desc')
 
             const subtasksSnapshot = await subtasksQuery.get()
