@@ -589,13 +589,18 @@ class TaskRetrievalService {
                         allSubtasksByParent = { ...allSubtasksByParent, ...result.subtasksByParent }
                     }
 
+                    const perProjectTotal =
+                        (result.query && typeof result.query.totalAvailable === 'number'
+                            ? result.query.totalAvailable
+                            : result.count) || 0
+
                     projectSummary[result.projectId] = {
                         projectName: result.projectName,
-                        taskCount: result.count,
+                        taskCount: perProjectTotal,
                         success: true,
                     }
 
-                    totalAcrossProjects += result.count
+                    totalAcrossProjects += perProjectTotal
                 } else {
                     projectSummary[result.projectId] = {
                         projectName: result.projectName,
