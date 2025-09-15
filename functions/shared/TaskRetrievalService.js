@@ -237,16 +237,32 @@ class TaskRetrievalService {
             })
 
             // Apply minimal projection if requested
-            const mapToMinimal = (task, pId, pName) => ({
-                documentId: task.id,
-                projectId: pId || task.projectId || projectId,
-                projectName: pName || task.projectName || providedProjectName || undefined,
-                name: task.name,
-                humanReadableId: task.humanReadableId || task.human_readable_id || null,
-                dueDate: task.dueDate || null,
-                sortIndex: task.sortIndex || 0,
-                parentGoal: task.parentId || null,
-            })
+            const mapToMinimal = (task, pId, pName) => {
+                // Derive calendar time (HH:mm) for calendar tasks when a specific dateTime is present
+                let calendarTime = null
+                try {
+                    const startObj = task && task.calendarData && task.calendarData.start
+                    const startString = startObj && (startObj.dateTime || startObj.date)
+                    if (startString && startObj.dateTime) {
+                        const m = this.options.moment(startString)
+                        if (m && m.isValid && m.isValid()) {
+                            calendarTime = m.format('HH:mm')
+                        }
+                    }
+                } catch (_) {}
+
+                return {
+                    documentId: task.id,
+                    projectId: pId || task.projectId || projectId,
+                    projectName: pName || task.projectName || providedProjectName || undefined,
+                    name: task.name,
+                    humanReadableId: task.humanReadableId || task.human_readable_id || null,
+                    dueDate: task.dueDate || null,
+                    sortIndex: task.sortIndex || 0,
+                    parentGoal: task.parentId || null,
+                    calendarTime,
+                }
+            }
 
             const projectedTasks = selectMinimalFields
                 ? tasks.map(t => mapToMinimal(t, projectId, providedProjectName))
