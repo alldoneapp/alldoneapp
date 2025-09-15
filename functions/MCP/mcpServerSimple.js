@@ -620,10 +620,7 @@ class AlldoneSimpleMCPServer {
                                     description:
                                         'Date filter in YYYY-MM-DD format or "today". For open tasks: shows due tasks. For done tasks: shows completed tasks. Default: "today".',
                                 },
-                                limit: {
-                                    type: 'number',
-                                    description: 'Maximum number of tasks to return (default: 20, max: 200)',
-                                },
+
                                 includeSubtasks: {
                                     type: 'boolean',
                                     description: 'Include subtasks in results (default: false)',
@@ -1208,7 +1205,7 @@ class AlldoneSimpleMCPServer {
             includeArchived = false,
             includeCommunity = false,
             status = 'open',
-            limit = 20,
+
             date,
             includeSubtasks = false,
             parentId = null,
@@ -1322,6 +1319,13 @@ class AlldoneSimpleMCPServer {
 
                 console.log(`🔐 ${accessibleProjectIds.length} projects accessible after permission check`)
 
+                // Read user's customization for per-project cap
+                const userSettingsDoc = await db.collection('users').doc(userId).get()
+                const numberTodayTasksSetting = userSettingsDoc.exists
+                    ? userSettingsDoc.data().numberTodayTasks
+                    : undefined
+                const perProjectLimit = typeof numberTodayTasksSetting === 'number' ? numberTodayTasksSetting : 10
+
                 // Use TaskRetrievalService multi-project method
                 const result = await this.taskRetrievalService.getTasksFromMultipleProjects(
                     {
@@ -1330,10 +1334,11 @@ class AlldoneSimpleMCPServer {
                         date,
                         includeSubtasks,
                         parentId,
-                        limit,
+
                         userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
                         // Return only minimal fields for each task
                         selectMinimalFields: true,
+                        perProjectLimit,
                     },
                     accessibleProjectIds,
                     projectsData
@@ -1371,6 +1376,13 @@ class AlldoneSimpleMCPServer {
                     throw new Error('User does not have access to this project')
                 }
 
+                // Read user's customization for per-project cap
+                const userSettingsDoc = await db.collection('users').doc(userId).get()
+                const numberTodayTasksSetting = userSettingsDoc.exists
+                    ? userSettingsDoc.data().numberTodayTasks
+                    : undefined
+                const perProjectLimit = typeof numberTodayTasksSetting === 'number' ? numberTodayTasksSetting : 10
+
                 // Use TaskRetrievalService to get tasks from single project
                 const result = await this.taskRetrievalService.getTasksWithValidation({
                     projectId,
@@ -1379,10 +1391,11 @@ class AlldoneSimpleMCPServer {
                     date,
                     includeSubtasks,
                     parentId,
-                    limit,
+
                     userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
                     // Return only minimal fields for each task
                     selectMinimalFields: true,
+                    perProjectLimit,
                     projectName: projectData.name,
                 })
 
@@ -2666,10 +2679,6 @@ class AlldoneSimpleMCPServer {
                                         type: 'string',
                                         description:
                                             'Date filter in YYYY-MM-DD format or "today". For open tasks: shows due tasks. For done tasks: shows completed tasks. Default: "today".',
-                                    },
-                                    limit: {
-                                        type: 'number',
-                                        description: 'Maximum number of tasks to return (default: 20, max: 200)',
                                     },
                                     includeSubtasks: {
                                         type: 'boolean',

@@ -930,7 +930,6 @@ async function storeChunks(
                         const includeArchived = !!args.includeArchived
                         const includeCommunity = !!args.includeCommunity
                         const status = args.status || 'open'
-                        const limit = Math.min(args.limit || 10, 50) // Cap at 50 for assistant usage
                         const date = args.date || 'today'
                         const includeSubtasks = !!args.includeSubtasks
                         const parentId = args.parentId || null
@@ -1030,6 +1029,10 @@ async function storeChunks(
                                         `🔐 Assistant ${accessibleProjectIds.length} projects accessible after permission check`
                                     )
 
+                                    // Determine per-project cap from user's customization
+                                    const numberTodayTasksSetting =
+                                        typeof userData.numberTodayTasks === 'number' ? userData.numberTodayTasks : 10
+
                                     // Use TaskRetrievalService multi-project method
                                     result = await taskRetrievalService.getTasksFromMultipleProjects(
                                         {
@@ -1038,9 +1041,10 @@ async function storeChunks(
                                             date,
                                             includeSubtasks,
                                             parentId,
-                                            limit,
+
                                             userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
                                             selectMinimalFields: true,
+                                            perProjectLimit: numberTodayTasksSetting,
                                         },
                                         accessibleProjectIds,
                                         projectsData
@@ -1050,6 +1054,14 @@ async function storeChunks(
                                 }
                             } else {
                                 // Single project mode (existing behavior)
+                                // Determine per-project cap from user's customization (0 = unlimited)
+                                const numberTodayTasksSetting =
+                                    typeof loggedUser?.numberTodayTasks === 'number'
+                                        ? loggedUser.numberTodayTasks
+                                        : typeof userData?.numberTodayTasks === 'number'
+                                        ? userData.numberTodayTasks
+                                        : 10
+
                                 result = await taskRetrievalService.getTasksWithValidation({
                                     projectId: projectId,
                                     userId: creatorId,
@@ -1057,9 +1069,9 @@ async function storeChunks(
                                     date,
                                     includeSubtasks,
                                     parentId,
-                                    limit,
                                     userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
                                     selectMinimalFields: true,
+                                    perProjectLimit: numberTodayTasksSetting,
                                 })
                                 result.crossProjectQuery = false
                             }

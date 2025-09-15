@@ -73,6 +73,7 @@ class TaskRetrievalService {
             includeSubtasks = false,
             parentId = null,
             limit = 20,
+            perProjectLimit = undefined,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
         } = params
 
@@ -128,10 +129,17 @@ class TaskRetrievalService {
             query = query.orderBy('sortIndex', 'desc')
         }
 
-        // Apply limit
-        if (limit && limit > 0) {
-            query = query.limit(Math.min(limit, 200)) // Cap at 200 for performance
-        }
+        // Apply per-project limit (defaults to 10 if not specified)
+        // Treat 0 as unlimited (cap to 200 for safety)
+        const appliedLimit = (() => {
+            if (typeof perProjectLimit === 'number') {
+                if (perProjectLimit === 0) return 200
+                if (perProjectLimit > 0) return perProjectLimit
+            }
+            if (limit && limit > 0) return Math.min(limit, 200)
+            return 10
+        })()
+        query = query.limit(Math.min(appliedLimit, 200))
 
         return query
     }
@@ -210,6 +218,7 @@ class TaskRetrievalService {
             includeSubtasks = false,
             parentId = null,
             limit = 20,
+            perProjectLimit = 10,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
             // Optional projection controls
             selectMinimalFields = false,
@@ -292,9 +301,9 @@ class TaskRetrievalService {
                 includeSubtasks,
                 parentId,
                 query: {
-                    limit,
+                    limit: perProjectLimit,
                     actualCount: projectedTasks.length,
-                    hasMore: projectedTasks.length === limit, // Approximation
+                    hasMore: projectedTasks.length === perProjectLimit, // Approximation
                 },
             }
         } catch (error) {
@@ -407,6 +416,7 @@ class TaskRetrievalService {
             includeSubtasks = false,
             parentId = null,
             limit = 20,
+            perProjectLimit = 10,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
             // Optional projection controls
             selectMinimalFields = false,
@@ -428,7 +438,7 @@ class TaskRetrievalService {
                         date: effectiveDate, // Ensure consistent date filtering across all projects
                         // For cross-project queries, respect date filtering strictly and don't over-fetch
                         // This ensures we only get tasks for the specific day requested
-                        limit: Math.min(limit, 200),
+                        perProjectLimit: Math.min(perProjectLimit, 200),
                     }
 
                     const result = await this.getTasks(projectParams)
@@ -514,9 +524,6 @@ class TaskRetrievalService {
                 })
             }
 
-            // Apply global limit
-            const limitedTasks = limit > 0 ? allTasks.slice(0, limit) : allTasks
-
             // Determine the effective date filter for the response
             let dateFilterDescription = ''
 
@@ -537,9 +544,9 @@ class TaskRetrievalService {
 
             return {
                 success: true,
-                tasks: limitedTasks,
+                tasks: allTasks,
                 subtasksByParent: allSubtasksByParent,
-                count: limitedTasks.length,
+                count: allTasks.length,
                 totalAcrossProjects,
                 projectSummary,
                 queriedProjects,
@@ -548,9 +555,9 @@ class TaskRetrievalService {
                 includeSubtasks,
                 parentId,
                 query: {
-                    limit,
-                    actualCount: limitedTasks.length,
-                    hasMore: allTasks.length > limit,
+                    perProjectLimit,
+                    actualCount: allTasks.length,
+                    hasMore: false,
                     totalAvailable: allTasks.length,
                 },
             }
