@@ -1040,6 +1040,7 @@ async function storeChunks(
                                             parentId,
                                             limit,
                                             userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                                            selectMinimalFields: true,
                                         },
                                         accessibleProjectIds,
                                         projectsData
@@ -1058,6 +1059,7 @@ async function storeChunks(
                                     parentId,
                                     limit,
                                     userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                                    selectMinimalFields: true,
                                 })
                                 result.crossProjectQuery = false
                             }

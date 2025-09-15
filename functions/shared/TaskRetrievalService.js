@@ -211,6 +211,9 @@ class TaskRetrievalService {
             parentId = null,
             limit = 20,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
+            // Optional projection controls
+            selectMinimalFields = false,
+            projectName: providedProjectName = undefined,
         } = params
 
         try {
@@ -221,18 +224,30 @@ class TaskRetrievalService {
             const tasks = []
             snapshot.forEach(doc => {
                 const taskData = doc.data()
-                tasks.push({
-                    id: doc.id,
-                    ...taskData,
-                    // Format dates for better readability
-                    dueDateFormatted: taskData.dueDate
-                        ? this.options.moment(taskData.dueDate).format('YYYY-MM-DD HH:mm:ss')
-                        : null,
-                    completedFormatted: taskData.completed
-                        ? this.options.moment(taskData.completed).format('YYYY-MM-DD HH:mm:ss')
-                        : null,
-                })
+                tasks.push({ id: doc.id, ...taskData })
             })
+
+            // Apply minimal projection if requested
+            const mapToMinimal = (task, pId, pName) => ({
+                documentId: task.id,
+                projectId: pId || task.projectId || projectId,
+                projectName: pName || task.projectName || providedProjectName || undefined,
+                name: task.name,
+                humanReadableId: task.humanReadableId || task.human_readable_id || null,
+                dueDate: task.dueDate || null,
+                sortIndex: task.sortIndex || 0,
+                parentGoal: task.parentId || null,
+            })
+
+            const projectedTasks = selectMinimalFields
+                ? tasks.map(t => mapToMinimal(t, projectId, providedProjectName))
+                : tasks.map(t => ({
+                      ...t,
+                      dueDateFormatted: t.dueDate ? this.options.moment(t.dueDate).format('YYYY-MM-DD HH:mm:ss') : null,
+                      completedFormatted: t.completed
+                          ? this.options.moment(t.completed).format('YYYY-MM-DD HH:mm:ss')
+                          : null,
+                  }))
 
             // Build subtasks map if requested
             let subtasksByParent = {}
@@ -241,6 +256,14 @@ class TaskRetrievalService {
                 const parentIds = tasks.map(task => task.id)
                 if (parentIds.length > 0) {
                     subtasksByParent = await this.getSubtasksForParents(projectId, parentIds, userPermissions)
+                    // Apply projection to subtasks as well if requested
+                    if (selectMinimalFields && subtasksByParent && typeof subtasksByParent === 'object') {
+                        Object.keys(subtasksByParent).forEach(pid => {
+                            subtasksByParent[pid] = (subtasksByParent[pid] || []).map(st =>
+                                mapToMinimal(st, projectId, providedProjectName)
+                            )
+                        })
+                    }
                 }
             }
 
@@ -260,9 +283,9 @@ class TaskRetrievalService {
 
             return {
                 success: true,
-                tasks,
+                tasks: projectedTasks,
                 subtasksByParent,
-                count: tasks.length,
+                count: projectedTasks.length,
                 projectId,
                 status,
                 dateFilter: dateFilterDescription,
@@ -270,8 +293,8 @@ class TaskRetrievalService {
                 parentId,
                 query: {
                     limit,
-                    actualCount: tasks.length,
-                    hasMore: tasks.length === limit, // Approximation
+                    actualCount: projectedTasks.length,
+                    hasMore: projectedTasks.length === limit, // Approximation
                 },
             }
         } catch (error) {
@@ -385,6 +408,8 @@ class TaskRetrievalService {
             parentId = null,
             limit = 20,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
+            // Optional projection controls
+            selectMinimalFields = false,
         } = params
 
         // For cross-project queries, ensure we always have proper date filtering

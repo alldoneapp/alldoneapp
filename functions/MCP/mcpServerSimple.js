@@ -1332,6 +1332,8 @@ class AlldoneSimpleMCPServer {
                         parentId,
                         limit,
                         userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
+                        // Return only minimal fields for each task
+                        selectMinimalFields: true,
                     },
                     accessibleProjectIds,
                     projectsData
@@ -1379,6 +1381,9 @@ class AlldoneSimpleMCPServer {
                     parentId,
                     limit,
                     userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
+                    // Return only minimal fields for each task
+                    selectMinimalFields: true,
+                    projectName: projectData.name,
                 })
 
                 return {
