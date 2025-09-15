@@ -600,45 +600,38 @@ class TaskRetrievalService {
                         allSubtasksByParent = { ...allSubtasksByParent, ...result.subtasksByParent }
                     }
 
-                    // Ensure per-project totals are accurate: recompute uncapped count if not provided
-                    let perProjectTotal =
-                        result.query && typeof result.query.totalAvailable === 'number'
-                            ? result.query.totalAvailable
-                            : null
-                    if (perProjectTotal === null) {
-                        try {
-                            const countBase = {
-                                projectId: result.projectId,
-                                userId,
-                                status,
-                                date: effectiveDate,
-                                includeSubtasks,
-                                parentId,
-                                userPermissions,
-                            }
-                            const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
-                            if (typeof countQuery.count === 'function') {
-                                const agg = countQuery.count()
-                                const aggSnap = await agg.get()
-                                perProjectTotal = aggSnap?.data()?.count ?? result.count
-                            } else {
-                                const PAGE = 200
-                                let lastDoc = null
-                                let counted = 0
-                                while (true) {
-                                    let pageQuery = countQuery.limit(PAGE)
-                                    if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc)
-                                    const pageSnap = await pageQuery.get()
-                                    if (pageSnap.empty) break
-                                    counted += pageSnap.size
-                                    lastDoc = pageSnap.docs[pageSnap.docs.length - 1]
-                                    if (pageSnap.size < PAGE) break
-                                }
-                                perProjectTotal = counted
-                            }
-                        } catch (_) {
-                            perProjectTotal = result.count || 0
+                    // Always recompute uncapped per-project totals using the same filters
+                    let perProjectTotal = 0
+                    try {
+                        const countBase = {
+                            projectId: result.projectId,
+                            userId,
+                            status,
+                            date: effectiveDate,
+                            includeSubtasks,
+                            parentId,
+                            userPermissions,
                         }
+                        const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
+                        if (typeof countQuery.count === 'function') {
+                            const agg = countQuery.count()
+                            const aggSnap = await agg.get()
+                            perProjectTotal = aggSnap?.data()?.count ?? 0
+                        } else {
+                            const PAGE = 200
+                            let lastDoc = null
+                            while (true) {
+                                let pageQuery = countQuery.limit(PAGE)
+                                if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc)
+                                const pageSnap = await pageQuery.get()
+                                if (pageSnap.empty) break
+                                perProjectTotal += pageSnap.size
+                                lastDoc = pageSnap.docs[pageSnap.docs.length - 1]
+                                if (pageSnap.size < PAGE) break
+                            }
+                        }
+                    } catch (_) {
+                        perProjectTotal = result.count || 0
                     }
 
                     projectSummary[result.projectId] = {
