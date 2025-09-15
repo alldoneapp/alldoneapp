@@ -88,6 +88,9 @@ class TaskRetrievalService {
             query = query.where('isPublicFor', 'array-contains-any', userPermissions)
         }
 
+        // Exclude deleted tasks (align with main app)
+        query = query.where('isDeleted', '==', false)
+
         // Filter by subtasks
         if (parentId) {
             // Get specific parent's subtasks
@@ -347,15 +350,6 @@ class TaskRetrievalService {
                 }
             } catch (_) {}
 
-            // Build a small summary string including focus task info
-            let summary = `Found ${projectedTasks.length} task(s)`
-            if (dateFilterDescription) summary += ` (${dateFilterDescription})`
-            if (focusTask) {
-                summary += focusTaskInResults
-                    ? `; Focus task is in this list at position ${focusTaskIndex + 1}`
-                    : `; Focus task is not in this list`
-            }
-
             // Calculate total count without per-project limits for accurate stats
             let totalAvailable = projectedTasks.length
             try {
@@ -390,6 +384,15 @@ class TaskRetrievalService {
                     totalAvailable = counted
                 }
             } catch (_) {}
+
+            // Build a small summary string using uncapped totals and focus task info
+            let summary = `Found ${totalAvailable} task(s)`
+            if (dateFilterDescription) summary += ` (${dateFilterDescription})`
+            if (focusTask) {
+                summary += focusTaskInResults
+                    ? `; Focus task is in this list at position ${focusTaskIndex + 1}`
+                    : `; Focus task is not in this list`
+            }
 
             return {
                 success: true,
@@ -714,7 +717,7 @@ class TaskRetrievalService {
             } catch (_) {}
 
             // Build a short summary that mentions the focus task presence
-            let summary = `Found ${allTasks.length} task(s) across ${queriedProjects.length} project(s)`
+            let summary = `Found ${totalAcrossProjects} task(s) across ${queriedProjects.length} project(s)`
             if (dateFilterDescription) summary += ` (${dateFilterDescription})`
             if (focusTask) summary += focusTaskInResults ? '; Focus task is included' : '; Focus task not included'
 
