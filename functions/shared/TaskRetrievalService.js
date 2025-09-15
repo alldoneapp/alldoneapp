@@ -64,7 +64,7 @@ class TaskRetrievalService {
      * @param {Object} params - Query parameters
      * @returns {Object} Firestore query
      */
-    buildTaskQuery(params) {
+    buildTaskQuery(params, options = {}) {
         const {
             projectId,
             userId,
@@ -139,7 +139,9 @@ class TaskRetrievalService {
             if (limit && limit > 0) return Math.min(limit, 200)
             return 10
         })()
-        query = query.limit(Math.min(appliedLimit, 200))
+        if (!options.skipLimit) {
+            query = query.limit(Math.min(appliedLimit, 200))
+        }
 
         return query
     }
@@ -367,7 +369,7 @@ class TaskRetrievalService {
                     parentId,
                     userPermissions,
                 }
-                const countQuery = this.buildTaskQuery(countBase)
+                const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
                 if (typeof countQuery.count === 'function') {
                     const agg = countQuery.count()
                     const aggSnap = await agg.get()
@@ -573,7 +575,7 @@ class TaskRetrievalService {
             let projectSummary = {}
             let totalAcrossProjects = 0
 
-            projectResults.forEach(result => {
+            for (const result of projectResults) {
                 if (result.success && result.tasks) {
                     // Add project context to each task
                     const tasksWithProjectInfo = result.tasks.map(task => ({
@@ -589,10 +591,46 @@ class TaskRetrievalService {
                         allSubtasksByParent = { ...allSubtasksByParent, ...result.subtasksByParent }
                     }
 
-                    const perProjectTotal =
-                        (result.query && typeof result.query.totalAvailable === 'number'
+                    // Ensure per-project totals are accurate: recompute uncapped count if not provided
+                    let perProjectTotal =
+                        result.query && typeof result.query.totalAvailable === 'number'
                             ? result.query.totalAvailable
-                            : result.count) || 0
+                            : null
+                    if (perProjectTotal === null) {
+                        try {
+                            const countBase = {
+                                projectId: result.projectId,
+                                userId,
+                                status,
+                                date: effectiveDate,
+                                includeSubtasks,
+                                parentId,
+                                userPermissions,
+                            }
+                            const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
+                            if (typeof countQuery.count === 'function') {
+                                const agg = countQuery.count()
+                                const aggSnap = await agg.get()
+                                perProjectTotal = aggSnap?.data()?.count ?? result.count
+                            } else {
+                                const PAGE = 200
+                                let lastDoc = null
+                                let counted = 0
+                                while (true) {
+                                    let pageQuery = countQuery.limit(PAGE)
+                                    if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc)
+                                    const pageSnap = await pageQuery.get()
+                                    if (pageSnap.empty) break
+                                    counted += pageSnap.size
+                                    lastDoc = pageSnap.docs[pageSnap.docs.length - 1]
+                                    if (pageSnap.size < PAGE) break
+                                }
+                                perProjectTotal = counted
+                            }
+                        } catch (_) {
+                            perProjectTotal = result.count || 0
+                        }
+                    }
 
                     projectSummary[result.projectId] = {
                         projectName: result.projectName,
@@ -609,7 +647,7 @@ class TaskRetrievalService {
                         error: result.error,
                     }
                 }
-            })
+            }
 
             // Sort all tasks globally (matches existing sort patterns)
             if (status === 'done') {
