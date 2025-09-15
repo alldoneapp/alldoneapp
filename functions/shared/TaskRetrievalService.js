@@ -75,6 +75,7 @@ class TaskRetrievalService {
             limit = 20,
             perProjectLimit = undefined,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
+            restrictToCurrentReviewer = true,
         } = params
 
         if (!projectId) {
@@ -107,6 +108,15 @@ class TaskRetrievalService {
             query = query.where('done', '==', true).where('inDone', '==', true)
         }
         // status === 'all' means no status filtering
+
+        // Filter by current reviewer (align with main app per-user open list) - default true for MCP/assistants
+        if (
+            (restrictToCurrentReviewer === undefined || restrictToCurrentReviewer === true) &&
+            userId &&
+            status === 'open'
+        ) {
+            query = query.where('currentReviewerId', '==', userId)
+        }
 
         // Date filtering
         if (date && status !== 'all') {
@@ -228,6 +238,7 @@ class TaskRetrievalService {
             // Optional projection controls
             selectMinimalFields = false,
             projectName: providedProjectName = undefined,
+            restrictToCurrentReviewer = false,
         } = params
 
         try {
@@ -362,6 +373,7 @@ class TaskRetrievalService {
                     includeSubtasks,
                     parentId,
                     userPermissions,
+                    restrictToCurrentReviewer,
                 }
                 const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
                 if (typeof countQuery.count === 'function') {
