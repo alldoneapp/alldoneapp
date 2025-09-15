@@ -354,6 +354,41 @@ class TaskRetrievalService {
                     : `; Focus task is not in this list`
             }
 
+            // Calculate total count without per-project limits for accurate stats
+            let totalAvailable = projectedTasks.length
+            try {
+                // Rebuild same query without limit to count
+                const countBase = {
+                    projectId,
+                    userId,
+                    status,
+                    date: effectiveDateFilter,
+                    includeSubtasks,
+                    parentId,
+                    userPermissions,
+                }
+                const countQuery = this.buildTaskQuery(countBase)
+                if (typeof countQuery.count === 'function') {
+                    const agg = countQuery.count()
+                    const aggSnap = await agg.get()
+                    totalAvailable = aggSnap?.data()?.count ?? totalAvailable
+                } else {
+                    const PAGE = 200
+                    let lastDoc = null
+                    let counted = 0
+                    while (true) {
+                        let pageQuery = countQuery.limit(PAGE)
+                        if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc)
+                        const pageSnap = await pageQuery.get()
+                        if (pageSnap.empty) break
+                        counted += pageSnap.size
+                        lastDoc = pageSnap.docs[pageSnap.docs.length - 1]
+                        if (pageSnap.size < PAGE) break
+                    }
+                    totalAvailable = counted
+                }
+            } catch (_) {}
+
             return {
                 success: true,
                 tasks: projectedTasks,
@@ -366,9 +401,10 @@ class TaskRetrievalService {
                 includeSubtasks,
                 parentId,
                 query: {
-                    limit: perProjectLimit,
+                    perProjectLimit,
                     actualCount: projectedTasks.length,
-                    hasMore: projectedTasks.length === perProjectLimit, // Approximation
+                    hasMore: totalAvailable > projectedTasks.length,
+                    totalAvailable,
                 },
                 focusTask,
                 focusTaskInResults,
