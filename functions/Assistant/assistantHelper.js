@@ -930,6 +930,7 @@ async function storeChunks(
                         const includeArchived = !!args.includeArchived
                         const includeCommunity = !!args.includeCommunity
                         const status = args.status || 'open'
+                        // Accepts relative keywords like 'yesterday', 'this_week', or 'next 7 days'
                         const date = args.date || 'today'
                         const includeSubtasks = !!args.includeSubtasks
                         const parentId = args.parentId || null
@@ -1815,7 +1816,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"status":"done","date":"yesterday"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])

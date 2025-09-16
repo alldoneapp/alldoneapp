@@ -113,9 +113,12 @@ class TaskRetrievalService {
             query = query.where('currentReviewerId', '==', userId)
         }
 
+        // Ensure we respect default overdue behaviour for open tasks when no date supplied
+        const effectiveDate = date || (status === 'open' ? 'today' : null)
+
         // Date filtering
-        if (date && status !== 'all') {
-            const dateFilters = this.buildDateFilters(date, status)
+        if (effectiveDate && status !== 'all') {
+            const dateFilters = this.buildDateFilters(effectiveDate, status)
             if (dateFilters.field && dateFilters.operator && dateFilters.value !== null) {
                 if (dateFilters.operator === 'range') {
                     // For range queries (specific date)
@@ -163,53 +166,214 @@ class TaskRetrievalService {
     buildDateFilters(date, status) {
         const momentInstance = this.options.moment
 
-        if (date.toLowerCase() === 'today') {
-            const endOfToday = momentInstance().endOf('day').valueOf()
+        if (!date || typeof date !== 'string') {
+            return { field: null, operator: null, value: null }
+        }
+
+        const rawInput = date.trim()
+        if (!rawInput) {
+            return { field: null, operator: null, value: null }
+        }
+
+        const normalized = rawInput.toLowerCase()
+        const normalizedSpaced = normalized.replace(/[_-]+/g, ' ')
+        const field = status === 'done' ? 'completed' : 'dueDate'
+
+        const makeRange = (startMoment, endMoment) => ({
+            field,
+            operator: 'range',
+            value: {
+                start: startMoment.valueOf(),
+                end: endMoment.valueOf(),
+            },
+        })
+
+        const makeDayRange = dayMoment => {
+            const start = dayMoment.clone().startOf('day')
+            const end = dayMoment.clone().endOf('day')
+            return makeRange(start, end)
+        }
+
+        if (normalized === 'today') {
+            const today = momentInstance()
+            const startOfToday = today.clone().startOf('day')
+            const endOfToday = today.clone().endOf('day')
 
             if (status === 'open') {
                 // For open tasks: show tasks due today and earlier (overdue)
                 return {
                     field: 'dueDate',
                     operator: '<=',
-                    value: endOfToday,
-                }
-            } else if (status === 'done') {
-                // For done tasks: show tasks completed today
-                const startOfToday = momentInstance().startOf('day').valueOf()
-                return {
-                    field: 'completed',
-                    operator: 'range',
-                    value: { start: startOfToday, end: endOfToday },
+                    value: endOfToday.valueOf(),
                 }
             }
-        } else {
-            // Specific date (YYYY-MM-DD)
-            const targetDate = momentInstance(date)
-            if (!targetDate.isValid()) {
-                throw new Error('Invalid date format. Use YYYY-MM-DD format.')
-            }
 
-            const startOfDay = targetDate.startOf('day').valueOf()
-            const endOfDay = targetDate.endOf('day').valueOf()
-
-            if (status === 'open') {
-                // For specific date with open tasks: show tasks due on that specific day
-                return {
-                    field: 'dueDate',
-                    operator: 'range',
-                    value: { start: startOfDay, end: endOfDay },
-                }
-            } else if (status === 'done') {
-                // For done tasks: show tasks completed on that specific day
-                return {
-                    field: 'completed',
-                    operator: 'range',
-                    value: { start: startOfDay, end: endOfDay },
-                }
+            if (status === 'done') {
+                return makeRange(startOfToday, endOfToday)
             }
         }
 
-        return { field: null, operator: null, value: null }
+        if (normalized === 'yesterday') {
+            return makeDayRange(momentInstance().subtract(1, 'day'))
+        }
+
+        if (normalized === 'tomorrow') {
+            return makeDayRange(momentInstance().add(1, 'day'))
+        }
+
+        if (normalizedSpaced === 'this week' || normalizedSpaced === 'current week') {
+            const startOfWeek = momentInstance().startOf('week')
+            const endOfWeek = startOfWeek.clone().endOf('week')
+            return makeRange(startOfWeek, endOfWeek)
+        }
+
+        if (
+            normalizedSpaced === 'last week' ||
+            normalizedSpaced === 'previous week' ||
+            normalizedSpaced === 'past week'
+        ) {
+            const startOfLastWeek = momentInstance().subtract(1, 'week').startOf('week')
+            const endOfLastWeek = startOfLastWeek.clone().endOf('week')
+            return makeRange(startOfLastWeek, endOfLastWeek)
+        }
+
+        if (normalizedSpaced === 'next week') {
+            const startOfNextWeek = momentInstance().add(1, 'week').startOf('week')
+            const endOfNextWeek = startOfNextWeek.clone().endOf('week')
+            return makeRange(startOfNextWeek, endOfNextWeek)
+        }
+
+        if (normalizedSpaced === 'this month' || normalizedSpaced === 'current month') {
+            const startOfMonth = momentInstance().startOf('month')
+            const endOfMonth = startOfMonth.clone().endOf('month')
+            return makeRange(startOfMonth, endOfMonth)
+        }
+
+        if (
+            normalizedSpaced === 'last month' ||
+            normalizedSpaced === 'previous month' ||
+            normalizedSpaced === 'past month'
+        ) {
+            const startOfLastMonth = momentInstance().subtract(1, 'month').startOf('month')
+            const endOfLastMonth = startOfLastMonth.clone().endOf('month')
+            return makeRange(startOfLastMonth, endOfLastMonth)
+        }
+
+        if (normalizedSpaced === 'next month') {
+            const startOfNextMonth = momentInstance().add(1, 'month').startOf('month')
+            const endOfNextMonth = startOfNextMonth.clone().endOf('month')
+            return makeRange(startOfNextMonth, endOfNextMonth)
+        }
+
+        const rollingPastMatch = normalizedSpaced.match(/^(last|past)\s+(\d+)\s+days?$/)
+        if (rollingPastMatch) {
+            const days = parseInt(rollingPastMatch[2], 10)
+            if (!Number.isNaN(days) && days > 0) {
+                const end = momentInstance().endOf('day')
+                const start = end
+                    .clone()
+                    .subtract(days - 1, 'days')
+                    .startOf('day')
+                return makeRange(start, end)
+            }
+        }
+
+        const rollingFutureMatch = normalizedSpaced.match(/^next\s+(\d+)\s+days?$/)
+        if (rollingFutureMatch) {
+            const days = parseInt(rollingFutureMatch[1], 10)
+            if (!Number.isNaN(days) && days > 0) {
+                const start = momentInstance().startOf('day')
+                const end = start
+                    .clone()
+                    .add(days - 1, 'days')
+                    .endOf('day')
+                return makeRange(start, end)
+            }
+        }
+
+        // Specific date (YYYY-MM-DD)
+        const targetDate = momentInstance(rawInput)
+        if (!targetDate.isValid()) {
+            throw new Error(
+                'Invalid date format. Use YYYY-MM-DD or a supported keyword like "today", "yesterday", or "this week".'
+            )
+        }
+
+        return makeDayRange(targetDate)
+    }
+
+    /**
+     * Human readable description for a date filter key
+     * @param {string|null} dateKey
+     * @param {string} status
+     * @returns {string}
+     */
+    describeDateFilter(dateKey, status) {
+        if (!dateKey || typeof dateKey !== 'string') {
+            return ''
+        }
+
+        const normalized = dateKey.trim().toLowerCase()
+        if (!normalized) return ''
+        const normalizedSpaced = normalized.replace(/[_-]+/g, ' ')
+
+        const prefix = phrase => (status === 'open' ? `Tasks due ${phrase}` : `Tasks completed ${phrase}`)
+
+        switch (normalized) {
+            case 'today':
+                return status === 'open' ? 'Today and overdue tasks (dueDate <= end of today)' : 'Tasks completed today'
+            case 'yesterday':
+                return prefix('yesterday')
+            case 'tomorrow':
+                return prefix('tomorrow')
+            default:
+                break
+        }
+
+        switch (normalizedSpaced) {
+            case 'this week':
+            case 'current week':
+                return prefix('this week')
+            case 'last week':
+            case 'previous week':
+            case 'past week':
+                return prefix('last week')
+            case 'next week':
+                return prefix('next week')
+            case 'this month':
+            case 'current month':
+                return prefix('this month')
+            case 'last month':
+            case 'previous month':
+            case 'past month':
+                return prefix('last month')
+            case 'next month':
+                return prefix('next month')
+            default:
+                break
+        }
+
+        const rollingPastMatch = normalizedSpaced.match(/^(last|past)\s+(\d+)\s+days?$/)
+        if (rollingPastMatch) {
+            const quantity = parseInt(rollingPastMatch[2], 10)
+            const plural = quantity === 1 ? '' : 's'
+            return prefix(`in the ${rollingPastMatch[1]} ${quantity} day${plural}`)
+        }
+
+        const rollingFutureMatch = normalizedSpaced.match(/^next\s+(\d+)\s+days?$/)
+        if (rollingFutureMatch) {
+            const quantity = parseInt(rollingFutureMatch[1], 10)
+            const plural = quantity === 1 ? '' : 's'
+            return prefix(`in the next ${quantity} day${plural}`)
+        }
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+            return status === 'open' ? `Tasks due on ${dateKey}` : `Tasks completed on ${dateKey}`
+        }
+
+        return status === 'open'
+            ? `Tasks due filtered by "${normalizedSpaced}"`
+            : `Tasks completed filtered by "${normalizedSpaced}"`
     }
 
     /**
@@ -304,18 +468,8 @@ class TaskRetrievalService {
             }
 
             // Determine the effective date filter for the response
-            let effectiveDateFilter = date || (status === 'open' ? 'today' : null)
-            let dateFilterDescription = ''
-
-            if (effectiveDateFilter === 'today') {
-                dateFilterDescription =
-                    status === 'open' ? 'Today and overdue tasks (dueDate <= end of today)' : 'Tasks completed today'
-            } else if (effectiveDateFilter) {
-                dateFilterDescription =
-                    status === 'open'
-                        ? `Tasks due on ${effectiveDateFilter}`
-                        : `Tasks completed on ${effectiveDateFilter}`
-            }
+            const effectiveDateFilter = date || (status === 'open' ? 'today' : null)
+            const dateFilterDescription = this.describeDateFilter(effectiveDateFilter, status)
 
             // Resolve user's current focus task position within results (single-project)
             let focusTaskInResults = false
@@ -489,7 +643,7 @@ class TaskRetrievalService {
         }
 
         if (date && typeof date !== 'string') {
-            throw new Error('Date must be a string in YYYY-MM-DD format or "today"')
+            throw new Error('Date must be a string in YYYY-MM-DD format or a supported keyword like "today"')
         }
 
         if (limit && (typeof limit !== 'number' || limit < 1 || limit > 200)) {
@@ -674,15 +828,7 @@ class TaskRetrievalService {
             }
 
             // Determine the effective date filter for the response
-            let dateFilterDescription = ''
-
-            if (effectiveDate === 'today') {
-                dateFilterDescription =
-                    status === 'open' ? 'Today and overdue tasks (dueDate <= end of today)' : 'Tasks completed today'
-            } else if (effectiveDate) {
-                dateFilterDescription =
-                    status === 'open' ? `Tasks due on ${effectiveDate}` : `Tasks completed on ${effectiveDate}`
-            }
+            const dateFilterDescription = this.describeDateFilter(effectiveDate, status)
 
             const queriedProjects = projectResults
                 .filter(r => r.success)

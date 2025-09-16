@@ -618,7 +618,7 @@ class AlldoneSimpleMCPServer {
                                 date: {
                                     type: 'string',
                                     description:
-                                        'Date filter in YYYY-MM-DD format or "today". For open tasks: shows due tasks. For done tasks: shows completed tasks. Default: "today".',
+                                        'Date filter in YYYY-MM-DD format or relative keywords like "today", "yesterday", "tomorrow", "this_week", "last_week", "last 7 days", or "next 7 days". For open tasks: filters due dates ("today" also includes overdue). For done tasks: filters completion dates. Default: "today".',
                                 },
 
                                 includeSubtasks: {
@@ -2678,7 +2678,7 @@ class AlldoneSimpleMCPServer {
                                     date: {
                                         type: 'string',
                                         description:
-                                            'Date filter in YYYY-MM-DD format or "today". For open tasks: shows due tasks. For done tasks: shows completed tasks. Default: "today".',
+                                            'Date filter in YYYY-MM-DD format or relative keywords like "today", "yesterday", "tomorrow", "this_week", "last_week", "last 7 days", or "next 7 days". For open tasks: filters due dates ("today" also includes overdue). For done tasks: filters completion dates. Default: "today".',
                                     },
                                     includeSubtasks: {
                                         type: 'boolean',
