@@ -1,47 +1,61 @@
-import React, { useMemo } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
-import { useSelector } from 'react-redux'
+import React from 'react'
+import { StyleSheet, View, Text } from 'react-native'
 
-import CheckBox from '../../../CheckBox'
+import styles, { colors } from '../../../styles/global'
+import Icon from '../../../Icon'
 import { translate } from '../../../../i18n/TranslationService'
-import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import ToolsAccessWrapper from './ToolsAccessWrapper'
+import { TOOL_LABEL_BY_KEY, TOOL_OPTIONS } from './toolOptions'
 
 export default function ToolsAccessProperty({ disabled, projectId, assistant }) {
-    const loggedUser = useSelector(state => state.loggedUser)
-
-    const availableTools = useMemo(
-        () => [
-            { key: 'create_task', label: translate('Create new task') },
-            { key: 'update_task', label: translate('Update task') },
-            { key: 'get_tasks', label: translate('Get tasks') },
-            { key: 'get_focus_task', label: translate('Get focus task') },
-        ],
-        []
-    )
-
     const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
 
-    const toggleTool = key => {
-        if (disabled) return
-        const next = allowedTools.includes(key) ? allowedTools.filter(t => t !== key) : [...allowedTools, key]
-        updateAssistant(projectId, { ...assistant, allowedTools: next }, assistant)
-    }
+    const summaryText = !allowedTools.length
+        ? translate('No tools enabled')
+        : allowedTools.length === TOOL_OPTIONS.length
+        ? translate('All tools enabled')
+        : allowedTools.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
 
     return (
-        <View style={{ marginTop: 12 }}>
-            {availableTools.map(tool => (
-                <TouchableOpacity
-                    key={tool.key}
-                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
-                    onPress={() => toggleTool(tool.key)}
-                    disabled={disabled}
-                >
-                    <CheckBox checked={allowedTools.includes(tool.key)} />
-                    <Text style={{ marginLeft: 8, opacity: disabled ? 0.6 : 1 }}>
-                        {`${translate('Allow tool')}: ${tool.label}`}
-                    </Text>
-                </TouchableOpacity>
-            ))}
+        <View style={localStyles.container}>
+            <Icon name="tool" size={24} color={colors.Text03} style={localStyles.icon} />
+            <View style={localStyles.textContainer}>
+                <Text style={localStyles.text}>{translate('Allowed tools')}</Text>
+                <Text style={localStyles.summary} numberOfLines={1}>
+                    {summaryText}
+                </Text>
+            </View>
+            <View style={{ marginLeft: 'auto' }}>
+                <ToolsAccessWrapper disabled={disabled} projectId={projectId} assistant={assistant} />
+            </View>
         </View>
     )
 }
+
+const localStyles = StyleSheet.create({
+    container: {
+        flex: 1,
+        flexDirection: 'row',
+        maxHeight: 56,
+        minHeight: 56,
+        height: 56,
+        paddingLeft: 8,
+        paddingVertical: 8,
+        alignItems: 'center',
+    },
+    icon: {
+        marginRight: 8,
+    },
+    textContainer: {
+        flexShrink: 1,
+        flexGrow: 1,
+    },
+    text: {
+        ...styles.subtitle2,
+        color: colors.Text03,
+    },
+    summary: {
+        ...styles.caption2,
+        color: colors.Text04,
+    },
+})
