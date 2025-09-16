@@ -1130,7 +1130,10 @@ async function storeChunks(
                                                     ? ` (completed: ${task.completedFormatted})`
                                                     : ''
                                             taskSummary += `${taskIndex}. ${task.name}${dueInfo}${doneInfo}\n`
-                                            if (task.description) {
+                                            const hasDescription =
+                                                typeof task.description === 'string' &&
+                                                task.description.trim().length > 0
+                                            if (hasDescription) {
                                                 taskSummary += `   ${task.description}\n`
                                             }
                                             taskIndex++
@@ -1157,10 +1160,11 @@ async function storeChunks(
                                                 ? ` (completed: ${task.completedFormatted})`
                                                 : ''
                                         taskSummary += `${index + 1}. ${task.name}${dueInfo}${doneInfo}\n`
-                                        if (task.description) {
+                                        const hasDescription =
+                                            typeof task.description === 'string' && task.description.trim().length > 0
+                                        if (hasDescription) {
                                             taskSummary += `   ${task.description}\n`
                                         }
-                                        taskSummary += '\n'
                                     })
                                 }
 
