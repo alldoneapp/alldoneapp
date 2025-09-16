@@ -937,6 +937,13 @@ async function storeChunks(
                         try {
                             let result
 
+                            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+                            const userData = userDoc.exists ? userDoc.data() || {} : {}
+
+                            if (allProjects && !userDoc.exists) {
+                                throw new Error('User not found')
+                            }
+
                             if (allProjects) {
                                 console.log(`🌐 Assistant cross-project task query for user ${creatorId}`, {
                                     includeArchived,
@@ -944,13 +951,6 @@ async function storeChunks(
                                     status,
                                 })
 
-                                // Get user data to understand project classifications
-                                const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
-                                if (!userDoc.exists) {
-                                    throw new Error('User not found')
-                                }
-
-                                const userData = userDoc.data()
                                 const {
                                     projectIds = [],
                                     archivedProjectIds = [],
@@ -1056,11 +1056,7 @@ async function storeChunks(
                                 // Single project mode (existing behavior)
                                 // Determine per-project cap from user's customization (0 = unlimited)
                                 const numberTodayTasksSetting =
-                                    typeof loggedUser?.numberTodayTasks === 'number'
-                                        ? loggedUser.numberTodayTasks
-                                        : typeof userData?.numberTodayTasks === 'number'
-                                        ? userData.numberTodayTasks
-                                        : 10
+                                    typeof userData.numberTodayTasks === 'number' ? userData.numberTodayTasks : 10
 
                                 result = await taskRetrievalService.getTasksWithValidation({
                                     projectId: projectId,
@@ -1082,7 +1078,17 @@ async function storeChunks(
                                 if (result.crossProjectQuery) {
                                     // Cross-project formatting
                                     const projectCount = result.queriedProjects ? result.queriedProjects.length : 1
-                                    taskSummary = `Found ${result.count} task(s) across ${projectCount} project(s):\n\n`
+                                    const shownCount = result.tasks ? result.tasks.length : 0
+                                    const totalAcrossProjects =
+                                        typeof result.totalAcrossProjects === 'number'
+                                            ? result.totalAcrossProjects
+                                            : shownCount
+
+                                    taskSummary = `Found ${totalAcrossProjects} task(s) across ${projectCount} project(s)`
+                                    if (totalAcrossProjects > shownCount) {
+                                        taskSummary += ` (showing ${shownCount} due to per-project cap)`
+                                    }
+                                    taskSummary += ':\n\n'
 
                                     // Group tasks by project
                                     const tasksByProject = {}
@@ -1099,8 +1105,21 @@ async function storeChunks(
                                     })
 
                                     let taskIndex = 1
-                                    Object.values(tasksByProject).forEach(project => {
-                                        taskSummary += `**${project.name}** (${project.tasks.length} task(s)):\n`
+                                    Object.entries(tasksByProject).forEach(([projId, project]) => {
+                                        const summaryEntry = result.projectSummary?.[projId]
+                                        const projectTotal =
+                                            typeof summaryEntry?.taskCount === 'number' ? summaryEntry.taskCount : null
+                                        const shownForProject = project.tasks.length
+                                        const capped = projectTotal !== null && projectTotal > shownForProject
+
+                                        const totalLabel =
+                                            projectTotal !== null
+                                                ? `${projectTotal} task(s)${
+                                                      capped ? `; showing ${shownForProject}` : ''
+                                                  }`
+                                                : `${shownForProject} task(s)`
+
+                                        taskSummary += `**${project.name}** (${totalLabel}):\n`
                                         project.tasks.forEach(task => {
                                             const dueInfo = task.dueDateFormatted
                                                 ? ` (due: ${task.dueDateFormatted})`
@@ -1117,14 +1136,19 @@ async function storeChunks(
                                         })
                                         taskSummary += '\n'
                                     })
-
-                                    // Add cross-project summary
-                                    if (result.totalAcrossProjects > result.count) {
-                                        taskSummary += `Total across all projects: ${result.totalAcrossProjects} task(s) (showing ${result.count})\n`
-                                    }
                                 } else {
                                     // Single project formatting (existing)
-                                    taskSummary = `Found ${result.count} task(s):\n\n`
+                                    const totalAvailable =
+                                        typeof result.query?.totalAvailable === 'number'
+                                            ? result.query.totalAvailable
+                                            : result.count
+                                    const shownCount = result.tasks.length
+
+                                    taskSummary = `Found ${totalAvailable} task(s)`
+                                    if (totalAvailable > shownCount) {
+                                        taskSummary += ` (showing ${shownCount} due to per-project cap)`
+                                    }
+                                    taskSummary += ':\n\n'
                                     result.tasks.forEach((task, index) => {
                                         const dueInfo = task.dueDateFormatted ? ` (due: ${task.dueDateFormatted})` : ''
                                         const doneInfo =
@@ -1165,11 +1189,16 @@ async function storeChunks(
                                 }
                             }
 
+                            const loggingTotal = result.crossProjectQuery
+                                ? result.totalAcrossProjects
+                                : result.query?.totalAvailable
                             console.log('Retrieved tasks via tool call', {
                                 projectId,
                                 status,
-                                count: result.count,
+                                shownCount: result.count,
+                                totalCount: loggingTotal,
                                 date: result.dateFilter,
+                                crossProject: result.crossProjectQuery,
                             })
 
                             // Replace tool line with formatted task list
@@ -1786,7 +1815,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","limit":5,"date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open","limit":10} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done","limit":20} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])

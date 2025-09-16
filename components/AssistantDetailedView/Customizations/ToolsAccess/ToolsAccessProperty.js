@@ -14,6 +14,7 @@ export default function ToolsAccessProperty({ disabled, projectId, assistant }) 
             { key: 'create_task', label: translate('Create new task') },
             { key: 'update_task', label: translate('Update task') },
             { key: 'get_tasks', label: translate('Get tasks') },
+            { key: 'get_focus_task', label: translate('Get focus task') },
         ],
         []
     )
