@@ -714,6 +714,30 @@ class AlldoneSimpleMCPServer {
                             required: [],
                         },
                     },
+                    {
+                        name: 'create_note',
+                        description:
+                            'Create a new note in the current project (requires OAuth 2.0 Bearer token authentication)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                title: {
+                                    type: 'string',
+                                    description: 'Note title (required)',
+                                },
+                                content: {
+                                    type: 'string',
+                                    description:
+                                        'Note content (optional, will create default template if not provided)',
+                                },
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Project ID (optional, uses user default project if not provided)',
+                                },
+                            },
+                            required: ['title'],
+                        },
+                    },
                 ],
             }
         })
@@ -744,6 +768,9 @@ class AlldoneSimpleMCPServer {
                         break
                     case 'get_current_user_info':
                         result = await this.getCurrentUserInfo(args, request)
+                        break
+                    case 'create_note':
+                        result = await this.createNote(args, request)
                         break
                     default:
                         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`)
@@ -1761,6 +1788,87 @@ class AlldoneSimpleMCPServer {
         } catch (error) {
             console.error('Error getting focus task:', error)
             throw new Error(`Failed to get focus task: ${error.message}`)
+        }
+    }
+
+    async createNote(args, request) {
+        const { title, content, projectId: specifiedProjectId } = args
+
+        // Get authenticated user automatically from client session
+        const userId = await this.getAuthenticatedUserForClient(request)
+
+        // Use specified project or fall back to user's default project
+        const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
+        if (!projectId) {
+            throw new Error(
+                'No project specified and no default project found. Please specify a projectId or set a default project.'
+            )
+        }
+
+        const db = admin.firestore()
+
+        // Get user data for feed creation
+        let feedUser
+        try {
+            const userDoc = await db.collection('users').doc(userId).get()
+            if (userDoc.exists) {
+                const userData = userDoc.data()
+                feedUser = {
+                    uid: userId, // generateFeedModel expects 'uid' not 'id'
+                    id: userId,
+                    creatorId: userId,
+                    name: userData.name || userData.displayName || 'User',
+                    email: userData.email || '',
+                }
+            } else {
+                feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
+            }
+        } catch (error) {
+            console.warn('Could not get user data for feed, using defaults')
+            feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
+        }
+
+        // Initialize NoteService if not already done
+        if (!this.noteService) {
+            const { NoteService } = require('../shared/NoteService')
+            this.noteService = new NoteService({
+                database: db,
+                moment: moment,
+                idGenerator: () => db.collection('_').doc().id,
+                enableFeeds: true,
+                enableValidation: true,
+                isCloudFunction: true,
+            })
+            await this.noteService.initialize()
+        }
+
+        try {
+            // Create note using unified service
+            const result = await this.noteService.createAndPersistNote(
+                {
+                    title,
+                    content,
+                    userId,
+                    projectId,
+                    isPrivate: false, // Default to public for MCP-created notes
+                    feedUser,
+                },
+                {
+                    userId,
+                    projectId,
+                    // We could add project permission validation here
+                }
+            )
+
+            return {
+                success: result.success,
+                noteId: result.noteId,
+                message: result.message,
+                note: result.note,
+            }
+        } catch (error) {
+            console.error('Error creating note:', error)
+            throw new Error(`Failed to create note: ${error.message}`)
         }
     }
 

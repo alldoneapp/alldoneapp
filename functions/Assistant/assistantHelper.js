@@ -877,6 +877,130 @@ async function storeChunks(
                         toolAlreadyExecuted = true
                     }
 
+                    // Check for create_note tool
+                    const createNoteMatch = commentText.match(/TOOL:\s*create_note\s*(\{[\s\S]*?\})/)
+                    if (createNoteMatch && !toolAlreadyExecuted) {
+                        console.log('Detected TOOL:create_note invocation')
+                        // Fetch assistant to check allowed tools
+                        const assistant = await getAssistantForChat(projectId, assistantId)
+                        const allowed = Array.isArray(assistant.allowedTools)
+                            ? assistant.allowedTools.includes('create_note')
+                            : false
+                        if (!allowed) {
+                            console.log('Assistant not allowed to use create_note tool')
+                            const replaced = commentText.replace(createNoteMatch[0], 'Tool not permitted: create_note')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Parse JSON args
+                        const argsJson = createNoteMatch[1]
+                        let args = {}
+                        try {
+                            args = JSON.parse(argsJson)
+                        } catch (e) {
+                            console.error('Failed to parse create_note args JSON', e)
+                            const replaced = commentText.replace(createNoteMatch[0], 'Failed to parse tool arguments')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        const noteTitle = (args.title || '').toString().trim()
+                        const noteContent = (args.content || '').toString()
+                        if (!noteTitle) {
+                            const replaced = commentText.replace(createNoteMatch[0], 'Missing required field: title')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Determine creatorId (the user interacting with the assistant)
+                        const creatorId =
+                            requestUserId ||
+                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
+
+                        // Initialize NoteService for assistant tool calls
+                        const { NoteService } = require('../shared/NoteService')
+                        const noteService = new NoteService({
+                            database: admin.firestore(),
+                            idGenerator: () => uuidv4(),
+                            enableFeeds: true, // Enable feeds so notes appear in updates tab
+                            enableValidation: true,
+                            isCloudFunction: true,
+                        })
+                        await noteService.initialize()
+
+                        // Create feedUser object for feed generation - get actual user data
+                        let feedUser
+                        try {
+                            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+                            if (userDoc.exists) {
+                                const userData = userDoc.data()
+                                feedUser = {
+                                    uid: creatorId,
+                                    id: creatorId,
+                                    creatorId: creatorId,
+                                    name: userData.name || userData.displayName || 'User',
+                                    email: userData.email || '',
+                                }
+                            } else {
+                                feedUser = {
+                                    uid: creatorId,
+                                    id: creatorId,
+                                    creatorId: creatorId,
+                                    name: 'Unknown User',
+                                    email: '',
+                                }
+                            }
+                        } catch (error) {
+                            console.warn('Could not get user data for assistant feed, using defaults:', error)
+                            feedUser = {
+                                uid: creatorId,
+                                id: creatorId,
+                                creatorId: creatorId,
+                                name: 'Unknown User',
+                                email: '',
+                            }
+                        }
+
+                        // Create note using unified service
+                        const result = await noteService.createAndPersistNote(
+                            {
+                                title: noteTitle,
+                                content: noteContent,
+                                userId: creatorId,
+                                projectId: projectId,
+                                isPrivate: false,
+                                feedUser,
+                            },
+                            {
+                                userId: creatorId,
+                                projectId: projectId,
+                            }
+                        )
+
+                        console.log('Created note via tool call', {
+                            projectId,
+                            noteId: result.noteId,
+                            title: noteTitle,
+                        })
+
+                        // Replace tool line with confirmation
+                        const replaced = commentText.replace(createNoteMatch[0], `Created note: ${noteTitle}`)
+                        commentText = replaced
+                        answerContent = replaced
+                        await commentRef.update({ commentText })
+                        toolAlreadyExecuted = true
+                    }
+
                     // Check for get_tasks tool
                     const getTasksMatch = commentText.match(/TOOL:\s*get_tasks\s*(\{[\s\S]*?\})/)
                     if (getTasksMatch) {
@@ -1875,7 +1999,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskName":"standup","focus":true} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"status":"done","date":"yesterday"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:create_note {"title":"Note title","content":"Note content"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskName":"standup","focus":true} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"status":"done","date":"yesterday"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])
