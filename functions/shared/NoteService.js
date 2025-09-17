@@ -157,14 +157,31 @@ class NoteService {
             const noteContent = content || `# ${title}\n\nNote created via assistant.`
 
             // Insert the content into the Yjs document
-            type.insertText(0, noteContent)
+            type.insert(0, noteContent)
 
             // Encode as binary for storage
             return Y.encodeStateAsUpdate(ydoc)
         } catch (error) {
             console.error('Failed to create note content with Yjs:', error)
-            // Fallback: return empty content
-            return new Uint8Array()
+            console.error('Error details:', error.message)
+
+            // More detailed fallback - create a minimal Yjs document
+            try {
+                const Y = require('yjs')
+                const ydoc = new Y.Doc()
+                const type = ydoc.getText('quill')
+
+                // Try basic insert instead of insertText
+                const noteContent = content || `${title}\n\nNote created via assistant.`
+                type.insert(0, noteContent)
+
+                console.log('NoteService: Created fallback Yjs content successfully')
+                return Y.encodeStateAsUpdate(ydoc)
+            } catch (fallbackError) {
+                console.error('Fallback Yjs creation also failed:', fallbackError)
+                // Return empty Uint8Array if all else fails
+                return new Uint8Array()
+            }
         }
     }
 
