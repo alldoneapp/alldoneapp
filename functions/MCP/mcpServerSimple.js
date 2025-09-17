@@ -728,7 +728,7 @@ class AlldoneSimpleMCPServer {
                                 content: {
                                     type: 'string',
                                     description:
-                                        'Note content (optional, will create default template if not provided)',
+                                        'Note content (optional, supports markdown formatting like # headers, **bold**, *italic*, lists, etc. Will create default template if not provided)',
                                 },
                                 projectId: {
                                     type: 'string',
@@ -2837,7 +2837,7 @@ class AlldoneSimpleMCPServer {
                                     content: {
                                         type: 'string',
                                         description:
-                                            'Note content (optional, will create default template if not provided)',
+                                            'Note content (optional, supports markdown formatting like # headers, **bold**, *italic*, lists, etc. Will create default template if not provided)',
                                     },
                                     projectId: {
                                         type: 'string',

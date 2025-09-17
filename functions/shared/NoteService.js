@@ -188,19 +188,23 @@ class NoteService {
     /**
      * Generate preview text from content
      * @param {string} content - Note content
+     * @param {string} title - Note title (fallback if no content)
      * @returns {string} Preview text
      */
-    generatePreview(content) {
-        if (!content) return ''
+    generatePreview(content, title) {
+        // Use content if available, otherwise create preview from title
+        const textToPreview = content || `# ${title}\n\nNote created via assistant.`
+
+        if (!textToPreview) return ''
 
         // Remove markdown headers and extract first few lines
-        const cleanContent = content
+        const cleanContent = textToPreview
             .replace(/^#+\s*/gm, '') // Remove markdown headers
             .replace(/\n+/g, ' ') // Replace newlines with spaces
             .trim()
 
-        // Return first 500 characters
-        return cleanContent.length > 500 ? cleanContent.substring(0, 500) + '...' : cleanContent
+        // Return first 100 characters (similar to frontend length)
+        return cleanContent.length > 100 ? cleanContent.substring(0, 100) + '...' : cleanContent
     }
 
     /**
@@ -256,7 +260,7 @@ class NoteService {
             title: cleanTitle.toLowerCase(), // Alldone stores title in lowercase
             extendedTitle: extendedTitle,
             description: params.description || '', // Not used for content in notes
-            preview: this.generatePreview(params.content),
+            preview: this.generatePreview(params.content, cleanTitle),
             userId: params.userId,
             creatorId: params.userId,
             projectId: params.projectId,
