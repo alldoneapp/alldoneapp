@@ -1473,15 +1473,24 @@ async function storeChunks(
                             const { TaskService } = require('../shared/TaskService')
                             const taskService = new TaskService({
                                 database: db,
-                                moment: require('moment'),
+                                moment: moment,
                                 isCloudFunction: true,
                                 enableFeeds: true,
                                 enableValidation: false, // Skip validation since we already validated
                             })
                             await taskService.initialize()
 
+                            const focusRaw = args.focus
+                            const focusNormalized =
+                                focusRaw === undefined
+                                    ? undefined
+                                    : typeof focusRaw === 'string'
+                                    ? focusRaw.toLowerCase() === 'true'
+                                    : focusRaw === true || focusRaw === 1
+
                             // Create feedUser object from creatorId
                             const feedUser = { uid: creatorId, id: creatorId }
+                            let confirmationMessage = ''
 
                             try {
                                 // Use TaskService for update with proper feed generation
@@ -1496,6 +1505,8 @@ async function storeChunks(
                                     userId: args.userId,
                                     parentId: args.parentId,
                                     feedUser: feedUser,
+                                    focus: focusRaw,
+                                    focusUserId: creatorId,
                                 })
 
                                 console.log('Updated task via TaskService tool call', {
@@ -1510,7 +1521,7 @@ async function storeChunks(
 
                                 // Build confirmation message showing what was found and changed
                                 const changes = result.changes || []
-                                let confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
+                                confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
                                 if (changes.length > 0) {
                                     confirmationMessage += ` (${changes.join(', ')})`
                                 }
@@ -1533,6 +1544,13 @@ async function storeChunks(
                                     searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
                                 })
 
+                                const updatedTaskDoc = await db
+                                    .doc(`items/${currentProjectId}/tasks/${currentTask.id}`)
+                                    .get()
+                                const updatedTask = updatedTaskDoc.exists
+                                    ? { id: currentTask.id, ...updatedTaskDoc.data() }
+                                    : { ...currentTask, ...updateData }
+
                                 // Build confirmation message showing what was found and changed
                                 const changes = []
                                 if (args.name !== undefined) changes.push(`name to "${args.name}"`)
@@ -1543,7 +1561,44 @@ async function storeChunks(
                                 }
                                 if (args.userId !== undefined) changes.push(`assigned to ${args.userId}`)
 
-                                let confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
+                                if (focusRaw !== undefined) {
+                                    try {
+                                        const { FocusTaskService } = require('../shared/FocusTaskService')
+                                        const focusTaskService = new FocusTaskService({
+                                            database: db,
+                                            moment: moment,
+                                            isCloudFunction: true,
+                                        })
+                                        await focusTaskService.initialize()
+
+                                        if (focusNormalized) {
+                                            await focusTaskService.setNewFocusTask(
+                                                creatorId,
+                                                currentProjectId,
+                                                { id: currentTask.id, ...updatedTask },
+                                                { preserveDueDate: args.dueDate !== undefined }
+                                            )
+                                            changes.push('set as focus task')
+                                        } else {
+                                            const clearResult = await focusTaskService.clearFocusTask(
+                                                creatorId,
+                                                currentTask.id
+                                            )
+                                            if (clearResult?.cleared) {
+                                                changes.push('removed from focus')
+                                            } else {
+                                                changes.push('focus already cleared')
+                                            }
+                                        }
+                                    } catch (focusError) {
+                                        console.error('Assistant fallback: Focus update failed:', focusError)
+                                        throw new Error(
+                                            `Task updated but failed to update focus state: ${focusError.message}`
+                                        )
+                                    }
+                                }
+
+                                confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
                                 if (changes.length > 0) {
                                     confirmationMessage += ` (${changes.join(', ')})`
                                 }
@@ -1820,7 +1875,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"status":"done","date":"yesterday"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskName":"standup","focus":true} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"status":"done","date":"yesterday"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Do not add any other text on that line.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])

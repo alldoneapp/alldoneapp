@@ -93,6 +93,7 @@ class TaskService {
         }
 
         this.initialized = false
+        this.focusTaskService = null
     }
 
     /**
@@ -640,6 +641,8 @@ class TaskService {
             userId,
             parentId,
             feedUser,
+            focus,
+            focusUserId,
             ...otherParams
         } = params
 
@@ -710,6 +713,45 @@ class TaskService {
 
         // Create updated task object for feed generation
         const updatedTask = { ...currentTask, ...updateData }
+
+        let focusAction = null
+        if (focus !== undefined) {
+            const focusEnabled =
+                typeof focus === 'string' ? focus.toLowerCase() === 'true' : focus === true || focus === 1
+            const effectiveFocusUserId =
+                focusUserId || context.focusUserId || (feedUser && (feedUser.uid || feedUser.id)) || userId
+
+            if (!effectiveFocusUserId || typeof effectiveFocusUserId !== 'string') {
+                throw new Error('A valid focus user ID is required to modify focus state')
+            }
+
+            const normalizedFocusAssignee = updateData.userId || currentTask.userId || updatedTask.userId
+            const normalizedUserIds = Array.isArray(updatedTask.userIds) ? updatedTask.userIds : []
+
+            if (
+                focusEnabled &&
+                normalizedFocusAssignee &&
+                normalizedFocusAssignee !== effectiveFocusUserId &&
+                !normalizedUserIds.includes(effectiveFocusUserId)
+            ) {
+                throw new Error('Cannot set focus task for a user who is not assigned to this task')
+            }
+
+            if (focusEnabled) {
+                changes.push('set as focus task')
+                focusAction = {
+                    type: 'set',
+                    userId: effectiveFocusUserId,
+                    preserveDueDate: updateData.dueDate !== undefined,
+                }
+            } else {
+                changes.push('removed from focus')
+                focusAction = {
+                    type: 'clear',
+                    userId: effectiveFocusUserId,
+                }
+            }
+        }
 
         // Generate feed data if enabled and feedUser provided
         let feedData = null
@@ -789,6 +831,7 @@ class TaskService {
             updatedTask,
             feedData,
             taskId,
+            focusAction,
             changes,
             success: true,
             message:
@@ -811,7 +854,7 @@ class TaskService {
             throw new Error('Database interface not configured')
         }
 
-        const { updateData, updatedTask, feedData, taskId } = updateResult
+        const { updateData, updatedTask, feedData, taskId, focusAction } = updateResult
         const { projectId, batch: externalBatch, feedUser } = options
 
         const finalProjectId = projectId || updatedTask.projectId
@@ -1108,15 +1151,51 @@ class TaskService {
                 }
             }
 
+            let focusResult = null
+            if (focusAction && focusAction.userId) {
+                try {
+                    const focusTaskService = await this.getFocusTaskService()
+                    if (focusAction.type === 'set') {
+                        await focusTaskService.setNewFocusTask(
+                            focusAction.userId,
+                            finalProjectId,
+                            { id: taskId, ...updatedTask },
+                            { preserveDueDate: !!focusAction.preserveDueDate }
+                        )
+                        focusResult = { action: 'set', userId: focusAction.userId }
+                    } else if (focusAction.type === 'clear') {
+                        focusResult = await focusTaskService.clearFocusTask(focusAction.userId, taskId)
+                    }
+                } catch (focusError) {
+                    console.error('TaskService: Focus update failed:', focusError)
+                    throw new Error(`Failed to update focus task state: ${focusError.message}`)
+                }
+            }
+
             return {
                 ...updateResult,
                 persisted: true,
                 projectId: finalProjectId,
+                focusResult,
             }
         } catch (error) {
             console.error('Task update persistence failed:', error)
             throw new Error(`Failed to persist task update: ${error.message}`)
         }
+    }
+
+    async getFocusTaskService() {
+        if (!this.focusTaskService) {
+            const { FocusTaskService } = require('./FocusTaskService')
+            const momentProvider = this.options.moment || require('moment')
+            this.focusTaskService = new FocusTaskService({
+                database: this.options.database,
+                moment: momentProvider,
+                isCloudFunction: this.options.isCloudFunction,
+            })
+            await this.focusTaskService.initialize()
+        }
+        return this.focusTaskService
     }
 
     /**

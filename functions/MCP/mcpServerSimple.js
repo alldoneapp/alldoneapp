@@ -581,6 +581,11 @@ class AlldoneSimpleMCPServer {
                                     type: 'string',
                                     description: 'Reassign task to different user (optional)',
                                 },
+                                focus: {
+                                    type: 'boolean',
+                                    description:
+                                        'Set to true to mark this task as your focus task, or false to clear it (optional)',
+                                },
                             },
                             required: [],
                         },
@@ -949,6 +954,7 @@ class AlldoneSimpleMCPServer {
                 parentId,
                 targetUserId,
                 targetProjectId,
+                focus: args.focus,
             },
             userId,
             db
@@ -1016,7 +1022,7 @@ class AlldoneSimpleMCPServer {
      * Perform the actual task update
      */
     async performTaskUpdate(currentTask, currentProjectId, currentProjectName, updateFields, userId, db) {
-        const { name, description, dueDate, completed, parentId, targetUserId, targetProjectId } = updateFields
+        const { name, description, dueDate, completed, parentId, targetUserId, targetProjectId, focus } = updateFields
 
         // Initialize TaskService for consistent update logic and feed generation
         const { TaskService } = require('../shared/TaskService')
@@ -1046,6 +1052,8 @@ class AlldoneSimpleMCPServer {
                 userId: targetUserId,
                 parentId: parentId,
                 feedUser: feedUser,
+                focus: focus,
+                focusUserId: userId,
             })
 
             console.log('Task updated via TaskService:', {
@@ -1071,6 +1079,7 @@ class AlldoneSimpleMCPServer {
                 task: result.updatedTask || { id: currentTask.id, ...currentTask },
                 project: { id: currentProjectId, name: currentProjectName },
                 changes: changes,
+                focusResult: result.focusResult || null,
             }
         } catch (error) {
             console.error('TaskService update failed, falling back to direct update:', error)
@@ -1175,6 +1184,40 @@ class AlldoneSimpleMCPServer {
                 if (targetUserId !== undefined) changes.push(`assigned to ${targetUserId}`)
                 if (parentId !== undefined) changes.push('parent task')
 
+                if (focus !== undefined) {
+                    const focusEnabled =
+                        typeof focus === 'string' ? focus.toLowerCase() === 'true' : focus === true || focus === 1
+                    try {
+                        const { FocusTaskService } = require('../shared/FocusTaskService')
+                        const focusTaskService = new FocusTaskService({
+                            database: db,
+                            moment: moment,
+                            isCloudFunction: true,
+                        })
+                        await focusTaskService.initialize()
+
+                        if (focusEnabled) {
+                            await focusTaskService.setNewFocusTask(
+                                userId,
+                                currentProjectId,
+                                { id: currentTask.id, ...updatedTask },
+                                { preserveDueDate: dueDate !== undefined }
+                            )
+                            changes.push('set as focus task')
+                        } else {
+                            const clearResult = await focusTaskService.clearFocusTask(userId, currentTask.id)
+                            if (clearResult?.cleared) {
+                                changes.push('removed from focus')
+                            } else {
+                                changes.push('focus already cleared')
+                            }
+                        }
+                    } catch (focusError) {
+                        console.error('Fallback: Focus update failed:', focusError)
+                        throw new Error(`Task updated but failed to update focus state: ${focusError.message}`)
+                    }
+                }
+
                 let message = `Task "${currentTask.name}" updated successfully`
                 if (changes.length > 0) {
                     message += ` (${changes.join(', ')})`
@@ -1188,6 +1231,7 @@ class AlldoneSimpleMCPServer {
                     task: { id: currentTask.id, ...updatedTask },
                     project: { id: currentProjectId, name: currentProjectName },
                     changes: changes,
+                    focusResult: null,
                 }
             } catch (fallbackError) {
                 console.error('Fallback update also failed:', fallbackError)
@@ -2639,6 +2683,11 @@ class AlldoneSimpleMCPServer {
                                     userId: {
                                         type: 'string',
                                         description: 'Reassign task to different user (optional)',
+                                    },
+                                    focus: {
+                                        type: 'boolean',
+                                        description:
+                                            'Set to true to mark this task as your focus task, or false to clear it (optional)',
                                     },
                                 },
                                 required: [],

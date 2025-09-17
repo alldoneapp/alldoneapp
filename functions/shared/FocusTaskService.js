@@ -11,6 +11,7 @@
  */
 
 const moment = require('moment')
+const { generateSortIndex } = require('../Utils/HelperFunctionsCloud')
 
 class FocusTaskService {
     constructor(options = {}) {
@@ -311,7 +312,7 @@ class FocusTaskService {
      * @param {string} projectId - Project ID
      * @param {Object} task - Task object
      */
-    async setNewFocusTask(userId, projectId, task) {
+    async setNewFocusTask(userId, projectId, task, options = {}) {
         await this.ensureInitialized()
 
         if (!userId || !projectId || !task || !task.id) {
@@ -319,6 +320,48 @@ class FocusTaskService {
         }
 
         try {
+            const userRef = this.options.database.doc(`users/${userId}`)
+            const userDoc = await userRef.get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+
+            const userData = userDoc.data()
+            const previousFocusTaskId = userData.inFocusTaskId || ''
+            const previousFocusProjectId = userData.inFocusTaskProjectId || ''
+            const preserveDueDate = !!options.preserveDueDate
+
+            let previousTaskRestore = null
+            if (
+                previousFocusTaskId &&
+                previousFocusProjectId &&
+                (previousFocusTaskId !== task.id || previousFocusProjectId !== projectId)
+            ) {
+                try {
+                    const previousTaskRef = this.options.database.doc(
+                        `items/${previousFocusProjectId}/tasks/${previousFocusTaskId}`
+                    )
+                    const previousTaskSnap = await previousTaskRef.get()
+                    if (previousTaskSnap.exists) {
+                        const previousTaskData = previousTaskSnap.data()
+                        let restoredSortIndex = generateSortIndex()
+                        const calendarStart = previousTaskData?.calendarData?.start
+                        if (calendarStart) {
+                            const startDateTime = calendarStart.dateTime || calendarStart.date
+                            if (startDateTime) {
+                                restoredSortIndex = this.options.moment(startDateTime).valueOf()
+                            }
+                        }
+                        previousTaskRestore = { ref: previousTaskRef, sortIndex: restoredSortIndex }
+                    }
+                } catch (restoreError) {
+                    console.warn(
+                        'FocusTaskService: Failed to prepare previous focus task restore:',
+                        restoreError.message
+                    )
+                }
+            }
+
             const batch = this.options.database.batch()
 
             // Update task with focus timing
@@ -326,13 +369,21 @@ class FocusTaskService {
             const GAP = 1000000000000000
             const focusSortIndex = Number.MAX_SAFE_INTEGER - GAP + Date.now()
 
-            batch.update(taskRef, {
+            const focusUpdatePayload = {
                 sortIndex: focusSortIndex,
-                dueDate: this.options.moment().valueOf(), // Set due date to now for focus
-            })
+            }
+
+            if (!preserveDueDate) {
+                focusUpdatePayload.dueDate = this.options.moment().valueOf()
+            }
+
+            if (previousTaskRestore) {
+                batch.update(previousTaskRestore.ref, { sortIndex: previousTaskRestore.sortIndex })
+            }
+
+            batch.update(taskRef, focusUpdatePayload)
 
             // Update user's focus task info
-            const userRef = this.options.database.doc(`users/${userId}`)
             batch.update(userRef, {
                 inFocusTaskId: task.id,
                 inFocusTaskProjectId: projectId,
@@ -344,6 +395,96 @@ class FocusTaskService {
         } catch (error) {
             console.error('Error setting new focus task:', error)
             throw new Error(`Failed to set new focus task: ${error.message}`)
+        }
+    }
+
+    async clearFocusTask(userId, taskId = null) {
+        await this.ensureInitialized()
+
+        if (!userId || typeof userId !== 'string') {
+            throw new Error('User ID is required')
+        }
+
+        try {
+            const userRef = this.options.database.doc(`users/${userId}`)
+            const userDoc = await userRef.get()
+
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+
+            const userData = userDoc.data()
+            const currentFocusTaskId = userData.inFocusTaskId
+            const currentFocusProjectId = userData.inFocusTaskProjectId
+
+            if (!currentFocusTaskId || !currentFocusProjectId) {
+                return {
+                    cleared: false,
+                    reason: 'no-focus-task',
+                }
+            }
+
+            if (taskId && currentFocusTaskId !== taskId) {
+                return {
+                    cleared: false,
+                    reason: 'different-task',
+                    currentTaskId: currentFocusTaskId,
+                }
+            }
+
+            let restoreSortIndex = generateSortIndex()
+            let hasTaskSnapshot = false
+            try {
+                const focusTaskRef = this.options.database.doc(
+                    `items/${currentFocusProjectId}/tasks/${currentFocusTaskId}`
+                )
+                const focusTaskSnap = await focusTaskRef.get()
+                if (focusTaskSnap.exists) {
+                    hasTaskSnapshot = true
+                    const focusTaskData = focusTaskSnap.data()
+                    const calendarStart = focusTaskData?.calendarData?.start
+                    if (calendarStart) {
+                        const startDateTime = calendarStart.dateTime || calendarStart.date
+                        if (startDateTime) {
+                            restoreSortIndex = this.options.moment(startDateTime).valueOf()
+                        }
+                    }
+                }
+            } catch (restoreError) {
+                console.warn(
+                    'FocusTaskService: Failed to read focus task during clear operation:',
+                    restoreError.message
+                )
+            }
+
+            const batch = this.options.database.batch()
+
+            if (hasTaskSnapshot) {
+                const focusTaskRef = this.options.database.doc(
+                    `items/${currentFocusProjectId}/tasks/${currentFocusTaskId}`
+                )
+                batch.update(focusTaskRef, { sortIndex: restoreSortIndex })
+            }
+
+            batch.update(userRef, {
+                inFocusTaskId: '',
+                inFocusTaskProjectId: '',
+            })
+
+            await batch.commit()
+
+            console.log(
+                `Cleared focus task for user ${userId}. Previous task ${currentFocusTaskId} in project ${currentFocusProjectId}`
+            )
+
+            return {
+                cleared: true,
+                taskId: currentFocusTaskId,
+                projectId: currentFocusProjectId,
+            }
+        } catch (error) {
+            console.error('Error clearing focus task:', error)
+            throw new Error(`Failed to clear focus task: ${error.message}`)
         }
     }
 
