@@ -264,8 +264,8 @@ class NoteService {
             // Privacy settings
             isPrivate: params.isPrivate || false,
             isPremium: false, // Default for assistant-created notes
-            isPublicFor: params.isPublicFor || ['FEED_PUBLIC_FOR_ALL'],
-            isVisibleInFollowedFor: params.isPublicFor || ['FEED_PUBLIC_FOR_ALL'],
+            isPublicFor: params.isPublicFor || [0, params.userId],
+            isVisibleInFollowedFor: params.isPublicFor || [params.userId],
 
             // Timestamps - Frontend expects both 'created' and 'createdAt'
             created: now,
