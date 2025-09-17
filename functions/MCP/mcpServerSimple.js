@@ -31,6 +31,28 @@ const { getEnvironmentConfig } = require('./config/environments.js')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
+    const normalizeBaseUrl = url => {
+        if (!url) return null
+        const trimmed = url.trim()
+        if (!trimmed) return null
+        return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+    }
+
+    // Honour explicit MCP base URL first (supports custom domains and direct CF endpoints)
+    const envBaseUrl = normalizeBaseUrl(process.env.MCP_BASE_URL)
+    if (envBaseUrl) {
+        return envBaseUrl
+    }
+
+    try {
+        const configBaseUrl = normalizeBaseUrl(getEnvironmentConfig()?.mcpBaseUrl)
+        if (configBaseUrl) {
+            return configBaseUrl
+        }
+    } catch (error) {
+        console.warn('MCP getBaseUrl: failed to read environment config', error?.message)
+    }
+
     if (process.env.FUNCTIONS_EMULATOR) {
         return 'http://localhost:5000'
     }
@@ -68,7 +90,6 @@ function getBaseUrl() {
     })
 
     // Decide by detected projectId; default to production if unknown
-    // I could replace it here with MCP_BASE_URL which should be now also set in the CI pipeline
     if (projectId === 'alldonealeph') {
         return 'https://alldonealeph.web.app'
     }
