@@ -250,7 +250,7 @@ class NoteService {
         const cleanTitle = params.title.trim()
         const extendedTitle = params.extendedTitle || cleanTitle
 
-        // Create note object following Alldone patterns
+        // Create note object following Alldone patterns (matching frontend structure)
         const note = {
             id: noteId,
             title: cleanTitle.toLowerCase(), // Alldone stores title in lowercase
@@ -263,10 +263,12 @@ class NoteService {
 
             // Privacy settings
             isPrivate: params.isPrivate || false,
+            isPremium: false, // Default for assistant-created notes
             isPublicFor: params.isPublicFor || ['FEED_PUBLIC_FOR_ALL'],
             isVisibleInFollowedFor: params.isPublicFor || ['FEED_PUBLIC_FOR_ALL'],
 
-            // Timestamps
+            // Timestamps - Frontend expects both 'created' and 'createdAt'
+            created: now,
             createdAt: now,
             lastEditionDate: now,
             lastEditorId: params.userId,
@@ -296,6 +298,38 @@ class NoteService {
 
             // Assistant info
             assistantId: params.assistantId || null,
+
+            // Linking arrays (required by frontend)
+            linkedParentAssistantIds: [],
+            linkedParentContactsIds: [],
+            linkedParentGoalsIds: [],
+            linkedParentNotesIds: [],
+            linkedParentProjectsIds: [],
+            linkedParentSkillsIds: [],
+            linkedParentTasksIds: [],
+
+            // Linking maps (required by frontend)
+            linkedParentsInContentIds: {
+                linkedParentAssistantIds: [],
+                linkedParentContactsIds: [],
+                linkedParentGoalsIds: [],
+                linkedParentNotesIds: [],
+                linkedParentProjectsIds: [],
+                linkedParentSkillsIds: [],
+                linkedParentTasksIds: [],
+            },
+            linkedParentsInTitleIds: {
+                linkedParentAssistantIds: [],
+                linkedParentContactsIds: [],
+                linkedParentGoalsIds: [],
+                linkedParentNotesIds: [],
+                linkedParentProjectsIds: [],
+                linkedParentSkillsIds: [],
+                linkedParentTasksIds: [],
+            },
+
+            // Template linking
+            linkedToTemplate: false,
         }
 
         // Double-check the note has the ID field
