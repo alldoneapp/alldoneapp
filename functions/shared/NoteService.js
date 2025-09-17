@@ -426,196 +426,80 @@ class NoteService {
             throw new Error(`Invalid note ID for persistence: "${noteId}". Note ID must be a non-empty string.`)
         }
 
+        console.log('NoteService: Starting persistence for note:', noteId, 'in project:', finalProjectId)
+
         try {
-            // Use external batch if provided, or create new one
-            const batch =
-                externalBatch ||
-                (this.options.batchWrapper ? new this.options.batchWrapper(this.options.database) : null)
+            // SIMPLIFIED APPROACH: Direct persistence similar to frontend
+            const noteRef = this.options.database.collection(`noteItems/${finalProjectId}/notes`).doc(noteId)
 
-            // Prepare promises for parallel execution
-            const promises = []
+            console.log('NoteService: Setting note document at path:', `noteItems/${finalProjectId}/notes/${noteId}`)
 
-            if (!batch && !externalBatch) {
-                // Direct write if no batch support
-                const noteRef = this.options.database.collection(`noteItems/${finalProjectId}/notes`).doc(noteId)
+            // Store note metadata (ensure title is lowercase like frontend)
+            const noteToStore = {
+                ...note,
+                title: note.title.toLowerCase(),
+            }
+            await noteRef.set(noteToStore)
 
-                // Store note metadata
-                await noteRef.set(note)
+            console.log('NoteService: Note document stored successfully')
 
-                // Store note content in Firebase Storage
-                if (this.options.storage && noteContent) {
-                    try {
-                        const storageRef = this.options.storage.bucket().file(`notesData/${finalProjectId}/${noteId}`)
-                        promises.push(storageRef.save(noteContent))
-                    } catch (storageError) {
-                        console.error('Failed to store note content:', storageError)
-                        // Continue without content if storage fails
-                    }
-                } else if (this.options.isCloudFunction) {
-                    // Use Firebase Storage directly in Cloud Functions
-                    try {
-                        const admin = require('firebase-admin')
-                        const { defineString } = require('firebase-functions/params')
-                        const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
-                        const notesBucket = admin.storage().bucket(notesBucketName)
-                        const storageRef = notesBucket.file(`notesData/${finalProjectId}/${noteId}`)
-                        promises.push(storageRef.save(noteContent))
-                    } catch (storageError) {
-                        console.error('Failed to store note content in Cloud Functions:', storageError)
-                    }
-                }
+            // Store note content in Firebase Storage
+            const storagePromises = []
+            if (this.options.isCloudFunction && noteContent && noteContent.length > 0) {
+                try {
+                    const admin = require('firebase-admin')
+                    const { defineString } = require('firebase-functions/params')
+                    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+                    const notesBucket = admin.storage().bucket(notesBucketName)
+                    const storageRef = notesBucket.file(`notesData/${finalProjectId}/${noteId}`)
 
-                // Persist feeds using Cloud Functions feeds pipeline when available
-                if (feedData && this.options.enableFeeds) {
-                    if (this.options.isCloudFunction) {
-                        try {
-                            const admin = require('firebase-admin')
-                            const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
-                            const notesFeeds = require('../Feeds/notesFeeds')
-                            if (notesFeeds && typeof notesFeeds.createNoteCreatedFeed === 'function') {
-                                const feedsBatch = new BatchWrapper(this.options.database)
-                                if (feedsBatch.setProjectContext) {
-                                    feedsBatch.setProjectContext(finalProjectId)
-                                }
-                                const creator = feedUser || { uid: note.userId, id: note.userId }
-
-                                await notesFeeds.createNoteCreatedFeed(
-                                    finalProjectId,
-                                    note,
-                                    noteId,
-                                    feedsBatch,
-                                    creator,
-                                    true
-                                )
-
-                                // Create follow feeds for the creator
-                                await notesFeeds.createNoteFollowedFeed(
-                                    finalProjectId,
-                                    noteId,
-                                    feedsBatch,
-                                    creator,
-                                    true
-                                )
-
-                                if (feedsBatch.commit) {
-                                    await feedsBatch.commit()
-                                }
-                            } else {
-                                console.warn('NoteService: Feeds module missing createNoteCreatedFeed function')
-                            }
-                        } catch (feedPersistError) {
-                            console.error('NoteService: Failed to persist feeds via pipeline:', feedPersistError)
-                            // Fallback: persist last state only
-                            try {
-                                const feedObjectRef = this.options.database.doc(
-                                    `feedsObjectsLastStates/${finalProjectId}/notes/${noteId}`
-                                )
-                                await feedObjectRef.set(feedData.noteFeedObject, { merge: true })
-                            } catch (fallbackError) {
-                                console.error('Failed to persist feed object as fallback:', fallbackError)
-                            }
-                        }
-                    } else {
-                        // Non-cloud environments: persist last state only
-                        try {
-                            const feedObjectRef = this.options.database.doc(
-                                `feedsObjectsLastStates/${finalProjectId}/notes/${noteId}`
-                            )
-                            await feedObjectRef.set(feedData.noteFeedObject, { merge: true })
-                        } catch (feedError) {
-                            console.error('Failed to persist feed object directly:', feedError)
-                        }
-                    }
+                    console.log(
+                        'NoteService: Storing content to Firebase Storage:',
+                        `notesData/${finalProjectId}/${noteId}`
+                    )
+                    storagePromises.push(storageRef.save(noteContent))
+                } catch (storageError) {
+                    console.error('NoteService: Failed to store note content:', storageError)
                 }
             } else {
-                // Batch write
-                const noteRef = this.options.database.collection(`noteItems/${finalProjectId}/notes`).doc(noteId)
-
-                batch.set ? batch.set(noteRef, note) : batch.add(() => noteRef.set(note))
-
-                // Store note content in Firebase Storage (can't be batched)
-                if (this.options.storage && noteContent) {
-                    try {
-                        const storageRef = this.options.storage.bucket().file(`notesData/${finalProjectId}/${noteId}`)
-                        promises.push(storageRef.save(noteContent))
-                    } catch (storageError) {
-                        console.error('Failed to store note content:', storageError)
-                    }
-                } else if (this.options.isCloudFunction) {
-                    try {
-                        const admin = require('firebase-admin')
-                        const { defineString } = require('firebase-functions/params')
-                        const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
-                        const notesBucket = admin.storage().bucket(notesBucketName)
-                        const storageRef = notesBucket.file(`notesData/${finalProjectId}/${noteId}`)
-                        promises.push(storageRef.save(noteContent))
-                    } catch (storageError) {
-                        console.error('Failed to store note content in Cloud Functions:', storageError)
-                    }
-                }
-
-                // Add feed data to batch if available
-                if (feedData && this.options.enableFeeds) {
-                    console.log('NoteService: Adding feed data to batch for note:', noteId)
-                    if (batch.feedObjects) {
-                        // Store feed data with context needed for persistence
-                        batch.feedObjects[noteId] = {
-                            feedObject: feedData.noteFeedObject,
-                            projectId: finalProjectId,
-                            objectType: 'notes',
-                            currentDateFormated: feedData.currentDateFormated,
-                        }
-                        console.log('NoteService: Successfully added feed data to batch.feedObjects')
-                    } else {
-                        console.warn('NoteService: batch.feedObjects is not available')
-                    }
-
-                    // In Cloud Functions, also push through feeds pipeline to generate inner feeds
-                    if (this.options.isCloudFunction) {
-                        try {
-                            const admin = require('firebase-admin')
-                            const notesFeeds = require('../Feeds/notesFeeds')
-                            if (notesFeeds && typeof notesFeeds.createNoteCreatedFeed === 'function') {
-                                const creator = feedUser || { uid: note.userId, id: note.userId }
-
-                                await notesFeeds.createNoteCreatedFeed(
-                                    finalProjectId,
-                                    note,
-                                    noteId,
-                                    batch,
-                                    creator,
-                                    true
-                                )
-
-                                // Create follow feeds for the creator
-                                await notesFeeds.createNoteFollowedFeed(finalProjectId, noteId, batch, creator, true)
-                            } else {
-                                console.warn('NoteService: Feeds module missing createNoteCreatedFeed function (batch)')
-                            }
-                        } catch (feedPersistError) {
-                            console.error(
-                                'NoteService: Failed to enqueue feeds via pipeline (batch):',
-                                feedPersistError
-                            )
-                        }
-                    }
-                } else {
-                    console.log('NoteService: Not adding feed data:', {
-                        hasFeedData: !!feedData,
-                        enableFeeds: this.options.enableFeeds,
-                        noteId,
-                    })
-                }
-
-                // Commit batch if we created it
-                if (!externalBatch && batch.commit) {
-                    await batch.commit()
-                }
+                console.log('NoteService: Skipping content storage - no content or not in Cloud Functions')
             }
 
-            // Wait for any storage operations to complete
-            if (promises.length > 0) {
-                await Promise.all(promises)
+            // Create feeds using the same approach as frontend
+            if (feedData && this.options.enableFeeds && this.options.isCloudFunction) {
+                try {
+                    const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+                    const notesFeeds = require('../Feeds/notesFeeds')
+
+                    if (notesFeeds && typeof notesFeeds.createNoteCreatedFeed === 'function') {
+                        console.log('NoteService: Creating feed for note:', noteId)
+
+                        const feedsBatch = new BatchWrapper(this.options.database)
+                        const creator = feedUser || { uid: note.userId, id: note.userId }
+
+                        await notesFeeds.createNoteCreatedFeed(finalProjectId, note, noteId, feedsBatch, creator, true)
+
+                        // Create follow feeds for the creator
+                        await notesFeeds.createNoteFollowedFeed(finalProjectId, noteId, feedsBatch, creator, true)
+
+                        console.log('NoteService: Committing feeds batch')
+                        await feedsBatch.commit()
+                        console.log('NoteService: Feeds committed successfully')
+                    } else {
+                        console.warn('NoteService: createNoteCreatedFeed function not available')
+                    }
+                } catch (feedPersistError) {
+                    console.error('NoteService: Failed to create feeds:', feedPersistError)
+                }
+            } else {
+                console.log('NoteService: Skipping feeds - not enabled or not in Cloud Functions')
+            }
+
+            // Wait for storage operations to complete
+            if (storagePromises.length > 0) {
+                console.log('NoteService: Waiting for storage operations to complete')
+                await Promise.all(storagePromises)
+                console.log('NoteService: Storage operations completed')
             }
 
             return {
