@@ -1743,6 +1743,7 @@ class AlldoneSimpleMCPServer {
                 permissions: {
                     availableTools: [
                         'create_task',
+                        'create_note',
                         'get_tasks',
                         'get_focus_task',
                         'get_user_projects',
@@ -2820,6 +2821,30 @@ class AlldoneSimpleMCPServer {
                                     },
                                 },
                                 required: [],
+                            },
+                        },
+                        {
+                            name: 'create_note',
+                            description:
+                                'Create a new note in the current project (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    title: {
+                                        type: 'string',
+                                        description: 'Note title (required)',
+                                    },
+                                    content: {
+                                        type: 'string',
+                                        description:
+                                            'Note content (optional, will create default template if not provided)',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Project ID (optional, uses user default project if not provided)',
+                                    },
+                                },
+                                required: ['title'],
                             },
                         },
                         {
