@@ -117,7 +117,7 @@ class SearchService {
     }
 
     /**
-     * Main search method - universal search across all or specific entity types
+     * Enhanced search method with multi-pass optimization strategy
      * @param {string} userId - The authenticated user ID
      * @param {Object} searchParams - Search parameters
      * @param {string} searchParams.query - Search query (required)
@@ -140,6 +140,168 @@ class SearchService {
         if (limit > MAX_SEARCH_LIMIT) {
             throw new Error(`Search limit cannot exceed ${MAX_SEARCH_LIMIT}`)
         }
+
+        // Use enhanced search with result optimization
+        return await this.searchWithOptimization(userId, searchParams)
+    }
+
+    /**
+     * Enhanced search with multi-pass optimization based on result count
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchParams - Search parameters
+     * @returns {Object} Optimized search results
+     */
+    async searchWithOptimization(userId, searchParams) {
+        const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
+        const MAX_SEARCH_ATTEMPTS = 5
+        let bestResults = null
+        let searchAttempts = []
+
+        // Try primary search first
+        let results = await this.executeSearch(userId, searchParams)
+        searchAttempts.push({ query, totalResults: results.totalResults, type: 'primary' })
+        bestResults = results
+
+        // Check if results are in optimal range (1-20)
+        if (results.totalResults >= 1 && results.totalResults <= 20) {
+            return {
+                ...results,
+                searchStrategy: {
+                    finalQuery: query,
+                    attempts: searchAttempts,
+                    strategy: 'primary_success',
+                },
+            }
+        }
+
+        // If >20 results, try more specific searches (with attempt limit)
+        if (results.totalResults > 20) {
+            let currentQuery = query
+            let attemptCount = 1 // Already tried primary
+
+            while (attemptCount < MAX_SEARCH_ATTEMPTS) {
+                const specificQuery = this.makeQueryMoreSpecific(currentQuery)
+
+                // If we can't make it more specific, break
+                if (specificQuery === currentQuery) {
+                    break
+                }
+
+                const specificResults = await this.executeSearch(userId, { ...searchParams, query: specificQuery })
+                searchAttempts.push({
+                    query: specificQuery,
+                    totalResults: specificResults.totalResults,
+                    type: 'specific',
+                })
+                attemptCount++
+
+                // Update best results if this is better
+                if (specificResults.totalResults <= 20) {
+                    // Found optimal range!
+                    return {
+                        ...specificResults,
+                        searchStrategy: {
+                            finalQuery: specificQuery,
+                            attempts: searchAttempts,
+                            strategy: 'specificity_optimization_success',
+                        },
+                    }
+                } else if (specificResults.totalResults < bestResults.totalResults) {
+                    // Better than what we had, but still too many
+                    bestResults = specificResults
+                    currentQuery = specificQuery
+                } else {
+                    // Not improving, stop trying
+                    break
+                }
+            }
+
+            // Return best results found (even if >20)
+            return {
+                ...bestResults,
+                searchStrategy: {
+                    finalQuery: bestResults === results ? query : currentQuery,
+                    attempts: searchAttempts,
+                    strategy: 'specificity_optimization_partial',
+                    note: `Found ${bestResults.totalResults} results after ${attemptCount} attempts (max ${MAX_SEARCH_ATTEMPTS})`,
+                },
+            }
+        }
+
+        // If 0 results, try fallback searches with more general terms (with attempt limit)
+        if (results.totalResults === 0) {
+            const fallbackQueries = this.generateFallbackQueries(query)
+            let attemptCount = 1 // Already tried primary
+
+            for (const fallbackQuery of fallbackQueries) {
+                if (attemptCount >= MAX_SEARCH_ATTEMPTS) {
+                    break
+                }
+
+                const fallbackResults = await this.executeSearch(userId, { ...searchParams, query: fallbackQuery })
+                searchAttempts.push({
+                    query: fallbackQuery,
+                    totalResults: fallbackResults.totalResults,
+                    type: 'fallback',
+                })
+                attemptCount++
+
+                if (fallbackResults.totalResults >= 1) {
+                    // Check if we found optimal range
+                    if (fallbackResults.totalResults <= 20) {
+                        return {
+                            ...fallbackResults,
+                            searchStrategy: {
+                                finalQuery: fallbackQuery,
+                                attempts: searchAttempts,
+                                strategy: 'fallback_success',
+                                originalQuery: query,
+                            },
+                        }
+                    } else {
+                        // Found results but too many - keep as best option
+                        bestResults = fallbackResults
+                    }
+                }
+            }
+
+            // Return best results found (could be 0 or >20)
+            return {
+                ...bestResults,
+                searchStrategy: {
+                    finalQuery: bestResults === results ? query : searchAttempts[searchAttempts.length - 1].query,
+                    attempts: searchAttempts,
+                    strategy: bestResults.totalResults === 0 ? 'no_results_found' : 'fallback_partial',
+                    originalQuery: query,
+                    note:
+                        bestResults.totalResults === 0
+                            ? `No results found after ${attemptCount} attempts (max ${MAX_SEARCH_ATTEMPTS})`
+                            : `Found ${bestResults.totalResults} results after fallback attempts`,
+                },
+            }
+        }
+
+        // Return original results with strategy info (shouldn't reach here)
+        return {
+            ...results,
+            searchStrategy: {
+                finalQuery: query,
+                attempts: searchAttempts,
+                strategy: 'no_optimization_applied',
+            },
+        }
+    }
+
+    /**
+     * Core search execution method (original search logic)
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchParams - Search parameters
+     * @returns {Object} Search results
+     */
+    async executeSearch(userId, searchParams) {
+        await this.ensureInitialized()
+
+        const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
 
         // Get user's accessible projects
         const userProjects = await this.getUserProjects(userId)
@@ -197,6 +359,216 @@ class SearchService {
             totalResults,
             searchedProjects: userProjects.map(p => ({ id: p.id, name: p.name })),
         }
+    }
+
+    /**
+     * Make query more specific for when there are too many results (>20)
+     * @param {string} query - Original query
+     * @returns {string} More specific query
+     */
+    makeQueryMoreSpecific(query) {
+        // Remove common stop words that might make query too broad
+        const stopWords = [
+            'what',
+            'where',
+            'when',
+            'how',
+            'why',
+            'who',
+            'which',
+            'are',
+            'is',
+            'was',
+            'were',
+            'be',
+            'been',
+            'being',
+            'have',
+            'has',
+            'had',
+            'do',
+            'does',
+            'did',
+            'will',
+            'would',
+            'should',
+            'could',
+            'can',
+            'may',
+            'might',
+            'must',
+            'shall',
+            'about',
+            'for',
+            'with',
+            'by',
+            'from',
+            'at',
+            'in',
+            'on',
+            'to',
+            'of',
+            'and',
+            'or',
+            'but',
+            'if',
+            'then',
+            'than',
+            'the',
+            'a',
+            'an',
+        ]
+
+        // Check if query is already quoted (from previous specificity attempt)
+        const isAlreadyQuoted = query.includes('"')
+
+        if (isAlreadyQuoted) {
+            // If already using phrases, try to reduce to fewer, more specific terms
+            const quotedPhrases = query.match(/"[^"]+"/g) || []
+            if (quotedPhrases.length > 1) {
+                // Keep only the longest/most specific phrase
+                const longest = quotedPhrases.sort((a, b) => b.length - a.length)[0]
+                return longest
+            } else {
+                // Try removing quotes and using AND logic instead
+                const unquoted = query.replace(/"/g, '')
+                const words = unquoted.split(/\s+/).filter(word => word.length > 2)
+                if (words.length > 1) {
+                    return words.slice(0, Math.max(1, Math.floor(words.length / 2))).join(' ')
+                }
+            }
+            // Can't improve further
+            return query
+        }
+
+        const words = query.toLowerCase().split(/\s+/)
+        const meaningfulWords = words.filter(word => !stopWords.includes(word) && word.length > 2)
+
+        // If we can make it more specific, try different approaches
+        if (meaningfulWords.length >= 2) {
+            // Strategy 1: For many words, try exact phrase matching
+            if (meaningfulWords.length >= 4) {
+                return `"${meaningfulWords.join(' ')}"`
+            }
+
+            // Strategy 2: For 3 words, create overlapping phrases
+            if (meaningfulWords.length === 3) {
+                return `"${meaningfulWords[0]} ${meaningfulWords[1]}" ${meaningfulWords[2]}`
+            }
+
+            // Strategy 3: For 2 words, try exact phrase
+            if (meaningfulWords.length === 2) {
+                return `"${meaningfulWords.join(' ')}"`
+            }
+        }
+
+        // If only one meaningful word or can't improve, return original
+        return query
+    }
+
+    /**
+     * Generate fallback queries for when no results are found
+     * @param {string} query - Original query
+     * @returns {Array} Array of fallback queries to try
+     */
+    generateFallbackQueries(query) {
+        const fallbacks = []
+
+        // Remove common stop words and punctuation
+        const stopWords = [
+            'what',
+            'where',
+            'when',
+            'how',
+            'why',
+            'who',
+            'which',
+            'are',
+            'is',
+            'was',
+            'were',
+            'be',
+            'been',
+            'being',
+            'have',
+            'has',
+            'had',
+            'do',
+            'does',
+            'did',
+            'will',
+            'would',
+            'should',
+            'could',
+            'can',
+            'may',
+            'might',
+            'must',
+            'shall',
+            'about',
+            'for',
+            'with',
+            'by',
+            'from',
+            'at',
+            'in',
+            'on',
+            'to',
+            'of',
+            'and',
+            'or',
+            'but',
+            'if',
+            'then',
+            'than',
+            'the',
+            'a',
+            'an',
+        ]
+
+        const cleanQuery = query.replace(/[^\w\s]/g, ' ').trim()
+        const words = cleanQuery.toLowerCase().split(/\s+/)
+        const meaningfulWords = words.filter(word => !stopWords.includes(word) && word.length > 2)
+
+        if (meaningfulWords.length > 0) {
+            // Fallback 1: All meaningful words
+            if (meaningfulWords.length > 1) {
+                fallbacks.push(meaningfulWords.join(' '))
+            }
+
+            // Fallback 2: Just the most important words (nouns, proper nouns)
+            // Keep words that are likely important (longer words, capitalized words)
+            const importantWords = meaningfulWords.filter(word => {
+                return (
+                    word.length > 4 ||
+                    /^[A-Z]/.test(word) ||
+                    ['germany', 'project', 'meeting', 'task', 'note', 'goal'].includes(word.toLowerCase())
+                )
+            })
+
+            if (importantWords.length > 0 && importantWords.length !== meaningfulWords.length) {
+                fallbacks.push(importantWords.join(' '))
+            }
+
+            // Fallback 3: Individual important words (try each separately)
+            if (meaningfulWords.length > 1) {
+                const sortedByImportance = meaningfulWords.sort((a, b) => {
+                    // Prioritize longer words and capitalized words
+                    const scoreA = a.length + (/^[A-Z]/.test(a) ? 5 : 0)
+                    const scoreB = b.length + (/^[A-Z]/.test(b) ? 5 : 0)
+                    return scoreB - scoreA
+                })
+
+                // Try top 2 most important words individually
+                fallbacks.push(sortedByImportance[0])
+                if (sortedByImportance.length > 1) {
+                    fallbacks.push(sortedByImportance[1])
+                }
+            }
+        }
+
+        // Remove duplicates and return
+        return [...new Set(fallbacks)].filter(q => q !== query)
     }
 
     /**
