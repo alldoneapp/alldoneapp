@@ -170,7 +170,7 @@ class SearchService {
 
         // Execute searches across selected entity types
         const searchPromises = entityTypes.map(entityType =>
-            this.searchEntityType(entityType, parsedQuery, userProjects, projectId, limit)
+            this.searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId)
         )
 
         const searchResults = await Promise.all(searchPromises)
@@ -345,9 +345,10 @@ class SearchService {
      * @param {Array} userProjects - User's accessible projects
      * @param {string} projectId - Optional project filter
      * @param {number} limit - Result limit
+     * @param {string} userId - User ID for visibility filtering
      * @returns {Array} Search results for this entity type
      */
-    async searchEntityType(entityType, parsedQuery, userProjects, projectId, limit) {
+    async searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId) {
         if (!this.algoliaClient || !this.options.enableAlgolia) {
             return []
         }
@@ -363,7 +364,7 @@ class SearchService {
 
             // Build search parameters
             const searchQuery = parsedQuery.keywords.join(' ')
-            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType)
+            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId)
 
             const searchOptions = {
                 filters,
@@ -397,10 +398,12 @@ class SearchService {
      * @param {string} projectId - Optional project filter
      * @param {Object} parsedQuery - Parsed query components
      * @param {string} entityType - Entity type being searched
+     * @param {string} userId - Current user ID for visibility filtering
      * @returns {string} Algolia filter string
      */
-    buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType) {
+    buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId) {
         const filters = []
+        const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
         // Project access filter
         if (projectId) {
@@ -412,20 +415,38 @@ class SearchService {
             }
         }
 
+        // Visibility filters (critical for security) - following main app patterns
+        switch (entityType) {
+            case ENTITY_TYPES.GOALS:
+            case ENTITY_TYPES.CHATS:
+                // Goals and chats use isPublicFor field
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
+                break
+            case ENTITY_TYPES.CONTACTS:
+            case ENTITY_TYPES.USERS:
+                // Contacts/users use isPrivate field + exclude assistants for users
+                filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+                if (entityType === ENTITY_TYPES.USERS) {
+                    filters.push('isAssistant:false')
+                }
+                break
+            case ENTITY_TYPES.ASSISTANTS:
+                // Assistants are public but marked as isAssistant:true
+                filters.push('isAssistant:true')
+                filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+                break
+            case ENTITY_TYPES.TASKS:
+            case ENTITY_TYPES.NOTES:
+            default:
+                // Tasks and notes use isPrivate field
+                filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+                break
+        }
+
         // Date range filter
         if (parsedQuery.dateFilter) {
             const { startDate, endDate } = parsedQuery.dateFilter
             filters.push(`lastEditionDate >= ${startDate} AND lastEditionDate <= ${endDate}`)
-        }
-
-        // Entity-specific filters
-        switch (entityType) {
-            case ENTITY_TYPES.ASSISTANTS:
-                filters.push('isAssistant:true')
-                break
-            case ENTITY_TYPES.USERS:
-                filters.push('isAssistant:false OR isAssistant:null')
-                break
         }
 
         return filters.join(' AND ')
