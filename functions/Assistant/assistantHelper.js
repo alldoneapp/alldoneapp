@@ -2010,6 +2010,100 @@ function parseTextForUseLiKePrompt(text) {
     return text.replaceAll('{', '{{').replaceAll('}', '}}')
 }
 
+/**
+ * Example function showing how internal assistants can use SearchService
+ * This function can be called by AI assistants to search for relevant content
+ * when answering user questions or performing tasks.
+ */
+async function searchForAssistant(userId, projectId, query, options = {}) {
+    const { type = 'all', dateRange = null, limit = 10, includeContent = false } = options
+
+    try {
+        // Initialize SearchService
+        const { SearchService } = require('../shared/SearchService')
+        const searchService = new SearchService({
+            database: admin.firestore(),
+            moment: moment,
+            enableAlgolia: true,
+            enableNoteContent: true,
+            enableDateParsing: true,
+            isCloudFunction: true,
+        })
+        await searchService.initialize()
+
+        // Execute search
+        const searchResults = await searchService.search(userId, {
+            query,
+            type,
+            projectId,
+            dateRange,
+            limit,
+        })
+
+        // If includeContent is true, fetch full note content for note results
+        if (includeContent && searchResults.results.notes) {
+            for (const noteResult of searchResults.results.notes) {
+                try {
+                    const fullNote = await searchService.getNote(userId, noteResult.id, noteResult.projectId)
+                    noteResult.fullContent = fullNote.content
+                    noteResult.wordCount = fullNote.metadata.wordCount
+                } catch (error) {
+                    console.warn(`Could not fetch full content for note ${noteResult.id}:`, error.message)
+                }
+            }
+        }
+
+        return {
+            success: true,
+            query: searchResults.query,
+            parsedQuery: searchResults.parsedQuery,
+            results: searchResults.results,
+            totalResults: searchResults.totalResults,
+            summary: generateSearchSummary(searchResults),
+        }
+    } catch (error) {
+        console.error('Assistant search failed:', error)
+        return {
+            success: false,
+            error: error.message,
+            results: {},
+            totalResults: 0,
+        }
+    }
+}
+
+/**
+ * Generate a human-readable summary of search results for assistants
+ */
+function generateSearchSummary(searchResults) {
+    const { results, totalResults, query } = searchResults
+    const summaryParts = []
+
+    if (totalResults === 0) {
+        return `No results found for "${query}"`
+    }
+
+    Object.entries(results).forEach(([type, items]) => {
+        if (items && items.length > 0) {
+            const typeLabel = type.charAt(0).toUpperCase() + type.slice(1)
+            summaryParts.push(`${items.length} ${typeLabel.toLowerCase()}`)
+        }
+    })
+
+    const summary = `Found ${totalResults} results for "${query}": ${summaryParts.join(', ')}`
+
+    // Add context about most relevant results
+    const allResults = Object.values(results)
+        .flat()
+        .sort((a, b) => b.score - a.score)
+    if (allResults.length > 0) {
+        const topResult = allResults[0]
+        return `${summary}. Most relevant: ${topResult.title} (${topResult.type})`
+    }
+
+    return summary
+}
+
 module.exports = {
     COMPLETION_MAX_TOKENS,
     storeBotAnswerStream,
@@ -2022,4 +2116,6 @@ module.exports = {
     ENCODE_MESSAGE_GAP,
     reduceGoldWhenChatWithAI,
     getTaskOrAssistantSettings,
+    searchForAssistant,
+    generateSearchSummary,
 }

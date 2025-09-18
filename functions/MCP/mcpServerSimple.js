@@ -738,6 +738,59 @@ class AlldoneSimpleMCPServer {
                             required: ['title'],
                         },
                     },
+                    {
+                        name: 'search',
+                        description:
+                            'Search across all content types with natural language queries (requires OAuth 2.0 Bearer token authentication)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                query: {
+                                    type: 'string',
+                                    description:
+                                        'Search query (supports natural language, e.g., "What did I discuss last week with John about the project?")',
+                                },
+                                type: {
+                                    type: 'string',
+                                    enum: ['all', 'tasks', 'notes', 'goals', 'contacts', 'chats', 'assistants'],
+                                    description: 'Content type to search (default: all)',
+                                },
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Limit search to specific project (optional)',
+                                },
+                                dateRange: {
+                                    type: 'string',
+                                    description:
+                                        'Time filter (e.g., "last week", "yesterday", "this month") (optional)',
+                                },
+                                limit: {
+                                    type: 'number',
+                                    description: 'Maximum results to return (default: 20, max: 100)',
+                                },
+                            },
+                            required: ['query'],
+                        },
+                    },
+                    {
+                        name: 'get_note',
+                        description:
+                            'Get full note content for detailed reading (requires OAuth 2.0 Bearer token authentication)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                noteId: {
+                                    type: 'string',
+                                    description: 'Note ID to retrieve',
+                                },
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Project ID containing the note',
+                                },
+                            },
+                            required: ['noteId', 'projectId'],
+                        },
+                    },
                 ],
             }
         })
@@ -771,6 +824,12 @@ class AlldoneSimpleMCPServer {
                         break
                     case 'create_note':
                         result = await this.createNote(args, request)
+                        break
+                    case 'search':
+                        result = await this.search(args, request)
+                        break
+                    case 'get_note':
+                        result = await this.getNote(args, request)
                         break
                     default:
                         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`)
@@ -1744,6 +1803,8 @@ class AlldoneSimpleMCPServer {
                     availableTools: [
                         'create_task',
                         'create_note',
+                        'search',
+                        'get_note',
                         'get_tasks',
                         'get_focus_task',
                         'get_user_projects',
@@ -1870,6 +1931,93 @@ class AlldoneSimpleMCPServer {
         } catch (error) {
             console.error('Error creating note:', error)
             throw new Error(`Failed to create note: ${error.message}`)
+        }
+    }
+
+    async search(args, request) {
+        const { query, type = 'all', projectId, dateRange, limit = 20 } = args
+
+        // Get authenticated user automatically from client session
+        const userId = await this.getAuthenticatedUserForClient(request)
+
+        const db = admin.firestore()
+
+        // Initialize SearchService if not already done
+        if (!this.searchService) {
+            const { SearchService } = require('../shared/SearchService')
+            this.searchService = new SearchService({
+                database: db,
+                moment: moment,
+                enableAlgolia: true,
+                enableNoteContent: true,
+                enableDateParsing: true,
+                isCloudFunction: true,
+            })
+            await this.searchService.initialize()
+        }
+
+        try {
+            // Execute search using unified service
+            const result = await this.searchService.search(userId, {
+                query,
+                type,
+                projectId,
+                dateRange,
+                limit,
+            })
+
+            return {
+                success: true,
+                query: result.query,
+                parsedQuery: result.parsedQuery,
+                results: result.results,
+                totalResults: result.totalResults,
+                searchedProjects: result.searchedProjects,
+                message:
+                    result.totalResults > 0
+                        ? `Found ${result.totalResults} results across ${result.searchedProjects.length} projects`
+                        : 'No results found',
+            }
+        } catch (error) {
+            console.error('Error performing search:', error)
+            throw new Error(`Failed to perform search: ${error.message}`)
+        }
+    }
+
+    async getNote(args, request) {
+        const { noteId, projectId } = args
+
+        // Get authenticated user automatically from client session
+        const userId = await this.getAuthenticatedUserForClient(request)
+
+        const db = admin.firestore()
+
+        // Initialize SearchService if not already done (for note content retrieval)
+        if (!this.searchService) {
+            const { SearchService } = require('../shared/SearchService')
+            this.searchService = new SearchService({
+                database: db,
+                moment: moment,
+                enableAlgolia: true,
+                enableNoteContent: true,
+                enableDateParsing: true,
+                isCloudFunction: true,
+            })
+            await this.searchService.initialize()
+        }
+
+        try {
+            // Get full note content using unified service
+            const result = await this.searchService.getNote(userId, noteId, projectId)
+
+            return {
+                success: true,
+                note: result,
+                message: `Retrieved note "${result.title}" (${result.metadata.wordCount} words)`,
+            }
+        } catch (error) {
+            console.error('Error getting note:', error)
+            throw new Error(`Failed to get note: ${error.message}`)
         }
     }
 
@@ -2848,6 +2996,59 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
+                            name: 'search',
+                            description:
+                                'Search across all content types with natural language queries (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    query: {
+                                        type: 'string',
+                                        description:
+                                            'Search query (supports natural language, e.g., "What did I discuss last week with John about the project?")',
+                                    },
+                                    type: {
+                                        type: 'string',
+                                        enum: ['all', 'tasks', 'notes', 'goals', 'contacts', 'chats', 'assistants'],
+                                        description: 'Content type to search (default: all)',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Limit search to specific project (optional)',
+                                    },
+                                    dateRange: {
+                                        type: 'string',
+                                        description:
+                                            'Time filter (e.g., "last week", "yesterday", "this month") (optional)',
+                                    },
+                                    limit: {
+                                        type: 'number',
+                                        description: 'Maximum results to return (default: 20, max: 100)',
+                                    },
+                                },
+                                required: ['query'],
+                            },
+                        },
+                        {
+                            name: 'get_note',
+                            description:
+                                'Get full note content for detailed reading (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    noteId: {
+                                        type: 'string',
+                                        description: 'Note ID to retrieve',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Project ID containing the note',
+                                    },
+                                },
+                                required: ['noteId', 'projectId'],
+                            },
+                        },
+                        {
                             name: 'get_tasks',
                             description:
                                 'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
@@ -3004,6 +3205,12 @@ class AlldoneSimpleMCPServer {
                             break
                         case 'create_note':
                             result = await this.createNote(args, httpReq)
+                            break
+                        case 'search':
+                            result = await this.search(args, httpReq)
+                            break
+                        case 'get_note':
+                            result = await this.getNote(args, httpReq)
                             break
                         case 'get_tasks':
                             result = await this.getTasks(args, httpReq)
