@@ -2016,7 +2016,7 @@ function parseTextForUseLiKePrompt(text) {
  * when answering user questions or performing tasks.
  */
 async function searchForAssistant(userId, projectId, query, options = {}) {
-    const { type = 'all', dateRange = null, limit = 10, includeContent = false } = options
+    const { type = 'all', dateRange = null, includeContent = false } = options
 
     try {
         // Initialize SearchService
@@ -2037,7 +2037,6 @@ async function searchForAssistant(userId, projectId, query, options = {}) {
             type,
             projectId,
             dateRange,
-            limit,
         })
 
         // If includeContent is true, fetch full note content for note results

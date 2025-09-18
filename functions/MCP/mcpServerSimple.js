@@ -764,10 +764,6 @@ class AlldoneSimpleMCPServer {
                                     description:
                                         'Time filter (e.g., "last week", "yesterday", "this month") (optional)',
                                 },
-                                limit: {
-                                    type: 'number',
-                                    description: 'Maximum results to return (default: 20, max: 100)',
-                                },
                             },
                             required: ['query'],
                         },
@@ -1935,7 +1931,7 @@ class AlldoneSimpleMCPServer {
     }
 
     async search(args, request) {
-        const { query, type = 'all', projectId, dateRange, limit = 20 } = args
+        const { query, type = 'all', projectId, dateRange } = args
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -1963,7 +1959,6 @@ class AlldoneSimpleMCPServer {
                 type,
                 projectId,
                 dateRange,
-                limit,
             })
 
             return {
@@ -3020,10 +3015,6 @@ class AlldoneSimpleMCPServer {
                                         type: 'string',
                                         description:
                                             'Time filter (e.g., "last week", "yesterday", "this month") (optional)',
-                                    },
-                                    limit: {
-                                        type: 'number',
-                                        description: 'Maximum results to return (default: 20, max: 100)',
                                     },
                                 },
                                 required: ['query'],
