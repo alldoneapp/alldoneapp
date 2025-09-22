@@ -62,7 +62,7 @@ const ENTITY_TYPES = {
     USERS: 'users',
 }
 
-const DEFAULT_SEARCH_LIMIT = 20
+const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 100
 
 class SearchService {
