@@ -381,12 +381,12 @@ export function initFirebase(onComplete) {
     firebase.initializeApp(firebaseConfig)
     db = firebase.firestore()
 
-    // Determine if we should use Firebase Functions emulator
+    // Determine if we should use Firebase emulators
     const useEmulator = shouldUseEmulator()
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const forceEmulator = window.location.search.includes('emulator=true')
 
-    console.log('🔍 Firebase Functions connection check:', {
+    console.log('🔍 Firebase emulator connection check:', {
         hostname: window.location.hostname,
         isLocalhost,
         __DEV__: typeof __DEV__ !== 'undefined' ? __DEV__ : 'undefined',
@@ -397,6 +397,14 @@ export function initFirebase(onComplete) {
     })
 
     if (useEmulator) {
+        try {
+            // Connect to Firestore emulator
+            console.log('🔧 Connecting to Firestore emulator at 127.0.0.1:8080')
+            db.useEmulator('127.0.0.1', 8080)
+            console.log('✅ Connected to Firestore emulator')
+        } catch (error) {
+            console.warn('⚠️  Failed to connect to Firestore emulator:', error.message)
+        }
         try {
             // Connect to Functions emulator only
             require('firebase/functions')

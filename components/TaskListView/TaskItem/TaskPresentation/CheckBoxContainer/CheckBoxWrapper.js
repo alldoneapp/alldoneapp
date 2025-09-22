@@ -42,10 +42,14 @@ function CheckBoxWrapper(
     const [showAnimation, setShowAnimation] = useState(false)
     const checkBoxIdRef = useRef(v4())
     const isUnmountedRef = useRef(false)
+    const timeoutsRef = useRef([])
 
     useEffect(() => {
         return () => {
             isUnmountedRef.current = true
+            // Clear any pending timeouts to avoid post-unmount updates
+            timeoutsRef.current.forEach(t => clearTimeout(t))
+            timeoutsRef.current = []
         }
     }, [])
 
@@ -89,7 +93,7 @@ function CheckBoxWrapper(
             if (!done) {
                 setShowAnimation(true)
                 // Delay task completion until animation finishes
-                setTimeout(() => {
+                const t = setTimeout(() => {
                     setTaskStatus(
                         projectId,
                         taskId,
@@ -102,6 +106,7 @@ function CheckBoxWrapper(
                         estimations[OPEN_STEP]
                     )
                 }, ANIMATION_DURATION)
+                timeoutsRef.current.push(t)
             } else {
                 setTaskStatus(
                     projectId,
@@ -120,15 +125,16 @@ function CheckBoxWrapper(
         } else if (genericData || (isPrivate && !isLongPress) || calendarData || gmailData) {
             setShowAnimation(true)
             // Delay task completion until animation finishes
-            setTimeout(() => {
+            const t = setTimeout(() => {
                 moveTasksFromOpen(projectId, task, DONE_STEP, null, null, estimations, checkBoxIdRef.current)
             }, ANIMATION_DURATION)
+            timeoutsRef.current.push(t)
         } else if (userIds.length === 1 && !isLongPress) {
             setShowAnimation(true)
             const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId)
             const workflowStepsIds = workflow ? Object.keys(workflow).sort(chronoKeysOrder) : []
             // Delay task completion until animation finishes
-            setTimeout(() => {
+            const t = setTimeout(() => {
                 moveTasksFromOpen(
                     projectId,
                     task,
@@ -139,6 +145,7 @@ function CheckBoxWrapper(
                     checkBoxIdRef.current
                 )
             }, ANIMATION_DURATION)
+            timeoutsRef.current.push(t)
         } else {
             const taskOwner = TasksHelper.getTaskOwner(userId, projectId)
             dispatch(setAssignee(ownerIsWorkstream ? loggedUser : taskOwner))
@@ -180,28 +187,47 @@ function CheckBoxWrapper(
 
     return (
         <>
-            <Popover
-                content={
-                    <TaskFlowModal
-                        task={task}
-                        projectId={projectId}
+            {isOpen ? (
+                <Popover
+                    content={
+                        <TaskFlowModal
+                            task={task}
+                            projectId={projectId}
+                            isObservedTask={isObservedTask}
+                            isToReviewTask={isToReviewTask}
+                            isSuggested={isSuggested}
+                            pending={pending}
+                            cancelPopover={closeModal}
+                            checkBoxIdRef={checkBoxIdRef}
+                            setVisiblePopover={safeSetIsOpen}
+                        />
+                    }
+                    onClickOutside={closeModal}
+                    isOpen={isOpen}
+                    padding={4}
+                    position={['top']}
+                    align={'center'}
+                    contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
+                    disableReposition
+                >
+                    <CheckBoxContainer
+                        isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
                         isSuggested={isSuggested}
+                        isActiveOrganizeMode={isActiveOrganizeMode}
+                        checkOnDrag={checkOnDrag}
+                        highlightColor={highlightColor}
+                        accessGranted={accessGranted}
                         pending={pending}
-                        cancelPopover={closeModal}
+                        showWorkflowIndicator={showWorkflowIndicator}
+                        onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
-                        setVisiblePopover={safeSetIsOpen}
+                        checked={checked}
+                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                     />
-                }
-                onClickOutside={closeModal}
-                isOpen={isOpen}
-                padding={4}
-                position={['top']}
-                align={'center'}
-                contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
-                disableReposition
-            >
+                </Popover>
+            ) : (
                 <CheckBoxContainer
                     isSubtask={isSubtask}
                     isObservedTask={isObservedTask}
@@ -218,7 +244,7 @@ function CheckBoxWrapper(
                     checked={checked}
                     loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                 />
-            </Popover>
+            )}
             <TaskCompletionAnimation
                 visible={showAnimation}
                 onAnimationComplete={() => {

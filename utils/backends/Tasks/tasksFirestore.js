@@ -178,9 +178,59 @@ const updateEditionData = data => {
 }
 
 export async function updateTaskData(projectId, taskId, data, batch) {
+    console.log(`[HumanReadableID] updateTaskData called for task ${taskId}`)
+    console.log(
+        `[HumanReadableID] Update data contains humanReadableId: ${data.hasOwnProperty('humanReadableId')}, value: ${
+            data.humanReadableId
+        }`
+    )
+    console.log(`[HumanReadableID] Update keys: ${Object.keys(data).join(', ')}`)
+    console.log(`[HumanReadableID] Using batch: ${!!batch}`)
+
     updateEditionData(data)
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
+
+    // If this update might overwrite humanReadableId and we're not in a batch, use a transaction
+    // to preserve the existing humanReadableId
+    if (
+        !batch &&
+        (!data.hasOwnProperty('humanReadableId') || data.humanReadableId === null || data.humanReadableId === undefined)
+    ) {
+        console.log(`[HumanReadableID] Using transaction to preserve humanReadableId for task ${taskId}`)
+        try {
+            await getDb().runTransaction(async transaction => {
+                const taskDoc = await transaction.get(ref)
+                if (taskDoc.exists) {
+                    const currentTask = taskDoc.data()
+                    console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
+                    // Preserve existing humanReadableId if the update doesn't explicitly set one
+                    if (currentTask.humanReadableId && !data.humanReadableId) {
+                        console.log(
+                            `[HumanReadableID] Preserving existing humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
+                        )
+                        data.humanReadableId = currentTask.humanReadableId
+                    }
+                } else {
+                    console.warn(`[HumanReadableID] Task document ${taskId} does not exist during transaction`)
+                }
+                console.log(`[HumanReadableID] Performing transaction update for task ${taskId}`)
+                transaction.update(ref, data)
+            })
+            console.log(`[HumanReadableID] Transaction update completed for task ${taskId}`)
+            return
+        } catch (error) {
+            console.error(
+                `[HumanReadableID] Transaction failed for task ${taskId}, falling back to regular update:`,
+                error.message
+            )
+            // Fall through to regular update
+        }
+    }
+
+    // Regular update (either in batch or fallback)
+    console.log(`[HumanReadableID] Performing ${batch ? 'batch' : 'regular'} update for task ${taskId}`)
     batch ? batch.update(ref, data) : await ref.update(data)
+    console.log(`[HumanReadableID] Update completed for task ${taskId}`)
 }
 
 async function updateTaskDataDirectly(projectId, taskId, data, batch) {
@@ -284,6 +334,7 @@ export async function uploadNewTask(
         // Human readable ID will be generated asynchronously in onCreate trigger
         // This improves task creation performance by removing the blocking transaction
         taskCopy.humanReadableId = null
+        console.log(`[HumanReadableID] Task ${taskId} created with humanReadableId: null`)
 
         const { loggedUser } = store.getState()
 
@@ -336,17 +387,24 @@ export async function uploadNewTask(
             )
         }
 
+        console.log(
+            `[HumanReadableID] About to commit task ${taskId} to database with humanReadableId: ${taskCopy.humanReadableId}`
+        )
+        console.log(`🚨 FIRESTORE PATH: items/${projectId}/tasks/${taskId} 🚨`)
+
         awaitForTaskCreation
             ? await getDb()
                   .doc(`items/${projectId}/tasks/${taskId}`)
                   .set(taskCopy)
                   .then(() => {
+                      console.log(`[HumanReadableID] Task ${taskId} committed to database (awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
             : getDb()
                   .doc(`items/${projectId}/tasks/${taskId}`)
                   .set(taskCopy)
                   .then(() => {
+                      console.log(`[HumanReadableID] Task ${taskId} committed to database (non-awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
 
@@ -535,10 +593,42 @@ export async function createRecurrentTask(projectId, taskId) {
 }
 
 export async function uploadTaskByQuill(projectId, task, externalBatch) {
-    updateEditionData(task)
     const taskId = task.id
+    console.log(`[HumanReadableID] uploadTaskByQuill called for task ${taskId}`)
+    console.log(`[HumanReadableID] Task humanReadableId before processing: ${task.humanReadableId}`)
+
+    updateEditionData(task)
     task.sortIndex = generateSortIndex()
     delete task.id
+
+    // Preserve humanReadableId when using set operation
+    // This is critical since .set() replaces the entire document
+    if (!task.humanReadableId) {
+        console.log(`[HumanReadableID] Task ${taskId} has no humanReadableId, attempting to preserve existing one`)
+        try {
+            const currentTaskDoc = await getDb().doc(`items/${projectId}/tasks/${taskId}`).get()
+            if (currentTaskDoc.exists) {
+                const currentTask = currentTaskDoc.data()
+                console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
+                if (currentTask.humanReadableId) {
+                    task.humanReadableId = currentTask.humanReadableId
+                    console.log(
+                        `[HumanReadableID] Preserved humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
+                    )
+                }
+            } else {
+                console.warn(
+                    `[HumanReadableID] Task document ${taskId} does not exist, cannot preserve humanReadableId`
+                )
+            }
+        } catch (error) {
+            console.error(`[HumanReadableID] Failed to preserve humanReadableId for task ${taskId}:`, error.message)
+        }
+    } else {
+        console.log(`[HumanReadableID] Task ${taskId} already has humanReadableId: ${task.humanReadableId}`)
+    }
+
+    console.log(`[HumanReadableID] Setting task ${taskId} with humanReadableId: ${task.humanReadableId}`)
     externalBatch.set(getDb().doc(`items/${projectId}/tasks/${taskId}`), task)
 }
 
@@ -727,17 +817,11 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
 }
 
 export async function updateTask(projectId, task, oldTask, oldAssignee, comment, commentMentions, isObservedTask) {
-    // console.log(
-    //     '[tasksFirestore updateTask] Entry. Task ID:',
-    //     task?.id,
-    //     'New dueDate:',
-    //     task?.dueDate,
-    //     'Old dueDate:',
-    //     oldTask?.dueDate
-    // )
-    // console.log('[tasksFirestore updateTask] Full new task:', JSON.stringify(task), 'Full old task:', JSON.stringify(oldTask));
-
     const taskId = task.id
+    console.log(`[HumanReadableID] updateTask called for task ${taskId}`)
+    console.log(`[HumanReadableID] Old task humanReadableId: ${oldTask.humanReadableId}`)
+    console.log(`[HumanReadableID] New task humanReadableId: ${task.humanReadableId}`)
+
     const newAssignee = TasksHelper.getTaskOwner(task.userId, projectId)
 
     const taskToStore = { ...task, name: task.name.toLowerCase() }

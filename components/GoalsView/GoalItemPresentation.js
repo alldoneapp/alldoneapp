@@ -42,6 +42,12 @@ export default class GoalItemPresentation extends PureComponent {
         super(props)
         const storeState = store.getState()
         this.timeouts = []
+        this._isUnmounted = false
+        this.setStateIfMounted = (updater, callback) => {
+            if (!this._isUnmounted) {
+                this.setState(updater, callback)
+            }
+        }
         this.state = {
             blockAction: false,
             panColor: new Animated.Value(0),
@@ -66,7 +72,7 @@ export default class GoalItemPresentation extends PureComponent {
     }
 
     setTasksAmount = tasksAmount => {
-        this.setState({ tasksAmount })
+        this.setStateIfMounted({ tasksAmount })
     }
 
     componentDidMount() {
@@ -84,9 +90,15 @@ export default class GoalItemPresentation extends PureComponent {
             },
             (parentObjectType, parentsAmount, aloneParentObject) => {
                 if (parentObjectType === 'tasks') {
-                    this.setState({ backlinksTasksCount: parentsAmount, backlinkTaskObject: aloneParentObject })
+                    this.setStateIfMounted({
+                        backlinksTasksCount: parentsAmount,
+                        backlinkTaskObject: aloneParentObject,
+                    })
                 } else if (parentObjectType === 'notes') {
-                    this.setState({ backlinksNotesCount: parentsAmount, backlinkNoteObject: aloneParentObject })
+                    this.setStateIfMounted({
+                        backlinksNotesCount: parentsAmount,
+                        backlinkNoteObject: aloneParentObject,
+                    })
                 }
             },
             this.backlinksWatcherKey
@@ -148,11 +160,12 @@ export default class GoalItemPresentation extends PureComponent {
         // Clear all timeouts to prevent state updates after unmount
         this.timeouts.forEach(timeoutId => clearTimeout(timeoutId))
         this.timeouts = []
+        this._isUnmounted = true
     }
 
     updateState = () => {
         const storeState = store.getState()
-        this.setState({
+        this.setStateIfMounted({
             isAnonymous: storeState.loggedUser.isAnonymous,
             isMiddleScreen: storeState.isMiddleScreen,
             smallScreenNavigation: storeState.smallScreenNavigation,
@@ -194,11 +207,11 @@ export default class GoalItemPresentation extends PureComponent {
                 }
             }
         }
-        this.setState({ parentMilestonesData: { milestonesAmount, milestonePosition } })
+        this.setStateIfMounted({ parentMilestonesData: { milestonesAmount, milestonePosition } })
     }
 
     closeMiletsoneModal = () => {
-        this.setState({ openMilestoneModal: false })
+        this.setStateIfMounted({ openMilestoneModal: false })
         store.dispatch([hideFloatPopup(), setGoalSwipeMilestoneModalOpen(false)])
     }
 
@@ -246,7 +259,7 @@ export default class GoalItemPresentation extends PureComponent {
                     }),
                 ])
             } else {
-                this.setState({ openMilestoneModal: true })
+                this.setStateIfMounted({ openMilestoneModal: true })
                 store.dispatch([showFloatPopup(), setGoalSwipeMilestoneModalOpen(true)])
             }
         })
@@ -320,15 +333,13 @@ export default class GoalItemPresentation extends PureComponent {
     }
 
     toogleShowTagsSummarizeArea = () => {
-        this.setState(state => {
-            return { showTagsSummarizeArea: !state.showTagsSummarizeArea }
-        })
+        this.setStateIfMounted(state => ({ showTagsSummarizeArea: !state.showTagsSummarizeArea }))
     }
 
     needRenderTagsInNextLine = () => {
         const { showSummarizeTag } = this.getTagsData()
         if (showSummarizeTag) {
-            this.setState({ showTagsInNextLine: false })
+            this.setStateIfMounted({ showTagsInNextLine: false })
         } else {
             const { projectId, goal } = this.props
 
@@ -346,12 +357,12 @@ export default class GoalItemPresentation extends PureComponent {
                 const tagsWidth = tagsPos.x + tagsPos.width - initialTagPos.x
 
                 if (containerPos.width < lastLineWidth + tagsWidth || elemPos.bottom - containerPos.top > 80) {
-                    this.setState({ showTagsInNextLine: true })
+                    this.setStateIfMounted({ showTagsInNextLine: true })
                 } else {
-                    this.setState({ showTagsInNextLine: false })
+                    this.setStateIfMounted({ showTagsInNextLine: false })
                 }
             } else {
-                this.setState({ showTagsInNextLine: false })
+                this.setStateIfMounted({ showTagsInNextLine: false })
             }
         }
     }

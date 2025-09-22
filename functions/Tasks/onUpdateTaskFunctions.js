@@ -117,6 +117,12 @@ const onUpdateTask = async (taskId, projectId, change) => {
     const oldTask = change.before.data()
     const newTask = change.after.data()
 
+    console.log(`🚨🚨🚨 CLOUD FUNCTION TRIGGERED: onUpdateTask for task ${taskId} 🚨🚨🚨`)
+    console.log(`[HumanReadableID] onUpdateTask triggered for task ${taskId}`)
+    console.log(`[HumanReadableID] Old humanReadableId: ${oldTask.humanReadableId}`)
+    console.log(`[HumanReadableID] New humanReadableId: ${newTask.humanReadableId}`)
+    console.log(`[HumanReadableID] LastEditionDate changed: ${oldTask.lastEditionDate !== newTask.lastEditionDate}`)
+
     promises.push(proccessGoalDynamicProgress(projectId, oldTask, newTask))
     promises.push(proccessAlgoliaRecord(taskId, projectId, oldTask, newTask))
     if (oldTask.parentGoalId !== newTask.parentGoalId) {
