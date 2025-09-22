@@ -310,18 +310,132 @@ class TaskSearchService {
             targetProjects = userProjects.filter(p => p.name && p.name.toLowerCase().includes(lowerProjectName))
         }
 
-        // Search tasks in filtered projects
+        // Search tasks in filtered projects with optimized queries
         for (const project of targetProjects) {
             try {
-                const tasksQuery = await db.collection(`items/${project.id}/tasks`).get()
+                // Use optimized search strategy to avoid full collection scans
+                const projectMatches = await this.searchTasksInProject(project, searchCriteria)
+                matches.push(...projectMatches)
+            } catch (error) {
+                console.warn(`Could not search tasks in project ${project.id}:`, error.message)
+                continue
+            }
+        }
 
-                tasksQuery.forEach(taskDoc => {
+        return matches
+    }
+
+    /**
+     * Optimized task search within a single project
+     * Searches both task name and humanReadableId with fuzzy matching
+     */
+    async searchTasksInProject(project, searchCriteria) {
+        const { taskName } = searchCriteria
+        const db = this.options.database
+        const matches = []
+        const MAX_RESULTS_PER_PROJECT = 100 // Prevent excessive results
+
+        try {
+            let query = db.collection(`items/${project.id}/tasks`)
+
+            if (taskName) {
+                console.log(`Searching for "${taskName}" in project ${project.id}`)
+
+                // Strategy 1: Try exact matches on both name and humanReadableId
+                const exactNameResults = await query.where('name', '==', taskName).limit(10).get()
+                const exactIdResults = await query.where('humanReadableId', '==', taskName).limit(10).get()
+
+                // Process exact name matches
+                exactNameResults.forEach(taskDoc => {
                     const task = { id: taskDoc.id, ...taskDoc.data() }
                     const matchScore = this.scoreMatch(task, project, searchCriteria)
 
-                    // Only include tasks that have meaningful matches (not just the completion bonus)
-                    const MINIMUM_SCORE_THRESHOLD = 50
-                    if (matchScore >= MINIMUM_SCORE_THRESHOLD) {
+                    if (matchScore >= 50) {
+                        matches.push({
+                            task,
+                            projectId: project.id,
+                            projectName: project.name,
+                            matchScore,
+                            matchType: 'exact_name',
+                        })
+                    }
+                })
+
+                // Process exact humanReadableId matches
+                exactIdResults.forEach(taskDoc => {
+                    const task = { id: taskDoc.id, ...taskDoc.data() }
+                    // Don't add duplicates
+                    if (!matches.find(m => m.task.id === task.id)) {
+                        matches.push({
+                            task,
+                            projectId: project.id,
+                            projectName: project.name,
+                            matchScore: 1000, // High score for exact ID match
+                            matchType: 'exact_id',
+                        })
+                    }
+                })
+
+                // Strategy 2: Try fuzzy ID matching if no exact matches
+                if (matches.length === 0) {
+                    console.log(`No exact matches, trying fuzzy search for "${taskName}"`)
+
+                    // Generate fuzzy variations of the search term
+                    const fuzzyVariations = this.generateFuzzyIdVariations(taskName)
+
+                    for (const variation of fuzzyVariations) {
+                        if (variation !== taskName) {
+                            // Don't repeat exact searches
+                            const fuzzyResults = await query.where('humanReadableId', '==', variation).limit(5).get()
+
+                            fuzzyResults.forEach(taskDoc => {
+                                const task = { id: taskDoc.id, ...taskDoc.data() }
+                                if (!matches.find(m => m.task.id === task.id)) {
+                                    matches.push({
+                                        task,
+                                        projectId: project.id,
+                                        projectName: project.name,
+                                        matchScore: 800, // High score for fuzzy ID match
+                                        matchType: 'fuzzy_id',
+                                    })
+                                }
+                            })
+                        }
+                    }
+                }
+
+                // Strategy 3: Limited scan for partial matches if still no results
+                if (matches.length === 0) {
+                    console.log(`No fuzzy matches, doing limited scan for "${taskName}"`)
+
+                    const limitedQuery = query.limit(MAX_RESULTS_PER_PROJECT)
+                    const limitedResults = await limitedQuery.get()
+
+                    limitedResults.forEach(taskDoc => {
+                        const task = { id: taskDoc.id, ...taskDoc.data() }
+                        const matchScore = this.scoreMatch(task, project, searchCriteria)
+
+                        if (matchScore >= 50) {
+                            matches.push({
+                                task,
+                                projectId: project.id,
+                                projectName: project.name,
+                                matchScore,
+                                matchType: this.getMatchType(task, project, searchCriteria),
+                            })
+                        }
+                    })
+                }
+            } else {
+                // If no taskName criteria, do a limited scan
+                const limitedQuery = query.limit(MAX_RESULTS_PER_PROJECT)
+                const limitedResults = await limitedQuery.get()
+
+                limitedResults.forEach(taskDoc => {
+                    const task = { id: taskDoc.id, ...taskDoc.data() }
+                    const matchScore = this.scoreMatch(task, project, searchCriteria)
+
+                    if (matchScore >= 50) {
                         matches.push({
                             task,
                             projectId: project.id,
@@ -331,13 +445,93 @@ class TaskSearchService {
                         })
                     }
                 })
-            } catch (error) {
-                console.warn(`Could not search tasks in project ${project.id}:`, error.message)
-                continue
             }
+        } catch (error) {
+            console.warn(`Optimized search failed in project ${project.id}:`, error.message)
+            // Fallback: don't do anything, return empty matches
         }
 
         return matches
+    }
+
+    /**
+     * Generate fuzzy variations of a potential task ID
+     * Examples: "at56" -> ["at-56", "AT-56", "at56", "AT56"]
+     */
+    generateFuzzyIdVariations(searchTerm) {
+        if (!searchTerm || typeof searchTerm !== 'string') return []
+
+        const variations = new Set()
+        const trimmed = searchTerm.trim()
+
+        // Add the original term
+        variations.add(trimmed)
+        variations.add(trimmed.toUpperCase())
+        variations.add(trimmed.toLowerCase())
+
+        // Pattern 1: Add hyphen between letters and numbers (at56 -> at-56)
+        const letterNumberPattern = /^([a-zA-Z]+)(\d+)$/
+        const letterNumberMatch = trimmed.match(letterNumberPattern)
+        if (letterNumberMatch) {
+            const [, letters, numbers] = letterNumberMatch
+            variations.add(`${letters}-${numbers}`)
+            variations.add(`${letters.toUpperCase()}-${numbers}`)
+            variations.add(`${letters.toLowerCase()}-${numbers}`)
+        }
+
+        // Pattern 2: Remove hyphens (at-56 -> at56)
+        if (trimmed.includes('-')) {
+            const withoutHyphen = trimmed.replace(/-/g, '')
+            variations.add(withoutHyphen)
+            variations.add(withoutHyphen.toUpperCase())
+            variations.add(withoutHyphen.toLowerCase())
+        }
+
+        // Pattern 3: Common prefix variations (task74 -> task-74, t74 -> t-74)
+        const prefixPattern = /^([a-zA-Z]{1,10})(\d+)$/
+        const prefixMatch = trimmed.match(prefixPattern)
+        if (prefixMatch) {
+            const [, prefix, numbers] = prefixMatch
+            variations.add(`${prefix}-${numbers}`)
+            variations.add(`${prefix.toUpperCase()}-${numbers}`)
+            variations.add(`${prefix.toLowerCase()}-${numbers}`)
+        }
+
+        // Pattern 4: Zero-padding variations (at5 -> at-05, at005)
+        const zeroPadPattern = /^([a-zA-Z]+)-?(\d{1,2})$/
+        const zeroPadMatch = trimmed.match(zeroPadPattern)
+        if (zeroPadMatch) {
+            const [, letters, numbers] = zeroPadMatch
+            const paddedNumbers = numbers.padStart(2, '0')
+            const tripleNumbers = numbers.padStart(3, '0')
+
+            variations.add(`${letters}-${paddedNumbers}`)
+            variations.add(`${letters.toUpperCase()}-${paddedNumbers}`)
+            variations.add(`${letters}-${tripleNumbers}`)
+            variations.add(`${letters.toUpperCase()}-${tripleNumbers}`)
+        }
+
+        console.log(`Generated fuzzy variations for "${searchTerm}":`, Array.from(variations))
+        return Array.from(variations)
+    }
+
+    /**
+     * Check if a string looks like a task ID (for optimized searching)
+     */
+    looksLikeTaskId(str) {
+        if (!str || typeof str !== 'string') return false
+
+        // Common task ID patterns:
+        // AT-74, PROJ-123, ABC-456, at56, task123, etc.
+        const taskIdPatterns = [
+            /^[A-Z]{1,6}-\d{1,6}$/i, // AT-74, PROJ-123
+            /^[A-Z]{1,6}\d{1,6}$/i, // AT74, PROJ123
+            /^task\d{1,6}$/i, // task123
+            /^t\d{1,6}$/i, // t123
+        ]
+
+        const trimmed = str.trim()
+        return taskIdPatterns.some(pattern => pattern.test(trimmed))
     }
 
     /**
@@ -389,6 +583,20 @@ class TaskSearchService {
             }
         }
 
+        // Human readable ID matching (high priority)
+        if (taskName && task.humanReadableId) {
+            const lowerTaskName = taskName.toLowerCase().trim()
+            const lowerReadableId = task.humanReadableId.toLowerCase()
+
+            if (lowerReadableId === lowerTaskName) {
+                score += 500 // Exact human readable ID match
+                hasActualMatch = true
+            } else if (this.fuzzyIdMatch(lowerReadableId, lowerTaskName)) {
+                score += 300 // Fuzzy human readable ID match
+                hasActualMatch = true
+            }
+        }
+
         // Only add completion bonus if there's an actual match with search criteria
         if (hasActualMatch && !task.completed) {
             score += 5 // Small bonus for incomplete tasks (reduced from 10)
@@ -434,6 +642,27 @@ class TaskSearchService {
         // Require higher similarity for meaningful matches
         const similarity = this.calculateSimilarity(text1, text2)
         return similarity > 0.8 // 80% similarity threshold (increased from 60%)
+    }
+
+    /**
+     * Fuzzy matching specifically for task IDs
+     * Examples: "at-56" matches "at56", "AT56", "at-056"
+     */
+    fuzzyIdMatch(id1, id2) {
+        if (!id1 || !id2) return false
+
+        // Generate variations for both IDs and check for matches
+        const variations1 = this.generateFuzzyIdVariations(id1)
+        const variations2 = this.generateFuzzyIdVariations(id2)
+
+        // Check if any variation of id1 matches any variation of id2
+        for (const var1 of variations1) {
+            if (variations2.includes(var1)) {
+                return true
+            }
+        }
+
+        return false
     }
 
     /**
