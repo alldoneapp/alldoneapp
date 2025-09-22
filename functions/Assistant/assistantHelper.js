@@ -42,6 +42,7 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
 const MODEL_GPT4O = 'MODEL_GPT4O'
+const MODEL_GPT5 = 'MODEL_GPT5'
 const MODEL_SONAR = 'MODEL_SONAR'
 const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
 const MODEL_SONAR_REASONING = 'MODEL_SONAR_REASONING'
@@ -63,6 +64,7 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 100
     if (modelKey === MODEL_GPT4) return 10
     if (modelKey === MODEL_GPT4O) return 50
+    if (modelKey === MODEL_GPT5) return 10
     if (modelKey === MODEL_SONAR) return 100
     if (modelKey === MODEL_SONAR_PRO) return 50
     if (modelKey === MODEL_SONAR_REASONING) return 20
@@ -74,6 +76,7 @@ const getModel = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 'gpt-3.5-turbo'
     if (modelKey === MODEL_GPT4) return 'gpt-4'
     if (modelKey === MODEL_GPT4O) return 'gpt-4o'
+    if (modelKey === MODEL_GPT5) return 'gpt-5'
     if (modelKey === MODEL_SONAR) return 'sonar'
     if (modelKey === MODEL_SONAR_PRO) return 'sonar-pro'
     if (modelKey === MODEL_SONAR_REASONING) return 'sonar-reasoning'

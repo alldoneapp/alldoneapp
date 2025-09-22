@@ -12,6 +12,7 @@ import {
     MODEL_GPT3_5,
     MODEL_GPT4,
     MODEL_GPT4O,
+    MODEL_GPT5,
     MODEL_SONAR,
     MODEL_SONAR_PRO,
     MODEL_SONAR_REASONING,
@@ -23,11 +24,12 @@ const options = [
     { text: 'GPT 3_5', model: MODEL_GPT3_5, shortcutKey: '1' },
     { text: 'GPT 4', model: MODEL_GPT4, shortcutKey: '2' },
     { text: 'GPT 4o', model: MODEL_GPT4O, shortcutKey: '3' },
-    { text: 'Sonar', model: MODEL_SONAR, shortcutKey: '4' },
-    { text: 'Sonar Pro', model: MODEL_SONAR_PRO, shortcutKey: '5' },
-    { text: 'Sonar Reasoning', model: MODEL_SONAR_REASONING, shortcutKey: '6' },
-    { text: 'Sonar Reasoning Pro', model: MODEL_SONAR_REASONING_PRO, shortcutKey: '7' },
-    { text: 'Sonar Deep Research', model: MODEL_SONAR_DEEP_RESEARCH, shortcutKey: '8' },
+    { text: 'GPT 5', model: MODEL_GPT5, shortcutKey: '4' },
+    { text: 'Sonar', model: MODEL_SONAR, shortcutKey: '5' },
+    { text: 'Sonar Pro', model: MODEL_SONAR_PRO, shortcutKey: '6' },
+    { text: 'Sonar Reasoning', model: MODEL_SONAR_REASONING, shortcutKey: '7' },
+    { text: 'Sonar Reasoning Pro', model: MODEL_SONAR_REASONING_PRO, shortcutKey: '8' },
+    { text: 'Sonar Deep Research', model: MODEL_SONAR_DEEP_RESEARCH, shortcutKey: '9' },
 ]
 
 export default function AssistantModelModal({ closeModal, model, updateModel }) {
