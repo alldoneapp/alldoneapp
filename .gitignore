@@ -362,3 +362,7 @@ claude-code-config.json
 
 # Jest snapshot files (covered by __tests__/ but adding for any outside that directory)
 **/*.snap
+
+# Firebase emulator data
+./firestore-data
+/firestore-data

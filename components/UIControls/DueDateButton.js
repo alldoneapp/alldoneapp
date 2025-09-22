@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import moment from 'moment'
 import Hotkeys from 'react-hot-keys'
@@ -27,9 +27,25 @@ export default function DueDateButton({
     const smallScreen = useSelector(state => state.smallScreen)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [visiblePopover, setVisiblePopover] = useState(false)
+    const isUnmountedRef = useRef(false)
+    const timeoutsRef = useRef([])
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+            timeoutsRef.current.forEach(t => clearTimeout(t))
+            timeoutsRef.current = []
+        }
+    }, [])
+
+    const safeSetVisiblePopover = value => {
+        if (!isUnmountedRef.current) {
+            setVisiblePopover(value)
+        }
+    }
 
     const hidePopover = () => {
-        setVisiblePopover(false)
+        safeSetVisiblePopover(false)
         dispatch(hideFloatPopup())
         if (onDismissPopup) onDismissPopup()
     }
@@ -37,14 +53,15 @@ export default function DueDateButton({
     const delayHidePopover = () => {
         // This timeout is necessary to stop the propagation of the click
         // to close the Modal, and reach the dismiss event of the EditTask
-        setTimeout(async () => {
+        const t = setTimeout(async () => {
             hidePopover()
         })
+        timeoutsRef.current.push(t)
     }
 
     const showPopover = () => {
         if (!visiblePopover) {
-            setVisiblePopover(true)
+            safeSetVisiblePopover(true)
             dispatch(showFloatPopup())
             document.activeElement.blur()
         }
@@ -66,7 +83,7 @@ export default function DueDateButton({
             : dueDate.format(getDateFormat(false, true))
     }
 
-    return (
+    return visiblePopover ? (
         <Popover
             content={
                 <DueDateModal
@@ -106,5 +123,24 @@ export default function DueDateButton({
                 />
             </Hotkeys>
         </Popover>
+    ) : (
+        <Hotkeys
+            keyName={`alt+${shortcutText}`}
+            disabled={disabled}
+            onKeyDown={(sht, event) => execShortcutFn(this.buttonRef, showPopover, event)}
+            filter={e => true}
+        >
+            <Button
+                ref={ref => (this.buttonRef = ref)}
+                title={getDueDateButtonText()}
+                type={'ghost'}
+                noBorder={inEditTask && smallScreen}
+                icon={'calendar'}
+                buttonStyle={style}
+                onPress={showPopover}
+                disabled={disabled}
+                shortcutText={shortcutText}
+            />
+        </Hotkeys>
     )
 }

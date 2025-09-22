@@ -82,6 +82,26 @@ export default function SecondaryButtonsArea({
     const [activeGoalForModal, setActiveGoalForModal] = useState(null)
     const [isLoadingGoal, setIsLoadingGoal] = useState(false)
     const [goalForModalAtOpen, setGoalForModalAtOpen] = useState(null)
+    const isUnmountedRef = useRef(false)
+
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+        }
+    }, [])
+
+    const safeSetShowParentGoalModalUI = value => {
+        if (!isUnmountedRef.current) setShowParentGoalModalUI(value)
+    }
+    const safeSetActiveGoalForModal = value => {
+        if (!isUnmountedRef.current) setActiveGoalForModal(value)
+    }
+    const safeSetIsLoadingGoal = value => {
+        if (!isUnmountedRef.current) setIsLoadingGoal(value)
+    }
+    const safeSetGoalForModalAtOpen = value => {
+        if (!isUnmountedRef.current) setGoalForModalAtOpen(value)
+    }
 
     const openParentGoalPopup = async e => {
         e?.preventDefault()
@@ -89,34 +109,35 @@ export default function SecondaryButtonsArea({
         Keyboard.dismiss()
 
         if (tmpTask.parentGoalId) {
-            setIsLoadingGoal(true)
+            safeSetIsLoadingGoal(true)
             try {
                 const goal = await Backend.getGoalData(projectId, tmpTask.parentGoalId)
+                if (isUnmountedRef.current) return
                 if (goal && objectIsPublicForLoggedUser(goal, loggedUserId)) {
-                    setGoalForModalAtOpen(goal)
-                    setActiveGoalForModal(goal)
+                    safeSetGoalForModalAtOpen(goal)
+                    safeSetActiveGoalForModal(goal)
                 } else {
-                    setGoalForModalAtOpen(null)
-                    setActiveGoalForModal(null)
+                    safeSetGoalForModalAtOpen(null)
+                    safeSetActiveGoalForModal(null)
                 }
             } catch (error) {
                 console.error('Error fetching parent goal:', error)
-                setGoalForModalAtOpen(null)
-                setActiveGoalForModal(null)
+                safeSetGoalForModalAtOpen(null)
+                safeSetActiveGoalForModal(null)
             }
-            setIsLoadingGoal(false)
+            safeSetIsLoadingGoal(false)
         } else {
-            setGoalForModalAtOpen(null)
-            setActiveGoalForModal(null)
+            safeSetGoalForModalAtOpen(null)
+            safeSetActiveGoalForModal(null)
         }
 
         dispatch(showFloatPopup())
-        setShowParentGoalModalUI(true)
+        safeSetShowParentGoalModalUI(true)
     }
 
     const hideParentGoalPopup = () => {
         dispatch(hideFloatPopup())
-        setShowParentGoalModalUI(false)
+        safeSetShowParentGoalModalUI(false)
         dismissEditMode?.()
     }
 
@@ -207,49 +228,54 @@ export default function SecondaryButtonsArea({
                 </Hotkeys>
             )}
 
-            {loggedUserCanUpdateObject && !isAssistant && !tmpTask.isSubtask && hasName && accessGranted && (
-                <Popover
-                    content={
-                        <TaskParentGoalModal
-                            activeGoal={goalForModalAtOpen || activeGoalForModal}
-                            setActiveGoal={handleSetParentGoal}
-                            projectId={projectId}
-                            closeModal={hideParentGoalPopup}
-                            notDelayClose={true}
-                            ownerId={tmpTask.userId}
-                        />
-                    }
-                    onClickOutside={hideParentGoalPopup}
-                    isOpen={showParentGoalModalUI}
-                    position={['bottom', 'left', 'right', 'top']}
-                    padding={4}
-                    align={'end'}
-                    disableReposition={true}
-                    contentLocation={popoverToTop}
-                >
-                    <Hotkeys
-                        keyName={'alt+g'}
-                        disabled={!hasName || !accessGranted || blockShortcuts || isLoadingGoal}
-                        onKeyDown={(sht, event) =>
-                            execShortcutFn(parentGoalButtonRef.current, openParentGoalPopup, event)
+            {loggedUserCanUpdateObject &&
+                !isAssistant &&
+                !tmpTask.isSubtask &&
+                hasName &&
+                accessGranted &&
+                showParentGoalModalUI && (
+                    <Popover
+                        content={
+                            <TaskParentGoalModal
+                                activeGoal={goalForModalAtOpen || activeGoalForModal}
+                                setActiveGoal={handleSetParentGoal}
+                                projectId={projectId}
+                                closeModal={hideParentGoalPopup}
+                                notDelayClose={true}
+                                ownerId={tmpTask.userId}
+                            />
                         }
-                        filter={e => true}
+                        onClickOutside={hideParentGoalPopup}
+                        isOpen={showParentGoalModalUI}
+                        position={['bottom', 'left', 'right', 'top']}
+                        padding={4}
+                        align={'end'}
+                        disableReposition={true}
+                        contentLocation={popoverToTop}
                     >
-                        <GhostButton
-                            ref={parentGoalButtonRef}
-                            type={'ghost'}
-                            icon={isLoadingGoal ? 'loader' : 'target'}
-                            title={!smallScreen ? translate('Parent goal') : null}
-                            noBorder={smallScreen}
-                            buttonStyle={buttonItemStyle}
-                            iconColor={colors.Text03}
-                            onPress={openParentGoalPopup}
-                            disabled={!hasName || !accessGranted || isLoadingGoal}
-                            shortcutText={'G'}
-                        />
-                    </Hotkeys>
-                </Popover>
-            )}
+                        <Hotkeys
+                            keyName={'alt+g'}
+                            disabled={!hasName || !accessGranted || blockShortcuts || isLoadingGoal}
+                            onKeyDown={(sht, event) =>
+                                execShortcutFn(parentGoalButtonRef.current, openParentGoalPopup, event)
+                            }
+                            filter={e => true}
+                        >
+                            <GhostButton
+                                ref={parentGoalButtonRef}
+                                type={'ghost'}
+                                icon={isLoadingGoal ? 'loader' : 'target'}
+                                title={!smallScreen ? translate('Parent goal') : null}
+                                noBorder={smallScreen}
+                                buttonStyle={buttonItemStyle}
+                                iconColor={colors.Text03}
+                                onPress={openParentGoalPopup}
+                                disabled={!hasName || !accessGranted || isLoadingGoal}
+                                shortcutText={'G'}
+                            />
+                        </Hotkeys>
+                    </Popover>
+                )}
 
             {!adding && tmpTask.done && loggedUserCanUpdateObject && !isAssistant && (
                 <FollowUpButton

@@ -23,6 +23,14 @@ class CommentButton extends Component {
         super(props)
         const storeState = store.getState()
 
+        this._isUnmounted = false
+        this._timeouts = []
+        this.setStateIfMounted = (updater, callback) => {
+            if (!this._isUnmounted) {
+                this.setState(updater, callback)
+            }
+        }
+
         this.state = {
             visiblePopover: false,
             smallScreen: storeState.smallScreen,
@@ -31,13 +39,17 @@ class CommentButton extends Component {
     }
 
     componentWillUnmount() {
+        this._isUnmounted = true
         this.state.unsubscribe()
+        // Clear any pending timeouts
+        this._timeouts.forEach(t => clearTimeout(t))
+        this._timeouts = []
     }
 
     updateState = () => {
         const storeState = store.getState()
 
-        this.setState({
+        this.setStateIfMounted({
             smallScreen: storeState.smallScreen,
         })
     }
@@ -55,18 +67,19 @@ class CommentButton extends Component {
         ) {
             // This timeout is necessary to stop the propagation of the click
             // to close the Modal, and reach the dismiss event of the EditTask
-            setTimeout(async () => {
+            const t = setTimeout(async () => {
                 const { onDismissPopup } = this.props
-                this.setState({ visiblePopover: false })
+                this.setStateIfMounted({ visiblePopover: false })
                 store.dispatch(hideFloatPopup())
                 if (onDismissPopup) onDismissPopup()
             })
+            this._timeouts.push(t)
         }
     }
 
     showPopover = () => {
         if (!this.state.visiblePopover) {
-            this.setState({ visiblePopover: true })
+            this.setStateIfMounted({ visiblePopover: true })
             store.dispatch(showFloatPopup())
         }
     }
@@ -95,7 +108,7 @@ class CommentButton extends Component {
     render() {
         const { disabled, style, inEditTask, projectId, shortcutText, task } = this.props
         const { visiblePopover, smallScreen } = this.state
-        return (
+        return visiblePopover ? (
             <Popover
                 content={
                     <RichCommentModal
@@ -138,6 +151,25 @@ class CommentButton extends Component {
                     />
                 </Hotkeys>
             </Popover>
+        ) : (
+            <Hotkeys
+                keyName={`alt+${shortcutText}`}
+                disabled={disabled}
+                onKeyDown={(sht, event) => execShortcutFn(this.buttonRef, this.showPopover, event)}
+                filter={e => true}
+            >
+                <GhostButton
+                    ref={ref => (this.buttonRef = ref)}
+                    title={inEditTask && smallScreen ? null : translate('Comment')}
+                    type={'ghost'}
+                    noBorder={inEditTask && smallScreen}
+                    icon={'message-circle'}
+                    buttonStyle={style}
+                    onPress={this.showPopover}
+                    disabled={disabled}
+                    shortcutText={shortcutText}
+                />
+            </Hotkeys>
         )
     }
 }

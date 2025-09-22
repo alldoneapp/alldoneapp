@@ -2966,7 +2966,30 @@ export async function watchAllDoneVersion(callback) {
 }
 
 export async function logEvent(name, params) {
-    await firebase.analytics().logEvent(name, params)
+    // Prefer gtag if available (GA4 on web)
+    try {
+        if (typeof gtag === 'function') {
+            gtag('event', name, params || {})
+            return
+        }
+    } catch (e) {
+        // noop
+    }
+
+    // Fallback to Firebase Analytics if it has been loaded
+    try {
+        if (firebase && typeof firebase.analytics === 'function') {
+            await firebase.analytics().logEvent(name, params)
+            return
+        }
+    } catch (err) {
+        // noop
+    }
+
+    // As a last resort, avoid throwing to keep app flow
+    try {
+        console.warn('[analytics] logEvent skipped (analytics not ready):', name, params)
+    } catch (_) {}
 }
 
 export function mapNoteData(noteId, note) {
@@ -3061,7 +3084,7 @@ export function mapTaskData(taskId, task) {
     const extendedName = task.extendedName ? task.extendedName : task.name ? task.name : ''
     const hasStar = !task?.hasStar ? '#FFFFFF' : task.hasStar === true ? '#C7E3FF' : task.hasStar
 
-    return {
+    const mappedTask = {
         id: task.id ? task.id : taskId,
         done: task.done ? task.done : false,
         inDone: task.inDone ? task.inDone : false,
@@ -3120,8 +3143,14 @@ export function mapTaskData(taskId, task) {
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,
-        humanReadableId: task.humanReadableId ? task.humanReadableId : null,
     }
+
+    // Only include humanReadableId if it has a value
+    if (task.humanReadableId) {
+        mappedTask.humanReadableId = task.humanReadableId
+    }
+
+    return mappedTask
 }
 
 export function mapSkillData(skillId, skill) {

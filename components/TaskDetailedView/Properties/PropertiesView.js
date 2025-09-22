@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import AssignedTo from './AssignedTo'
 import DueDate from './DueDate'
@@ -35,6 +35,7 @@ import TaskId from './TaskId'
 
 export default function PropertiesView({ project, task, loggedUser }) {
     const [creator, setCreator] = useState({})
+    const isUnmountedRef = useRef(false)
     const smallScreen = useSelector(state => state.smallScreen)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
@@ -43,10 +44,15 @@ export default function PropertiesView({ project, task, loggedUser }) {
     useEffect(() => {
         Backend.getUserOrContactBy(project.id, task.creatorId).then(afterCreatorFetch)
         writeBrowserURL()
+        return () => {
+            isUnmountedRef.current = true
+        }
     }, [])
 
     const afterCreatorFetch = user => {
-        setCreator(user)
+        if (!isUnmountedRef.current) {
+            setCreator(user)
+        }
     }
 
     const writeBrowserURL = () => {
