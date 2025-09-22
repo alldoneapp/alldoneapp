@@ -1523,51 +1523,62 @@ async function storeChunks(
                             })
                             await taskSearchService.initialize()
 
-                            // Step 1: Find the task using flexible search criteria
-                            const searchResult = await taskSearchService.findTasksBySearchCriteria(creatorId, {
-                                taskId,
-                                taskName,
-                                projectName,
-                                projectId: searchProjectId,
-                            })
+                            // Step 1: Find the task using enhanced search with confidence logic
+                            const searchResult = await taskSearchService.findTaskForUpdate(
+                                creatorId,
+                                {
+                                    taskId,
+                                    taskName,
+                                    projectName,
+                                    projectId: searchProjectId,
+                                },
+                                {
+                                    autoSelectOnHighConfidence: true,
+                                    highConfidenceThreshold: 800,
+                                    dominanceMargin: 300,
+                                    maxOptionsToShow: 3, // Assistants show fewer options for cleaner responses
+                                }
+                            )
 
-                            if (searchResult.matches.length === 0) {
-                                const criteria = []
-                                if (taskId) criteria.push(`taskId: ${taskId}`)
-                                if (taskName) criteria.push(`taskName: "${taskName}"`)
-                                if (projectName) criteria.push(`projectName: "${projectName}"`)
-                                if (searchProjectId) criteria.push(`projectId: ${searchProjectId}`)
-
-                                throw new Error(
-                                    `No tasks found matching search criteria: ${criteria.join(', ')}. ` +
-                                        'Try being more specific or check the task/project names.'
-                                )
+                            // Handle different decision outcomes
+                            if (searchResult.decision === 'no_matches') {
+                                throw new Error(searchResult.error)
                             }
 
-                            if (searchResult.matches.length > 1) {
-                                // Handle multiple matches - show user the options
-                                let errorMessage = `Found ${searchResult.matches.length} tasks matching your search criteria:\n`
+                            if (searchResult.decision === 'present_options') {
+                                // Handle multiple matches - show user the options with enhanced information
+                                let errorMessage = `${searchResult.reasoning}\n\nFound ${
+                                    searchResult.totalMatches || searchResult.allMatches.length
+                                } tasks:\n`
 
-                                searchResult.matches.slice(0, 3).forEach((match, index) => {
-                                    errorMessage += `${index + 1}. "${match.task.name}" (Project: ${
-                                        match.projectName
-                                    })\n`
+                                searchResult.allMatches.slice(0, 3).forEach((match, index) => {
+                                    errorMessage += `${index + 1}. "${match.task.name}"`
+
+                                    if (match.task.humanReadableId) {
+                                        errorMessage += ` (ID: ${match.task.humanReadableId})`
+                                    }
+
+                                    errorMessage += ` (Project: ${match.projectName})`
+
+                                    // Show confidence for assistants too
+                                    const confidence = taskSearchService.assessConfidence(match.matchScore)
+                                    errorMessage += ` [${confidence} confidence]\n`
                                 })
 
-                                if (searchResult.matches.length > 3) {
-                                    errorMessage += `... and ${searchResult.matches.length - 3} more matches.\n`
+                                if (searchResult.allMatches.length > 3) {
+                                    errorMessage += `... and ${searchResult.allMatches.length - 3} more matches.\n`
                                 }
 
-                                errorMessage += 'Please be more specific in your search criteria.'
+                                errorMessage += '\nPlease be more specific in your search criteria.'
                                 throw new Error(errorMessage)
                             }
 
-                            // Step 2: Update the found task
+                            // Step 2: Update the found task (auto-selected or single match)
                             const {
                                 task: currentTask,
                                 projectId: currentProjectId,
                                 projectName: currentProjectName,
-                            } = searchResult.matches[0]
+                            } = searchResult.selectedMatch
 
                             // Build update object with only provided fields
                             const updateData = {}

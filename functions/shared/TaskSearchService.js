@@ -129,6 +129,175 @@ class TaskSearchService {
     }
 
     /**
+     * Enhanced task search specifically for update operations
+     * Includes confidence-based auto-selection logic
+     *
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchCriteria - Search parameters
+     * @param {Object} options - Configuration options
+     * @returns {Object} Enhanced result with decision logic
+     */
+    async findTaskForUpdate(userId, searchCriteria, options = {}) {
+        await this.ensureInitialized()
+
+        // Configuration with defaults
+        const config = {
+            autoSelectOnHighConfidence: true,
+            highConfidenceThreshold: 800,
+            dominanceMargin: 300,
+            requireManualSelection: false,
+            maxOptionsToShow: 5,
+            ...options,
+        }
+
+        // Get all matches using existing search logic
+        const searchResult = await this.findTasksBySearchCriteria(userId, searchCriteria)
+        const matches = searchResult.matches || []
+
+        // No matches case
+        if (matches.length === 0) {
+            return {
+                decision: 'no_matches',
+                selectedMatch: null,
+                allMatches: [],
+                confidence: 'none',
+                reasoning: 'No tasks found matching the search criteria',
+                shouldProceedWithUpdate: false,
+                searchCriteria,
+                error: this.buildNoMatchesError(searchCriteria),
+            }
+        }
+
+        // Single match case
+        if (matches.length === 1) {
+            const match = matches[0]
+            const confidence = this.assessConfidence(match.matchScore)
+
+            return {
+                decision: 'auto_select',
+                selectedMatch: match,
+                allMatches: matches,
+                confidence,
+                reasoning: `Single match found: ${match.matchType} (score: ${match.matchScore})`,
+                shouldProceedWithUpdate: true,
+                searchCriteria,
+            }
+        }
+
+        // Multiple matches - apply confidence logic
+        return this.assessMultipleMatches(matches, config, searchCriteria)
+    }
+
+    /**
+     * Assess multiple matches and determine if auto-selection is appropriate
+     */
+    assessMultipleMatches(matches, config, searchCriteria) {
+        // Sort matches by score (highest first)
+        const sortedMatches = [...matches].sort((a, b) => b.matchScore - a.matchScore)
+        const topMatch = sortedMatches[0]
+        const secondMatch = sortedMatches[1]
+
+        // Check if manual selection is forced
+        if (config.requireManualSelection) {
+            return {
+                decision: 'present_options',
+                selectedMatch: null,
+                allMatches: sortedMatches.slice(0, config.maxOptionsToShow),
+                confidence: 'manual_required',
+                reasoning: 'Manual selection required by configuration',
+                shouldProceedWithUpdate: false,
+                searchCriteria,
+            }
+        }
+
+        // Check if auto-selection is disabled
+        if (!config.autoSelectOnHighConfidence) {
+            return this.buildPresentOptionsResult(sortedMatches, config, searchCriteria, 'Auto-selection disabled')
+        }
+
+        // High confidence auto-selection logic
+        const hasHighConfidenceMatch = topMatch.matchScore >= config.highConfidenceThreshold
+
+        if (hasHighConfidenceMatch) {
+            // Check if it's a dominant match (significantly better than others)
+            const scoreDifference = secondMatch ? topMatch.matchScore - secondMatch.matchScore : 1000
+            const isDominant = scoreDifference >= config.dominanceMargin
+
+            if (isDominant) {
+                return {
+                    decision: 'auto_select',
+                    selectedMatch: topMatch,
+                    allMatches: sortedMatches,
+                    confidence: this.assessConfidence(topMatch.matchScore),
+                    reasoning: `Auto-selected dominant match: ${topMatch.matchType} (score: ${topMatch.matchScore}, ${scoreDifference} points ahead)`,
+                    shouldProceedWithUpdate: true,
+                    searchCriteria,
+                    alternativeMatches: sortedMatches.slice(1, 4), // Show a few alternatives for transparency
+                }
+            } else {
+                // Multiple high-confidence matches - present options
+                return this.buildPresentOptionsResult(
+                    sortedMatches,
+                    config,
+                    searchCriteria,
+                    `Multiple high-confidence matches found (top score: ${topMatch.matchScore})`
+                )
+            }
+        }
+
+        // All matches have low confidence - present options
+        return this.buildPresentOptionsResult(
+            sortedMatches,
+            config,
+            searchCriteria,
+            `Low confidence matches (highest score: ${topMatch.matchScore})`
+        )
+    }
+
+    /**
+     * Build a "present options" result
+     */
+    buildPresentOptionsResult(sortedMatches, config, searchCriteria, reasoning) {
+        return {
+            decision: 'present_options',
+            selectedMatch: null,
+            allMatches: sortedMatches.slice(0, config.maxOptionsToShow),
+            confidence: this.assessConfidence(sortedMatches[0]?.matchScore || 0),
+            reasoning,
+            shouldProceedWithUpdate: false,
+            searchCriteria,
+            totalMatches: sortedMatches.length,
+        }
+    }
+
+    /**
+     * Assess confidence level based on match score
+     */
+    assessConfidence(score) {
+        if (score >= 800) return 'high'
+        if (score >= 200) return 'medium'
+        if (score >= 50) return 'low'
+        return 'very_low'
+    }
+
+    /**
+     * Build error message for no matches case
+     */
+    buildNoMatchesError(searchCriteria) {
+        const { taskId, taskName, projectName, projectId } = searchCriteria
+        const criteria = []
+
+        if (taskId) criteria.push(`taskId: ${taskId}`)
+        if (taskName) criteria.push(`taskName: "${taskName}"`)
+        if (projectName) criteria.push(`projectName: "${projectName}"`)
+        if (projectId) criteria.push(`projectId: ${projectId}`)
+
+        return `No tasks found matching search criteria: ${criteria.join(
+            ', '
+        )}. Try being more specific or check the task/project names.`
+    }
+
+    /**
      * Validate search criteria for quality and meaningfulness
      */
     validateSearchCriteria(searchCriteria) {

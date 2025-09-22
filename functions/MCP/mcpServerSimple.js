@@ -1018,34 +1018,26 @@ class AlldoneSimpleMCPServer {
         const userId = await this.getAuthenticatedUserForClient(request)
         const db = admin.firestore()
 
-        // Step 1: Task Discovery - find the task using flexible search criteria
-        const searchResult = await this.findTargetTask(args, userId, db)
+        // Step 1: Task Discovery - find the task using enhanced search with confidence logic
+        const searchResult = await this.findTargetTaskForUpdate(args, userId, db)
 
-        if (searchResult.matches.length === 0) {
-            const criteria = []
-            if (taskId) criteria.push(`taskId: ${taskId}`)
-            if (taskName) criteria.push(`taskName: "${taskName}"`)
-            if (projectName) criteria.push(`projectName: "${projectName}"`)
-            if (targetProjectId) criteria.push(`projectId: ${targetProjectId}`)
-
-            throw new Error(
-                `No tasks found matching search criteria: ${criteria.join(', ')}. ` +
-                    'Try being more specific or check the task/project names.'
-            )
+        // Handle different decision outcomes
+        if (searchResult.decision === 'no_matches') {
+            throw new Error(searchResult.error)
         }
 
-        if (searchResult.matches.length > 1) {
-            return this.handleMultipleMatches(searchResult)
+        if (searchResult.decision === 'present_options') {
+            return this.handleMultipleMatchesEnhanced(searchResult)
         }
 
-        // Step 2: Task Update - perform the actual update
+        // Step 2: Task Update - proceed with auto-selected or single match
         const {
             task: currentTask,
             projectId: currentProjectId,
             projectName: currentProjectName,
-        } = searchResult.matches[0]
+        } = searchResult.selectedMatch
 
-        return this.performTaskUpdate(
+        const updateResult = await this.performTaskUpdate(
             currentTask,
             currentProjectId,
             currentProjectName,
@@ -1062,10 +1054,45 @@ class AlldoneSimpleMCPServer {
             userId,
             db
         )
+
+        // Add search reasoning to the update result for transparency
+        if (searchResult.decision === 'auto_select') {
+            updateResult.searchInfo = {
+                decision: searchResult.decision,
+                confidence: searchResult.confidence,
+                reasoning: searchResult.reasoning,
+                alternativeMatches: searchResult.alternativeMatches?.length || 0,
+            }
+            updateResult.message += ` (${searchResult.reasoning})`
+        }
+
+        return updateResult
     }
 
     /**
-     * Find target task using flexible search criteria
+     * Find target task using enhanced search with confidence-based auto-selection
+     */
+    async findTargetTaskForUpdate(searchCriteria, userId, db) {
+        // Initialize TaskSearchService if not already done
+        if (!this.taskSearchService) {
+            const TaskSearchService = require('../shared/TaskSearchService')
+            this.taskSearchService = new TaskSearchService({
+                database: db,
+                isCloudFunction: true,
+            })
+            await this.taskSearchService.initialize()
+        }
+
+        return await this.taskSearchService.findTaskForUpdate(userId, searchCriteria, {
+            autoSelectOnHighConfidence: true,
+            highConfidenceThreshold: 800,
+            dominanceMargin: 300,
+            maxOptionsToShow: 5,
+        })
+    }
+
+    /**
+     * Find target task using flexible search criteria (legacy method for backward compatibility)
      */
     async findTargetTask(searchCriteria, userId, db) {
         // Initialize TaskSearchService if not already done
@@ -1082,7 +1109,63 @@ class AlldoneSimpleMCPServer {
     }
 
     /**
-     * Handle case where multiple tasks match search criteria
+     * Enhanced handler for multiple matches with confidence information
+     */
+    handleMultipleMatchesEnhanced(searchResult) {
+        const { allMatches, reasoning, confidence, totalMatches } = searchResult
+
+        let message = `${reasoning}\n\nFound ${totalMatches || allMatches.length} tasks:\n\n`
+
+        allMatches.slice(0, 5).forEach((match, index) => {
+            message += `${index + 1}. "${match.task.name}"`
+
+            // Show human readable ID if available
+            if (match.task.humanReadableId) {
+                message += ` (ID: ${match.task.humanReadableId})`
+            }
+
+            message += ` (Project: ${match.projectName})`
+
+            // Show confidence indicators
+            const matchConfidence = this.taskSearchService.assessConfidence(match.matchScore)
+            message += ` [${matchConfidence} confidence: ${match.matchScore}]\n`
+
+            if (match.task.description) {
+                message += `   Description: ${match.task.description.substring(0, 100)}${
+                    match.task.description.length > 100 ? '...' : ''
+                }\n`
+            }
+            message += `   Task ID: ${match.task.id}\n\n`
+        })
+
+        if (allMatches.length > 5) {
+            message += `... and ${allMatches.length - 5} more matches.\n\n`
+        }
+
+        message +=
+            'Please be more specific in your search criteria, or use the exact task ID to update a specific task.'
+
+        return {
+            success: false,
+            message,
+            confidence,
+            reasoning,
+            matches: allMatches.map(m => ({
+                taskId: m.task.id,
+                taskName: m.task.name,
+                humanReadableId: m.task.humanReadableId,
+                projectId: m.projectId,
+                projectName: m.projectName,
+                matchScore: m.matchScore,
+                matchType: m.matchType,
+                confidence: this.taskSearchService.assessConfidence(m.matchScore),
+            })),
+            totalMatches: totalMatches || allMatches.length,
+        }
+    }
+
+    /**
+     * Handle case where multiple tasks match search criteria (legacy method)
      */
     handleMultipleMatches(searchResult) {
         const { matches } = searchResult
