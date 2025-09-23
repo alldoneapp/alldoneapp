@@ -264,38 +264,86 @@ class FocusTaskService {
                 }
             }
 
-            // Phase 3: Search across other user projects
-            for (const projectId of userProjectIds) {
-                if (projectId === searchProjectId) continue
+            // Phase 3: Search across other user projects (sorted by user preference)
+            const otherUserProjectIds = userProjectIds.filter(projectId => projectId !== searchProjectId)
+
+            if (otherUserProjectIds.length > 0) {
+                // Fetch project metadata to get sortIndexByUser for proper ordering
+                let sortedOtherProjectIds = otherUserProjectIds
 
                 try {
-                    const otherProjectQuery = this.options.database
-                        .collection(`items/${projectId}/tasks`)
-                        .where('userId', '==', userId)
-                        .where('done', '==', false)
-                        .where('inDone', '==', false)
-                        .where('isSubtask', '==', false)
-                        .orderBy('sortIndex', 'desc')
-                        .limit(50)
+                    const projectDocs = await Promise.all(
+                        otherUserProjectIds.map(projectId =>
+                            this.options.database.collection('projects').doc(projectId).get()
+                        )
+                    )
 
-                    const otherProjectSnapshot = await otherProjectQuery.get()
-                    if (!otherProjectSnapshot.empty) {
-                        const tasksFromOtherProject = otherProjectSnapshot.docs
-                            .map(doc => ({ id: doc.id, ...doc.data() }))
-                            .filter(task => task.dueDate <= endOfToday && !task.calendarData)
-
-                        if (tasksFromOtherProject.length > 0) {
-                            const taskFromOtherProject = tasksFromOtherProject[0]
-                            await this.setNewFocusTask(userId, projectId, taskFromOtherProject)
+                    // Build project data with sortIndexByUser
+                    const projectsWithSortIndex = projectDocs
+                        .map((doc, index) => {
+                            if (doc.exists) {
+                                const data = doc.data()
+                                const sortIndexByUser = data.sortIndexByUser?.[userId] || 0
+                                return {
+                                    id: otherUserProjectIds[index],
+                                    sortIndexByUser,
+                                }
+                            }
                             return {
-                                id: taskFromOtherProject.id,
-                                projectId: projectId,
-                                ...taskFromOtherProject,
+                                id: otherUserProjectIds[index],
+                                sortIndexByUser: 0,
+                            }
+                        })
+                        .sort((a, b) => b.sortIndexByUser - a.sortIndexByUser) // Sort descending (higher priority first)
+
+                    sortedOtherProjectIds = projectsWithSortIndex.map(p => p.id)
+
+                    console.log(
+                        `FocusTaskService: Sorted ${sortedOtherProjectIds.length} other projects by user preference for ${userId}`
+                    )
+                } catch (projectSortError) {
+                    console.warn(
+                        'FocusTaskService: Failed to sort projects by user preference, using original order:',
+                        projectSortError.message
+                    )
+                    // Fall back to original order if sorting fails
+                }
+
+                // Search through projects in sorted order (highest priority first)
+                for (const projectId of sortedOtherProjectIds) {
+                    try {
+                        const otherProjectQuery = this.options.database
+                            .collection(`items/${projectId}/tasks`)
+                            .where('userId', '==', userId)
+                            .where('done', '==', false)
+                            .where('inDone', '==', false)
+                            .where('isSubtask', '==', false)
+                            .orderBy('sortIndex', 'desc')
+                            .limit(50)
+
+                        const otherProjectSnapshot = await otherProjectQuery.get()
+                        if (!otherProjectSnapshot.empty) {
+                            const tasksFromOtherProject = otherProjectSnapshot.docs
+                                .map(doc => ({ id: doc.id, ...doc.data() }))
+                                .filter(task => task.dueDate <= endOfToday && !task.calendarData)
+
+                            if (tasksFromOtherProject.length > 0) {
+                                // Prioritize non-workflow tasks first (matching main app logic)
+                                const nonWorkflowTasks = tasksFromOtherProject.filter(task => task.userIds.length === 1)
+                                const selectedTask =
+                                    nonWorkflowTasks.length > 0 ? nonWorkflowTasks[0] : tasksFromOtherProject[0]
+
+                                await this.setNewFocusTask(userId, projectId, selectedTask)
+                                return {
+                                    id: selectedTask.id,
+                                    projectId: projectId,
+                                    ...selectedTask,
+                                }
                             }
                         }
+                    } catch (error) {
+                        console.warn(`Error searching tasks in project ${projectId}:`, error.message)
                     }
-                } catch (error) {
-                    console.warn(`Error searching tasks in project ${projectId}:`, error.message)
                 }
             }
 
