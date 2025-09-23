@@ -620,11 +620,11 @@ class TaskRetrievalService {
             } catch (_) {}
 
             // Build a small summary string using uncapped totals and focus task info
-            let summary = `Found ${totalAvailable} task(s)`
+            let summary = ''
             if (focusTask) {
                 summary += focusTaskInResults
-                    ? `; Focus task is in this list at position ${focusTaskIndex + 1}`
-                    : `; Focus task is not in this list`
+                    ? `Focus task is in this list at position ${focusTaskIndex + 1}`
+                    : `Focus task is not in this list`
             }
 
             return {
@@ -937,8 +937,8 @@ class TaskRetrievalService {
             } catch (_) {}
 
             // Build a short summary that mentions the focus task presence
-            let summary = `Found ${totalAcrossProjects} task(s) across ${queriedProjects.length} project(s)`
-            if (focusTask) summary += focusTaskInResults ? '; Focus task is included' : '; Focus task not included'
+            let summary = ''
+            if (focusTask) summary += focusTaskInResults ? 'Focus task is included' : 'Focus task not included'
 
             return {
                 success: true,
