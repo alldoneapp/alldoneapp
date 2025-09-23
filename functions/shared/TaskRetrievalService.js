@@ -10,7 +10,7 @@
  * - Any other task retrieval contexts
  */
 
-const moment = require('moment')
+const moment = require('moment-timezone')
 
 // Import constants that are used across different environments
 const OPEN_STEP = 'Open'
@@ -35,6 +35,66 @@ class TaskRetrievalService {
         }
 
         this.initialized = false
+    }
+
+    static normalizeTimezoneOffset(value) {
+        if (value === null || value === undefined) {
+            return null
+        }
+
+        const convertNumber = num => {
+            if (Number.isNaN(num)) return null
+            if (Math.abs(num) <= 16 && Number.isInteger(num)) {
+                return num * 60
+            }
+            return num
+        }
+
+        if (typeof value === 'number') {
+            return convertNumber(value)
+        }
+
+        if (typeof value === 'string') {
+            let trimmed = value.trim()
+            if (!trimmed) return null
+
+            if (trimmed.toUpperCase() === 'Z' || trimmed.toUpperCase() === 'UTC') {
+                return 0
+            }
+
+            const tzPrefixMatch = trimmed.match(/^(UTC|GMT)(.+)$/i)
+            if (tzPrefixMatch) {
+                trimmed = tzPrefixMatch[2].trim()
+            }
+
+            const match = trimmed.match(/^([+-]?)(\d{1,2}):(\d{2})$/)
+            if (match) {
+                const sign = match[1] === '-' ? -1 : 1
+                const hours = parseInt(match[2], 10)
+                const minutes = parseInt(match[3], 10)
+                if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+                    return null
+                }
+                if (minutes < 0 || minutes >= 60) {
+                    return null
+                }
+                return sign * (hours * 60 + minutes)
+            }
+
+            const numeric = Number(trimmed)
+            if (!Number.isNaN(numeric)) {
+                return convertNumber(numeric)
+            }
+        }
+
+        return null
+    }
+
+    applyTimezone(momentInstance, timezoneOffset) {
+        if (typeof timezoneOffset === 'number' && !Number.isNaN(timezoneOffset)) {
+            return momentInstance.utcOffset(timezoneOffset)
+        }
+        return momentInstance
     }
 
     /**
@@ -76,6 +136,7 @@ class TaskRetrievalService {
             perProjectLimit = undefined,
             userPermissions = [FEED_PUBLIC_FOR_ALL],
             restrictToCurrentReviewer = true,
+            timezoneOffset = null,
         } = params
 
         if (!projectId) {
@@ -118,7 +179,7 @@ class TaskRetrievalService {
 
         // Date filtering
         if (effectiveDate && status !== 'all') {
-            const dateFilters = this.buildDateFilters(effectiveDate, status)
+            const dateFilters = this.buildDateFilters(effectiveDate, status, timezoneOffset)
             if (dateFilters.field && dateFilters.operator && dateFilters.value !== null) {
                 if (dateFilters.operator === 'range') {
                     // For range queries (specific date)
@@ -163,8 +224,11 @@ class TaskRetrievalService {
      * @param {string} status - Task status ('open', 'done', 'all')
      * @returns {Object} Date filter configuration
      */
-    buildDateFilters(date, status) {
-        const momentInstance = this.options.moment
+    buildDateFilters(date, status, timezoneOffset = null) {
+        const momentFactory = (...args) => {
+            const base = this.options.moment(...args)
+            return this.applyTimezone(base, timezoneOffset)
+        }
 
         if (!date || typeof date !== 'string') {
             return { field: null, operator: null, value: null }
@@ -195,7 +259,7 @@ class TaskRetrievalService {
         }
 
         if (normalized === 'today') {
-            const today = momentInstance()
+            const today = momentFactory()
             const startOfToday = today.clone().startOf('day')
             const endOfToday = today.clone().endOf('day')
 
@@ -214,15 +278,15 @@ class TaskRetrievalService {
         }
 
         if (normalized === 'yesterday') {
-            return makeDayRange(momentInstance().subtract(1, 'day'))
+            return makeDayRange(momentFactory().subtract(1, 'day'))
         }
 
         if (normalized === 'tomorrow') {
-            return makeDayRange(momentInstance().add(1, 'day'))
+            return makeDayRange(momentFactory().add(1, 'day'))
         }
 
         if (normalizedSpaced === 'this week' || normalizedSpaced === 'current week') {
-            const startOfWeek = momentInstance().startOf('week')
+            const startOfWeek = momentFactory().startOf('week')
             const endOfWeek = startOfWeek.clone().endOf('week')
             return makeRange(startOfWeek, endOfWeek)
         }
@@ -232,19 +296,19 @@ class TaskRetrievalService {
             normalizedSpaced === 'previous week' ||
             normalizedSpaced === 'past week'
         ) {
-            const startOfLastWeek = momentInstance().subtract(1, 'week').startOf('week')
+            const startOfLastWeek = momentFactory().subtract(1, 'week').startOf('week')
             const endOfLastWeek = startOfLastWeek.clone().endOf('week')
             return makeRange(startOfLastWeek, endOfLastWeek)
         }
 
         if (normalizedSpaced === 'next week') {
-            const startOfNextWeek = momentInstance().add(1, 'week').startOf('week')
+            const startOfNextWeek = momentFactory().add(1, 'week').startOf('week')
             const endOfNextWeek = startOfNextWeek.clone().endOf('week')
             return makeRange(startOfNextWeek, endOfNextWeek)
         }
 
         if (normalizedSpaced === 'this month' || normalizedSpaced === 'current month') {
-            const startOfMonth = momentInstance().startOf('month')
+            const startOfMonth = momentFactory().startOf('month')
             const endOfMonth = startOfMonth.clone().endOf('month')
             return makeRange(startOfMonth, endOfMonth)
         }
@@ -254,13 +318,13 @@ class TaskRetrievalService {
             normalizedSpaced === 'previous month' ||
             normalizedSpaced === 'past month'
         ) {
-            const startOfLastMonth = momentInstance().subtract(1, 'month').startOf('month')
+            const startOfLastMonth = momentFactory().subtract(1, 'month').startOf('month')
             const endOfLastMonth = startOfLastMonth.clone().endOf('month')
             return makeRange(startOfLastMonth, endOfLastMonth)
         }
 
         if (normalizedSpaced === 'next month') {
-            const startOfNextMonth = momentInstance().add(1, 'month').startOf('month')
+            const startOfNextMonth = momentFactory().add(1, 'month').startOf('month')
             const endOfNextMonth = startOfNextMonth.clone().endOf('month')
             return makeRange(startOfNextMonth, endOfNextMonth)
         }
@@ -269,7 +333,7 @@ class TaskRetrievalService {
         if (rollingPastMatch) {
             const days = parseInt(rollingPastMatch[2], 10)
             if (!Number.isNaN(days) && days > 0) {
-                const end = momentInstance().endOf('day')
+                const end = momentFactory().endOf('day')
                 const start = end
                     .clone()
                     .subtract(days - 1, 'days')
@@ -282,7 +346,7 @@ class TaskRetrievalService {
         if (rollingFutureMatch) {
             const days = parseInt(rollingFutureMatch[1], 10)
             if (!Number.isNaN(days) && days > 0) {
-                const start = momentInstance().startOf('day')
+                const start = momentFactory().startOf('day')
                 const end = start
                     .clone()
                     .add(days - 1, 'days')
@@ -292,7 +356,7 @@ class TaskRetrievalService {
         }
 
         // Specific date (YYYY-MM-DD)
-        const targetDate = momentInstance(rawInput)
+        const targetDate = momentFactory(rawInput)
         if (!targetDate.isValid()) {
             throw new Error(
                 'Invalid date format. Use YYYY-MM-DD or a supported keyword like "today", "yesterday", or "this week".'
@@ -384,6 +448,8 @@ class TaskRetrievalService {
     async getTasks(params) {
         await this.ensureInitialized()
 
+        const normalizedTimezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(params.timezoneOffset)
+
         const {
             projectId,
             userId,
@@ -402,7 +468,7 @@ class TaskRetrievalService {
 
         try {
             // Build and execute query
-            const query = this.buildTaskQuery(params)
+            const query = this.buildTaskQuery({ ...params, timezoneOffset: normalizedTimezoneOffset })
             const snapshot = await query.get()
 
             const tasks = []
@@ -419,7 +485,7 @@ class TaskRetrievalService {
                     const startObj = task && task.calendarData && task.calendarData.start
                     const startString = startObj && (startObj.dateTime || startObj.date)
                     if (startString && startObj.dateTime) {
-                        const m = this.options.moment(startString)
+                        const m = this.applyTimezone(this.options.moment(startString), normalizedTimezoneOffset)
                         if (m && m.isValid && m.isValid()) {
                             calendarTime = m.format('HH:mm')
                         }
@@ -443,9 +509,15 @@ class TaskRetrievalService {
                 ? tasks.map(t => mapToMinimal(t, projectId, providedProjectName))
                 : tasks.map(t => ({
                       ...t,
-                      dueDateFormatted: t.dueDate ? this.options.moment(t.dueDate).format('YYYY-MM-DD HH:mm:ss') : null,
+                      dueDateFormatted: t.dueDate
+                          ? this.applyTimezone(this.options.moment(t.dueDate), normalizedTimezoneOffset).format(
+                                'YYYY-MM-DD HH:mm:ss'
+                            )
+                          : null,
                       completedFormatted: t.completed
-                          ? this.options.moment(t.completed).format('YYYY-MM-DD HH:mm:ss')
+                          ? this.applyTimezone(this.options.moment(t.completed), normalizedTimezoneOffset).format(
+                                'YYYY-MM-DD HH:mm:ss'
+                            )
                           : null,
                   }))
 
@@ -523,6 +595,7 @@ class TaskRetrievalService {
                     parentId,
                     userPermissions,
                     restrictToCurrentReviewer,
+                    timezoneOffset: normalizedTimezoneOffset,
                 }
                 const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
                 if (typeof countQuery.count === 'function') {
@@ -568,13 +641,12 @@ class TaskRetrievalService {
                 parentId,
                 query: {
                     perProjectLimit,
-                    actualCount: projectedTasks.length,
                     hasMore: totalAvailable > projectedTasks.length,
-                    totalAvailable,
                 },
                 focusTask,
                 focusTaskInResults,
                 focusTaskIndex,
+                timezoneOffset: normalizedTimezoneOffset,
             }
         } catch (error) {
             console.error('Error retrieving tasks:', error)
@@ -661,6 +733,8 @@ class TaskRetrievalService {
     async getTasksFromMultipleProjects(params, projectIds, projectsData = {}) {
         await this.ensureInitialized()
 
+        const normalizedTimezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(params.timezoneOffset)
+
         if (!projectIds || !Array.isArray(projectIds) || projectIds.length === 0) {
             return {
                 success: true,
@@ -672,9 +746,9 @@ class TaskRetrievalService {
                 queriedProjects: [],
                 query: {
                     limit: params.limit || 20,
-                    actualCount: 0,
                     hasMore: false,
                 },
+                timezoneOffset: normalizedTimezoneOffset,
             }
         }
 
@@ -708,6 +782,7 @@ class TaskRetrievalService {
                         // For cross-project queries, respect date filtering strictly and don't over-fetch
                         // This ensures we only get tasks for the specific day requested
                         perProjectLimit: Math.min(perProjectLimit, 200),
+                        timezoneOffset: normalizedTimezoneOffset,
                     }
 
                     const result = await this.getTasks(projectParams)
@@ -765,6 +840,7 @@ class TaskRetrievalService {
                             includeSubtasks,
                             parentId,
                             userPermissions,
+                            timezoneOffset: normalizedTimezoneOffset,
                         }
                         const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
                         if (typeof countQuery.count === 'function') {
@@ -881,12 +957,11 @@ class TaskRetrievalService {
                 parentId,
                 query: {
                     perProjectLimit,
-                    actualCount: allTasks.length,
                     hasMore: false,
-                    totalAvailable: allTasks.length,
                 },
                 focusTask,
                 focusTaskInResults,
+                timezoneOffset: normalizedTimezoneOffset,
             }
         } catch (error) {
             console.error('Error retrieving tasks from multiple projects:', error)

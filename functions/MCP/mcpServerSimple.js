@@ -1456,6 +1456,8 @@ class AlldoneSimpleMCPServer {
             await this.taskRetrievalService.initialize()
         }
 
+        const TaskRetrievalServiceClass = this.taskRetrievalService.constructor
+
         try {
             if (allProjects) {
                 console.log(`🌐 Cross-project task query for user ${userId}`, {
@@ -1501,6 +1503,8 @@ class AlldoneSimpleMCPServer {
                 )
                 console.log(`🎯 Selected ${uniqueProjectIds.length} projects for query`)
 
+                const timezoneOffset = TaskRetrievalServiceClass.normalizeTimezoneOffset(userData?.timezone)
+
                 if (uniqueProjectIds.length === 0) {
                     return {
                         success: true,
@@ -1513,9 +1517,9 @@ class AlldoneSimpleMCPServer {
                         message: 'No projects match the specified criteria',
                         query: {
                             limit,
-                            actualCount: 0,
                             hasMore: false,
                         },
+                        timezoneOffset,
                     }
                 }
 
@@ -1550,10 +1554,7 @@ class AlldoneSimpleMCPServer {
                 console.log(`🔐 ${accessibleProjectIds.length} projects accessible after permission check`)
 
                 // Read user's customization for per-project cap
-                const userSettingsDoc = await db.collection('users').doc(userId).get()
-                const numberTodayTasksSetting = userSettingsDoc.exists
-                    ? userSettingsDoc.data().numberTodayTasks
-                    : undefined
+                const numberTodayTasksSetting = userDoc.exists ? userDoc.data().numberTodayTasks : undefined
                 const perProjectLimit = typeof numberTodayTasksSetting === 'number' ? numberTodayTasksSetting : 10
 
                 // Use TaskRetrievalService multi-project method
@@ -1569,6 +1570,7 @@ class AlldoneSimpleMCPServer {
                         // Return only minimal fields for each task
                         selectMinimalFields: true,
                         perProjectLimit,
+                        timezoneOffset,
                     },
                     accessibleProjectIds,
                     projectsData
@@ -1594,6 +1596,10 @@ class AlldoneSimpleMCPServer {
                     )
                 }
 
+                const userDoc = await db.collection('users').doc(userId).get()
+                const userData = userDoc.exists ? userDoc.data() : {}
+                const timezoneOffset = TaskRetrievalServiceClass.normalizeTimezoneOffset(userData?.timezone)
+
                 // Verify user has access to project
                 const projectDoc = await db.collection('projects').doc(projectId).get()
                 if (!projectDoc.exists) {
@@ -1607,10 +1613,7 @@ class AlldoneSimpleMCPServer {
                 }
 
                 // Read user's customization for per-project cap
-                const userSettingsDoc = await db.collection('users').doc(userId).get()
-                const numberTodayTasksSetting = userSettingsDoc.exists
-                    ? userSettingsDoc.data().numberTodayTasks
-                    : undefined
+                const numberTodayTasksSetting = userDoc.exists ? userDoc.data().numberTodayTasks : undefined
                 const perProjectLimit = typeof numberTodayTasksSetting === 'number' ? numberTodayTasksSetting : 10
 
                 // Use TaskRetrievalService to get tasks from single project
@@ -1627,6 +1630,7 @@ class AlldoneSimpleMCPServer {
                     selectMinimalFields: true,
                     perProjectLimit,
                     projectName: projectData.name,
+                    timezoneOffset,
                 })
 
                 return {

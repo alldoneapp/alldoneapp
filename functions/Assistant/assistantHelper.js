@@ -1047,7 +1047,7 @@ async function storeChunks(
                         const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
                         const taskRetrievalService = new TaskRetrievalService({
                             database: admin.firestore(),
-                            moment: require('moment'),
+                            moment: require('moment-timezone'),
                             isCloudFunction: true,
                         })
                         await taskRetrievalService.initialize()
@@ -1067,6 +1067,7 @@ async function storeChunks(
 
                             const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
                             const userData = userDoc.exists ? userDoc.data() || {} : {}
+                            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
 
                             if (allProjects && !userDoc.exists) {
                                 throw new Error('User not found')
@@ -1173,6 +1174,7 @@ async function storeChunks(
                                             userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
                                             selectMinimalFields: true,
                                             perProjectLimit: numberTodayTasksSetting,
+                                            timezoneOffset,
                                         },
                                         accessibleProjectIds,
                                         projectsData
@@ -1196,6 +1198,7 @@ async function storeChunks(
                                     userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
                                     selectMinimalFields: true,
                                     perProjectLimit: numberTodayTasksSetting,
+                                    timezoneOffset,
                                 })
                                 result.crossProjectQuery = false
                             }
@@ -1269,14 +1272,12 @@ async function storeChunks(
                                     })
                                 } else {
                                     // Single project formatting (existing)
-                                    const totalAvailable =
-                                        typeof result.query?.totalAvailable === 'number'
-                                            ? result.query.totalAvailable
-                                            : result.count
                                     const shownCount = result.tasks.length
 
-                                    taskSummary = `Found ${totalAvailable} task(s)`
-                                    if (totalAvailable > shownCount) {
+                                    const hasMore = !!result.query?.hasMore
+                                    const summaryText = result.summary || `Found ${shownCount} task(s)`
+                                    taskSummary = summaryText
+                                    if (hasMore) {
                                         taskSummary += ` (showing ${shownCount} due to per-project cap)`
                                     }
                                     taskSummary += ':\n\n'
@@ -1308,22 +1309,18 @@ async function storeChunks(
                             } else {
                                 if (result.crossProjectQuery) {
                                     const projectCount = result.queriedProjects ? result.queriedProjects.length : 0
-                                    taskSummary = `No ${status} tasks found across ${projectCount} project(s) for ${
-                                        result.dateFilterDescription || date
-                                    }.`
+                                    const dateLabel = result.dateFilter || date
+                                    taskSummary = `No ${status} tasks found across ${projectCount} project(s) for ${dateLabel}.`
                                     if (result.message) {
                                         taskSummary += `\n${result.message}`
                                     }
                                 } else {
-                                    taskSummary = `No ${status} tasks found for ${
-                                        result.dateFilterDescription || date
-                                    }.`
+                                    const dateLabel = result.dateFilter || date
+                                    taskSummary = `No ${status} tasks found for ${dateLabel}.`
                                 }
                             }
 
-                            const loggingTotal = result.crossProjectQuery
-                                ? result.totalAcrossProjects
-                                : result.query?.totalAvailable
+                            const loggingTotal = result.crossProjectQuery ? result.totalAcrossProjects : null
                             console.log('Retrieved tasks via tool call', {
                                 projectId,
                                 status,
@@ -1331,6 +1328,7 @@ async function storeChunks(
                                 totalCount: loggingTotal,
                                 date: result.dateFilter,
                                 crossProject: result.crossProjectQuery,
+                                hasMore: !!result.query?.hasMore,
                             })
 
                             // Replace tool line with formatted task list
