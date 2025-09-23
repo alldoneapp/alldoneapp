@@ -385,7 +385,7 @@ class TaskRetrievalService {
 
         switch (normalized) {
             case 'today':
-                return status === 'open' ? 'Today and overdue tasks (dueDate <= end of today)' : 'Tasks completed today'
+                return status === 'open' ? 'Today' : 'Tasks completed today'
             case 'yesterday':
                 return prefix('yesterday')
             case 'tomorrow':
@@ -621,7 +621,6 @@ class TaskRetrievalService {
 
             // Build a small summary string using uncapped totals and focus task info
             let summary = `Found ${totalAvailable} task(s)`
-            if (dateFilterDescription) summary += ` (${dateFilterDescription})`
             if (focusTask) {
                 summary += focusTaskInResults
                     ? `; Focus task is in this list at position ${focusTaskIndex + 1}`
@@ -939,7 +938,6 @@ class TaskRetrievalService {
 
             // Build a short summary that mentions the focus task presence
             let summary = `Found ${totalAcrossProjects} task(s) across ${queriedProjects.length} project(s)`
-            if (dateFilterDescription) summary += ` (${dateFilterDescription})`
             if (focusTask) summary += focusTaskInResults ? '; Focus task is included' : '; Focus task not included'
 
             return {
