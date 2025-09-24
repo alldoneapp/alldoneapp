@@ -1684,6 +1684,9 @@ async function storeChunks(
             finalCommentLength: commentText.length,
         })
 
+        // Simple validation: warn if assistant mentioned actions without tool calls
+        validateToolCallConsistency(commentText)
+
         const lastComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true)
         console.log('Generated last comment:', {
             hasLastComment: !!lastComment,
@@ -1924,13 +1927,41 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     messages.push(['system', `You are an AI assistant  and your name is: "${parseTextForUseLiKePrompt(name || '')}"`])
     messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
     messages.push(['system', `The current date is ${moment().format('dddd, MMMM Do YYYY, h:mm:ss a')}`])
+
+    // Add emphasis on immediate action for tool-enabled assistants
+    if (Array.isArray(allowedTools) && allowedTools.length > 0) {
+        messages.push([
+            'system',
+            `IMPORTANT: You are action-oriented. When users ask you to do something, DO IT IMMEDIATELY - don't just talk about doing it.`,
+        ])
+    }
     messages.push([
         'system',
         'Always left a space between links and words. Do not wrap links inside [],{{}},() or any other characters',
     ])
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}. To call a tool, output a single line exactly like: TOOL:<tool_name> {JSON_arguments}. Examples: TOOL:create_task {"name":"Task title","description":"Optional"} or TOOL:create_note {"title":"Note title","content":"# Heading\\n\\nNote content with **bold** and *italic* text"} or TOOL:update_task {"taskName":"standup","completed":true} or TOOL:update_task {"projectName":"Marketing","taskName":"website","name":"New name"} or TOOL:update_task {"taskName":"standup","focus":true} or TOOL:update_task {"taskId":"task456","description":"Updated description"} or TOOL:get_tasks {"status":"open","date":"today"} or TOOL:get_tasks {"status":"done","date":"yesterday"} or TOOL:get_tasks {"allProjects":true,"status":"open"} or TOOL:get_tasks {"allProjects":true,"includeArchived":true,"status":"done"} or TOOL:get_focus_task {} or TOOL:get_focus_task {"projectId":"project123"}. Note: create_note content supports markdown formatting (headers, bold, italic, lists, etc.). Do not add any other text on that line.`
+        const toolsInstruction = `Available tools: ${toolsList}.
+
+CRITICAL RULE: When the user asks you to do something that requires using a tool, you MUST call the tool IMMEDIATELY in your response. Do not just say "I will create a task" - actually output the tool call RIGHT NOW in your first response.
+
+WORKFLOW:
+1. If user wants you to create/update/get something: Call the tool FIRST, then explain what you did
+2. Brief explanation (optional) -> Tool call -> Brief confirmation
+
+TOOL FORMAT: Output exactly: TOOL:<tool_name> {JSON_arguments}
+
+Examples:
+- TOOL:create_task {"name":"Task title","description":"Optional"}
+- TOOL:create_note {"title":"Note title","content":"# Heading\\n\\nNote content"}
+- TOOL:update_task {"taskName":"standup","completed":true}
+- TOOL:get_tasks {"status":"open","date":"today"}
+- TOOL:get_tasks {"allProjects":true,"status":"open"}
+- TOOL:get_focus_task {}
+
+FORBIDDEN: Never say "I'll create..." without immediately following with the actual tool call. Never promise future actions - do them now.
+
+IMPORTANT: Tool calls must be on their own line with no other text. create_note supports markdown formatting.`
         messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
     }
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])
@@ -2032,6 +2063,42 @@ function generateSearchSummary(searchResults) {
     }
 
     return summary
+}
+
+/**
+ * Simple validation to log when assistant mentions actions without tool calls
+ * This helps with debugging and monitoring
+ */
+function validateToolCallConsistency(commentText) {
+    try {
+        // Check if the assistant mentioned actions without actually calling tools
+        const mentionedActions = []
+        const intentPatterns = [
+            /(?:I will|I'll|let me|I'm going to)\s+(create|make|add|update|get|retrieve|find)\s+(?:a\s+)?(task|note|tasks)/gi,
+            /(?:creating|making|adding|updating|getting|retrieving|finding)\s+(?:a\s+)?(task|note|tasks)/gi,
+        ]
+
+        intentPatterns.forEach(pattern => {
+            const matches = commentText.matchAll(pattern)
+            for (const match of matches) {
+                mentionedActions.push(match[0])
+            }
+        })
+
+        // Check if there are already tool calls in the text
+        const hasToolCalls = /TOOL:\s*\w+\s*\{/.test(commentText)
+
+        if (mentionedActions.length > 0 && !hasToolCalls) {
+            console.warn('🔍 TOOL VALIDATION: Assistant mentioned actions without tool calls:', {
+                mentionedActions,
+                commentText: commentText.substring(0, 200) + '...',
+            })
+        } else if (mentionedActions.length > 0 && hasToolCalls) {
+            console.log('🔍 TOOL VALIDATION: Assistant mentioned actions with tool calls - OK')
+        }
+    } catch (error) {
+        console.error('🔍 TOOL VALIDATION: Error in validation:', error)
+    }
 }
 
 /**
