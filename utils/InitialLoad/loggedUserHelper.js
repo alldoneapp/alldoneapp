@@ -223,7 +223,8 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     initFCMonLoad()
     updateLastLoggedUserDate()
-    proccessAssistantDialyTopicIfNeeded()
+    // Disabled daily recap - will be replaced with recurring assistant task
+    // proccessAssistantDialyTopicIfNeeded()
     resetTimesDoneInExpectedDayPropertyInTasksIfNeeded()
 
     //handleCookies()
