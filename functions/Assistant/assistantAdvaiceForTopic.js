@@ -46,7 +46,9 @@ async function generateBotAdvaiceForTopic(
         null,
         settings.uid,
         followerIds,
-        displayName
+        displayName,
+        null, // requestUserId - not available in this flow
+        null // userContext - not available in this flow
     )
 }
 

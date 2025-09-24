@@ -193,7 +193,9 @@ async function generateBotDailyTopicFirstComment(
         null,
         assistant.uid,
         [userId],
-        displayName
+        displayName,
+        null, // requestUserId - not available in this flow
+        null // userContext - not available in this flow
     )
 }
 

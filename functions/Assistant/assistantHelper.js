@@ -626,7 +626,8 @@ async function storeChunks(
     assistantName,
     projectname,
     chatLink,
-    requestUserId
+    requestUserId,
+    userContext = null
 ) {
     console.log('Starting storeChunks with:', {
         projectId,
@@ -872,8 +873,18 @@ async function storeChunks(
                             name: taskName,
                         })
 
-                        // Replace tool line with confirmation
-                        const replaced = commentText.replace(toolMatch[0], `Created task: ${taskName}`)
+                        // Process tool result through LLM
+                        const processedResponse = await processToolResultWithLLM(
+                            { success: true, taskName: taskName, taskId: result.taskId },
+                            userContext?.message || '',
+                            'create_task',
+                            args,
+                            projectId,
+                            assistantId
+                        )
+
+                        // Replace tool line with LLM-processed response
+                        const replaced = commentText.replace(toolMatch[0], processedResponse.trim())
                         commentText = replaced
                         answerContent = replaced
                         await commentRef.update({ commentText })
@@ -996,8 +1007,18 @@ async function storeChunks(
                             title: noteTitle,
                         })
 
-                        // Replace tool line with confirmation
-                        const replaced = commentText.replace(createNoteMatch[0], `Created note: ${noteTitle}`)
+                        // Process tool result through LLM
+                        const processedResponse = await processToolResultWithLLM(
+                            { success: true, noteTitle: noteTitle, noteId: result.noteId },
+                            userContext?.message || '',
+                            'create_note',
+                            args,
+                            projectId,
+                            assistantId
+                        )
+
+                        // Replace tool line with LLM-processed response
+                        const replaced = commentText.replace(createNoteMatch[0], processedResponse.trim())
                         commentText = replaced
                         answerContent = replaced
                         await commentRef.update({ commentText })
@@ -1203,136 +1224,29 @@ async function storeChunks(
                                 result.crossProjectQuery = false
                             }
 
-                            // Format results for assistant response
-                            let taskSummary = ''
-                            if (result.tasks && result.tasks.length > 0) {
-                                if (result.crossProjectQuery) {
-                                    // Cross-project formatting
-                                    const projectCount = result.queriedProjects ? result.queriedProjects.length : 1
-                                    const shownCount = result.tasks ? result.tasks.length : 0
-                                    const totalAcrossProjects =
-                                        typeof result.totalAcrossProjects === 'number'
-                                            ? result.totalAcrossProjects
-                                            : shownCount
-
-                                    taskSummary = `Found ${totalAcrossProjects} task(s) across ${projectCount} project(s)`
-                                    if (totalAcrossProjects > shownCount) {
-                                        taskSummary += ` (showing ${shownCount} due to per-project cap)`
-                                    }
-                                    taskSummary += ':\n\n'
-
-                                    // Group tasks by project
-                                    const tasksByProject = {}
-                                    result.tasks.forEach(task => {
-                                        const projectId = task.projectId || 'unknown'
-                                        const projectName = task.projectName || projectId
-                                        if (!tasksByProject[projectId]) {
-                                            tasksByProject[projectId] = {
-                                                name: projectName,
-                                                tasks: [],
-                                            }
-                                        }
-                                        tasksByProject[projectId].tasks.push(task)
-                                    })
-
-                                    let taskIndex = 1
-                                    Object.entries(tasksByProject).forEach(([projId, project]) => {
-                                        const summaryEntry = result.projectSummary?.[projId]
-                                        const projectTotal =
-                                            typeof summaryEntry?.taskCount === 'number' ? summaryEntry.taskCount : null
-                                        const shownForProject = project.tasks.length
-                                        const capped = projectTotal !== null && projectTotal > shownForProject
-
-                                        const totalLabel =
-                                            projectTotal !== null
-                                                ? `${projectTotal} task(s)${
-                                                      capped ? `; showing ${shownForProject}` : ''
-                                                  }`
-                                                : `${shownForProject} task(s)`
-
-                                        taskSummary += `**${project.name}** (${totalLabel}):\n`
-                                        project.tasks.forEach(task => {
-                                            const dueInfo = task.dueDateFormatted
-                                                ? ` (due: ${task.dueDateFormatted})`
-                                                : ''
-                                            const doneInfo =
-                                                task.completedFormatted && status === 'done'
-                                                    ? ` (completed: ${task.completedFormatted})`
-                                                    : ''
-                                            taskSummary += `${taskIndex}. ${task.name}${dueInfo}${doneInfo}\n`
-                                            const hasDescription =
-                                                typeof task.description === 'string' &&
-                                                task.description.trim().length > 0
-                                            if (hasDescription) {
-                                                taskSummary += `   ${task.description}\n`
-                                            }
-                                            taskIndex++
-                                        })
-                                        taskSummary += '\n'
-                                    })
-                                } else {
-                                    // Single project formatting (existing)
-                                    const shownCount = result.tasks.length
-
-                                    const hasMore = !!result.query?.hasMore
-                                    const summaryText = result.summary || `Found ${shownCount} task(s)`
-                                    taskSummary = summaryText
-                                    if (hasMore) {
-                                        taskSummary += ` (showing ${shownCount} due to per-project cap)`
-                                    }
-                                    taskSummary += ':\n\n'
-                                    result.tasks.forEach((task, index) => {
-                                        const dueInfo = task.dueDateFormatted ? ` (due: ${task.dueDateFormatted})` : ''
-                                        const doneInfo =
-                                            task.completedFormatted && status === 'done'
-                                                ? ` (completed: ${task.completedFormatted})`
-                                                : ''
-                                        taskSummary += `${index + 1}. ${task.name}${dueInfo}${doneInfo}\n`
-                                        const hasDescription =
-                                            typeof task.description === 'string' && task.description.trim().length > 0
-                                        if (hasDescription) {
-                                            taskSummary += `   ${task.description}\n`
-                                        }
-                                    })
-                                }
-
-                                // Add subtask info if included (works for both single and cross-project)
-                                if (includeSubtasks && result.subtasksByParent) {
-                                    const subtaskCount = Object.keys(result.subtasksByParent).reduce(
-                                        (total, parentId) => total + result.subtasksByParent[parentId].length,
-                                        0
-                                    )
-                                    if (subtaskCount > 0) {
-                                        taskSummary += `\nIncludes ${subtaskCount} subtask(s).`
-                                    }
-                                }
-                            } else {
-                                if (result.crossProjectQuery) {
-                                    const projectCount = result.queriedProjects ? result.queriedProjects.length : 0
-                                    const dateLabel = result.dateFilter || date
-                                    taskSummary = `No ${status} tasks found across ${projectCount} project(s) for ${dateLabel}.`
-                                    if (result.message) {
-                                        taskSummary += `\n${result.message}`
-                                    }
-                                } else {
-                                    const dateLabel = result.dateFilter || date
-                                    taskSummary = `No ${status} tasks found for ${dateLabel}.`
-                                }
-                            }
-
-                            const loggingTotal = result.crossProjectQuery ? result.totalAcrossProjects : null
-                            console.log('Retrieved tasks via tool call', {
+                            // Process results through LLM for intelligent analysis
+                            console.log('Processing get_tasks result through LLM', {
                                 projectId,
                                 status,
                                 shownCount: result.count,
-                                totalCount: loggingTotal,
+                                totalCount: result.crossProjectQuery ? result.totalAcrossProjects : null,
                                 date: result.dateFilter,
                                 crossProject: result.crossProjectQuery,
                                 hasMore: !!result.query?.hasMore,
                             })
 
-                            // Replace tool line with formatted task list
-                            const replaced = commentText.replace(getTasksMatch[0], taskSummary.trim())
+                            // Process tool result through LLM
+                            const processedResponse = await processToolResultWithLLM(
+                                result,
+                                userContext?.message || '',
+                                'get_tasks',
+                                args,
+                                projectId,
+                                assistantId
+                            )
+
+                            // Replace tool line with LLM-processed response
+                            const replaced = commentText.replace(getTasksMatch[0], processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1407,32 +1321,6 @@ async function storeChunks(
                                 selectMinimalFields: true,
                             })
 
-                            // Format results for assistant response
-                            let focusTaskSummary = ''
-                            if (result.focusTask) {
-                                focusTaskSummary = `**Focus Task**: ${result.focusTask.name}`
-                                if (
-                                    result.focusTask.projectName &&
-                                    result.focusTask.projectName !== result.focusTask.projectId
-                                ) {
-                                    focusTaskSummary += ` (Project: ${result.focusTask.projectName})`
-                                }
-                                if (result.focusTask.description) {
-                                    focusTaskSummary += `\n**Description**: ${result.focusTask.description}`
-                                }
-                                if (result.focusTask.dueDate) {
-                                    const dueDate = new Date(result.focusTask.dueDate)
-                                    focusTaskSummary += `\n**Due**: ${dueDate.toLocaleDateString()}`
-                                }
-                                if (result.wasNewTaskSet) {
-                                    focusTaskSummary += '\n\n*This task was automatically set as your new focus task.*'
-                                } else {
-                                    focusTaskSummary += '\n\n*This is your current focus task.*'
-                                }
-                            } else {
-                                focusTaskSummary = 'No focus task available - no open tasks found'
-                            }
-
                             console.log('Retrieved focus task via tool call', {
                                 projectId: contextProjectId,
                                 focusTaskId: result.focusTask?.id,
@@ -1440,8 +1328,18 @@ async function storeChunks(
                                 wasNewTaskSet: result.wasNewTaskSet,
                             })
 
-                            // Replace tool line with focus task summary
-                            const replaced = commentText.replace(getFocusTaskMatch[0], focusTaskSummary.trim())
+                            // Process tool result through LLM
+                            const processedResponse = await processToolResultWithLLM(
+                                result,
+                                userContext?.message || '',
+                                'get_focus_task',
+                                args,
+                                projectId,
+                                assistantId
+                            )
+
+                            // Replace tool line with LLM-processed response
+                            const replaced = commentText.replace(getFocusTaskMatch[0], processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1741,8 +1639,27 @@ async function storeChunks(
                                 confirmationMessage += ` (fallback: no feeds generated)`
                             }
 
-                            // Replace tool line with confirmation
-                            const replaced = commentText.replace(updateTaskMatch[0], confirmationMessage)
+                            // Process tool result through LLM
+                            const processedResponse = await processToolResultWithLLM(
+                                {
+                                    success: true,
+                                    updatedTask: {
+                                        name: currentTask.name,
+                                        id: currentTask.id,
+                                        projectName: currentProjectName,
+                                    },
+                                    changes: result?.changes || [],
+                                    message: confirmationMessage,
+                                },
+                                userContext?.message || '',
+                                'update_task',
+                                args,
+                                projectId,
+                                assistantId
+                            )
+
+                            // Replace tool line with LLM-processed response
+                            const replaced = commentText.replace(updateTaskMatch[0], processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1863,7 +1780,8 @@ async function storeBotAnswerStream(
     assistantId,
     followerIds,
     assistantName,
-    requestUserId
+    requestUserId,
+    userContext = null
 ) {
     console.log('Starting storeBotAnswerStream with:', {
         projectId,
@@ -1900,7 +1818,8 @@ async function storeBotAnswerStream(
                   assistantName,
                   project.name,
                   chatLink,
-                  requestUserId || ''
+                  requestUserId || '',
+                  userContext
               )
             : ''
 
@@ -2115,6 +2034,119 @@ function generateSearchSummary(searchResults) {
     return summary
 }
 
+/**
+ * Process tool results through LLM for intelligent analysis and formatting
+ */
+async function processToolResultWithLLM(toolResult, originalUserMessage, toolName, toolArgs, projectId, assistantId) {
+    console.log('🧠 TOOL LLM PROCESSING: Starting LLM processing for tool result', {
+        toolName,
+        hasResult: !!toolResult,
+        originalMessageLength: originalUserMessage?.length,
+        projectId,
+        assistantId,
+    })
+
+    try {
+        // Get assistant settings for LLM processing
+        const assistant = await getAssistantForChat(projectId, assistantId)
+        const model = assistant.model || 'MODEL_GPT3_5'
+        const temperature = assistant.temperature || 'TEMPERATURE_NORMAL'
+
+        // Create a focused prompt for processing the tool result
+        const systemPrompt = `You are processing the result of a ${toolName} tool call for a user.
+
+The user's original request was: "${originalUserMessage}"
+The tool was called with arguments: ${JSON.stringify(toolArgs, null, 2)}
+
+Your task is to analyze the raw tool result and present it in a helpful, intelligent way based on what the user was asking for.
+
+Key guidelines:
+- Focus on what the user actually needs from this data
+- Be concise but informative
+- If the user asked for analysis (like "top 3 most important"), provide that analysis
+- Format the response in a natural, conversational way
+- Don't just dump the raw data - interpret and present it meaningfully
+- Use markdown formatting for better readability when appropriate
+
+Raw tool result data:
+${JSON.stringify(toolResult, null, 2)}`
+
+        const messages = [
+            ['system', systemPrompt],
+            [
+                'user',
+                `Please analyze this ${toolName} result and present it in the most helpful way for the user's request: "${originalUserMessage}"`,
+            ],
+        ]
+
+        console.log('🧠 TOOL LLM PROCESSING: Calling LLM with processed prompt', {
+            model,
+            temperature,
+            promptLength: systemPrompt.length,
+        })
+
+        // Call the LLM to process the tool result
+        const stream = await interactWithChatStream(messages, model, temperature)
+
+        // Collect the streaming response
+        let processedResponse = ''
+        for await (const chunk of stream) {
+            if (chunk.content) {
+                processedResponse += chunk.content
+            }
+        }
+
+        console.log('🧠 TOOL LLM PROCESSING: LLM processing completed', {
+            toolName,
+            originalResponseLength: JSON.stringify(toolResult).length,
+            processedResponseLength: processedResponse.length,
+        })
+
+        return processedResponse.trim()
+    } catch (error) {
+        console.error('🧠 TOOL LLM PROCESSING: Error processing tool result with LLM:', error)
+
+        // Fallback to a simple summary if LLM processing fails
+        let fallbackResponse = `Tool ${toolName} executed successfully.`
+
+        if (toolName === 'get_tasks' && toolResult.tasks) {
+            const taskCount = toolResult.tasks.length
+            const projectInfo = toolResult.crossProjectQuery ? ' across projects' : ''
+            fallbackResponse = `Found ${taskCount} tasks${projectInfo}.`
+
+            if (taskCount > 0) {
+                fallbackResponse +=
+                    ' ' +
+                    toolResult.tasks
+                        .slice(0, 3)
+                        .map((task, i) => `${i + 1}. ${task.name}`)
+                        .join(', ')
+
+                if (taskCount > 3) {
+                    fallbackResponse += ` and ${taskCount - 3} more.`
+                }
+            }
+        } else if (toolName === 'get_focus_task') {
+            if (toolResult.focusTask) {
+                fallbackResponse = `Current focus task: ${toolResult.focusTask.name}`
+                if (toolResult.wasNewTaskSet) {
+                    fallbackResponse += ' (newly set)'
+                }
+            } else {
+                fallbackResponse = 'No focus task available'
+            }
+        } else if (toolName === 'create_task' && toolArgs.name) {
+            fallbackResponse = `Created task: ${toolArgs.name}`
+        } else if (toolName === 'create_note' && toolArgs.title) {
+            fallbackResponse = `Created note: ${toolArgs.title}`
+        } else if (toolName === 'update_task') {
+            fallbackResponse = `Updated task successfully`
+        }
+
+        return fallbackResponse
+    }
+}
+
 module.exports = {
     COMPLETION_MAX_TOKENS,
     storeBotAnswerStream,
@@ -2129,4 +2161,5 @@ module.exports = {
     getTaskOrAssistantSettings,
     searchForAssistant,
     generateSearchSummary,
+    processToolResultWithLLM,
 }

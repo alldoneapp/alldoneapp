@@ -148,6 +148,15 @@ async function askToOpenAIBot(
             promptMessagesCount: formattedChatPrompt?.length,
         })
 
+        // Extract the latest user message for tool context
+        const userContext = messages && messages.length > 0 ? messages.find(msg => msg[0] === 'user') : null
+        const userContextForTools = userContext ? { message: userContext[1] || '' } : null
+
+        console.log('Extracted user context for tools:', {
+            hasUserContext: !!userContextForTools,
+            messageLength: userContextForTools?.message?.length || 0,
+        })
+
         try {
             const stream = await interactWithChatStream(formattedChatPrompt, model, temperature)
 
@@ -164,7 +173,8 @@ async function askToOpenAIBot(
                 assistant.uid,
                 followerIds,
                 displayName,
-                userId
+                userId,
+                userContextForTools
             )
 
             console.log('Generated AI comment:', {

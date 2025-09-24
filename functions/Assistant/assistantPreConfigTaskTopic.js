@@ -125,7 +125,9 @@ async function generatePreConfigTaskResult(
             null,
             settings.uid,
             [userId], // Added logged in user as followerIds as an array
-            displayName
+            displayName,
+            userId, // requestUserId
+            null // userContext - not available in this flow
         )
 
         if (aiCommentText) {

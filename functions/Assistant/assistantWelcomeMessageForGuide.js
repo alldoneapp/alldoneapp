@@ -42,7 +42,9 @@ async function generateBotWelcomeMessageForGuide(
         null,
         assistant.uid,
         null,
-        displayName
+        displayName,
+        null, // requestUserId - not available in this flow
+        null // userContext - not available in this flow
     )
 }
 
