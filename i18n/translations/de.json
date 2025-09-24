@@ -392,6 +392,7 @@
     "Get tasks": "Aufgaben abrufen",
     "Get focus task": "Fokus-Aufgabe abrufen",
     "Allowed tools": "Zugelassene Tools",
+    "Get user projects": "Benutzerprojekte abrufen",
     "All tools enabled": "Alle Tools aktiviert",
     "No tools enabled": "Keine Tools aktiviert",
     "Select which tools the assistant can use": "Wähle aus, welche Tools der Assistent verwenden darf",

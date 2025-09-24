@@ -1262,6 +1262,104 @@ async function storeChunks(
                         }
                     }
 
+                    // Check for get_user_projects tool
+                    const getUserProjectsMatch = commentText.match(/TOOL:\s*get_user_projects\s*(\{[\s\S]*?\})/)
+                    if (getUserProjectsMatch && !toolAlreadyExecuted) {
+                        console.log('Detected TOOL:get_user_projects invocation')
+                        // Fetch assistant to check allowed tools
+                        const assistant = await getAssistantForChat(projectId, assistantId)
+                        const allowed = Array.isArray(assistant.allowedTools)
+                            ? assistant.allowedTools.includes('get_user_projects')
+                            : false
+                        if (!allowed) {
+                            console.log('Assistant not allowed to use get_user_projects tool')
+                            const replaced = commentText.replace(
+                                getUserProjectsMatch[0],
+                                'Tool not permitted: get_user_projects'
+                            )
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Parse JSON args
+                        const argsJson = getUserProjectsMatch[1]
+                        let args = {}
+                        try {
+                            args = JSON.parse(argsJson)
+                        } catch (e) {
+                            console.error('Failed to parse get_user_projects args JSON', e)
+                            const replaced = commentText.replace(
+                                getUserProjectsMatch[0],
+                                'Failed to parse tool arguments'
+                            )
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Determine creatorId (the user interacting with the assistant)
+                        const creatorId =
+                            requestUserId ||
+                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
+
+                        try {
+                            // Initialize ProjectService
+                            const { ProjectService } = require('../shared/ProjectService')
+                            const projectService = new ProjectService({ database: admin.firestore() })
+                            await projectService.initialize()
+
+                            const includeArchived = !!args.includeArchived
+                            const includeCommunity = !!args.includeCommunity
+                            const activeOnly = args.activeOnly !== false // default true
+
+                            const projects = await projectService.getUserProjects(creatorId, {
+                                includeArchived,
+                                includeCommunity,
+                                activeOnly,
+                            })
+
+                            const payload = {
+                                success: true,
+                                projects,
+                                count: projects.length,
+                                projectFilters: {
+                                    includeArchived,
+                                    includeCommunity,
+                                },
+                            }
+
+                            // Process tool result through LLM
+                            const processedResponse = await processToolResultWithLLM(
+                                payload,
+                                userContext?.message || '',
+                                'get_user_projects',
+                                args,
+                                projectId,
+                                assistantId
+                            )
+
+                            // Replace tool line with LLM-processed response
+                            const replaced = commentText.replace(getUserProjectsMatch[0], processedResponse.trim())
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        } catch (error) {
+                            console.error('Error getting user projects via tool call:', error)
+                            const errorMsg = `Error retrieving projects: ${error.message}`
+                            const replaced = commentText.replace(getUserProjectsMatch[0], errorMsg)
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        }
+                    }
+
                     // Check for get_focus_task tool
                     const getFocusTaskMatch = commentText.match(/TOOL:\s*get_focus_task\s*(\{[\s\S]*?\})/)
                     if (getFocusTaskMatch) {
@@ -1958,6 +2056,7 @@ Examples:
 - TOOL:get_tasks {"status":"open","date":"today"}
 - TOOL:get_tasks {"allProjects":true,"status":"open"}
 - TOOL:get_focus_task {}
+ - TOOL:get_user_projects {"includeArchived":false,"includeCommunity":false}
 
 FORBIDDEN: Never say "I'll create..." without immediately following with the actual tool call. Never promise future actions - do them now.
 

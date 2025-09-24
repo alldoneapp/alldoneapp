@@ -491,6 +491,7 @@
     "Get tasks": "Obtener tareas",
     "Get focus task": "Obtener tarea de enfoque",
     "Allowed tools": "Herramientas permitidas",
+    "Get user projects": "Obtener proyectos del usuario",
     "All tools enabled": "Todas las herramientas activadas",
     "No tools enabled": "Ninguna herramienta activada",
     "Select which tools the assistant can use": "Selecciona qué herramientas puede usar el asistente",
