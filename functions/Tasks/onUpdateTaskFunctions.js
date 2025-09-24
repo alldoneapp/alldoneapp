@@ -9,6 +9,7 @@ const { updateTaskEditionData, deleteTaskMetaData } = require('./tasksFirestoreC
 const { updateContactOpenTasksAmount } = require('../Firestore/contactsFirestore')
 const { getUserWithTaskActive, resetActiveTaskDates, clearUserTaskInFocusIfMatch } = require('../Users/usersFirestore')
 const { getActiveTaskRoundedStartAndEndDates } = require('../MyDay/myDayHelperCloud')
+const { createRecurringTaskInCloudFunction } = require('./recurringTasksCloud')
 
 const proccessAlgoliaRecord = async (taskId, projectId, oldTask, newTask) => {
     if (oldTask.lockKey === newTask.lockKey) {
@@ -150,6 +151,52 @@ const onUpdateTask = async (taskId, projectId, change) => {
 
     if (newTask.userId !== oldTask.userId || (newTask.isSubtask && !oldTask.isSubtask)) {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
+    }
+
+    // Handle recurring task creation when task is completed
+    console.log('🔄 RECURRING TASK CHECK:', {
+        taskId,
+        projectId,
+        taskName: newTask.name,
+        oldTaskDone: oldTask.done,
+        newTaskDone: newTask.done,
+        recurrence: newTask.recurrence,
+        userIds: newTask.userIds,
+        userIdsLength: newTask.userIds ? newTask.userIds.length : 0,
+        willCreateRecurring:
+            !oldTask.done &&
+            newTask.done &&
+            newTask.recurrence !== 'never' &&
+            newTask.userIds &&
+            newTask.userIds.length === 1,
+    })
+
+    if (
+        !oldTask.done &&
+        newTask.done &&
+        newTask.recurrence !== 'never' &&
+        newTask.userIds &&
+        newTask.userIds.length === 1
+    ) {
+        console.log('✅ CONDITIONS MET: Creating recurring task for completed task:', {
+            taskId,
+            projectId,
+            recurrence: newTask.recurrence,
+            taskName: newTask.name,
+            userIds: newTask.userIds,
+        })
+        promises.push(createRecurringTaskInCloudFunction(projectId, taskId, newTask))
+    } else {
+        console.log('❌ CONDITIONS NOT MET: Skipping recurring task creation because:', {
+            taskId,
+            taskName: newTask.name,
+            reasons: {
+                taskNotJustCompleted: oldTask.done || !newTask.done,
+                noRecurrence: newTask.recurrence === 'never',
+                multipleAssignees: !newTask.userIds || newTask.userIds.length > 1,
+                noUserIds: !newTask.userIds,
+            },
+        })
     }
 
     await Promise.all(promises)

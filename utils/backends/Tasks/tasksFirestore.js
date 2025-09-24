@@ -496,6 +496,11 @@ export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpPr
     return null
 }
 
+/**
+ * @deprecated This function has been moved to cloud functions for reliability
+ * Recurring task creation now happens in functions/Tasks/recurringTasksCloud.js
+ * via the onUpdateTask cloud function trigger
+ */
 export async function createRecurrentTask(projectId, taskId) {
     const task = await getTaskData(projectId, taskId)
     const recurrence = task.recurrence
@@ -2229,7 +2234,8 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
         }
     }
 
-    createRecurrentTask(projectId, task.id)
+    // Recurring task creation moved to cloud function (onUpdateTask)
+    // This ensures reliable creation regardless of client state
 
     const ownerIsTeamMeber = !!TasksHelper.getUserInProject(projectId, task.userId)
 
@@ -2516,9 +2522,8 @@ export async function setTaskStatus(
             updateXpByDoneTask(statisticUserUid, task.estimations[OPEN_STEP], firebase, getDb(), projectId)
         }
 
-        if (task.userIds.length === 1) {
-            createRecurrentTask(projectId, task.id)
-        }
+        // Recurring task creation moved to cloud function (onUpdateTask)
+        // This ensures reliable creation regardless of client state
         logEvent('done_task', {
             taskOwnerUid: task.userId,
             effectingUserUid: store.getState().loggedUser.uid,

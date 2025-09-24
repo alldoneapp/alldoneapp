@@ -1,3 +1,4 @@
+const admin = require('firebase-admin')
 const moment = require('moment')
 const SendInBlueManager = require('../SendInBlueManager')
 
@@ -88,7 +89,7 @@ const addMonthlyGoldToUser = async (user, premiumUser) => {
     await Promise.all(promises)
 }
 
-const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, admin) => {
+const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate) => {
     const user = await getUserData(userId)
     if (user) {
         const { dailyGold } = user

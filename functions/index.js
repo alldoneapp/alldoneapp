@@ -1090,10 +1090,9 @@ exports.earnGoldSecondGen = onCall(
     async request => {
         const { data, auth } = request
         if (auth) {
-            const admin = require('firebase-admin')
             const { earnGold } = require('./Gold/goldHelper')
             const { projectId, userId, gold, slimDate, timestamp, dayDate } = data
-            await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate, admin)
+            await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
