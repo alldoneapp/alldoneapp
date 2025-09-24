@@ -505,40 +505,46 @@ class NoteService {
                     const admin = require('firebase-admin')
                     const { defineString } = require('firebase-functions/params')
 
-                    // Try to get bucket name from Firebase Functions parameter, fallback to environment variable
+                    // Skip Firebase Functions parameter and directly use environment variables/envFunctionsHelper
                     let notesBucketName
-                    try {
-                        notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
-                        console.log('NoteService: Got bucket name from Firebase Functions parameter:', notesBucketName)
-                    } catch (paramError) {
-                        console.log(
-                            'NoteService: Parameter not found, falling back to environment variable. Error:',
-                            paramError.message
-                        )
-                        notesBucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                        console.log('NoteService: Environment variable value:', notesBucketName)
 
-                        if (!notesBucketName) {
-                            // Check if envFunctionsHelper has loaded it
-                            try {
-                                const envHelper = require('../envFunctionsHelper')
-                                const envFunctions = envHelper.getEnvFunctions()
-                                notesBucketName = envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                                console.log('NoteService: Got bucket name from envFunctionsHelper:', notesBucketName)
-                            } catch (envHelperError) {
-                                console.log(
-                                    'NoteService: Failed to get from envFunctionsHelper:',
-                                    envHelperError.message
-                                )
-                            }
-                        }
+                    // First try environment variable
+                    notesBucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+                    console.log('NoteService: Environment variable value:', notesBucketName)
 
-                        if (!notesBucketName) {
-                            throw new Error(
-                                'GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET not found in parameters, environment variables, or envFunctionsHelper'
-                            )
+                    if (!notesBucketName) {
+                        // Check if envFunctionsHelper has loaded it
+                        try {
+                            const envHelper = require('../envFunctionsHelper')
+                            const envFunctions = envHelper.getEnvFunctions()
+                            notesBucketName = envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+                            console.log('NoteService: Got bucket name from envFunctionsHelper:', notesBucketName)
+                        } catch (envHelperError) {
+                            console.log('NoteService: Failed to get from envFunctionsHelper:', envHelperError.message)
                         }
                     }
+
+                    if (!notesBucketName) {
+                        // Last resort: try Firebase Functions parameter
+                        try {
+                            const { defineString } = require('firebase-functions/params')
+                            notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+                            console.log(
+                                'NoteService: Got bucket name from Firebase Functions parameter:',
+                                notesBucketName
+                            )
+                        } catch (paramError) {
+                            console.log('NoteService: Firebase Functions parameter failed:', paramError.message)
+                        }
+                    }
+
+                    if (!notesBucketName) {
+                        throw new Error(
+                            'GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET not found in environment variables, envFunctionsHelper, or Firebase Functions parameters'
+                        )
+                    }
+
+                    console.log('NoteService: Final bucket name:', notesBucketName)
                     const notesBucket = admin.storage().bucket(notesBucketName)
                     const storageRef = notesBucket.file(`notesData/${finalProjectId}/${noteId}`)
 
