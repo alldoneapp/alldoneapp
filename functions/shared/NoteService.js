@@ -505,45 +505,24 @@ class NoteService {
                     const admin = require('firebase-admin')
                     const { defineString } = require('firebase-functions/params')
 
-                    // Skip Firebase Functions parameter and directly use environment variables/envFunctionsHelper
+                    // Use MCP config (same pattern as other environment variables)
                     let notesBucketName
 
-                    // First try environment variable
-                    notesBucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                    console.log('NoteService: Environment variable value:', notesBucketName)
+                    // First try MCP config
+                    try {
+                        const { getEnvironmentConfig } = require('../MCP/config/environments')
+                        const config = getEnvironmentConfig()
+                        notesBucketName = config.noteStorageBucket
+                        console.log('NoteService: Got bucket name from MCP config:', notesBucketName)
+                    } catch (mcpConfigError) {
+                        console.log('NoteService: Failed to get from MCP config:', mcpConfigError.message)
+                    }
 
-                    // Debug: log all environment variables that contain 'BUCKET'
-                    const bucketEnvs = Object.keys(process.env).filter(key => key.includes('BUCKET'))
-                    console.log('NoteService: Available bucket environment variables:', bucketEnvs)
-                    bucketEnvs.forEach(key => {
-                        console.log(`NoteService: ${key} = ${process.env[key]}`)
-                    })
-
+                    // Fallback to envFunctionsHelper if MCP config fails
                     if (!notesBucketName) {
-                        // Check if envFunctionsHelper has loaded it
                         try {
                             const envHelper = require('../envFunctionsHelper')
                             const envFunctions = envHelper.getEnvFunctions()
-                            console.log('NoteService: envFunctions keys:', Object.keys(envFunctions))
-                            console.log(
-                                'NoteService: envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:',
-                                envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                            )
-
-                            // Check if JSON file exists and what it contains
-                            const fs = require('fs')
-                            const path = require('path')
-                            const jsonPath = path.join(__dirname, '../env_functions.json')
-                            console.log('NoteService: env_functions.json exists:', fs.existsSync(jsonPath))
-                            if (fs.existsSync(jsonPath)) {
-                                const jsonContent = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
-                                console.log('NoteService: env_functions.json keys:', Object.keys(jsonContent))
-                                console.log(
-                                    'NoteService: JSON GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:',
-                                    jsonContent.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                                )
-                            }
-
                             notesBucketName = envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
                             console.log('NoteService: Got bucket name from envFunctionsHelper:', notesBucketName)
                         } catch (envHelperError) {
@@ -567,7 +546,7 @@ class NoteService {
 
                     if (!notesBucketName) {
                         throw new Error(
-                            'GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET not found in environment variables, envFunctionsHelper, or Firebase Functions parameters'
+                            'GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET not found in MCP config or envFunctionsHelper'
                         )
                     }
 

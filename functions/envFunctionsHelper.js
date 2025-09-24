@@ -70,7 +70,10 @@ const getEnvFunctions = () => {
                     TWILIO_WHATSAPP_FROM: envJson.TWILIO_WHATSAPP_FROM || '',
                     ALGOLIA_APP_ID: envJson.ALGOLIA_APP_ID || '',
                     ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
-                    GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET: envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET || '',
+                    GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
+                        envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
+                        envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
+                        '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -92,7 +95,9 @@ const getEnvFunctions = () => {
                         ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                         ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                         GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
-                            process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET || '',
+                            process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
+                            process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
+                            '',
                     }
                 }
             } catch (error) {
@@ -110,7 +115,9 @@ const getEnvFunctions = () => {
                     ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                     ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
-                        process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET || '',
+                        process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
+                        process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
+                        '',
                 }
             }
         } else {
@@ -127,7 +134,10 @@ const getEnvFunctions = () => {
                 TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
                 ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                 ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
-                GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET: process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET || '',
+                GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
+                    process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
+                    process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
+                    '',
             }
         }
     }

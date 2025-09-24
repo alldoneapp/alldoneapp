@@ -5,6 +5,7 @@ const GOOGLE_FIREBASE_WEB_PROJECT_ID = process.env.GOOGLE_FIREBASE_WEB_PROJECT_I
 const GOOGLE_FIREBASE_STORAGE_BUCKET = process.env.GOOGLE_FIREBASE_STORAGE_BUCKET
 const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = process.env.GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID
 const GOOGLE_FIREBASE_WEB_APP_ID = process.env.GOOGLE_FIREBASE_WEB_APP_ID
+const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
 // Optional base URL for MCP, injected by CI
 // eslint-disable-next-line no-undef
 const MCP_BASE_URL = typeof MCP_BASE_URL !== 'undefined' ? MCP_BASE_URL : undefined
@@ -20,6 +21,11 @@ const getEnvironmentConfig = () => {
             messagingSenderId: GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID,
             appId: GOOGLE_FIREBASE_WEB_APP_ID,
         },
+        // Notes storage bucket for MCP server
+        noteStorageBucket:
+            typeof GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET !== 'undefined'
+                ? GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+                : null,
         // Expose MCP base URL if provided by CI (may be undefined)
         // Using typeof guard to avoid ReferenceError when not injected
         mcpBaseUrl: typeof MCP_BASE_URL !== 'undefined' ? MCP_BASE_URL : null,
