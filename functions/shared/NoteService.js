@@ -512,6 +512,13 @@ class NoteService {
                     notesBucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
                     console.log('NoteService: Environment variable value:', notesBucketName)
 
+                    // Debug: log all environment variables that contain 'BUCKET'
+                    const bucketEnvs = Object.keys(process.env).filter(key => key.includes('BUCKET'))
+                    console.log('NoteService: Available bucket environment variables:', bucketEnvs)
+                    bucketEnvs.forEach(key => {
+                        console.log(`NoteService: ${key} = ${process.env[key]}`)
+                    })
+
                     if (!notesBucketName) {
                         // Check if envFunctionsHelper has loaded it
                         try {
