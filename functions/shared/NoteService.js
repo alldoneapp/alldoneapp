@@ -931,17 +931,17 @@ class NoteService {
             currentPosition += dateStamp.length
             console.log(`NoteService: Inserted date stamp at position ${insertPosition}, length: ${dateStamp.length}`)
 
-            // Step 2: Insert newline with Header 1 formatting (like the toolbar button)
-            ytext.insert(currentPosition, '\n', { header: 1 })
-            currentPosition += 1
-            console.log(`NoteService: Inserted header newline at position ${currentPosition - 1}`)
+            // Step 2: Insert newline with Header 1 formatting + extra line break (like the toolbar button)
+            ytext.insert(currentPosition, '\n\n', { header: 1 })
+            currentPosition += 2
+            console.log(`NoteService: Inserted header newlines at position ${currentPosition - 2}`)
 
-            // Step 3: Insert new content with normal formatting (override header formatting)
-            ytext.insert(currentPosition, `${newContent}\n\n`, { header: null })
-            currentPosition += newContent.length + 2
+            // Step 3: Insert new content with normal formatting + extra line break after
+            ytext.insert(currentPosition, `${newContent}\n\n\n`, { header: null })
+            currentPosition += newContent.length + 3
             console.log(
                 `NoteService: Inserted content with normal formatting at position ${
-                    currentPosition - newContent.length - 2
+                    currentPosition - newContent.length - 3
                 }, length: ${newContent.length}`
             )
 
