@@ -689,45 +689,33 @@ class NoteService {
                 changes.push(`title to "${newTitle}"`)
             }
 
-            // Handle content update - just add new content to storage
+            // Handle content update - replicate the note toolbar date button behavior
             if (newContent !== undefined) {
-                // Create date stamp (matching the UI implementation)
-                const dateFormat = 'MMM Do, YYYY' // Default format if getDateFormat not available
-                let dateStamp
-                try {
-                    // Try to use the same date format as the UI
-                    const getDateFormat =
-                        typeof require !== 'undefined'
-                            ? require('../../components/UIComponents/FloatModals/DateFormatPickerModal').getDateFormat
-                            : null
-                    dateStamp = getDateFormat
-                        ? moment().format(`${getDateFormat(false)} `)
-                        : moment().format(`${dateFormat} `)
-                } catch (error) {
-                    // Fallback to default format
-                    dateStamp = moment().format(`${dateFormat} `)
-                }
+                // Get user's date format (fallback to DD.MM.YYYY for European format)
+                const dateFormat = 'DD.MM.YYYY' // Default European format like the toolbar
+                const dateStamp = moment().format(`${dateFormat} `)
 
-                // Prepare new content with date stamp for adding to storage
-                const contentToAdd = `${dateStamp}${newContent}\n\n`
+                // Store the content parts for Yjs insertion (date + newline with header + content)
+                this._dateStamp = dateStamp
+                this._newContent = newContent
 
-                // Store the content to add (will be prepended to existing storage content)
-                this._contentToAdd = contentToAdd
-
-                console.log(`NoteService: Prepared content to add, length: ${contentToAdd.length}`)
+                console.log(`NoteService: Prepared date stamp: "${dateStamp}" and content length: ${newContent.length}`)
 
                 // Don't update Firestore at all for content-only changes to avoid triggering cloud functions
-                changes.push('content added with date stamp (storage only)')
+                changes.push('content added with date stamp and header formatting (storage only)')
             }
 
             // Handle storage-only updates (content changes)
-            if (newContent !== undefined && this._contentToAdd) {
-                await this.addContentToStorage(projectId, noteId, this._contentToAdd, feedUser)
+            if (newContent !== undefined && this._dateStamp && this._newContent) {
+                await this.addFormattedContentToStorage(projectId, noteId, this._dateStamp, this._newContent, feedUser)
                 // Clear the pending content
-                delete this._contentToAdd
+                delete this._dateStamp
+                delete this._newContent
 
-                // Content update handled entirely in addContentToStorage
-                console.log('NoteService: Content update completed with metadata and feed generation')
+                // Content update handled entirely in addFormattedContentToStorage
+                console.log(
+                    'NoteService: Content update completed with proper Yjs formatting, metadata and feed generation'
+                )
             }
 
             // Only update Firestore if there are metadata changes (title, etc.)
@@ -869,6 +857,141 @@ class NoteService {
         } catch (error) {
             console.error('NoteService: Failed to get storage content:', error)
             throw error
+        }
+    }
+
+    /**
+     * Add formatted content to the beginning of existing note in Firebase Storage
+     * Replicates the exact behavior of the note toolbar's date button
+     * @param {string} projectId - Project ID
+     * @param {string} noteId - Note ID
+     * @param {string} dateStamp - Formatted date string (e.g., "29.12.2024 ")
+     * @param {string} newContent - Content to add below the date
+     * @param {Object} feedUser - User object for feed generation
+     */
+    async addFormattedContentToStorage(projectId, noteId, dateStamp, newContent, feedUser = null) {
+        try {
+            // Import Firebase storage if available
+            let storage = this.options.storage
+            if (!storage && typeof require !== 'undefined') {
+                try {
+                    const firebase = require('firebase-admin')
+                    storage = firebase.storage()
+                } catch (error) {
+                    console.warn('NoteService: Firebase storage not available:', error.message)
+                    return
+                }
+            }
+
+            if (!storage) {
+                console.warn('NoteService: Storage interface not configured, skipping content update')
+                return
+            }
+
+            // Import Yjs for proper note content handling
+            const Y = typeof require !== 'undefined' ? require('yjs') : null
+            if (!Y) {
+                console.warn('NoteService: Yjs not available, skipping storage content update')
+                return
+            }
+
+            // Load existing Yjs document and replicate toolbar date button behavior
+            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
+
+            // Load existing Yjs document state
+            let doc = new Y.Doc()
+            try {
+                const [fileExists] = await storageRef.exists()
+                if (fileExists) {
+                    const [buffer] = await storageRef.download()
+                    console.log(`NoteService: Loading existing Yjs document, size: ${buffer.length} bytes`)
+                    Y.applyUpdate(doc, new Uint8Array(buffer))
+                } else {
+                    console.log(`NoteService: No existing document, creating new one`)
+                }
+            } catch (error) {
+                console.log(`NoteService: Failed to load existing document, creating new:`, error.message)
+                doc = new Y.Doc() // Fresh document
+            }
+
+            const ytext = doc.getText('quill')
+            console.log(`NoteService: Current document length: ${ytext.length}`)
+
+            // Replicate the exact toolbar date button behavior:
+            // 1. Insert date text at position 0
+            // 2. Insert newline with header 1 formatting after the date
+            // 3. Insert new content after the header
+
+            const insertPosition = 0
+            let currentPosition = insertPosition
+
+            // Step 1: Insert date text (plain text)
+            ytext.insert(currentPosition, dateStamp)
+            currentPosition += dateStamp.length
+            console.log(`NoteService: Inserted date stamp at position ${insertPosition}, length: ${dateStamp.length}`)
+
+            // Step 2: Insert newline with Header 1 formatting (like the toolbar button)
+            ytext.insert(currentPosition, '\n', { header: 1 })
+            currentPosition += 1
+            console.log(`NoteService: Inserted header newline at position ${currentPosition - 1}`)
+
+            // Step 3: Insert new content with normal formatting (override header formatting)
+            ytext.insert(currentPosition, `${newContent}\n\n`, { header: null })
+            currentPosition += newContent.length + 2
+            console.log(
+                `NoteService: Inserted content with normal formatting at position ${
+                    currentPosition - newContent.length - 2
+                }, length: ${newContent.length}`
+            )
+
+            console.log(`NoteService: Total document length after insertions: ${ytext.length}`)
+
+            // Get the full document state
+            const encodedStateData = Y.encodeStateAsUpdate(doc)
+
+            console.log(`NoteService: Uploading to storage path: notesData/${projectId}/${noteId}`)
+
+            await storageRef.save(Buffer.from(encodedStateData), {
+                metadata: {
+                    contentType: 'application/octet-stream',
+                },
+            })
+
+            console.log(
+                `NoteService: Added formatted content to storage for note ${noteId}, final encoded size: ${encodedStateData.length} bytes`
+            )
+
+            // Update preview in Firestore (like the normal app does in setNoteData)
+            const fullContent = ytext.toString()
+            const preview = fullContent.length > 150 ? fullContent.substring(0, 147) + '...' : fullContent
+
+            const db = this.options.database
+            if (db) {
+                try {
+                    await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
+                        preview: preview,
+                        lastEditionDate: Date.now(),
+                    })
+                    console.log(`NoteService: Updated preview in Firestore, length: ${preview.length}`)
+
+                    // Generate feed for note edit (like startEditNoteFeedsChain)
+                    if (this.options.enableFeeds && feedUser) {
+                        await this.createNoteFeed('updated', {
+                            note: { id: noteId, preview },
+                            projectId,
+                            feedUser,
+                            changes: ['content updated'],
+                        })
+                        console.log(`NoteService: Generated feed for note update`)
+                    }
+                } catch (error) {
+                    console.warn(`NoteService: Failed to update metadata:`, error.message)
+                }
+            }
+        } catch (error) {
+            console.error('NoteService: Failed to add formatted content to storage:', error)
+            // Don't throw - let the update succeed even if storage update fails
         }
     }
 
