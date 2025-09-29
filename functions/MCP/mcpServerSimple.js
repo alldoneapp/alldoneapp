@@ -1681,35 +1681,38 @@ class AlldoneSimpleMCPServer {
     }
 
     async updateNote(args, request) {
-        const { noteId, noteTitle, projectName, projectId: targetProjectId, content, title } = args
+        const { content, title } = args
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
         const db = admin.firestore()
 
-        // Step 1: Note Discovery - find the note using enhanced search with confidence logic
+        // Step 1: Note Discovery - get final result from SearchService
         const searchResult = await this.findTargetNoteForUpdate(args, userId, db)
 
-        // Handle different decision outcomes
-        if (searchResult.decision === 'no_matches') {
-            throw new Error(searchResult.error)
+        // Handle search failure
+        if (!searchResult.success) {
+            if (searchResult.error === 'NO_MATCHES') {
+                throw new Error(searchResult.message)
+            } else if (searchResult.error === 'MULTIPLE_MATCHES') {
+                return {
+                    success: false,
+                    message: searchResult.message,
+                    confidence: searchResult.confidence,
+                    reasoning: searchResult.reasoning,
+                    matches: searchResult.matches,
+                    totalMatches: searchResult.totalMatches,
+                }
+            } else {
+                throw new Error(searchResult.message)
+            }
         }
 
-        if (searchResult.decision === 'present_options') {
-            return this.handleMultipleNoteMatchesEnhanced(searchResult)
-        }
-
-        // Step 2: Note Update - proceed with auto-selected or single match
-        const {
-            note: currentNote,
-            projectId: currentProjectId,
-            projectName: currentProjectName,
-        } = searchResult.selectedMatch
-
+        // Step 2: Note Update - proceed with selected note
         const updateResult = await this.performNoteUpdate(
-            currentNote,
-            currentProjectId,
-            currentProjectName,
+            searchResult.selectedNote,
+            searchResult.projectId,
+            searchResult.projectName,
             {
                 content,
                 title,
@@ -1719,9 +1722,8 @@ class AlldoneSimpleMCPServer {
         )
 
         // Add search reasoning to the update result for transparency
-        if (searchResult.decision === 'auto_select') {
+        if (searchResult.isAutoSelected) {
             updateResult.searchInfo = {
-                decision: searchResult.decision,
                 confidence: searchResult.confidence,
                 reasoning: searchResult.reasoning,
                 alternativeMatches: searchResult.alternativeMatches?.length || 0,
@@ -1750,61 +1752,7 @@ class AlldoneSimpleMCPServer {
             await this.searchService.initialize()
         }
 
-        return await this.searchService.findNoteForUpdate(userId, searchCriteria, {
-            autoSelectOnHighConfidence: true,
-            highConfidenceThreshold: 800,
-            dominanceMargin: 300,
-            maxOptionsToShow: 5,
-        })
-    }
-
-    /**
-     * Enhanced handler for multiple note matches with confidence information
-     */
-    handleMultipleNoteMatchesEnhanced(searchResult) {
-        const { allMatches, reasoning, confidence, totalMatches } = searchResult
-
-        let message = `${reasoning}\n\nFound ${totalMatches || allMatches.length} notes:\n\n`
-
-        allMatches.slice(0, 5).forEach((match, index) => {
-            message += `${index + 1}. "${match.note.title}"`
-
-            message += ` (Project: ${match.projectName})`
-
-            // Show confidence indicators
-            const matchConfidence = this.searchService.assessConfidence(match.matchScore)
-            message += ` [${matchConfidence} confidence: ${match.matchScore}]\n`
-
-            if (match.note.content) {
-                const preview = match.note.content.substring(0, 100).replace(/\n/g, ' ')
-                message += `   Preview: ${preview}${match.note.content.length > 100 ? '...' : ''}\n`
-            }
-            message += `   Note ID: ${match.note.id}\n\n`
-        })
-
-        if (allMatches.length > 5) {
-            message += `... and ${allMatches.length - 5} more matches.\n\n`
-        }
-
-        message +=
-            'Please be more specific in your search criteria, or use the exact note ID to update a specific note.'
-
-        return {
-            success: false,
-            message,
-            confidence,
-            reasoning,
-            matches: allMatches.map(m => ({
-                noteId: m.note.id,
-                noteTitle: m.note.title,
-                projectId: m.projectId,
-                projectName: m.projectName,
-                matchScore: m.matchScore,
-                matchType: m.matchType,
-                confidence: this.searchService.assessConfidence(m.matchScore),
-            })),
-            totalMatches: totalMatches || allMatches.length,
-        }
+        return await this.searchService.findNoteForUpdateWithResults(userId, searchCriteria)
     }
 
     /**

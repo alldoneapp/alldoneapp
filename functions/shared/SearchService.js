@@ -1043,7 +1043,7 @@ class SearchService {
 
         const {
             autoSelectOnHighConfidence = true,
-            highConfidenceThreshold = 800,
+            highConfidenceThreshold = 600,
             dominanceMargin = 300,
             maxOptionsToShow = 5,
         } = options
@@ -1094,6 +1094,105 @@ class SearchService {
             confidence,
             reasoning: `Found ${matches.length} notes, but confidence (${confidence}) insufficient for auto-selection`,
             searchCriteria,
+        }
+    }
+
+    /**
+     * Find note for update with complete result handling - returns final actionable results
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchCriteria - Search parameters
+     * @param {Object} options - Configuration options
+     * @returns {Object} Complete result with success flag, selected note, or error details
+     */
+    async findNoteForUpdateWithResults(userId, searchCriteria, options = {}) {
+        await this.ensureInitialized()
+
+        try {
+            const searchResult = await this.findNoteForUpdate(userId, searchCriteria, options)
+
+            switch (searchResult.decision) {
+                case 'no_matches':
+                    return {
+                        success: false,
+                        error: 'NO_MATCHES',
+                        message: searchResult.error,
+                        searchCriteria: searchResult.searchCriteria,
+                    }
+
+                case 'single_match':
+                case 'auto_select':
+                    return {
+                        success: true,
+                        selectedNote: searchResult.selectedMatch.note,
+                        projectId: searchResult.selectedMatch.projectId,
+                        projectName: searchResult.selectedMatch.projectName,
+                        confidence: searchResult.confidence,
+                        reasoning: searchResult.reasoning || 'Single match found',
+                        isAutoSelected: searchResult.decision === 'auto_select',
+                        alternativeMatches: searchResult.alternativeMatches || [],
+                        searchCriteria: searchResult.searchCriteria,
+                    }
+
+                case 'present_options':
+                    // Format options message for user
+                    let message = `${searchResult.reasoning}\n\nFound ${searchResult.totalMatches} notes:\n\n`
+
+                    searchResult.allMatches.slice(0, 5).forEach((match, index) => {
+                        message += `${index + 1}. "${match.note.title}"`
+                        message += ` (Project: ${match.projectName})`
+
+                        // Show confidence indicators
+                        const matchConfidence = this.assessConfidence(match.matchScore)
+                        message += ` [${matchConfidence} confidence: ${match.matchScore}]\n`
+
+                        if (match.note.content) {
+                            const preview = match.note.content.substring(0, 100).replace(/\n/g, ' ')
+                            message += `   Preview: ${preview}${match.note.content.length > 100 ? '...' : ''}\n`
+                        }
+                        message += `   Note ID: ${match.note.id}\n\n`
+                    })
+
+                    if (searchResult.allMatches.length > 5) {
+                        message += `... and ${searchResult.allMatches.length - 5} more matches.\n\n`
+                    }
+
+                    message +=
+                        'Please be more specific in your search criteria, or use the exact note ID to update a specific note.'
+
+                    return {
+                        success: false,
+                        error: 'MULTIPLE_MATCHES',
+                        message,
+                        confidence: searchResult.confidence,
+                        reasoning: searchResult.reasoning,
+                        matches: searchResult.allMatches.map(m => ({
+                            noteId: m.note.id,
+                            noteTitle: m.note.title,
+                            projectId: m.projectId,
+                            projectName: m.projectName,
+                            matchScore: m.matchScore,
+                            matchType: m.matchType,
+                            confidence: this.assessConfidence(m.matchScore),
+                        })),
+                        totalMatches: searchResult.totalMatches,
+                        searchCriteria: searchResult.searchCriteria,
+                    }
+
+                default:
+                    return {
+                        success: false,
+                        error: 'UNKNOWN_DECISION',
+                        message: `Unknown decision type: ${searchResult.decision}`,
+                        searchCriteria: searchResult.searchCriteria,
+                    }
+            }
+        } catch (error) {
+            return {
+                success: false,
+                error: 'SEARCH_ERROR',
+                message: `Search failed: ${error.message}`,
+                searchCriteria,
+            }
         }
     }
 

@@ -1866,19 +1866,28 @@ async function storeChunks(
                             })
                             await searchService.initialize()
 
-                            // Find the note to update
-                            const searchResult = await searchService.findNoteForUpdate(creatorId, args, {
-                                autoSelectOnHighConfidence: true,
-                                highConfidenceThreshold: 800,
-                                dominanceMargin: 300,
-                                maxOptionsToShow: 5,
-                            })
+                            // Find the note to update using SearchService final results
+                            const searchResult = await searchService.findNoteForUpdateWithResults(creatorId, args)
 
-                            if (searchResult.decision === 'no_matches') {
-                                const replaced = commentText.replace(
-                                    updateNoteMatch[0],
-                                    `No notes found: ${searchResult.error}`
-                                )
+                            // Handle search failure
+                            if (!searchResult.success) {
+                                let errorMessage
+                                if (searchResult.error === 'NO_MATCHES') {
+                                    errorMessage = `No notes found: ${searchResult.message}`
+                                } else if (searchResult.error === 'MULTIPLE_MATCHES') {
+                                    // Format simplified options message for Assistant
+                                    errorMessage = `Found ${searchResult.totalMatches} notes matching your criteria:\n\n`
+                                    searchResult.matches.slice(0, 3).forEach((match, index) => {
+                                        errorMessage += `${index + 1}. "${match.noteTitle}" (Project: ${
+                                            match.projectName
+                                        })\n`
+                                    })
+                                    errorMessage += '\nPlease be more specific with your search criteria.'
+                                } else {
+                                    errorMessage = `Search failed: ${searchResult.message}`
+                                }
+
+                                const replaced = commentText.replace(updateNoteMatch[0], errorMessage)
                                 commentText = replaced
                                 answerContent = replaced
                                 await commentRef.update({ commentText })
@@ -1886,29 +1895,10 @@ async function storeChunks(
                                 continue
                             }
 
-                            if (searchResult.decision === 'present_options') {
-                                let optionsMessage = `Found ${searchResult.totalMatches} notes matching your criteria:\n\n`
-                                searchResult.allMatches.slice(0, 3).forEach((match, index) => {
-                                    optionsMessage += `${index + 1}. "${match.note.title}" (Project: ${
-                                        match.projectName
-                                    })\n`
-                                })
-                                optionsMessage += '\nPlease be more specific with your search criteria.'
-
-                                const replaced = commentText.replace(updateNoteMatch[0], optionsMessage)
-                                commentText = replaced
-                                answerContent = replaced
-                                await commentRef.update({ commentText })
-                                toolAlreadyExecuted = true
-                                continue
-                            }
-
-                            // Single match or auto-selected match
-                            const {
-                                note: currentNote,
-                                projectId: currentProjectId,
-                                projectName: currentProjectName,
-                            } = searchResult.selectedMatch
+                            // Use selected note from SearchService
+                            const currentNote = searchResult.selectedNote
+                            const currentProjectId = searchResult.projectId
+                            const currentProjectName = searchResult.projectName
 
                             // Initialize NoteService for consistent update logic and feed generation
                             const { NoteService } = require('../shared/NoteService')
