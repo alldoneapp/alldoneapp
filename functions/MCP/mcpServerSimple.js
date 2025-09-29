@@ -3104,6 +3104,9 @@ class AlldoneSimpleMCPServer {
                         case 'get_note':
                             result = await this.getNote(args, httpReq)
                             break
+                        case 'update_note':
+                            result = await this.updateNote(args, httpReq)
+                            break
                         case 'get_tasks':
                             result = await this.getTasks(args, httpReq)
                             break
