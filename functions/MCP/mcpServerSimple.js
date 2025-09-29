@@ -2341,8 +2341,6 @@ class AlldoneSimpleMCPServer {
     // HTTP Transport implementation (2025-03-26 spec)
     async handleHTTP(req, res) {
         try {
-            await loadMcpModules()
-
             if (req.method === 'GET') {
                 // Return proper MCP server info as per transport specification
                 res.set('Content-Type', 'application/json; charset=utf-8').json({
