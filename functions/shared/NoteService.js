@@ -689,11 +689,8 @@ class NoteService {
                 changes.push(`title to "${newTitle}"`)
             }
 
-            // Handle content update with date stamp prepending
+            // Handle content update - just add new content to storage
             if (newContent !== undefined) {
-                // Get current content or use empty string
-                let currentContent = currentNote.content || ''
-
                 // Create date stamp (matching the UI implementation)
                 const dateFormat = 'MMM Do, YYYY' // Default format if getDateFormat not available
                 let dateStamp
@@ -711,17 +708,36 @@ class NoteService {
                     dateStamp = moment().format(`${dateFormat} `)
                 }
 
-                // Prepend new content with date stamp and newline
-                const prependedContent = `${dateStamp}${newContent}\n\n${currentContent}`
-                updateData.content = prependedContent
+                // Prepare new content with date stamp for adding to storage
+                const contentToAdd = `${dateStamp}${newContent}\n\n`
 
-                // Update last edition date
-                updateData.lastEditionDate = Date.now()
+                // Store the content to add (will be prepended to existing storage content)
+                this._contentToAdd = contentToAdd
 
-                changes.push('content prepended with date stamp')
+                console.log(`NoteService: Prepared content to add, length: ${contentToAdd.length}`)
+
+                // Don't update Firestore at all for content-only changes to avoid triggering cloud functions
+                changes.push('content added with date stamp (storage only)')
             }
 
-            if (Object.keys(updateData).length === 0) {
+            // Handle storage-only updates (content changes)
+            if (newContent !== undefined && this._contentToAdd) {
+                await this.addContentToStorage(projectId, noteId, this._contentToAdd)
+                // Clear the pending content
+                delete this._contentToAdd
+            }
+
+            // Only update Firestore if there are metadata changes (title, etc.)
+            if (Object.keys(updateData).length > 0) {
+                const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
+                await noteDocRef.update(updateData)
+                console.log(`NoteService: Updated Firestore metadata with ${Object.keys(updateData).length} changes`)
+            } else if (newContent !== undefined) {
+                // Content-only update - no Firestore changes needed
+                console.log('NoteService: Content-only update, skipping Firestore to avoid triggering cloud functions')
+            }
+
+            if (Object.keys(updateData).length === 0 && newContent === undefined) {
                 return {
                     success: true,
                     message: 'No changes to apply',
@@ -731,20 +747,18 @@ class NoteService {
                 }
             }
 
-            // Update the note in Firestore
-            const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
-            await noteDocRef.update(updateData)
-
-            // If content was updated, also update the storage content
-            if (newContent !== undefined) {
-                await this.updateStorageContent(projectId, noteId, updateData.content)
+            // Get updated note data (only if we updated Firestore)
+            let updatedNote
+            if (Object.keys(updateData).length > 0) {
+                const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
+                const updatedNoteDoc = await noteDocRef.get()
+                updatedNote = updatedNoteDoc.exists
+                    ? { id: noteId, ...updatedNoteDoc.data() }
+                    : { ...currentNote, ...updateData }
+            } else {
+                // For content-only updates, return the original note metadata
+                updatedNote = { id: noteId, ...currentNote }
             }
-
-            // Get updated note data
-            const updatedNoteDoc = await noteDocRef.get()
-            const updatedNote = updatedNoteDoc.exists
-                ? { id: noteId, ...updatedNoteDoc.data() }
-                : { ...currentNote, ...updateData }
 
             // Generate feed if enabled
             let feedData = null
@@ -800,10 +814,146 @@ class NoteService {
     }
 
     /**
+     * Get note content from Firebase Storage
+     * @param {string} projectId - Project ID
+     * @param {string} noteId - Note ID
+     * @returns {string} Note content as plain text
+     */
+    async getStorageContent(projectId, noteId) {
+        try {
+            // Import Firebase storage if available
+            let storage = this.options.storage
+            if (!storage && typeof require !== 'undefined') {
+                try {
+                    const firebase = require('firebase-admin')
+                    storage = firebase.storage()
+                } catch (error) {
+                    throw new Error('Firebase storage not available')
+                }
+            }
+
+            if (!storage) {
+                throw new Error('Storage interface not configured')
+            }
+
+            // Import Yjs for content decoding
+            const Y = typeof require !== 'undefined' ? require('yjs') : null
+            if (!Y) {
+                throw new Error('Yjs not available for content decoding')
+            }
+
+            // Download from Firebase Storage
+            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
+
+            const [fileExists] = await storageRef.exists()
+            if (!fileExists) {
+                console.log(`NoteService: Storage file does not exist for note ${noteId}, returning empty content`)
+                return ''
+            }
+
+            const [buffer] = await storageRef.download()
+            console.log(`NoteService: Downloaded content from storage, size: ${buffer.length} bytes`)
+
+            // Decode Yjs content
+            const doc = new Y.Doc()
+            Y.applyUpdate(doc, new Uint8Array(buffer))
+            const ytext = doc.getText('quill')
+            const content = ytext.toString()
+
+            console.log(`NoteService: Decoded content length: ${content.length}`)
+            return content
+        } catch (error) {
+            console.error('NoteService: Failed to get storage content:', error)
+            throw error
+        }
+    }
+
+    /**
+     * Add content to the beginning of existing note in Firebase Storage
+     * @param {string} projectId - Project ID
+     * @param {string} noteId - Note ID
+     * @param {string} contentToAdd - Content to prepend (includes date stamp)
+     */
+    async addContentToStorage(projectId, noteId, contentToAdd) {
+        try {
+            // Import Firebase storage if available
+            let storage = this.options.storage
+            if (!storage && typeof require !== 'undefined') {
+                try {
+                    const firebase = require('firebase-admin')
+                    storage = firebase.storage()
+                } catch (error) {
+                    console.warn('NoteService: Firebase storage not available:', error.message)
+                    return
+                }
+            }
+
+            if (!storage) {
+                console.warn('NoteService: Storage interface not configured, skipping content update')
+                return
+            }
+
+            // Import Yjs for proper note content handling
+            const Y = typeof require !== 'undefined' ? require('yjs') : null
+            if (!Y) {
+                console.warn('NoteService: Yjs not available, skipping storage content update')
+                return
+            }
+
+            // Load existing Yjs document and insert at beginning (atomic operation)
+            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
+
+            // Load existing Yjs document state
+            let doc = new Y.Doc()
+            try {
+                const [fileExists] = await storageRef.exists()
+                if (fileExists) {
+                    const [buffer] = await storageRef.download()
+                    console.log(`NoteService: Loading existing Yjs document, size: ${buffer.length} bytes`)
+                    Y.applyUpdate(doc, new Uint8Array(buffer))
+                } else {
+                    console.log(`NoteService: No existing document, creating new one`)
+                }
+            } catch (error) {
+                console.log(`NoteService: Failed to load existing document, creating new:`, error.message)
+                doc = new Y.Doc() // Fresh document
+            }
+
+            const ytext = doc.getText('quill')
+            console.log(`NoteService: Current document length: ${ytext.length}`)
+
+            // Insert new content at the beginning (atomic Yjs operation)
+            ytext.insert(0, contentToAdd)
+            console.log(`NoteService: Inserted content at beginning, new length: ${ytext.length}`)
+
+            // Get the full document state (not just the update)
+            const encodedStateData = Y.encodeStateAsUpdate(doc)
+
+            console.log(`NoteService: Uploading to storage path: notesData/${projectId}/${noteId}`)
+            console.log(`NoteService: Added content preview: ${contentToAdd.substring(0, 100)}...`)
+
+            await storageRef.save(Buffer.from(encodedStateData), {
+                metadata: {
+                    contentType: 'application/octet-stream',
+                },
+            })
+
+            console.log(
+                `NoteService: Added content to storage for note ${noteId}, final encoded size: ${encodedStateData.length} bytes`
+            )
+        } catch (error) {
+            console.error('NoteService: Failed to add content to storage:', error)
+            // Don't throw - let the update succeed even if storage update fails
+        }
+    }
+
+    /**
      * Update note content in Firebase Storage
      * @param {string} projectId - Project ID
      * @param {string} noteId - Note ID
-     * @param {string} content - New content to store
+     * @param {string} content - New content to store (already includes prepended content with date stamp)
      */
     async updateStorageContent(projectId, noteId, content) {
         try {
@@ -824,35 +974,41 @@ class NoteService {
                 return
             }
 
-            // Create Yjs document with the new content
+            // Import Yjs and Quill for proper note content handling
             const Y = typeof require !== 'undefined' ? require('yjs') : null
             if (!Y) {
-                console.warn('NoteService: Yjs not available, storing content as plain text')
-                // Fallback: store as plain text in Uint8Array format
-                const encoder = new TextEncoder()
-                const encodedContent = encoder.encode(content)
-                const storageRef = storage.bucket().file(`notesData/${projectId}/${noteId}`)
-                await storageRef.save(encodedContent)
-                console.log(`NoteService: Updated plain text content for note ${noteId}`)
+                console.warn('NoteService: Yjs not available, skipping storage content update')
                 return
             }
 
-            // Create Yjs document with proper Quill delta format
+            // Create a new Yjs document and replace all content
             const doc = new Y.Doc()
             const ytext = doc.getText('quill')
 
-            // Insert the content as plain text (Yjs will handle conversion to Quill operations)
+            console.log(`NoteService: Creating new Yjs document with content length: ${content.length}`)
+
+            // Clear any existing content and insert the new content
+            ytext.delete(0, ytext.length)
             ytext.insert(0, content)
 
-            // Get the encoded state
+            // Apply the update to get the encoded state
             const encodedStateData = Y.encodeStateAsUpdate(doc)
 
             // Upload to Firebase Storage
-            const storageRef = storage.bucket().file(`notesData/${projectId}/${noteId}`)
-            await storageRef.save(Buffer.from(encodedStateData))
+            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
+
+            console.log(`NoteService: Uploading to storage path: notesData/${projectId}/${noteId}`)
+            console.log(`NoteService: Content preview: ${content.substring(0, 100)}...`)
+
+            await storageRef.save(Buffer.from(encodedStateData), {
+                metadata: {
+                    contentType: 'application/octet-stream',
+                },
+            })
 
             console.log(
-                `NoteService: Updated storage content for note ${noteId}, size: ${encodedStateData.length} bytes`
+                `NoteService: Updated storage content for note ${noteId}, encoded size: ${encodedStateData.length} bytes`
             )
         } catch (error) {
             console.error('NoteService: Failed to update storage content:', error)
