@@ -1,28 +1,3 @@
-// Defer ESM-only deps using dynamic import to work within CommonJS
-let Server,
-    CallToolRequestSchema,
-    ErrorCode,
-    ListToolsRequestSchema,
-    ListResourcesRequestSchema,
-    ReadResourceRequestSchema,
-    LoggingLevel,
-    SetLevelRequestSchema,
-    McpError
-async function loadMcpModules() {
-    if (Server) return
-    const server = await import('@modelcontextprotocol/sdk/server/index.js')
-    const types = await import('@modelcontextprotocol/sdk/types.js')
-    Server = server.Server
-    CallToolRequestSchema = types.CallToolRequestSchema
-    ErrorCode = types.ErrorCode
-    ListToolsRequestSchema = types.ListToolsRequestSchema
-    ListResourcesRequestSchema = types.ListResourcesRequestSchema
-    ReadResourceRequestSchema = types.ReadResourceRequestSchema
-    LoggingLevel = types.LoggingLevel
-    SetLevelRequestSchema = types.SetLevelRequestSchema
-    McpError = types.McpError
-}
-
 const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
@@ -273,32 +248,12 @@ class AlldoneSimpleMCPServer {
         this.rateLimiter = new RateLimiter(admin.firestore())
         // MCP initialization state tracking per client session
         this.clientSessions = new Map() // sessionId -> { initialized, capabilities, clientInfo, timestamp }
-        this.setupMCPServer()
 
         // Schedule periodic cleanup of expired rate limit records
         this.scheduleRateLimitCleanup()
 
         // Schedule periodic cleanup of expired client sessions
         this.scheduleSessionCleanup()
-    }
-
-    async setupMCPServer() {
-        await loadMcpModules()
-        this.mcpServer = new Server(
-            {
-                name: 'alldone-mcp-server',
-                version: '1.0.0',
-            },
-            {
-                capabilities: {
-                    resources: {},
-                    tools: {},
-                },
-            }
-        )
-
-        this.setupToolHandlers()
-        this.setupErrorHandling()
     }
 
     /**
@@ -522,374 +477,6 @@ class AlldoneSimpleMCPServer {
         }
 
         return null
-    }
-
-    setupToolHandlers() {
-        this.mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
-            return {
-                tools: [
-                    {
-                        name: 'create_task',
-                        description:
-                            'Create a new task in the current project (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                name: {
-                                    type: 'string',
-                                    description: 'Task name (required)',
-                                },
-                                description: {
-                                    type: 'string',
-                                    description: 'Task description (optional)',
-                                },
-                                dueDate: {
-                                    type: 'number',
-                                    description: 'Due date as timestamp (optional)',
-                                },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project ID (optional, uses user default project if not provided)',
-                                },
-                            },
-                            required: ['name'],
-                        },
-                    },
-                    {
-                        name: 'update_task',
-                        description:
-                            'Update an existing task using flexible search criteria (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                taskId: {
-                                    type: 'string',
-                                    description: 'Task ID to update (optional, for direct lookup)',
-                                },
-                                taskName: {
-                                    type: 'string',
-                                    description: 'Full or partial task name to search (optional)',
-                                },
-                                projectName: {
-                                    type: 'string',
-                                    description: 'Full or partial project name to search (optional)',
-                                },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project ID to search within (optional)',
-                                },
-                                name: {
-                                    type: 'string',
-                                    description: 'New task name (optional)',
-                                },
-                                description: {
-                                    type: 'string',
-                                    description: 'New task description (optional)',
-                                },
-                                dueDate: {
-                                    type: 'number',
-                                    description: 'New due date as timestamp (optional)',
-                                },
-                                completed: {
-                                    type: 'boolean',
-                                    description: 'Mark task as complete/incomplete (optional)',
-                                },
-                                parentId: {
-                                    type: 'string',
-                                    description: 'Set parent task ID for subtasks (optional, null to remove parent)',
-                                },
-                                userId: {
-                                    type: 'string',
-                                    description: 'Reassign task to different user (optional)',
-                                },
-                                focus: {
-                                    type: 'boolean',
-                                    description:
-                                        'Set to true to mark this task as your focus task, or false to clear it (optional)',
-                                },
-                            },
-                            required: [],
-                        },
-                    },
-                    {
-                        name: 'get_tasks',
-                        description:
-                            'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project ID (optional, uses user default project if not provided)',
-                                },
-                                allProjects: {
-                                    type: 'boolean',
-                                    description:
-                                        'Get tasks from all accessible projects (default: false). When true, ignores projectId parameter.',
-                                },
-                                includeArchived: {
-                                    type: 'boolean',
-                                    description: 'Include archived projects when using allProjects (default: false)',
-                                },
-                                includeCommunity: {
-                                    type: 'boolean',
-                                    description:
-                                        'Include community/template/guide projects when using allProjects (default: false)',
-                                },
-                                status: {
-                                    type: 'string',
-                                    enum: ['open', 'done', 'all'],
-                                    description: 'Task status filter (default: open)',
-                                },
-                                date: {
-                                    type: 'string',
-                                    description:
-                                        'Date filter in YYYY-MM-DD format or relative keywords like "today", "yesterday", "tomorrow", "this_week", "last_week", "last 7 days", or "next 7 days". For open tasks: filters due dates ("today" also includes overdue). For done tasks: filters completion dates. Default: "today".',
-                                },
-
-                                includeSubtasks: {
-                                    type: 'boolean',
-                                    description: 'Include subtasks in results (default: false)',
-                                },
-                                parentId: {
-                                    type: 'string',
-                                    description:
-                                        'Get subtasks for specific parent task ID (requires includeSubtasks: true)',
-                                },
-                            },
-                            required: [],
-                        },
-                    },
-                    {
-                        name: 'get_user_projects',
-                        description:
-                            'Get list of projects accessible to authenticated user (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                includeArchived: {
-                                    type: 'boolean',
-                                    description: 'Include archived projects (default: false)',
-                                },
-                                includeCommunity: {
-                                    type: 'boolean',
-                                    description: 'Include community/template/guide projects (default: false)',
-                                },
-                            },
-                            required: [],
-                        },
-                    },
-                    {
-                        name: 'get_focus_task',
-                        description:
-                            'Get the current focus task for the user, or find and set a new one if none exists (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project context for finding new focus task (optional)',
-                                },
-                            },
-                            required: [],
-                        },
-                    },
-                    {
-                        name: 'delete_authentication_data',
-                        description:
-                            'Delete all OAuth 2.0 authentication data for the current user (revokes all Bearer tokens and sessions)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {},
-                            required: [],
-                        },
-                    },
-                    {
-                        name: 'get_current_user_info',
-                        description:
-                            'Get information about the currently authenticated user (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {},
-                            required: [],
-                        },
-                    },
-                    {
-                        name: 'create_note',
-                        description:
-                            'Create a new note in the current project (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                title: {
-                                    type: 'string',
-                                    description: 'Note title (required)',
-                                },
-                                content: {
-                                    type: 'string',
-                                    description:
-                                        'Note content (optional, supports markdown formatting like # headers, **bold**, *italic*, lists, etc. Will create default template if not provided)',
-                                },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project ID (optional, uses user default project if not provided)',
-                                },
-                            },
-                            required: ['title'],
-                        },
-                    },
-                    {
-                        name: 'search',
-                        description:
-                            'Search across all content types with natural language queries (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                query: {
-                                    type: 'string',
-                                    description:
-                                        'Search query (supports natural language, e.g., "What did I discuss last week with John about the project?")',
-                                },
-                                type: {
-                                    type: 'string',
-                                    enum: ['all', 'tasks', 'notes', 'goals', 'contacts', 'chats', 'assistants'],
-                                    description: 'Content type to search (default: all)',
-                                },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Limit search to specific project (optional)',
-                                },
-                                dateRange: {
-                                    type: 'string',
-                                    description:
-                                        'Time filter (e.g., "last week", "yesterday", "this month") (optional)',
-                                },
-                            },
-                            required: ['query'],
-                        },
-                    },
-                    {
-                        name: 'get_note',
-                        description:
-                            'Get full note content for detailed reading (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                noteId: {
-                                    type: 'string',
-                                    description: 'Note ID to retrieve',
-                                },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project ID containing the note',
-                                },
-                            },
-                            required: ['noteId', 'projectId'],
-                        },
-                    },
-                    {
-                        name: 'update_note',
-                        description:
-                            'Update an existing note by prepending new content with a date stamp (requires OAuth 2.0 Bearer token authentication)',
-                        inputSchema: {
-                            type: 'object',
-                            properties: {
-                                noteId: {
-                                    type: 'string',
-                                    description: 'Note ID to update (optional, for direct lookup)',
-                                },
-                                noteTitle: {
-                                    type: 'string',
-                                    description: 'Full or partial note title to search (optional)',
-                                },
-                                projectName: {
-                                    type: 'string',
-                                    description: 'Full or partial project name to search (optional)',
-                                },
-                                projectId: {
-                                    type: 'string',
-                                    description: 'Project ID to search within (optional)',
-                                },
-                                content: {
-                                    type: 'string',
-                                    description: 'New content to prepend to the note with date stamp (required)',
-                                },
-                                title: {
-                                    type: 'string',
-                                    description: 'Update the note title (optional)',
-                                },
-                            },
-                            required: ['content'],
-                        },
-                    },
-                ],
-            }
-        })
-
-        this.mcpServer.setRequestHandler(CallToolRequestSchema, async request => {
-            const { name, arguments: args } = request.params
-
-            try {
-                let result
-                switch (name) {
-                    case 'create_task':
-                        result = await this.createTask(args, request)
-                        break
-                    case 'update_task':
-                        result = await this.updateTask(args, request)
-                        break
-                    case 'get_tasks':
-                        result = await this.getTasks(args, request)
-                        break
-                    case 'get_user_projects':
-                        result = await this.getUserProjects(args, request)
-                        break
-                    case 'get_focus_task':
-                        result = await this.getFocusTask(args, request)
-                        break
-                    case 'delete_authentication_data':
-                        result = await this.deleteAuthenticationData(args, request)
-                        break
-                    case 'get_current_user_info':
-                        result = await this.getCurrentUserInfo(args, request)
-                        break
-                    case 'create_note':
-                        result = await this.createNote(args, request)
-                        break
-                    case 'search':
-                        result = await this.search(args, request)
-                        break
-                    case 'update_note':
-                        result = await this.updateNote(args, request)
-                        break
-                    case 'get_note':
-                        result = await this.getNote(args, request)
-                        break
-                    default:
-                        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`)
-                }
-
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify(result, null, 2),
-                        },
-                    ],
-                }
-            } catch (error) {
-                console.error(`Tool error for ${name}:`, error)
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: JSON.stringify({ error: error.message }, null, 2),
-                        },
-                    ],
-                    isError: true,
-                }
-            }
-        })
     }
 
     // Authentication methods
@@ -2303,12 +1890,6 @@ class AlldoneSimpleMCPServer {
         }
     }
 
-    setupErrorHandling() {
-        this.mcpServer.onerror = error => {
-            console.error('[MCP Error]', error)
-        }
-    }
-
     // Note: HTTP transport initialization state management removed
     // HTTP is stateless, so the MCP client handles initialization sequence
 
@@ -3324,6 +2905,41 @@ class AlldoneSimpleMCPServer {
                                     },
                                 },
                                 required: ['noteId', 'projectId'],
+                            },
+                        },
+                        {
+                            name: 'update_note',
+                            description:
+                                'Update an existing note by prepending new content with a date stamp (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    noteId: {
+                                        type: 'string',
+                                        description: 'Note ID to update (optional, for direct lookup)',
+                                    },
+                                    noteTitle: {
+                                        type: 'string',
+                                        description: 'Full or partial note title to search (optional)',
+                                    },
+                                    projectName: {
+                                        type: 'string',
+                                        description: 'Full or partial project name to search (optional)',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Project ID to search within (optional)',
+                                    },
+                                    content: {
+                                        type: 'string',
+                                        description: 'New content to prepend to the note with date stamp (required)',
+                                    },
+                                    title: {
+                                        type: 'string',
+                                        description: 'Update the note title (optional)',
+                                    },
+                                },
+                                required: ['content'],
                             },
                         },
                         {
