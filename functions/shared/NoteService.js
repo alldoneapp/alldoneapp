@@ -805,6 +805,43 @@ class NoteService {
     }
 
     /**
+     * Get the correct notes storage bucket name using the same logic as other Firebase Functions
+     */
+    async getBucketName() {
+        let bucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+
+        // Fallback to get bucket name using the same logic as createNote
+        if (!bucketName) {
+            try {
+                const envHelper = require('../envFunctionsHelper')
+                const envFunctions = envHelper.getEnvFunctions()
+                bucketName = envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+                console.log('NoteService: Got bucket name from envFunctionsHelper:', bucketName)
+            } catch (envHelperError) {
+                console.log('NoteService: Failed to get from envFunctionsHelper:', envHelperError.message)
+            }
+        }
+
+        if (!bucketName) {
+            // Last resort: try Firebase Functions parameter
+            try {
+                const { defineString } = require('firebase-functions/params')
+                bucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+                console.log('NoteService: Got bucket name from Firebase Functions parameter:', bucketName)
+            } catch (paramError) {
+                console.log('NoteService: Firebase Functions parameter failed:', paramError.message)
+            }
+        }
+
+        if (!bucketName) {
+            bucketName = 'notescontentdev' // Final fallback
+            console.warn('NoteService: Using fallback bucket name:', bucketName)
+        }
+
+        return bucketName
+    }
+
+    /**
      * Get note content from Firebase Storage
      * @param {string} projectId - Project ID
      * @param {string} noteId - Note ID
@@ -834,7 +871,7 @@ class NoteService {
             }
 
             // Download from Firebase Storage
-            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const bucketName = await this.getBucketName()
             const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
 
             const [fileExists] = await storageRef.exists()
@@ -896,7 +933,8 @@ class NoteService {
             }
 
             // Load existing Yjs document and replicate toolbar date button behavior
-            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const bucketName = await this.getBucketName()
+            console.log('NoteService: Using bucket name for update:', bucketName)
             const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
 
             // Load existing Yjs document state
@@ -1029,7 +1067,7 @@ class NoteService {
             }
 
             // Load existing Yjs document and insert at beginning (atomic operation)
-            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const bucketName = await this.getBucketName()
             const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
 
             // Load existing Yjs document state
@@ -1150,7 +1188,7 @@ class NoteService {
             const encodedStateData = Y.encodeStateAsUpdate(doc)
 
             // Upload to Firebase Storage
-            const bucketName = process.env.NOTES_BUCKET_NAME || 'notescontentdev'
+            const bucketName = await this.getBucketName()
             const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
 
             console.log(`NoteService: Uploading to storage path: notesData/${projectId}/${noteId}`)
