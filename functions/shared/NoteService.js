@@ -732,7 +732,7 @@ class NoteService {
             }
 
             // Update the note in Firestore
-            const noteDocRef = db.doc(`items/${projectId}/notes/${noteId}`)
+            const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
             await noteDocRef.update(updateData)
 
             // Get updated note data

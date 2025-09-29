@@ -747,17 +747,36 @@ class SearchService {
 
             const searchResponse = await index.search(searchQuery, searchOptions)
 
-            return searchResponse.hits.map(hit => ({
-                id: hit.objectID ? hit.objectID.replace(hit.projectId || '', '') : hit.id,
-                type: entityType,
-                projectId: hit.projectId,
-                title: hit.name || hit.title || hit.displayName || 'Untitled',
-                snippet: this.generateSnippet(hit, parsedQuery, entityType),
-                score: hit._score || 0,
-                highlightResult: hit._highlightResult,
-                metadata: this.extractMetadata(hit, entityType),
-                matchedFields: this.getMatchedFields(hit._highlightResult),
-            }))
+            return searchResponse.hits.map(hit => {
+                let cleanId = hit.objectID || hit.id
+                // Remove project ID suffix from Algolia objectID (format: noteId + projectId)
+                if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
+                    cleanId = hit.objectID.substring(0, hit.objectID.length - hit.projectId.length)
+                    console.log('SearchService: Cleaned note ID', {
+                        originalObjectID: hit.objectID,
+                        projectId: hit.projectId,
+                        cleanedId: cleanId,
+                    })
+                } else {
+                    console.log('SearchService: Note ID not cleaned', {
+                        objectID: hit.objectID,
+                        projectId: hit.projectId,
+                        endsWith: hit.objectID ? hit.objectID.endsWith(hit.projectId) : false,
+                        finalId: cleanId,
+                    })
+                }
+                return {
+                    id: cleanId,
+                    type: entityType,
+                    projectId: hit.projectId,
+                    title: hit.name || hit.title || hit.displayName || 'Untitled',
+                    snippet: this.generateSnippet(hit, parsedQuery, entityType),
+                    score: hit._score || 0,
+                    highlightResult: hit._highlightResult,
+                    metadata: this.extractMetadata(hit, entityType),
+                    matchedFields: this.getMatchedFields(hit._highlightResult),
+                }
+            })
         } catch (error) {
             console.error(`Search failed for ${entityType}:`, error)
             return []
@@ -1143,10 +1162,22 @@ class SearchService {
     async findNoteById(noteId, userProjects) {
         for (const project of userProjects) {
             try {
-                const noteDoc = await this.options.database.doc(`items/${project.id}/notes/${noteId}`).get()
+                // Clean the note ID in case it has project suffix (from Algolia objectID)
+                let cleanNoteId = noteId
+                if (noteId && noteId.endsWith(project.id)) {
+                    cleanNoteId = noteId.substring(0, noteId.length - project.id.length)
+                    console.log('SearchService: Cleaned noteId for direct lookup', {
+                        originalNoteId: noteId,
+                        projectId: project.id,
+                        cleanedNoteId: cleanNoteId,
+                    })
+                }
+
+                const noteDoc = await this.options.database.doc(`noteItems/${project.id}/notes/${cleanNoteId}`).get()
                 if (noteDoc.exists) {
+                    const noteData = noteDoc.data()
                     return {
-                        note: { id: noteId, ...noteDoc.data() },
+                        note: { ...noteData, id: cleanNoteId }, // Ensure clean ID overrides any corrupted ID from document data
                         projectId: project.id,
                         projectName: project.name,
                     }
@@ -1188,7 +1219,8 @@ class SearchService {
         }
 
         try {
-            const searchResults = await this.searchAlgolia(ENTITY_TYPES.NOTES, query, {
+            const index = this.algoliaClient.initIndex(SEARCH_INDICES.NOTES)
+            const searchResults = await index.search(query, {
                 filters: filters.join(' AND '),
                 hitsPerPage: 20,
                 attributesToRetrieve: ['objectID', 'title', 'content', 'projectId', 'userId', 'lastEditionDate'],
@@ -1229,8 +1261,19 @@ class SearchService {
                     }
                 }
 
+                // Clean the note ID from Algolia objectID
+                let cleanId = hit.objectID
+                if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
+                    cleanId = hit.objectID.substring(0, hit.objectID.length - hit.projectId.length)
+                    console.log('SearchService: Cleaned note ID from Algolia search', {
+                        originalObjectID: hit.objectID,
+                        projectId: hit.projectId,
+                        cleanedId: cleanId,
+                    })
+                }
+
                 matches.push({
-                    note: { id: hit.objectID, ...hit },
+                    note: { ...hit, id: cleanId }, // Ensure clean ID overrides any corrupted ID from hit data
                     projectId: hit.projectId,
                     projectName: project.name,
                     matchScore,

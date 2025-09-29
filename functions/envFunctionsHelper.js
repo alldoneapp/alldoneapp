@@ -26,20 +26,13 @@ function hasRealValues(envObject) {
 }
 
 const getEnvFunctions = () => {
-    console.log('Loading environment functions...')
-
     const isEmulator = !!process.env.FUNCTIONS_EMULATOR
-    console.log('Environment detection:', {
-        FUNCTIONS_EMULATOR: isEmulator,
-        NODE_ENV: process.env.NODE_ENV,
-    })
 
     let envFunctions = {}
     let source = 'none'
 
     // In emulator mode, prioritize process.env (from .env file)
     if (isEmulator) {
-        console.log('🔧 EMULATOR MODE: Loading from process.env (.env file)')
         source = 'process.env (.env file)'
         envFunctions = {
             PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
@@ -58,7 +51,6 @@ const getEnvFunctions = () => {
         if (fs.existsSync(envJsonPath)) {
             try {
                 const envJson = JSON.parse(fs.readFileSync(envJsonPath, 'utf8'))
-                console.log('🌐 PRODUCTION/STAGING: Attempting to load from env_functions.json')
 
                 const jsonEnvFunctions = {
                     PERPLEXITY_API_KEY: envJson.PERPLEXITY_API_KEY || '',
@@ -80,9 +72,7 @@ const getEnvFunctions = () => {
                 if (hasRealValues(jsonEnvFunctions)) {
                     envFunctions = jsonEnvFunctions
                     source = 'env_functions.json (CI/CD)'
-                    console.log('✅ Using real values from env_functions.json')
                 } else {
-                    console.log('⚠️  env_functions.json contains only placeholders, falling back to process.env')
                     source = 'process.env (fallback from placeholders)'
                     envFunctions = {
                         PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
@@ -102,7 +92,6 @@ const getEnvFunctions = () => {
                 }
             } catch (error) {
                 console.error('Error reading env_functions.json:', error)
-                console.log('Falling back to process.env')
                 source = 'process.env (fallback from JSON error)'
                 envFunctions = {
                     PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
@@ -122,7 +111,6 @@ const getEnvFunctions = () => {
             }
         } else {
             // No JSON file, use process.env
-            console.log('📄 No env_functions.json found, using process.env')
             source = 'process.env (no JSON file)'
             envFunctions = {
                 PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
@@ -142,41 +130,7 @@ const getEnvFunctions = () => {
         }
     }
 
-    // Enhanced logging with source information
-    console.log(`📋 Environment loaded from: ${source}`)
-    console.log(
-        'Available environment variables:',
-        Object.keys(envFunctions).filter(key => envFunctions[key] && !isPlaceholderValue(envFunctions[key]))
-    )
-    console.log(
-        'PERPLEXITY_API_KEY available:',
-        !!(envFunctions.PERPLEXITY_API_KEY && !isPlaceholderValue(envFunctions.PERPLEXITY_API_KEY))
-    )
-    console.log(
-        'STRIPE_SECRET_KEY available:',
-        !!(envFunctions.STRIPE_SECRET_KEY && !isPlaceholderValue(envFunctions.STRIPE_SECRET_KEY))
-    )
-    console.log(
-        'OPENAI_API_KEY available:',
-        !!(envFunctions.OPEN_AI_KEY && !isPlaceholderValue(envFunctions.OPEN_AI_KEY))
-    )
-    console.log(
-        'TWILIO credentials available:',
-        !!(
-            envFunctions.TWILIO_ACCOUNT_SID &&
-            !isPlaceholderValue(envFunctions.TWILIO_ACCOUNT_SID) &&
-            envFunctions.TWILIO_AUTH_TOKEN &&
-            !isPlaceholderValue(envFunctions.TWILIO_AUTH_TOKEN)
-        )
-    )
-    console.log(
-        'ALGOLIA_APP_ID available:',
-        !!(envFunctions.ALGOLIA_APP_ID && !isPlaceholderValue(envFunctions.ALGOLIA_APP_ID))
-    )
-    console.log(
-        'ALGOLIA_ADMIN_API_KEY available:',
-        !!(envFunctions.ALGOLIA_ADMIN_API_KEY && !isPlaceholderValue(envFunctions.ALGOLIA_ADMIN_API_KEY))
-    )
+    // Enhanced logging removed to reduce console noise
 
     if (!envFunctions.PERPLEXITY_API_KEY || isPlaceholderValue(envFunctions.PERPLEXITY_API_KEY)) {
         console.warn('Warning: PERPLEXITY_API_KEY is not set or is a placeholder')
