@@ -722,9 +722,12 @@ class NoteService {
 
             // Handle storage-only updates (content changes)
             if (newContent !== undefined && this._contentToAdd) {
-                await this.addContentToStorage(projectId, noteId, this._contentToAdd)
+                await this.addContentToStorage(projectId, noteId, this._contentToAdd, feedUser)
                 // Clear the pending content
                 delete this._contentToAdd
+
+                // Content update handled entirely in addContentToStorage
+                console.log('NoteService: Content update completed with metadata and feed generation')
             }
 
             // Only update Firestore if there are metadata changes (title, etc.)
@@ -874,8 +877,9 @@ class NoteService {
      * @param {string} projectId - Project ID
      * @param {string} noteId - Note ID
      * @param {string} contentToAdd - Content to prepend (includes date stamp)
+     * @param {Object} feedUser - User object for feed generation
      */
-    async addContentToStorage(projectId, noteId, contentToAdd) {
+    async addContentToStorage(projectId, noteId, contentToAdd, feedUser = null) {
         try {
             // Import Firebase storage if available
             let storage = this.options.storage
@@ -943,6 +947,34 @@ class NoteService {
             console.log(
                 `NoteService: Added content to storage for note ${noteId}, final encoded size: ${encodedStateData.length} bytes`
             )
+
+            // Update preview in Firestore (like the normal app does in setNoteData)
+            const fullContent = ytext.toString()
+            const preview = fullContent.length > 150 ? fullContent.substring(0, 147) + '...' : fullContent
+
+            const db = this.options.database
+            if (db) {
+                try {
+                    await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
+                        preview: preview,
+                        lastEditionDate: Date.now(),
+                    })
+                    console.log(`NoteService: Updated preview in Firestore, length: ${preview.length}`)
+
+                    // Generate feed for note edit (like startEditNoteFeedsChain)
+                    if (this.options.enableFeeds && feedUser) {
+                        await this.createNoteFeed('updated', {
+                            note: { id: noteId, preview },
+                            projectId,
+                            feedUser,
+                            changes: ['content updated'],
+                        })
+                        console.log(`NoteService: Generated feed for note update`)
+                    }
+                } catch (error) {
+                    console.warn(`NoteService: Failed to update metadata:`, error.message)
+                }
+            }
         } catch (error) {
             console.error('NoteService: Failed to add content to storage:', error)
             // Don't throw - let the update succeed even if storage update fails
