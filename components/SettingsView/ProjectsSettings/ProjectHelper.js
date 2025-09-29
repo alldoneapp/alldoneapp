@@ -739,19 +739,6 @@ class ProjectHelper {
     }
 
     static sortProjects = (projects, userId) => {
-        try {
-            if (Array.isArray(projects)) {
-                const debugProjects = projects.map(project => ({
-                    id: project?.id,
-                    name: project?.name,
-                    sortIndex: project?.sortIndexByUser ? project.sortIndexByUser[userId] : undefined,
-                }))
-                console.log('Sidebar sort: sortIndexByUser in use', { userId, projects: debugProjects })
-            }
-        } catch (e) {
-            console.warn('Sidebar sort: failed to log sortIndexByUser', e)
-        }
-
         return orderBy(
             projects,
             [project => project.sortIndexByUser[userId], project => project.name.toLowerCase()],

@@ -787,6 +787,41 @@ class AlldoneSimpleMCPServer {
                             required: ['noteId', 'projectId'],
                         },
                     },
+                    {
+                        name: 'update_note',
+                        description:
+                            'Update an existing note by prepending new content with a date stamp (requires OAuth 2.0 Bearer token authentication)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                noteId: {
+                                    type: 'string',
+                                    description: 'Note ID to update (optional, for direct lookup)',
+                                },
+                                noteTitle: {
+                                    type: 'string',
+                                    description: 'Full or partial note title to search (optional)',
+                                },
+                                projectName: {
+                                    type: 'string',
+                                    description: 'Full or partial project name to search (optional)',
+                                },
+                                projectId: {
+                                    type: 'string',
+                                    description: 'Project ID to search within (optional)',
+                                },
+                                content: {
+                                    type: 'string',
+                                    description: 'New content to prepend to the note with date stamp (required)',
+                                },
+                                title: {
+                                    type: 'string',
+                                    description: 'Update the note title (optional)',
+                                },
+                            },
+                            required: ['content'],
+                        },
+                    },
                 ],
             }
         })
@@ -823,6 +858,9 @@ class AlldoneSimpleMCPServer {
                         break
                     case 'search':
                         result = await this.search(args, request)
+                        break
+                    case 'update_note':
+                        result = await this.updateNote(args, request)
                         break
                     case 'get_note':
                         result = await this.getNote(args, request)
@@ -2052,6 +2090,216 @@ class AlldoneSimpleMCPServer {
         } catch (error) {
             console.error('Error getting note:', error)
             throw new Error(`Failed to get note: ${error.message}`)
+        }
+    }
+
+    async updateNote(args, request) {
+        const { noteId, noteTitle, projectName, projectId: targetProjectId, content, title } = args
+
+        // Get authenticated user automatically from client session
+        const userId = await this.getAuthenticatedUserForClient(request)
+        const db = admin.firestore()
+
+        // Step 1: Note Discovery - find the note using enhanced search with confidence logic
+        const searchResult = await this.findTargetNoteForUpdate(args, userId, db)
+
+        // Handle different decision outcomes
+        if (searchResult.decision === 'no_matches') {
+            throw new Error(searchResult.error)
+        }
+
+        if (searchResult.decision === 'present_options') {
+            return this.handleMultipleNoteMatchesEnhanced(searchResult)
+        }
+
+        // Step 2: Note Update - proceed with auto-selected or single match
+        const {
+            note: currentNote,
+            projectId: currentProjectId,
+            projectName: currentProjectName,
+        } = searchResult.selectedMatch
+
+        const updateResult = await this.performNoteUpdate(
+            currentNote,
+            currentProjectId,
+            currentProjectName,
+            {
+                content,
+                title,
+            },
+            userId,
+            db
+        )
+
+        // Add search reasoning to the update result for transparency
+        if (searchResult.decision === 'auto_select') {
+            updateResult.searchInfo = {
+                decision: searchResult.decision,
+                confidence: searchResult.confidence,
+                reasoning: searchResult.reasoning,
+                alternativeMatches: searchResult.alternativeMatches?.length || 0,
+            }
+            updateResult.message += ` (${searchResult.reasoning})`
+        }
+
+        return updateResult
+    }
+
+    /**
+     * Find target note using enhanced search with confidence-based auto-selection
+     */
+    async findTargetNoteForUpdate(searchCriteria, userId, db) {
+        // Initialize SearchService if not already done
+        if (!this.searchService) {
+            const { SearchService } = require('../shared/SearchService')
+            this.searchService = new SearchService({
+                database: db,
+                moment: moment,
+                enableAlgolia: true,
+                enableNoteContent: true,
+                enableDateParsing: true,
+                isCloudFunction: true,
+            })
+            await this.searchService.initialize()
+        }
+
+        return await this.searchService.findNoteForUpdate(userId, searchCriteria, {
+            autoSelectOnHighConfidence: true,
+            highConfidenceThreshold: 800,
+            dominanceMargin: 300,
+            maxOptionsToShow: 5,
+        })
+    }
+
+    /**
+     * Enhanced handler for multiple note matches with confidence information
+     */
+    handleMultipleNoteMatchesEnhanced(searchResult) {
+        const { allMatches, reasoning, confidence, totalMatches } = searchResult
+
+        let message = `${reasoning}\n\nFound ${totalMatches || allMatches.length} notes:\n\n`
+
+        allMatches.slice(0, 5).forEach((match, index) => {
+            message += `${index + 1}. "${match.note.title}"`
+
+            message += ` (Project: ${match.projectName})`
+
+            // Show confidence indicators
+            const matchConfidence = this.searchService.assessConfidence(match.matchScore)
+            message += ` [${matchConfidence} confidence: ${match.matchScore}]\n`
+
+            if (match.note.content) {
+                const preview = match.note.content.substring(0, 100).replace(/\n/g, ' ')
+                message += `   Preview: ${preview}${match.note.content.length > 100 ? '...' : ''}\n`
+            }
+            message += `   Note ID: ${match.note.id}\n\n`
+        })
+
+        if (allMatches.length > 5) {
+            message += `... and ${allMatches.length - 5} more matches.\n\n`
+        }
+
+        message +=
+            'Please be more specific in your search criteria, or use the exact note ID to update a specific note.'
+
+        return {
+            success: false,
+            message,
+            confidence,
+            reasoning,
+            matches: allMatches.map(m => ({
+                noteId: m.note.id,
+                noteTitle: m.note.title,
+                projectId: m.projectId,
+                projectName: m.projectName,
+                matchScore: m.matchScore,
+                matchType: m.matchType,
+                confidence: this.searchService.assessConfidence(m.matchScore),
+            })),
+            totalMatches: totalMatches || allMatches.length,
+        }
+    }
+
+    /**
+     * Perform the actual note update
+     */
+    async performNoteUpdate(currentNote, currentProjectId, currentProjectName, updateFields, userId, db) {
+        const { content, title } = updateFields
+
+        // Initialize NoteService for consistent update logic and feed generation
+        if (!this.noteService) {
+            const { NoteService } = require('../shared/NoteService')
+            this.noteService = new NoteService({
+                database: db,
+                moment: moment,
+                idGenerator: () => db.collection('_').doc().id,
+                enableFeeds: true,
+                enableValidation: false, // Skip validation since we already validated
+                isCloudFunction: true,
+            })
+            await this.noteService.initialize()
+        }
+
+        // Get user data for feed creation
+        let feedUser
+        try {
+            const userDoc = await db.collection('users').doc(userId).get()
+            if (userDoc.exists) {
+                const userData = userDoc.data()
+                feedUser = {
+                    uid: userId, // generateFeedModel expects 'uid' not 'id'
+                    id: userId,
+                    creatorId: userId,
+                    name: userData.name || userData.displayName || 'User',
+                    email: userData.email || '',
+                }
+            } else {
+                feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
+            }
+        } catch (error) {
+            console.warn('Could not get user data for feed, using defaults')
+            feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
+        }
+
+        try {
+            console.log('MCP: Using NoteService for note update with feed generation')
+            // Use NoteService for update with proper feed generation
+            const result = await this.noteService.updateAndPersistNote({
+                noteId: currentNote.id,
+                projectId: currentProjectId,
+                currentNote: currentNote,
+                content: content,
+                title: title,
+                feedUser: feedUser,
+            })
+
+            console.log('Note updated via NoteService:', {
+                noteId: currentNote.id,
+                projectId: currentProjectId,
+                changes: result.changes,
+                feedGenerated: !!result.feedData,
+                persisted: result.persisted,
+            })
+
+            // Build success message showing what changed
+            const changes = result.changes || []
+            let message = `Note "${currentNote.title || 'Untitled'}" updated successfully`
+            if (changes.length > 0) {
+                message += ` (${changes.join(', ')})`
+            }
+            message += ` in project "${currentProjectName}"`
+
+            return {
+                success: true,
+                noteId: currentNote.id,
+                message,
+                note: result.updatedNote || { id: currentNote.id, ...currentNote },
+                project: { id: currentProjectId, name: currentProjectName },
+                changes: changes,
+            }
+        } catch (error) {
+            console.error('NoteService update failed:', error)
+            throw new Error(`Failed to update note: ${error.message}`)
         }
     }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
@@ -22,12 +22,35 @@ export default function AllProjectData() {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [showPopup, setShowPopup] = useState(false)
 
+    const isUnmountedRef = useRef(false)
+
+    useEffect(() => {
+        isUnmountedRef.current = false
+        return () => {
+            isUnmountedRef.current = true
+        }
+    }, [])
+
+    const safeSetShowPopup = value => {
+        if (isUnmountedRef.current) {
+            // Debug to validate unmounted state updates source
+            if (console && console.debug) {
+                console.debug('[AllProjectData] Ignored setShowPopup on unmounted component', { value })
+            }
+            return
+        }
+        if (console && console.debug) {
+            console.debug('[AllProjectData] setShowPopup', { value })
+        }
+        setShowPopup(value)
+    }
+
     const closePopover = () => {
-        setShowPopup(false)
+        safeSetShowPopup(false)
     }
 
     const openPopover = () => {
-        setShowPopup(true)
+        safeSetShowPopup(true)
     }
 
     const onProjectClick = projectId => {
@@ -47,26 +70,24 @@ export default function AllProjectData() {
         dismissAllPopups()
     }
 
-    return (
+    return showPopup ? (
         <Popover
             content={
-                showPopup && (
-                    <SelectProjectModalInSearch
-                        projectId={ALL_PROJECTS_OPTION}
-                        closePopover={closePopover}
-                        projects={loggedUserProjects}
-                        headerText={translate('Switch project')}
-                        subheaderText={translate('Select the project to switch to')}
-                        setSelectedProjectId={onProjectClick}
-                        positionInPlace={true}
-                        showGuideTab={true}
-                        showTemplateTab={loggedUser.realTemplateProjectIds.length > 0}
-                        showArchivedTab={true}
-                    />
-                )
+                <SelectProjectModalInSearch
+                    projectId={ALL_PROJECTS_OPTION}
+                    closePopover={closePopover}
+                    projects={loggedUserProjects}
+                    headerText={translate('Switch project')}
+                    subheaderText={translate('Select the project to switch to')}
+                    setSelectedProjectId={onProjectClick}
+                    positionInPlace={true}
+                    showGuideTab={true}
+                    showTemplateTab={loggedUser.realTemplateProjectIds.length > 0}
+                    showArchivedTab={true}
+                />
             }
             onClickOutside={closePopover}
-            isOpen={showPopup}
+            isOpen={true}
             position={mobile ? ['bottom'] : ['bottom', 'top', 'right', 'left']}
             align={'start'}
             padding={4}
@@ -92,5 +113,7 @@ export default function AllProjectData() {
         >
             <AllProjectsButton onPress={openPopover} />
         </Popover>
+    ) : (
+        <AllProjectsButton onPress={openPopover} />
     )
 }

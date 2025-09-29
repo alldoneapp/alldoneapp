@@ -1772,6 +1772,253 @@ async function storeChunks(
                             toolAlreadyExecuted = true
                         }
                     }
+
+                    // Check for update_note tool
+                    const updateNoteMatch = commentText.match(/TOOL:\s*update_note\s*(\{[\s\S]*?\})/)
+                    if (updateNoteMatch && !toolAlreadyExecuted) {
+                        console.log('Detected TOOL:update_note invocation')
+                        // Fetch assistant to check allowed tools
+                        const assistant = await getAssistantForChat(projectId, assistantId)
+                        const allowed = Array.isArray(assistant.allowedTools)
+                            ? assistant.allowedTools.includes('update_note')
+                            : false
+                        if (!allowed) {
+                            console.log('Assistant not allowed to use update_note tool')
+                            const replaced = commentText.replace(updateNoteMatch[0], 'Tool not permitted: update_note')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Parse JSON args
+                        const argsJson = updateNoteMatch[1]
+                        let args = {}
+                        try {
+                            args = JSON.parse(argsJson)
+                        } catch (e) {
+                            console.error('Failed to parse update_note args JSON', e)
+                            const replaced = commentText.replace(updateNoteMatch[0], 'Failed to parse tool arguments')
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Validate that at least one search criterion and content are provided
+                        const { noteId, noteTitle, projectName, projectId: searchProjectId, content } = args
+                        if (!noteId && !noteTitle && !projectName && !searchProjectId) {
+                            const replaced = commentText.replace(
+                                updateNoteMatch[0],
+                                'At least one search criterion is required (noteId, noteTitle, projectName, or projectId)'
+                            )
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        if (!content) {
+                            const replaced = commentText.replace(
+                                updateNoteMatch[0],
+                                'Content is required for note updates'
+                            )
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        // Determine creatorId (the user interacting with the assistant)
+                        const creatorId =
+                            requestUserId ||
+                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
+
+                        if (!creatorId) {
+                            console.error('No creator ID found for update_note tool')
+                            const replaced = commentText.replace(
+                                updateNoteMatch[0],
+                                'Unable to identify user for note update'
+                            )
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                            continue
+                        }
+
+                        try {
+                            const db = admin.firestore()
+
+                            // Initialize SearchService for note search
+                            const { SearchService } = require('../shared/SearchService')
+                            const searchService = new SearchService({
+                                database: db,
+                                moment: moment,
+                                enableAlgolia: true,
+                                enableNoteContent: true,
+                                enableDateParsing: true,
+                                isCloudFunction: true,
+                            })
+                            await searchService.initialize()
+
+                            // Find the note to update
+                            const searchResult = await searchService.findNoteForUpdate(creatorId, args, {
+                                autoSelectOnHighConfidence: true,
+                                highConfidenceThreshold: 800,
+                                dominanceMargin: 300,
+                                maxOptionsToShow: 5,
+                            })
+
+                            if (searchResult.decision === 'no_matches') {
+                                const replaced = commentText.replace(
+                                    updateNoteMatch[0],
+                                    `No notes found: ${searchResult.error}`
+                                )
+                                commentText = replaced
+                                answerContent = replaced
+                                await commentRef.update({ commentText })
+                                toolAlreadyExecuted = true
+                                continue
+                            }
+
+                            if (searchResult.decision === 'present_options') {
+                                let optionsMessage = `Found ${searchResult.totalMatches} notes matching your criteria:\n\n`
+                                searchResult.allMatches.slice(0, 3).forEach((match, index) => {
+                                    optionsMessage += `${index + 1}. "${match.note.title}" (Project: ${
+                                        match.projectName
+                                    })\n`
+                                })
+                                optionsMessage += '\nPlease be more specific with your search criteria.'
+
+                                const replaced = commentText.replace(updateNoteMatch[0], optionsMessage)
+                                commentText = replaced
+                                answerContent = replaced
+                                await commentRef.update({ commentText })
+                                toolAlreadyExecuted = true
+                                continue
+                            }
+
+                            // Single match or auto-selected match
+                            const {
+                                note: currentNote,
+                                projectId: currentProjectId,
+                                projectName: currentProjectName,
+                            } = searchResult.selectedMatch
+
+                            // Initialize NoteService for consistent update logic and feed generation
+                            const { NoteService } = require('../shared/NoteService')
+                            const noteService = new NoteService({
+                                database: db,
+                                moment: moment,
+                                idGenerator: () => db.collection('_').doc().id,
+                                enableFeeds: true,
+                                enableValidation: false, // Skip validation since we already validated
+                                isCloudFunction: true,
+                            })
+                            await noteService.initialize()
+
+                            // Get user data for feed creation
+                            let feedUser
+                            try {
+                                const userDoc = await db.collection('users').doc(creatorId).get()
+                                if (userDoc.exists) {
+                                    const userData = userDoc.data()
+                                    feedUser = {
+                                        uid: creatorId,
+                                        id: creatorId,
+                                        creatorId: creatorId,
+                                        name: userData.name || userData.displayName || 'User',
+                                        email: userData.email || '',
+                                    }
+                                } else {
+                                    feedUser = {
+                                        uid: creatorId,
+                                        id: creatorId,
+                                        creatorId: creatorId,
+                                        name: 'User',
+                                        email: '',
+                                    }
+                                }
+                            } catch (error) {
+                                console.warn('Could not get user data for feed, using defaults')
+                                feedUser = {
+                                    uid: creatorId,
+                                    id: creatorId,
+                                    creatorId: creatorId,
+                                    name: 'User',
+                                    email: '',
+                                }
+                            }
+
+                            let confirmationMessage = ''
+
+                            // Use NoteService for update with proper feed generation
+                            const result = await noteService.updateAndPersistNote({
+                                noteId: currentNote.id,
+                                projectId: currentProjectId,
+                                currentNote: currentNote,
+                                content: content,
+                                title: args.title,
+                                feedUser: feedUser,
+                            })
+
+                            console.log('Updated note via NoteService tool call', {
+                                projectId: currentProjectId,
+                                noteId: currentNote.id,
+                                noteTitle: currentNote.title,
+                                changes: result.changes,
+                                feedGenerated: !!result.feedData,
+                                persisted: result.persisted,
+                                searchCriteria: { noteId, noteTitle, projectName, projectId: searchProjectId },
+                            })
+
+                            // Build confirmation message showing what was found and changed
+                            const changes = result.changes || []
+                            confirmationMessage = `Found and updated note: "${currentNote.title}" in project "${currentProjectName}"`
+                            if (changes.length > 0) {
+                                confirmationMessage += ` (${changes.join(', ')})`
+                            }
+
+                            // Process tool result through LLM
+                            const processedResponse = await processToolResultWithLLM(
+                                {
+                                    success: true,
+                                    updatedNote: {
+                                        title: currentNote.title,
+                                        id: currentNote.id,
+                                        projectName: currentProjectName,
+                                    },
+                                    changes: result.changes || [],
+                                    message: confirmationMessage,
+                                },
+                                userContext?.message || '',
+                                'update_note',
+                                args,
+                                projectId,
+                                assistantId
+                            )
+
+                            // Replace tool line with LLM-processed response
+                            const replaced = commentText.replace(updateNoteMatch[0], processedResponse.trim())
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        } catch (error) {
+                            console.error('Error updating note via tool call:', error)
+                            const errorMsg = `Error updating note: ${error.message}`
+                            const replaced = commentText.replace(updateNoteMatch[0], errorMsg)
+                            commentText = replaced
+                            answerContent = replaced
+                            await commentRef.update({ commentText })
+                            toolAlreadyExecuted = true
+                        }
+                    }
                 } catch (err) {
                     console.error('Error while processing tool call', err)
                 }
@@ -2053,6 +2300,7 @@ Examples:
 - TOOL:create_task {"name":"Task title","description":"Optional"}
 - TOOL:create_note {"title":"Note title","content":"# Heading\\n\\nNote content"}
 - TOOL:update_task {"taskName":"standup","completed":true}
+- TOOL:update_note {"noteTitle":"Daily Log","content":"## Meeting Notes\\n\\nDiscussed project updates"}
 - TOOL:get_tasks {"status":"open","date":"today"}
 - TOOL:get_tasks {"allProjects":true,"status":"open"}
 - TOOL:get_focus_task {}

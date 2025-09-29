@@ -7,14 +7,6 @@ import Spinner from './Spinner'
 export default function LoadingData() {
     const showLoadingDataSpinner = useSelector(state => state.showLoadingDataSpinner)
     const isLoadingData = useSelector(state => state.isLoadingData)
-
-    useEffect(() => {
-        // Diagnostic logs for spinner behavior
-        console.debug('LoadingData: spinner state changed', {
-            showLoadingDataSpinner,
-            isLoadingData,
-        })
-    }, [showLoadingDataSpinner, isLoadingData])
     return (
         showLoadingDataSpinner && (
             <View style={localStyles.container}>

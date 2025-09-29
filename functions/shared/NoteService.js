@@ -636,6 +636,149 @@ class NoteService {
     }
 
     /**
+     * Update and persist an existing note with content prepending and date stamp
+     * @param {Object} params - Update parameters
+     * @param {string} params.noteId - Note ID to update
+     * @param {string} params.projectId - Project ID containing the note
+     * @param {Object} params.currentNote - Current note data
+     * @param {string} [params.content] - New content to prepend with date stamp
+     * @param {string} [params.title] - New title for the note
+     * @param {Object} [params.feedUser] - User object for feed generation
+     * @returns {Object} Update result
+     */
+    async updateAndPersistNote(params) {
+        await this.ensureInitialized()
+
+        const { noteId, projectId, currentNote, content: newContent, title: newTitle, feedUser } = params
+
+        if (!noteId || typeof noteId !== 'string' || noteId.trim() === '') {
+            throw new Error('Note ID is required for updating')
+        }
+
+        if (!projectId || typeof projectId !== 'string' || projectId.trim() === '') {
+            throw new Error('Project ID is required for updating')
+        }
+
+        if (!currentNote || typeof currentNote !== 'object') {
+            throw new Error('Current note data is required for updating')
+        }
+
+        if (!newContent && !newTitle) {
+            throw new Error('At least content or title must be provided for update')
+        }
+
+        const db = this.options.database
+        if (!db) {
+            throw new Error('Database interface is required for note updates')
+        }
+
+        // Import moment for date formatting
+        const moment = this.options.moment || (typeof require !== 'undefined' ? require('moment') : null)
+        if (!moment) {
+            throw new Error('Moment.js is required for date stamp generation')
+        }
+
+        try {
+            const updateData = {}
+            const changes = []
+
+            // Handle title update
+            if (newTitle !== undefined && newTitle !== currentNote.title) {
+                updateData.title = newTitle
+                updateData.extendedTitle = newTitle // Alldone requires both title and extendedTitle
+                changes.push(`title to "${newTitle}"`)
+            }
+
+            // Handle content update with date stamp prepending
+            if (newContent !== undefined) {
+                // Get current content or use empty string
+                let currentContent = currentNote.content || ''
+
+                // Create date stamp (matching the UI implementation)
+                const dateFormat = 'MMM Do, YYYY' // Default format if getDateFormat not available
+                let dateStamp
+                try {
+                    // Try to use the same date format as the UI
+                    const getDateFormat =
+                        typeof require !== 'undefined'
+                            ? require('../../components/UIComponents/FloatModals/DateFormatPickerModal').getDateFormat
+                            : null
+                    dateStamp = getDateFormat
+                        ? moment().format(`${getDateFormat(false)} `)
+                        : moment().format(`${dateFormat} `)
+                } catch (error) {
+                    // Fallback to default format
+                    dateStamp = moment().format(`${dateFormat} `)
+                }
+
+                // Prepend new content with date stamp and newline
+                const prependedContent = `${dateStamp}${newContent}\n\n${currentContent}`
+                updateData.content = prependedContent
+
+                // Update last edition date
+                updateData.lastEditionDate = Date.now()
+
+                changes.push('content prepended with date stamp')
+            }
+
+            if (Object.keys(updateData).length === 0) {
+                return {
+                    success: true,
+                    message: 'No changes to apply',
+                    noteId,
+                    updatedNote: currentNote,
+                    changes: [],
+                }
+            }
+
+            // Update the note in Firestore
+            const noteDocRef = db.doc(`items/${projectId}/notes/${noteId}`)
+            await noteDocRef.update(updateData)
+
+            // Get updated note data
+            const updatedNoteDoc = await noteDocRef.get()
+            const updatedNote = updatedNoteDoc.exists
+                ? { id: noteId, ...updatedNoteDoc.data() }
+                : { ...currentNote, ...updateData }
+
+            // Generate feed if enabled
+            let feedData = null
+            if (this.options.enableFeeds && feedUser) {
+                try {
+                    feedData = await this.createNoteFeed('updated', {
+                        note: updatedNote,
+                        projectId,
+                        feedUser,
+                        changes,
+                    })
+                } catch (feedError) {
+                    console.warn('Failed to generate note update feed:', feedError.message)
+                }
+            }
+
+            console.log('Note updated successfully:', {
+                noteId,
+                projectId,
+                changes,
+                feedGenerated: !!feedData,
+            })
+
+            return {
+                success: true,
+                noteId,
+                message: `Note "${currentNote.title || 'Untitled'}" updated successfully`,
+                updatedNote,
+                changes,
+                feedData,
+                persisted: true,
+            }
+        } catch (error) {
+            console.error('Error updating note:', error)
+            throw new Error(`Failed to update note: ${error.message}`)
+        }
+    }
+
+    /**
      * Update service configuration
      * @param {Object} newOptions - New configuration options
      */

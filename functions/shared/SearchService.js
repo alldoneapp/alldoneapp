@@ -1013,6 +1013,251 @@ class SearchService {
     }
 
     /**
+     * Find note for update using enhanced search with confidence-based auto-selection
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchCriteria - Search parameters
+     * @param {Object} options - Search options (autoSelectOnHighConfidence, thresholds, etc.)
+     * @returns {Object} Search results with decision and selected match or options
+     */
+    async findNoteForUpdate(userId, searchCriteria, options = {}) {
+        await this.ensureInitialized()
+
+        const {
+            autoSelectOnHighConfidence = true,
+            highConfidenceThreshold = 800,
+            dominanceMargin = 300,
+            maxOptionsToShow = 5,
+        } = options
+
+        // Find notes using search criteria
+        const searchResult = await this.findNotesBySearchCriteria(userId, searchCriteria)
+        const matches = searchResult.matches || []
+
+        if (matches.length === 0) {
+            return {
+                decision: 'no_matches',
+                error: searchResult.message || 'No notes found matching the search criteria',
+                searchCriteria,
+            }
+        }
+
+        if (matches.length === 1) {
+            return {
+                decision: 'single_match',
+                selectedMatch: matches[0],
+                searchCriteria,
+            }
+        }
+
+        // Multiple matches - assess confidence for auto-selection
+        const topMatch = matches[0]
+        const secondMatch = matches[1]
+        const confidence = topMatch.matchScore
+        const dominance = topMatch.matchScore - secondMatch.matchScore
+
+        if (autoSelectOnHighConfidence && confidence >= highConfidenceThreshold && dominance >= dominanceMargin) {
+            return {
+                decision: 'auto_select',
+                selectedMatch: topMatch,
+                confidence,
+                reasoning: `Auto-selected "${topMatch.note.title}" with high confidence (${confidence}) over ${
+                    matches.length - 1
+                } alternatives`,
+                alternativeMatches: matches.slice(1),
+                searchCriteria,
+            }
+        }
+
+        return {
+            decision: 'present_options',
+            allMatches: matches.slice(0, maxOptionsToShow),
+            totalMatches: matches.length,
+            confidence,
+            reasoning: `Found ${matches.length} notes, but confidence (${confidence}) insufficient for auto-selection`,
+            searchCriteria,
+        }
+    }
+
+    /**
+     * Find notes using flexible search criteria
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchCriteria - Search parameters
+     * @returns {Object} Search results with matches array
+     */
+    async findNotesBySearchCriteria(userId, searchCriteria) {
+        await this.ensureInitialized()
+
+        const { noteId, noteTitle, projectName, projectId } = searchCriteria
+
+        // Validate that at least one search criterion is provided
+        if (!noteId && !noteTitle && !projectName && !projectId) {
+            throw new Error('At least one search criterion is required (noteId, noteTitle, projectName, or projectId)')
+        }
+
+        // Get user's accessible projects
+        const userProjects = await this.getUserProjects(userId)
+        if (userProjects.length === 0) {
+            return {
+                matches: [],
+                searchCriteria,
+                message: 'No accessible projects found for user',
+            }
+        }
+
+        let matches = []
+
+        // If noteId is provided, try direct lookup first
+        if (noteId) {
+            const directMatch = await this.findNoteById(noteId, userProjects)
+            if (directMatch) {
+                matches.push({
+                    ...directMatch,
+                    matchScore: 1000, // Highest priority for direct ID match
+                    matchType: 'direct_id',
+                })
+            }
+        }
+
+        // Search by title and project if other criteria provided
+        if ((noteTitle || projectName || projectId) && matches.length === 0) {
+            const searchMatches = await this.searchNotesByContent(userId, searchCriteria, userProjects)
+            matches.push(...searchMatches)
+        }
+
+        // Sort by match score (highest first)
+        matches.sort((a, b) => b.matchScore - a.matchScore)
+
+        return {
+            matches,
+            searchCriteria,
+            message: matches.length === 0 ? 'No notes found matching the search criteria' : undefined,
+        }
+    }
+
+    /**
+     * Find note by direct ID lookup
+     * @param {string} noteId - The note ID
+     * @param {Array} userProjects - User's accessible projects
+     * @returns {Object|null} Note match or null
+     */
+    async findNoteById(noteId, userProjects) {
+        for (const project of userProjects) {
+            try {
+                const noteDoc = await this.options.database.doc(`items/${project.id}/notes/${noteId}`).get()
+                if (noteDoc.exists) {
+                    return {
+                        note: { id: noteId, ...noteDoc.data() },
+                        projectId: project.id,
+                        projectName: project.name,
+                    }
+                }
+            } catch (error) {
+                console.warn(`Error checking note ${noteId} in project ${project.id}:`, error.message)
+            }
+        }
+        return null
+    }
+
+    /**
+     * Search notes by content using Algolia
+     * @param {string} userId - The authenticated user ID
+     * @param {Object} searchCriteria - Search parameters
+     * @param {Array} userProjects - User's accessible projects
+     * @returns {Array} Array of note matches with scores
+     */
+    async searchNotesByContent(userId, searchCriteria, userProjects) {
+        const { noteTitle, projectName, projectId } = searchCriteria
+
+        // Build search query
+        let query = noteTitle || ''
+
+        // Add project filter if specified
+        let filters = [`(isPrivate:false OR isPublicFor:${userId})`]
+
+        if (projectId) {
+            filters.push(`projectId:${projectId}`)
+        } else if (projectName) {
+            // Search for projects matching the name first
+            const matchingProjectIds = userProjects
+                .filter(p => p.name.toLowerCase().includes(projectName.toLowerCase()))
+                .map(p => p.id)
+
+            if (matchingProjectIds.length > 0) {
+                filters.push(`(${matchingProjectIds.map(id => `projectId:${id}`).join(' OR ')})`)
+            }
+        }
+
+        try {
+            const searchResults = await this.searchAlgolia(ENTITY_TYPES.NOTES, query, {
+                filters: filters.join(' AND '),
+                hitsPerPage: 20,
+                attributesToRetrieve: ['objectID', 'title', 'content', 'projectId', 'userId', 'lastEditionDate'],
+            })
+
+            const matches = []
+            const projectsMap = new Map(userProjects.map(p => [p.id, p]))
+
+            for (const hit of searchResults.hits) {
+                const project = projectsMap.get(hit.projectId)
+                if (!project) continue
+
+                let matchScore = 100 // Base score
+
+                // Score based on title match quality
+                if (noteTitle && hit.title) {
+                    const titleLower = hit.title.toLowerCase()
+                    const searchTitleLower = noteTitle.toLowerCase()
+
+                    if (titleLower === searchTitleLower) {
+                        matchScore += 500 // Exact title match
+                    } else if (titleLower.includes(searchTitleLower)) {
+                        matchScore += 300 // Partial title match
+                    } else if (searchTitleLower.includes(titleLower)) {
+                        matchScore += 200 // Title is substring of search
+                    }
+                }
+
+                // Score based on project match
+                if (projectName && project.name) {
+                    const projectLower = project.name.toLowerCase()
+                    const searchProjectLower = projectName.toLowerCase()
+
+                    if (projectLower === searchProjectLower) {
+                        matchScore += 200 // Exact project match
+                    } else if (projectLower.includes(searchProjectLower)) {
+                        matchScore += 100 // Partial project match
+                    }
+                }
+
+                matches.push({
+                    note: { id: hit.objectID, ...hit },
+                    projectId: hit.projectId,
+                    projectName: project.name,
+                    matchScore,
+                    matchType: 'content_search',
+                })
+            }
+
+            return matches
+        } catch (error) {
+            console.warn('Algolia search failed, falling back to Firestore:', error.message)
+            return []
+        }
+    }
+
+    /**
+     * Assess confidence level from match score
+     * @param {number} score - Match score
+     * @returns {string} Confidence level
+     */
+    assessConfidence(score) {
+        if (score >= 800) return 'high'
+        if (score >= 500) return 'medium'
+        if (score >= 200) return 'low'
+        return 'very-low'
+    }
+
+    /**
      * Health check for the service
      * @returns {Object} Service status
      */

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 
 import TaskCommentsTag from './TaskCommentsTag'
@@ -37,10 +37,31 @@ export default function TaskCommentsWrapper({
     const assistantEnabled = useSelector(state => state.assistantEnabled)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
+    const isUnmountedRef = useRef(false)
     const dispatch = useDispatch()
 
+    useEffect(() => {
+        isUnmountedRef.current = false
+        return () => {
+            isUnmountedRef.current = true
+        }
+    }, [])
+
+    const safeSetShowModal = value => {
+        if (isUnmountedRef.current) {
+            if (console && console.debug) {
+                console.debug('[TaskCommentsWrapper] Ignored setShowModal on unmounted component', { value })
+            }
+            return
+        }
+        if (console && console.debug) {
+            console.debug('[TaskCommentsWrapper] setShowModal', { value })
+        }
+        setShowModal(value)
+    }
+
     const openModal = () => {
-        setShowModal(true)
+        safeSetShowModal(true)
         dispatch(showFloatPopup())
         if (unsubscribeClickObserver) {
             unsubscribeClickObserver()
@@ -56,7 +77,7 @@ export default function TaskCommentsWrapper({
             !openModals[RUN_OUT_OF_GOLD_MODAL_ID] &&
             !openModals[BOT_WARNING_MODAL_ID]
         ) {
-            setShowModal(false)
+            safeSetShowModal(false)
             setTimeout(() => {
                 dispatch(hideFloatPopup())
             })
@@ -80,7 +101,7 @@ export default function TaskCommentsWrapper({
         }
     }
 
-    return (
+    return showModal && !isUnmountedRef.current ? (
         <Popover
             content={
                 <RichCommentModal
@@ -96,7 +117,7 @@ export default function TaskCommentsWrapper({
                 />
             }
             onClickOutside={closeModal}
-            isOpen={showModal}
+            isOpen={true}
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
             align={'end'}
@@ -105,7 +126,7 @@ export default function TaskCommentsWrapper({
         >
             <TaskCommentsTag
                 commentsData={commentsData}
-                isOpen={showModal}
+                isOpen={true}
                 onOpen={openModal}
                 onClose={closeModal}
                 accessibilityLabel={'social-text-block'}
@@ -116,5 +137,18 @@ export default function TaskCommentsWrapper({
                 outline={outline}
             />
         </Popover>
+    ) : (
+        <TaskCommentsTag
+            commentsData={commentsData}
+            isOpen={false}
+            onOpen={openModal}
+            onClose={closeModal}
+            accessibilityLabel={'social-text-block'}
+            disabled={disabled}
+            inTextInput={inTextInput}
+            inDetailView={inDetailView}
+            style={tagStyle}
+            outline={outline}
+        />
     )
 }

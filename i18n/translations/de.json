@@ -391,6 +391,8 @@
     "Create new task": "Neue Aufgabe erstellen",
     "Get tasks": "Aufgaben abrufen",
     "Get focus task": "Fokus-Aufgabe abrufen",
+    "Update task": "Aufgabe aktualisieren",
+    "Update note": "Notiz aktualisieren",
     "Allowed tools": "Zugelassene Tools",
     "Get user projects": "Benutzerprojekte abrufen",
     "All tools enabled": "Alle Tools aktiviert",
