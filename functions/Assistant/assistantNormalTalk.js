@@ -158,7 +158,8 @@ async function askToOpenAIBot(
         })
 
         try {
-            const stream = await interactWithChatStream(formattedChatPrompt, model, temperature)
+            const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+            const stream = await interactWithChatStream(formattedChatPrompt, model, temperature, allowedTools)
 
             console.log('Got stream from interactWithChatStream')
 
@@ -174,7 +175,11 @@ async function askToOpenAIBot(
                 followerIds,
                 displayName,
                 userId,
-                userContextForTools
+                userContextForTools,
+                formattedChatPrompt, // conversationHistory
+                model, // modelKey
+                temperature, // temperatureKey
+                allowedTools
             )
 
             console.log('Generated AI comment:', {

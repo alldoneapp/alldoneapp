@@ -100,7 +100,8 @@ async function generatePreConfigTaskResult(
         const formattedChatPrompt = await chatPrompt.formatMessages()
         console.log('Prepared chat prompt with model and temperature:', { model, temperature })
 
-        const stream = await interactWithChatStream(formattedChatPrompt, model, temperature)
+        const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : []
+        const stream = await interactWithChatStream(formattedChatPrompt, model, temperature, allowedTools)
         console.log('KW Special Calling storeBotAnswerStream with parameters:', {
             projectId,
             objectType: 'tasks',
@@ -127,7 +128,11 @@ async function generatePreConfigTaskResult(
             [userId], // Added logged in user as followerIds as an array
             displayName,
             userId, // requestUserId
-            null // userContext - not available in this flow
+            null, // userContext - not available in this flow
+            formattedChatPrompt, // conversationHistory
+            model, // modelKey
+            temperature, // temperatureKey
+            allowedTools
         )
 
         if (aiCommentText) {

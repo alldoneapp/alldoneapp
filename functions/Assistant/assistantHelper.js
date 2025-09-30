@@ -60,6 +60,16 @@ const COMPLETION_MAX_TOKENS = 1000
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
 
+/**
+ * Check if a model supports native OpenAI tool/function calling
+ * @param {string} modelKey - The model key (e.g., MODEL_GPT4O)
+ * @returns {boolean} True if model supports native tool calling
+ */
+const modelSupportsNativeTools = modelKey => {
+    // Only GPT models support native tool calling
+    return modelKey === MODEL_GPT3_5 || modelKey === MODEL_GPT4 || modelKey === MODEL_GPT4O || modelKey === MODEL_GPT5
+}
+
 const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 100
     if (modelKey === MODEL_GPT4) return 10
@@ -241,9 +251,10 @@ const calculateGoldToReduce = (userGold, totalTokens, model) => {
     return goldToReduce
 }
 
-async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey) {
+async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey, allowedTools = []) {
     console.log('Starting interactWithChatStream...')
     console.log('Model Key:', modelKey)
+    console.log('Allowed Tools:', allowedTools)
     console.log('Formatted Prompt structure:', JSON.stringify(formattedPrompt, null, 2))
 
     const model = getModel(modelKey)
@@ -295,13 +306,28 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey)
             throw error
         }
     } else {
-        // Existing OpenAI implementation
-        const chat = new ChatOpenAI({
+        // OpenAI implementation with native tool calling support
+        const chatConfig = {
             openAIApiKey: OPEN_AI_KEY,
             model_name: model,
             temperature: temperature,
             maxTokens: COMPLETION_MAX_TOKENS,
-        })
+        }
+
+        // Add tool schemas if model supports native tools and tools are allowed
+        if (modelSupportsNativeTools(modelKey) && Array.isArray(allowedTools) && allowedTools.length > 0) {
+            const { getToolSchemas } = require('./toolSchemas')
+            const toolSchemas = getToolSchemas(allowedTools)
+            if (toolSchemas.length > 0) {
+                console.log(
+                    'Adding native tool schemas:',
+                    toolSchemas.map(t => t.function.name)
+                )
+                chatConfig.tools = toolSchemas
+            }
+        }
+
+        const chat = new ChatOpenAI(chatConfig)
         return await chat.stream(formattedPrompt)
     }
 }
@@ -612,6 +638,269 @@ const updateLastAssistantCommentData = async (projectId, objectType, objectId, c
     await Promise.all(promises)
 }
 
+/**
+ * Execute a tool natively and return the raw result (not processed by LLM)
+ * This is used for OpenAI native tool calling
+ */
+async function executeToolNatively(toolName, toolArgs, projectId, assistantId, requestUserId, userContext) {
+    console.log('🔧 executeToolNatively:', { toolName, toolArgs, projectId })
+
+    const admin = require('firebase-admin')
+
+    // Get creator ID - use requestUserId if available, otherwise use assistantId
+    const creatorId = requestUserId || assistantId
+
+    switch (toolName) {
+        case 'create_task': {
+            const { TaskService } = require('../shared/TaskService')
+            const taskService = new TaskService({
+                taskBatchSize: 100,
+                maxBatchesPerProject: 20,
+            })
+            await taskService.initialize()
+
+            // Get user data for feed
+            let feedUser
+            try {
+                const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+                if (userDoc.exists) {
+                    const userData = userDoc.data()
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: userData.name || userData.displayName || 'User',
+                        email: userData.email || '',
+                    }
+                } else {
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: 'Unknown User',
+                        email: '',
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not get user data, using defaults:', error)
+                feedUser = {
+                    uid: creatorId,
+                    id: creatorId,
+                    creatorId: creatorId,
+                    name: 'Unknown User',
+                    email: '',
+                }
+            }
+
+            const result = await taskService.createAndPersistTask(
+                {
+                    name: toolArgs.name,
+                    description: toolArgs.description || '',
+                    userId: creatorId,
+                    projectId: projectId,
+                    isPrivate: false,
+                    feedUser,
+                },
+                {
+                    userId: creatorId,
+                    projectId: projectId,
+                }
+            )
+
+            return {
+                success: true,
+                taskName: toolArgs.name,
+                taskId: result.taskId,
+            }
+        }
+
+        case 'create_note': {
+            const notesRef = admin.firestore().collection(`notes/${projectId}/notes`)
+            const noteData = {
+                title: toolArgs.title,
+                content: toolArgs.content,
+                creatorId: creatorId,
+                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+                createDate: admin.firestore.FieldValue.serverTimestamp(),
+            }
+
+            const noteRef = await notesRef.add(noteData)
+            return {
+                success: true,
+                noteTitle: toolArgs.title,
+                noteId: noteRef.id,
+            }
+        }
+
+        case 'get_tasks': {
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const { ProjectService } = require('../shared/ProjectService')
+
+            // Get user data
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
+            // Get projects
+            const projectService = new ProjectService()
+            await projectService.initialize()
+
+            const includeArchived = toolArgs.includeArchived || false
+            const includeCommunity = toolArgs.includeCommunity || false
+
+            const projectsData = await projectService.getUserProjects(userData, includeArchived, includeCommunity)
+
+            const retrievalService = new TaskRetrievalService()
+            const tasks = await retrievalService.getUserTasks({
+                projectId: toolArgs.allProjects ? null : projectId,
+                userId: creatorId,
+                userData,
+                projectsData,
+                status: toolArgs.status || 'open',
+                date: toolArgs.date || null,
+            })
+
+            return {
+                tasks: tasks.map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    description: t.description,
+                    completed: t.completed,
+                    projectName: t.projectName,
+                    dueDate: t.dueDate,
+                })),
+                count: tasks.length,
+            }
+        }
+
+        case 'get_user_projects': {
+            const { ProjectService } = require('../shared/ProjectService')
+
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
+            const projectService = new ProjectService()
+            await projectService.initialize()
+
+            const includeArchived = toolArgs.includeArchived || false
+            const includeCommunity = toolArgs.includeCommunity || false
+
+            const projects = await projectService.getUserProjects(userData, includeArchived, includeCommunity)
+
+            return {
+                projects: projects.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    type: p.type,
+                    description: p.description,
+                })),
+                count: projects.length,
+            }
+        }
+
+        case 'get_focus_task': {
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                return { focusTask: null }
+            }
+
+            const userData = userDoc.data()
+            const focusTaskId = userData.focusTask
+
+            if (!focusTaskId) {
+                return { focusTask: null }
+            }
+
+            const taskDoc = await admin.firestore().doc(`tasks/${projectId}/tasks/${focusTaskId}`).get()
+            if (!taskDoc.exists) {
+                return { focusTask: null }
+            }
+
+            const taskData = taskDoc.data()
+            return {
+                focusTask: {
+                    id: taskDoc.id,
+                    name: taskData.name,
+                    description: taskData.description,
+                    completed: taskData.completed,
+                },
+            }
+        }
+
+        case 'update_task': {
+            const { TaskService } = require('../shared/TaskService')
+            const taskService = new TaskService({
+                taskBatchSize: 100,
+                maxBatchesPerProject: 20,
+            })
+            await taskService.initialize()
+
+            // Get user data for feed
+            let feedUser
+            try {
+                const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+                if (userDoc.exists) {
+                    const userData = userDoc.data()
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: userData.name || userData.displayName || 'User',
+                        email: userData.email || '',
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not get user data:', error)
+                feedUser = {
+                    uid: creatorId,
+                    id: creatorId,
+                    creatorId: creatorId,
+                    name: 'Unknown User',
+                    email: '',
+                }
+            }
+
+            const result = await taskService.updateTask(toolArgs, {
+                userId: creatorId,
+                projectId: projectId,
+                feedUser: feedUser,
+            })
+
+            return result
+        }
+
+        case 'update_note': {
+            // Search for note by title
+            const notesRef = admin.firestore().collection(`notes/${projectId}/notes`)
+            const querySnapshot = await notesRef.where('title', '==', toolArgs.noteTitle).limit(1).get()
+
+            if (querySnapshot.empty) {
+                throw new Error(`Note with title "${toolArgs.noteTitle}" not found`)
+            }
+
+            const noteDoc = querySnapshot.docs[0]
+            await noteDoc.ref.update({
+                content: toolArgs.content,
+                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+            })
+
+            return {
+                success: true,
+                noteTitle: toolArgs.noteTitle,
+                noteId: noteDoc.id,
+            }
+        }
+
+        default:
+            throw new Error(`Unknown tool: ${toolName}`)
+    }
+}
+
 async function storeChunks(
     projectId,
     objectType,
@@ -627,7 +916,11 @@ async function storeChunks(
     projectname,
     chatLink,
     requestUserId,
-    userContext = null
+    userContext = null,
+    conversationHistory = null,
+    modelKey = null,
+    temperatureKey = null,
+    allowedTools = []
 ) {
     console.log('Starting storeChunks with:', {
         projectId,
@@ -698,6 +991,135 @@ async function storeChunks(
                 continue
             }
 
+            // Handle native OpenAI tool calls (from GPT models with native tool calling)
+            if (chunk.additional_kwargs?.tool_calls && Array.isArray(chunk.additional_kwargs.tool_calls)) {
+                console.log('🔧 NATIVE TOOL CALL: Detected native tool call', {
+                    toolCallsCount: chunk.additional_kwargs.tool_calls.length,
+                    toolCalls: chunk.additional_kwargs.tool_calls.map(tc => ({
+                        id: tc.id,
+                        name: tc.function?.name,
+                        argsLength: tc.function?.arguments?.length,
+                    })),
+                })
+
+                // Check if we have conversation history to resume with
+                if (!conversationHistory || !modelKey || !temperatureKey) {
+                    console.warn(
+                        '🔧 NATIVE TOOL CALL: Missing conversation history or model info - tools disabled for this model'
+                    )
+                    commentText += '\n\n[Tools are only available for GPT models]'
+                    await commentRef.update({ commentText })
+                    toolAlreadyExecuted = true
+                    continue
+                }
+
+                // Process first tool call (OpenAI typically sends one at a time)
+                const toolCall = chunk.additional_kwargs.tool_calls[0]
+                const toolName = toolCall.function.name
+                const toolCallId = toolCall.id
+
+                // Parse arguments
+                let toolArgs = {}
+                try {
+                    toolArgs = JSON.parse(toolCall.function.arguments)
+                    console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
+                } catch (e) {
+                    console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
+                    commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
+                    await commentRef.update({ commentText })
+                    toolAlreadyExecuted = true
+                    continue
+                }
+
+                // Check permissions
+                const assistant = await getAssistantForChat(projectId, assistantId)
+                const allowed = Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes(toolName)
+
+                if (!allowed) {
+                    console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
+                    commentText += `\n\nTool not permitted: ${toolName}`
+                    await commentRef.update({ commentText })
+                    toolAlreadyExecuted = true
+                    continue
+                }
+
+                // Show loading indicator
+                const loadingMessage = `⏳ Executing ${toolName}...`
+                commentText += `\n\n${loadingMessage}`
+                await commentRef.update({ commentText })
+
+                console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
+
+                // Execute tool and get result
+                let toolResult
+                try {
+                    toolResult = await executeToolNatively(
+                        toolName,
+                        toolArgs,
+                        projectId,
+                        assistantId,
+                        requestUserId,
+                        userContext
+                    )
+                    console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
+                        toolName,
+                        resultLength: JSON.stringify(toolResult).length,
+                    })
+                } catch (error) {
+                    console.error('🔧 NATIVE TOOL CALL: Tool execution failed', error)
+                    const errorMsg = `Error executing ${toolName}: ${error.message}`
+                    commentText = commentText.replace(loadingMessage, errorMsg)
+                    await commentRef.update({ commentText })
+                    toolAlreadyExecuted = true
+                    continue
+                }
+
+                // Build new conversation history with tool result
+                // Need to add: assistant's message with tool call, then tool result message
+                const { HumanMessage, AIMessage, ToolMessage } = require('@langchain/core/messages')
+
+                // Collect all assistant content before tool call
+                const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
+
+                // Build updated conversation
+                const updatedConversation = [
+                    ...conversationHistory,
+                    new AIMessage({
+                        content: assistantMessageContent,
+                        additional_kwargs: {
+                            tool_calls: [toolCall],
+                        },
+                    }),
+                    new ToolMessage({
+                        content: JSON.stringify(toolResult),
+                        tool_call_id: toolCallId,
+                    }),
+                ]
+
+                console.log('🔧 NATIVE TOOL CALL: Resuming stream with tool result', {
+                    conversationLength: updatedConversation.length,
+                    toolResultLength: JSON.stringify(toolResult).length,
+                })
+
+                // Resume stream with updated conversation
+                const newStream = await interactWithChatStream(
+                    updatedConversation,
+                    modelKey,
+                    temperatureKey,
+                    allowedTools
+                )
+
+                // Remove loading indicator
+                commentText = commentText.replace(loadingMessage, '')
+                await commentRef.update({ commentText })
+
+                // Process the new stream - it will continue adding to commentText
+                console.log('🔧 NATIVE TOOL CALL: Processing resumed stream')
+                stream = newStream
+                toolAlreadyExecuted = true // Prevent old stream from continuing
+                continue
+            }
+
             // Handle loading indicator for deep research
             if (chunk.isLoading) {
                 await commentRef.update({
@@ -761,1324 +1183,8 @@ async function storeChunks(
                 isThinking: thinkingMode,
             })
 
-            // Detect and execute tool calls when not in thinking mode
-            if (!thinkingMode && !toolAlreadyExecuted && typeof commentText === 'string') {
-                try {
-                    const toolMatch = commentText.match(/TOOL:\s*create_task\s*(\{[\s\S]*?\})/)
-                    if (toolMatch) {
-                        console.log('Detected TOOL:create_task invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('create_task')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use create_task tool')
-                            const replaced = commentText.replace(toolMatch[0], 'Tool not permitted: create_task')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = toolMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse create_task args JSON', e)
-                            const replaced = commentText.replace(toolMatch[0], 'Failed to parse tool arguments')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        const taskName = (args.name || '').toString().trim()
-                        const taskDescription = (args.description || '').toString()
-                        if (!taskName) {
-                            const replaced = commentText.replace(toolMatch[0], 'Missing required field: name')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Creating task...'
-                        const withLoading = commentText.replace(toolMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        // Initialize TaskService for assistant tool calls
-                        const { TaskService } = require('../shared/TaskService')
-                        const taskService = new TaskService({
-                            database: admin.firestore(),
-                            idGenerator: () => uuidv4(),
-                            enableFeeds: true, // Enable feeds so tasks appear in updates tab
-                            enableValidation: true,
-                            isCloudFunction: true,
-                        })
-                        await taskService.initialize()
-
-                        // Create feedUser object for feed generation - get actual user data
-                        let feedUser
-                        try {
-                            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
-                            if (userDoc.exists) {
-                                const userData = userDoc.data()
-                                feedUser = {
-                                    uid: creatorId,
-                                    id: creatorId,
-                                    creatorId: creatorId,
-                                    name: userData.name || userData.displayName || 'User',
-                                    email: userData.email || '',
-                                }
-                            } else {
-                                feedUser = {
-                                    uid: creatorId,
-                                    id: creatorId,
-                                    creatorId: creatorId,
-                                    name: 'Unknown User',
-                                    email: '',
-                                }
-                            }
-                        } catch (error) {
-                            console.warn('Could not get user data for assistant feed, using defaults:', error)
-                            feedUser = {
-                                uid: creatorId,
-                                id: creatorId,
-                                creatorId: creatorId,
-                                name: 'Unknown User',
-                                email: '',
-                            }
-                        }
-
-                        // Create task using unified service
-                        const result = await taskService.createAndPersistTask(
-                            {
-                                name: taskName,
-                                description: taskDescription,
-                                userId: creatorId,
-                                projectId: projectId,
-                                isPrivate: false,
-                                feedUser,
-                            },
-                            {
-                                userId: creatorId,
-                                projectId: projectId,
-                            }
-                        )
-
-                        console.log('Created task via tool call', {
-                            projectId,
-                            taskId: result.taskId,
-                            name: taskName,
-                        })
-
-                        // Process tool result through LLM
-                        const processedResponse = await processToolResultWithLLM(
-                            { success: true, taskName: taskName, taskId: result.taskId },
-                            userContext?.message || '',
-                            'create_task',
-                            args,
-                            projectId,
-                            assistantId
-                        )
-
-                        // Replace loading indicator with LLM-processed response
-                        const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                        commentText = replaced
-                        answerContent = replaced
-                        await commentRef.update({ commentText })
-                        toolAlreadyExecuted = true
-                    }
-
-                    // Check for create_note tool
-                    const createNoteMatch = commentText.match(/TOOL:\s*create_note\s*(\{[\s\S]*?\})/)
-                    if (createNoteMatch && !toolAlreadyExecuted) {
-                        console.log('Detected TOOL:create_note invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('create_note')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use create_note tool')
-                            const replaced = commentText.replace(createNoteMatch[0], 'Tool not permitted: create_note')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = createNoteMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse create_note args JSON', e)
-                            const replaced = commentText.replace(createNoteMatch[0], 'Failed to parse tool arguments')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        const noteTitle = (args.title || '').toString().trim()
-                        const noteContent = (args.content || '').toString()
-                        if (!noteTitle) {
-                            const replaced = commentText.replace(createNoteMatch[0], 'Missing required field: title')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Creating note...'
-                        const withLoading = commentText.replace(createNoteMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        // Initialize NoteService for assistant tool calls
-                        const { NoteService } = require('../shared/NoteService')
-                        const noteService = new NoteService({
-                            database: admin.firestore(),
-                            idGenerator: () => uuidv4(),
-                            enableFeeds: true, // Enable feeds so notes appear in updates tab
-                            enableValidation: true,
-                            isCloudFunction: true,
-                        })
-                        await noteService.initialize()
-
-                        // Create feedUser object for feed generation - get actual user data
-                        let feedUser
-                        try {
-                            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
-                            if (userDoc.exists) {
-                                const userData = userDoc.data()
-                                feedUser = {
-                                    uid: creatorId,
-                                    id: creatorId,
-                                    creatorId: creatorId,
-                                    name: userData.name || userData.displayName || 'User',
-                                    email: userData.email || '',
-                                }
-                            } else {
-                                feedUser = {
-                                    uid: creatorId,
-                                    id: creatorId,
-                                    creatorId: creatorId,
-                                    name: 'Unknown User',
-                                    email: '',
-                                }
-                            }
-                        } catch (error) {
-                            console.warn('Could not get user data for assistant feed, using defaults:', error)
-                            feedUser = {
-                                uid: creatorId,
-                                id: creatorId,
-                                creatorId: creatorId,
-                                name: 'Unknown User',
-                                email: '',
-                            }
-                        }
-
-                        // Create note using unified service
-                        const result = await noteService.createAndPersistNote(
-                            {
-                                title: noteTitle,
-                                content: noteContent,
-                                userId: creatorId,
-                                projectId: projectId,
-                                isPrivate: false,
-                                feedUser,
-                            },
-                            {
-                                userId: creatorId,
-                                projectId: projectId,
-                            }
-                        )
-
-                        console.log('Created note via tool call', {
-                            projectId,
-                            noteId: result.noteId,
-                            title: noteTitle,
-                        })
-
-                        // Process tool result through LLM
-                        const processedResponse = await processToolResultWithLLM(
-                            { success: true, noteTitle: noteTitle, noteId: result.noteId },
-                            userContext?.message || '',
-                            'create_note',
-                            args,
-                            projectId,
-                            assistantId
-                        )
-
-                        // Replace loading indicator with LLM-processed response
-                        const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                        commentText = replaced
-                        answerContent = replaced
-                        await commentRef.update({ commentText })
-                        toolAlreadyExecuted = true
-                    }
-
-                    // Check for get_tasks tool
-                    const getTasksMatch = commentText.match(/TOOL:\s*get_tasks\s*(\{[\s\S]*?\})/)
-                    if (getTasksMatch) {
-                        console.log('Detected TOOL:get_tasks invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('get_tasks')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use get_tasks tool')
-                            const replaced = commentText.replace(getTasksMatch[0], 'Tool not permitted: get_tasks')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = getTasksMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse get_tasks args JSON', e)
-                            const replaced = commentText.replace(getTasksMatch[0], 'Failed to parse tool arguments')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Retrieving tasks...'
-                        const withLoading = commentText.replace(getTasksMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        console.log('🔍 ASSISTANT GET_TASKS: User identification', {
-                            creatorId,
-                            requestUserId,
-                            followerIds: followerIds?.slice(0, 3),
-                            projectId,
-                        })
-
-                        // Initialize TaskRetrievalService for assistant tool calls
-                        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-                        const taskRetrievalService = new TaskRetrievalService({
-                            database: admin.firestore(),
-                            moment: require('moment-timezone'),
-                            isCloudFunction: true,
-                        })
-                        await taskRetrievalService.initialize()
-
-                        // Extract parameters with defaults
-                        const allProjects = !!args.allProjects
-                        const includeArchived = !!args.includeArchived
-                        const includeCommunity = !!args.includeCommunity
-                        const status = args.status || 'open'
-                        // Accepts relative keywords like 'yesterday', 'this_week', or 'next 7 days'
-                        const date = args.date || 'today'
-                        const includeSubtasks = !!args.includeSubtasks
-                        const parentId = args.parentId || null
-
-                        try {
-                            let result
-
-                            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
-                            const userData = userDoc.exists ? userDoc.data() || {} : {}
-                            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
-
-                            console.log('🕐 ASSISTANT GET_TASKS: Timezone info', {
-                                creatorId,
-                                rawTimezone: userData?.timezone,
-                                normalizedTimezoneOffset: timezoneOffset,
-                                date: date,
-                            })
-
-                            if (allProjects && !userDoc.exists) {
-                                throw new Error('User not found')
-                            }
-
-                            if (allProjects) {
-                                console.log(`🌐 Assistant cross-project task query for user ${creatorId}`, {
-                                    includeArchived,
-                                    includeCommunity,
-                                    status,
-                                })
-
-                                // Use shared ProjectService for consistent filtering
-                                const { ProjectService } = require('../shared/ProjectService')
-                                const projectService = new ProjectService({ database: admin.firestore() })
-                                await projectService.initialize()
-
-                                const projects = await projectService.getUserProjects(creatorId, {
-                                    includeArchived,
-                                    includeCommunity,
-                                    activeOnly: true,
-                                })
-
-                                const uniqueProjectIds = projects.map(p => p.id)
-
-                                // Log project counts for debugging
-                                const regularCount = projects.filter(p => p.projectType === 'regular').length
-                                const archivedCount = projects.filter(p => p.projectType === 'archived').length
-                                const templateCount = projects.filter(p => p.projectType === 'template').length
-                                const guideCount = projects.filter(p => p.projectType === 'guide').length
-
-                                console.log(
-                                    `📊 ASSISTANT GET_TASKS: Project filtering summary: ${regularCount} regular, ${archivedCount} archived, ${templateCount} template, ${guideCount} guide`
-                                )
-                                console.log(
-                                    `🎯 ASSISTANT GET_TASKS: Selected ${uniqueProjectIds.length} projects for query`
-                                )
-
-                                if (uniqueProjectIds.length === 0) {
-                                    result = {
-                                        success: true,
-                                        tasks: [],
-                                        count: 0,
-                                        totalAcrossProjects: 0,
-                                        projectSummary: {},
-                                        queriedProjects: [],
-                                        crossProjectQuery: true,
-                                        message: 'No projects match the specified criteria',
-                                    }
-                                } else {
-                                    // Projects are already filtered and verified by ProjectService
-                                    const accessibleProjects = projects
-                                    const accessibleProjectIds = uniqueProjectIds
-                                    const inaccessibleCount = 0
-
-                                    // Count active vs inactive projects
-                                    const activeProjects = accessibleProjects.filter(p => {
-                                        const isActive = typeof p.active === 'boolean' ? p.active === true : true
-                                        return isActive
-                                    })
-                                    const inactiveProjects = accessibleProjects.filter(p => {
-                                        const isActive = typeof p.active === 'boolean' ? p.active === true : true
-                                        return !isActive
-                                    })
-
-                                    // Count community projects in accessible set
-                                    const communityAccessible = accessibleProjects.filter(
-                                        p => p.projectType === 'template' || p.projectType === 'guide'
-                                    ).length
-
-                                    const projectsData = accessibleProjects.reduce((acc, project) => {
-                                        acc[project.id] = { name: project.name, description: project.description }
-                                        return acc
-                                    }, {})
-
-                                    console.log(
-                                        `🔐 ASSISTANT GET_TASKS: ${accessibleProjectIds.length} projects accessible after permission check (${inaccessibleCount} inaccessible)`
-                                    )
-                                    console.log(
-                                        `📊 ASSISTANT GET_TASKS: Active/Inactive breakdown: ${activeProjects.length} active, ${inactiveProjects.length} inactive (not filtered!)`
-                                    )
-                                    console.log(
-                                        `🏘️ ASSISTANT GET_TASKS: Community projects in accessible set: ${communityAccessible} (not filtered!)`
-                                    )
-
-                                    // Determine per-project cap from user's customization
-                                    const numberTodayTasksSetting =
-                                        typeof userData.numberTodayTasks === 'number' ? userData.numberTodayTasks : 10
-
-                                    console.log(
-                                        `⚙️ ASSISTANT GET_TASKS: Query parameters: perProjectLimit=${numberTodayTasksSetting}, status=${status}, date=${date}, timezoneOffset=${timezoneOffset}`
-                                    )
-
-                                    // Use TaskRetrievalService multi-project method
-                                    result = await taskRetrievalService.getTasksFromMultipleProjects(
-                                        {
-                                            userId: creatorId,
-                                            status,
-                                            date,
-                                            includeSubtasks,
-                                            parentId,
-
-                                            userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
-                                            selectMinimalFields: true,
-                                            perProjectLimit: numberTodayTasksSetting,
-                                            timezoneOffset,
-                                        },
-                                        accessibleProjectIds,
-                                        projectsData
-                                    )
-
-                                    result.crossProjectQuery = true
-                                }
-                            } else {
-                                // Single project mode (existing behavior)
-                                // Determine per-project cap from user's customization (0 = unlimited)
-                                const numberTodayTasksSetting =
-                                    typeof userData.numberTodayTasks === 'number' ? userData.numberTodayTasks : 10
-
-                                result = await taskRetrievalService.getTasksWithValidation({
-                                    projectId: projectId,
-                                    userId: creatorId,
-                                    status,
-                                    date,
-                                    includeSubtasks,
-                                    parentId,
-                                    userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
-                                    selectMinimalFields: true,
-                                    perProjectLimit: numberTodayTasksSetting,
-                                    timezoneOffset,
-                                })
-                                result.crossProjectQuery = false
-                            }
-
-                            // Process results through LLM for intelligent analysis
-                            console.log('✅ ASSISTANT GET_TASKS: Final result', {
-                                creatorId,
-                                projectId,
-                                status,
-                                shownCount: result.count,
-                                totalCount: result.crossProjectQuery ? result.totalAcrossProjects : null,
-                                date: result.dateFilter,
-                                crossProject: result.crossProjectQuery,
-                                hasMore: !!result.query?.hasMore,
-                                queriedProjects: result.queriedProjects?.length || 0,
-                                timezoneUsed: timezoneOffset,
-                            })
-                            console.log('Processing get_tasks result through LLM', {
-                                projectId,
-                                status,
-                                shownCount: result.count,
-                                totalCount: result.crossProjectQuery ? result.totalAcrossProjects : null,
-                                date: result.dateFilter,
-                                crossProject: result.crossProjectQuery,
-                                hasMore: !!result.query?.hasMore,
-                            })
-
-                            // Process tool result through LLM
-                            const processedResponse = await processToolResultWithLLM(
-                                result,
-                                userContext?.message || '',
-                                'get_tasks',
-                                args,
-                                projectId,
-                                assistantId
-                            )
-
-                            // Replace loading indicator with LLM-processed response
-                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        } catch (error) {
-                            console.error('Error getting tasks via tool call:', error)
-                            const errorMsg = `Error retrieving tasks: ${error.message}`
-                            const replaced = withLoading.replace(loadingMessage, errorMsg)
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        }
-                    }
-
-                    // Check for get_user_projects tool
-                    const getUserProjectsMatch = commentText.match(/TOOL:\s*get_user_projects\s*(\{[\s\S]*?\})/)
-                    if (getUserProjectsMatch && !toolAlreadyExecuted) {
-                        console.log('Detected TOOL:get_user_projects invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('get_user_projects')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use get_user_projects tool')
-                            const replaced = commentText.replace(
-                                getUserProjectsMatch[0],
-                                'Tool not permitted: get_user_projects'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = getUserProjectsMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse get_user_projects args JSON', e)
-                            const replaced = commentText.replace(
-                                getUserProjectsMatch[0],
-                                'Failed to parse tool arguments'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Retrieving projects...'
-                        const withLoading = commentText.replace(getUserProjectsMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        try {
-                            // Initialize ProjectService
-                            const { ProjectService } = require('../shared/ProjectService')
-                            const projectService = new ProjectService({ database: admin.firestore() })
-                            await projectService.initialize()
-
-                            const includeArchived = !!args.includeArchived
-                            const includeCommunity = !!args.includeCommunity
-                            const activeOnly = args.activeOnly !== false // default true
-
-                            const projects = await projectService.getUserProjects(creatorId, {
-                                includeArchived,
-                                includeCommunity,
-                                activeOnly,
-                            })
-
-                            const payload = {
-                                success: true,
-                                projects,
-                                count: projects.length,
-                                projectFilters: {
-                                    includeArchived,
-                                    includeCommunity,
-                                },
-                            }
-
-                            // Process tool result through LLM
-                            const processedResponse = await processToolResultWithLLM(
-                                payload,
-                                userContext?.message || '',
-                                'get_user_projects',
-                                args,
-                                projectId,
-                                assistantId
-                            )
-
-                            // Replace loading indicator with LLM-processed response
-                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        } catch (error) {
-                            console.error('Error getting user projects via tool call:', error)
-                            const errorMsg = `Error retrieving projects: ${error.message}`
-                            const replaced = withLoading.replace(loadingMessage, errorMsg)
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        }
-                    }
-
-                    // Check for get_focus_task tool
-                    const getFocusTaskMatch = commentText.match(/TOOL:\s*get_focus_task\s*(\{[\s\S]*?\})/)
-                    if (getFocusTaskMatch) {
-                        console.log('Detected TOOL:get_focus_task invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('get_focus_task')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use get_focus_task tool')
-                            const replaced = commentText.replace(
-                                getFocusTaskMatch[0],
-                                'Tool not permitted: get_focus_task'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = getFocusTaskMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse get_focus_task args JSON', e)
-                            const replaced = commentText.replace(getFocusTaskMatch[0], 'Failed to parse tool arguments')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Retrieving focus task...'
-                        const withLoading = commentText.replace(getFocusTaskMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        // Initialize FocusTaskService for assistant tool calls
-                        const { FocusTaskService } = require('../shared/FocusTaskService')
-                        const focusTaskService = new FocusTaskService({
-                            database: admin.firestore(),
-                            moment: require('moment'),
-                            isCloudFunction: true,
-                        })
-                        await focusTaskService.initialize()
-
-                        // Extract parameters
-                        const contextProjectId = args.projectId || projectId
-
-                        try {
-                            const result = await focusTaskService.getFocusTask(creatorId, contextProjectId, {
-                                selectMinimalFields: true,
-                            })
-
-                            console.log('Retrieved focus task via tool call', {
-                                projectId: contextProjectId,
-                                focusTaskId: result.focusTask?.id,
-                                focusTaskName: result.focusTask?.name,
-                                wasNewTaskSet: result.wasNewTaskSet,
-                            })
-
-                            // Process tool result through LLM
-                            const processedResponse = await processToolResultWithLLM(
-                                result,
-                                userContext?.message || '',
-                                'get_focus_task',
-                                args,
-                                projectId,
-                                assistantId
-                            )
-
-                            // Replace loading indicator with LLM-processed response
-                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        } catch (error) {
-                            console.error('Error getting focus task via tool call:', error)
-                            const errorMsg = `Error retrieving focus task: ${error.message}`
-                            const replaced = withLoading.replace(loadingMessage, errorMsg)
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        }
-                    }
-
-                    // Check for update_task tool
-                    const updateTaskMatch = commentText.match(/TOOL:\s*update_task\s*(\{[\s\S]*?\})/)
-                    if (updateTaskMatch) {
-                        console.log('Detected TOOL:update_task invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('update_task')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use update_task tool')
-                            const replaced = commentText.replace(updateTaskMatch[0], 'Tool not permitted: update_task')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = updateTaskMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse update_task args JSON', e)
-                            const replaced = commentText.replace(updateTaskMatch[0], 'Failed to parse tool arguments')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Validate that at least one search criterion is provided
-                        const { taskId, taskName, projectName, projectId: searchProjectId } = args
-                        if (!taskId && !taskName && !projectName && !searchProjectId) {
-                            const replaced = commentText.replace(
-                                updateTaskMatch[0],
-                                'At least one search criterion is required (taskId, taskName, projectName, or projectId)'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Updating task...'
-                        const withLoading = commentText.replace(updateTaskMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        try {
-                            const db = admin.firestore()
-
-                            // Initialize TaskSearchService
-                            const TaskSearchService = require('../shared/TaskSearchService')
-                            const taskSearchService = new TaskSearchService({
-                                database: db,
-                                isCloudFunction: true,
-                            })
-                            await taskSearchService.initialize()
-
-                            // Step 1: Find the task using enhanced search with confidence logic
-                            const searchResult = await taskSearchService.findTaskForUpdate(
-                                creatorId,
-                                {
-                                    taskId,
-                                    taskName,
-                                    projectName,
-                                    projectId: searchProjectId,
-                                },
-                                {
-                                    autoSelectOnHighConfidence: true,
-                                    highConfidenceThreshold: 800,
-                                    dominanceMargin: 300,
-                                    maxOptionsToShow: 3, // Assistants show fewer options for cleaner responses
-                                }
-                            )
-
-                            // Handle different decision outcomes
-                            if (searchResult.decision === 'no_matches') {
-                                throw new Error(searchResult.error)
-                            }
-
-                            if (searchResult.decision === 'present_options') {
-                                // Handle multiple matches - show user the options with enhanced information
-                                let errorMessage = `${searchResult.reasoning}\n\nFound ${
-                                    searchResult.totalMatches || searchResult.allMatches.length
-                                } tasks:\n`
-
-                                searchResult.allMatches.slice(0, 3).forEach((match, index) => {
-                                    errorMessage += `${index + 1}. "${match.task.name}"`
-
-                                    if (match.task.humanReadableId) {
-                                        errorMessage += ` (ID: ${match.task.humanReadableId})`
-                                    }
-
-                                    errorMessage += ` (Project: ${match.projectName})`
-
-                                    // Show confidence for assistants too
-                                    const confidence = taskSearchService.assessConfidence(match.matchScore)
-                                    errorMessage += ` [${confidence} confidence]\n`
-                                })
-
-                                if (searchResult.allMatches.length > 3) {
-                                    errorMessage += `... and ${searchResult.allMatches.length - 3} more matches.\n`
-                                }
-
-                                errorMessage += '\nPlease be more specific in your search criteria.'
-                                throw new Error(errorMessage)
-                            }
-
-                            // Step 2: Update the found task (auto-selected or single match)
-                            const {
-                                task: currentTask,
-                                projectId: currentProjectId,
-                                projectName: currentProjectName,
-                            } = searchResult.selectedMatch
-
-                            // Build update object with only provided fields
-                            const updateData = {}
-                            if (args.name !== undefined) {
-                                updateData.name = args.name.toString()
-                                updateData.extendedName = args.name.toString() // Alldone requires both fields
-                            }
-                            if (args.description !== undefined) updateData.description = args.description.toString()
-                            if (args.dueDate !== undefined) updateData.dueDate = args.dueDate
-                            if (args.userId !== undefined) updateData.userId = args.userId.toString()
-                            if (args.parentId !== undefined) updateData.parentId = args.parentId
-                            if (args.completed !== undefined) {
-                                const isCompleted = !!args.completed
-                                updateData.done = isCompleted
-                                updateData.inDone = isCompleted
-                                if (isCompleted) {
-                                    updateData.completed = Date.now() // Completion timestamp
-                                    updateData.completedDate = Date.now()
-                                    updateData.completedTime = new Date().toTimeString().substring(0, 5)
-                                    updateData.currentReviewerId = 'Done' // Set reviewer to Done step
-                                } else {
-                                    updateData.completed = null
-                                    updateData.completedDate = null
-                                    updateData.completedTime = null
-                                    updateData.currentReviewerId = currentTask.userId || creatorId // Reset to task owner
-                                }
-                            }
-
-                            // Initialize TaskService for consistent update logic and feed generation
-                            const { TaskService } = require('../shared/TaskService')
-                            const taskService = new TaskService({
-                                database: db,
-                                moment: moment,
-                                isCloudFunction: true,
-                                enableFeeds: true,
-                                enableValidation: false, // Skip validation since we already validated
-                            })
-                            await taskService.initialize()
-
-                            const focusRaw = args.focus
-                            const focusNormalized =
-                                focusRaw === undefined
-                                    ? undefined
-                                    : typeof focusRaw === 'string'
-                                    ? focusRaw.toLowerCase() === 'true'
-                                    : focusRaw === true || focusRaw === 1
-
-                            // Create feedUser object from creatorId
-                            const feedUser = { uid: creatorId, id: creatorId }
-                            let confirmationMessage = ''
-
-                            try {
-                                // Use TaskService for update with proper feed generation
-                                const result = await taskService.updateAndPersistTask({
-                                    taskId: currentTask.id,
-                                    projectId: currentProjectId,
-                                    currentTask: currentTask,
-                                    name: args.name,
-                                    description: args.description,
-                                    dueDate: args.dueDate,
-                                    completed: args.completed,
-                                    userId: args.userId,
-                                    parentId: args.parentId,
-                                    feedUser: feedUser,
-                                    focus: focusRaw,
-                                    focusUserId: creatorId,
-                                })
-
-                                console.log('Updated task via TaskService tool call', {
-                                    projectId: currentProjectId,
-                                    taskId: currentTask.id,
-                                    taskName: currentTask.name,
-                                    changes: result.changes,
-                                    feedGenerated: !!result.feedData,
-                                    persisted: result.persisted,
-                                    searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
-                                })
-
-                                // Build confirmation message showing what was found and changed
-                                const changes = result.changes || []
-                                confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
-                                if (changes.length > 0) {
-                                    confirmationMessage += ` (${changes.join(', ')})`
-                                }
-                            } catch (taskServiceError) {
-                                console.error(
-                                    'TaskService update failed in Assistant, falling back to direct update:',
-                                    taskServiceError
-                                )
-
-                                // Fallback to direct update without feeds if TaskService fails
-                                if (Object.keys(updateData).length > 0) {
-                                    await db.doc(`items/${currentProjectId}/tasks/${currentTask.id}`).update(updateData)
-                                }
-
-                                console.log('Updated task via direct update (fallback, no feeds)', {
-                                    projectId: currentProjectId,
-                                    taskId: currentTask.id,
-                                    taskName: currentTask.name,
-                                    updateFields: Object.keys(updateData),
-                                    searchCriteria: { taskId, taskName, projectName, projectId: searchProjectId },
-                                })
-
-                                const updatedTaskDoc = await db
-                                    .doc(`items/${currentProjectId}/tasks/${currentTask.id}`)
-                                    .get()
-                                const updatedTask = updatedTaskDoc.exists
-                                    ? { id: currentTask.id, ...updatedTaskDoc.data() }
-                                    : { ...currentTask, ...updateData }
-
-                                // Build confirmation message showing what was found and changed
-                                const changes = []
-                                if (args.name !== undefined) changes.push(`name to "${args.name}"`)
-                                if (args.description !== undefined) changes.push('description')
-                                if (args.dueDate !== undefined) changes.push('due date')
-                                if (args.completed !== undefined) {
-                                    changes.push(args.completed ? 'marked as complete' : 'marked as incomplete')
-                                }
-                                if (args.userId !== undefined) changes.push(`assigned to ${args.userId}`)
-
-                                if (focusRaw !== undefined) {
-                                    try {
-                                        const { FocusTaskService } = require('../shared/FocusTaskService')
-                                        const focusTaskService = new FocusTaskService({
-                                            database: db,
-                                            moment: moment,
-                                            isCloudFunction: true,
-                                        })
-                                        await focusTaskService.initialize()
-
-                                        if (focusNormalized) {
-                                            await focusTaskService.setNewFocusTask(
-                                                creatorId,
-                                                currentProjectId,
-                                                { id: currentTask.id, ...updatedTask },
-                                                { preserveDueDate: args.dueDate !== undefined }
-                                            )
-                                            changes.push('set as focus task')
-                                        } else {
-                                            const clearResult = await focusTaskService.clearFocusTask(
-                                                creatorId,
-                                                currentTask.id
-                                            )
-                                            if (clearResult?.cleared) {
-                                                changes.push('removed from focus')
-                                            } else {
-                                                changes.push('focus already cleared')
-                                            }
-                                        }
-                                    } catch (focusError) {
-                                        console.error('Assistant fallback: Focus update failed:', focusError)
-                                        throw new Error(
-                                            `Task updated but failed to update focus state: ${focusError.message}`
-                                        )
-                                    }
-                                }
-
-                                confirmationMessage = `Found and updated task: "${currentTask.name}" in project "${currentProjectName}"`
-                                if (changes.length > 0) {
-                                    confirmationMessage += ` (${changes.join(', ')})`
-                                }
-                                confirmationMessage += ` (fallback: no feeds generated)`
-                            }
-
-                            // Process tool result through LLM
-                            const processedResponse = await processToolResultWithLLM(
-                                {
-                                    success: true,
-                                    updatedTask: {
-                                        name: currentTask.name,
-                                        id: currentTask.id,
-                                        projectName: currentProjectName,
-                                    },
-                                    changes: result?.changes || [],
-                                    message: confirmationMessage,
-                                },
-                                userContext?.message || '',
-                                'update_task',
-                                args,
-                                projectId,
-                                assistantId
-                            )
-
-                            // Replace loading indicator with LLM-processed response
-                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        } catch (error) {
-                            console.error('Error updating task via tool call:', error)
-                            const errorMsg = `Error updating task: ${error.message}`
-                            const replaced = withLoading.replace(loadingMessage, errorMsg)
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        }
-                    }
-
-                    // Check for update_note tool
-                    const updateNoteMatch = commentText.match(/TOOL:\s*update_note\s*(\{[\s\S]*?\})/)
-                    if (updateNoteMatch && !toolAlreadyExecuted) {
-                        console.log('Detected TOOL:update_note invocation')
-                        // Fetch assistant to check allowed tools
-                        const assistant = await getAssistantForChat(projectId, assistantId)
-                        const allowed = Array.isArray(assistant.allowedTools)
-                            ? assistant.allowedTools.includes('update_note')
-                            : false
-                        if (!allowed) {
-                            console.log('Assistant not allowed to use update_note tool')
-                            const replaced = commentText.replace(updateNoteMatch[0], 'Tool not permitted: update_note')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Parse JSON args
-                        const argsJson = updateNoteMatch[1]
-                        let args = {}
-                        try {
-                            args = JSON.parse(argsJson)
-                        } catch (e) {
-                            console.error('Failed to parse update_note args JSON', e)
-                            const replaced = commentText.replace(updateNoteMatch[0], 'Failed to parse tool arguments')
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Validate that at least one search criterion and content are provided
-                        const { noteId, noteTitle, projectName, projectId: searchProjectId, content } = args
-                        if (!noteId && !noteTitle && !projectName && !searchProjectId) {
-                            const replaced = commentText.replace(
-                                updateNoteMatch[0],
-                                'At least one search criterion is required (noteId, noteTitle, projectName, or projectId)'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        if (!content) {
-                            const replaced = commentText.replace(
-                                updateNoteMatch[0],
-                                'Content is required for note updates'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        // Show loading indicator
-                        const loadingMessage = '⏳ Updating note...'
-                        const withLoading = commentText.replace(updateNoteMatch[0], loadingMessage)
-                        await commentRef.update({ commentText: withLoading })
-
-                        // Determine creatorId (the user interacting with the assistant)
-                        const creatorId =
-                            requestUserId ||
-                            (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
-
-                        if (!creatorId) {
-                            console.error('No creator ID found for update_note tool')
-                            const replaced = commentText.replace(
-                                updateNoteMatch[0],
-                                'Unable to identify user for note update'
-                            )
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                            continue
-                        }
-
-                        try {
-                            const db = admin.firestore()
-
-                            // Initialize SearchService for note search
-                            const { SearchService } = require('../shared/SearchService')
-                            const searchService = new SearchService({
-                                database: db,
-                                moment: moment,
-                                enableAlgolia: true,
-                                enableNoteContent: true,
-                                enableDateParsing: true,
-                                isCloudFunction: true,
-                            })
-                            await searchService.initialize()
-
-                            // Find the note to update using SearchService final results
-                            const searchResult = await searchService.findNoteForUpdateWithResults(creatorId, args)
-
-                            // Handle search failure
-                            if (!searchResult.success) {
-                                let errorMessage
-                                if (searchResult.error === 'NO_MATCHES') {
-                                    errorMessage = `No notes found: ${searchResult.message}`
-                                } else if (searchResult.error === 'MULTIPLE_MATCHES') {
-                                    // Format simplified options message for Assistant
-                                    errorMessage = `Found ${searchResult.totalMatches} notes matching your criteria:\n\n`
-                                    searchResult.matches.slice(0, 3).forEach((match, index) => {
-                                        errorMessage += `${index + 1}. "${match.noteTitle}" (Project: ${
-                                            match.projectName
-                                        })\n`
-                                    })
-                                    errorMessage += '\nPlease be more specific with your search criteria.'
-                                } else {
-                                    errorMessage = `Search failed: ${searchResult.message}`
-                                }
-
-                                const replaced = commentText.replace(updateNoteMatch[0], errorMessage)
-                                commentText = replaced
-                                answerContent = replaced
-                                await commentRef.update({ commentText })
-                                toolAlreadyExecuted = true
-                                continue
-                            }
-
-                            // Use selected note from SearchService
-                            const currentNote = searchResult.selectedNote
-                            const currentProjectId = searchResult.projectId
-                            const currentProjectName = searchResult.projectName
-
-                            // Initialize NoteService for consistent update logic and feed generation
-                            const { NoteService } = require('../shared/NoteService')
-                            const noteService = new NoteService({
-                                database: db,
-                                moment: moment,
-                                idGenerator: () => db.collection('_').doc().id,
-                                enableFeeds: true,
-                                enableValidation: false, // Skip validation since we already validated
-                                isCloudFunction: true,
-                            })
-                            await noteService.initialize()
-
-                            // Get user data for feed creation
-                            let feedUser
-                            try {
-                                const userDoc = await db.collection('users').doc(creatorId).get()
-                                if (userDoc.exists) {
-                                    const userData = userDoc.data()
-                                    feedUser = {
-                                        uid: creatorId,
-                                        id: creatorId,
-                                        creatorId: creatorId,
-                                        name: userData.name || userData.displayName || 'User',
-                                        email: userData.email || '',
-                                    }
-                                } else {
-                                    feedUser = {
-                                        uid: creatorId,
-                                        id: creatorId,
-                                        creatorId: creatorId,
-                                        name: 'User',
-                                        email: '',
-                                    }
-                                }
-                            } catch (error) {
-                                console.warn('Could not get user data for feed, using defaults')
-                                feedUser = {
-                                    uid: creatorId,
-                                    id: creatorId,
-                                    creatorId: creatorId,
-                                    name: 'User',
-                                    email: '',
-                                }
-                            }
-
-                            let confirmationMessage = ''
-
-                            // Use NoteService for update with proper feed generation
-                            const result = await noteService.updateAndPersistNote({
-                                noteId: currentNote.id,
-                                projectId: currentProjectId,
-                                currentNote: currentNote,
-                                content: content,
-                                title: args.title,
-                                feedUser: feedUser,
-                            })
-
-                            console.log('Updated note via NoteService tool call', {
-                                projectId: currentProjectId,
-                                noteId: currentNote.id,
-                                noteTitle: currentNote.title,
-                                changes: result.changes,
-                                feedGenerated: !!result.feedData,
-                                persisted: result.persisted,
-                                searchCriteria: { noteId, noteTitle, projectName, projectId: searchProjectId },
-                            })
-
-                            // Build confirmation message showing what was found and changed
-                            const changes = result.changes || []
-                            confirmationMessage = `Found and updated note: "${currentNote.title}" in project "${currentProjectName}"`
-                            if (changes.length > 0) {
-                                confirmationMessage += ` (${changes.join(', ')})`
-                            }
-
-                            // Process tool result through LLM
-                            const processedResponse = await processToolResultWithLLM(
-                                {
-                                    success: true,
-                                    updatedNote: {
-                                        title: currentNote.title,
-                                        id: currentNote.id,
-                                        projectName: currentProjectName,
-                                    },
-                                    changes: result.changes || [],
-                                    message: confirmationMessage,
-                                },
-                                userContext?.message || '',
-                                'update_note',
-                                args,
-                                projectId,
-                                assistantId
-                            )
-
-                            // Replace loading indicator with LLM-processed response
-                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        } catch (error) {
-                            console.error('Error updating note via tool call:', error)
-                            const errorMsg = `Error updating note: ${error.message}`
-                            const replaced = withLoading.replace(loadingMessage, errorMsg)
-                            commentText = replaced
-                            answerContent = replaced
-                            await commentRef.update({ commentText })
-                            toolAlreadyExecuted = true
-                        }
-                    }
-                } catch (err) {
-                    console.error('Error while processing tool call', err)
-                }
-            }
+            // Note: Manual TOOL: format parsing removed - native tool calling only
+            // Tools are only available for GPT models that support native tool calling
         }
         console.log('Finished processing stream chunks:', {
             totalChunks: chunkCount,
@@ -2185,7 +1291,11 @@ async function storeBotAnswerStream(
     followerIds,
     assistantName,
     requestUserId,
-    userContext = null
+    userContext = null,
+    conversationHistory = null,
+    modelKey = null,
+    temperatureKey = null,
+    allowedTools = []
 ) {
     console.log('Starting storeBotAnswerStream with:', {
         projectId,
@@ -2223,7 +1333,11 @@ async function storeBotAnswerStream(
                   project.name,
                   chatLink,
                   requestUserId || '',
-                  userContext
+                  userContext,
+                  conversationHistory,
+                  modelKey,
+                  temperatureKey,
+                  allowedTools
               )
             : ''
 
@@ -2340,33 +1454,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
         'system',
         'Always left a space between links and words. Do not wrap links inside [],{{}},() or any other characters',
     ])
-    if (Array.isArray(allowedTools) && allowedTools.length > 0) {
-        const toolsList = allowedTools.join(', ')
-        const toolsInstruction = `Available tools: ${toolsList}.
-
-CRITICAL RULE: When the user asks you to do something that requires using a tool, you MUST call the tool IMMEDIATELY in your response. Do not just say "I will create a task" - actually output the tool call RIGHT NOW in your first response.
-
-WORKFLOW:
-1. If user wants you to create/update/get something: Call the tool FIRST, then explain what you did
-2. Brief explanation (optional) -> Tool call -> Brief confirmation
-
-TOOL FORMAT: Output exactly: TOOL:<tool_name> {JSON_arguments}
-
-Examples:
-- TOOL:create_task {"name":"Task title","description":"Optional"}
-- TOOL:create_note {"title":"Note title","content":"# Heading\\n\\nNote content"}
-- TOOL:update_task {"taskName":"standup","completed":true}
-- TOOL:update_note {"noteTitle":"Daily Log","content":"## Meeting Notes\\n\\nDiscussed project updates"}
-- TOOL:get_tasks {"status":"open","date":"today"}
-- TOOL:get_tasks {"allProjects":true,"status":"open"}
-- TOOL:get_focus_task {}
- - TOOL:get_user_projects {"includeArchived":false,"includeCommunity":false}
-
-FORBIDDEN: Never say "I'll create..." without immediately following with the actual tool call. Never promise future actions - do them now.
-
-IMPORTANT: Tool calls must be on their own line with no other text. create_note supports markdown formatting.`
-        messages.push(['system', parseTextForUseLiKePrompt(toolsInstruction)])
-    }
+    // Note: Tool instructions removed - using OpenAI native tool calling instead of manual TOOL: format
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])
 }
 
@@ -2507,119 +1595,7 @@ function validateToolCallConsistency(commentText) {
 /**
  * Process tool results through LLM for intelligent analysis and formatting
  */
-async function processToolResultWithLLM(toolResult, originalUserMessage, toolName, toolArgs, projectId, assistantId) {
-    console.log('🧠 TOOL LLM PROCESSING: Starting LLM processing for tool result', {
-        toolName,
-        hasResult: !!toolResult,
-        originalMessageLength: originalUserMessage?.length,
-        projectId,
-        assistantId,
-    })
-
-    try {
-        // Get assistant settings for LLM processing
-        const assistant = await getAssistantForChat(projectId, assistantId)
-        const model = assistant.model || 'MODEL_GPT3_5'
-        const temperature = assistant.temperature || 'TEMPERATURE_NORMAL'
-        const assistantInstructions = assistant.instructions || 'You are a helpful assistant.'
-
-        // Create a focused prompt for processing the tool result
-        const systemPrompt = `You are processing the result of a ${toolName} tool call for a user on behalf of an assistant.
-
-Assistant System Prompt Instructions:
-${assistantInstructions}
-
-The user's original request was: "${originalUserMessage}"
-The tool was called with arguments: ${JSON.stringify(toolArgs, null, 2)}
-
-Your task is to analyze the raw tool result and present it in a helpful, intelligent way based on what the user was asking for and the assistant system prompt instructions provided above.
-
-CRITICAL ANTI-HALLUCINATION RULE:
-- ONLY use information that exists in the raw tool result data below
-- NEVER invent, make up, or hallucinate tasks, projects, numbers, or any other data
-- If information is not in the tool result, do NOT add it
-- Every single task name, project name, number, or detail you mention MUST come directly from the tool result
-- If you're unsure, leave it out rather than making it up
-
-Raw tool result data:
-${JSON.stringify(toolResult, null, 2)}`
-
-        const messages = [
-            ['system', systemPrompt],
-            [
-                'user',
-                // `Please analyze this ${toolName} result and present it in the most helpful way for the user's request: "${originalUserMessage}"`,
-                `Please do as instructed in the system prompt`,
-            ],
-        ]
-
-        console.log('🧠 TOOL LLM PROCESSING: Calling LLM with processed prompt', {
-            model,
-            temperature,
-            promptLength: systemPrompt.length,
-        })
-
-        // Call the LLM to process the tool result
-        const stream = await interactWithChatStream(messages, model, temperature)
-
-        // Collect the streaming response
-        let processedResponse = ''
-        for await (const chunk of stream) {
-            if (chunk.content) {
-                processedResponse += chunk.content
-            }
-        }
-
-        console.log('🧠 TOOL LLM PROCESSING: LLM processing completed', {
-            toolName,
-            originalResponseLength: JSON.stringify(toolResult).length,
-            processedResponseLength: processedResponse.length,
-        })
-
-        return processedResponse.trim()
-    } catch (error) {
-        console.error('🧠 TOOL LLM PROCESSING: Error processing tool result with LLM:', error)
-
-        // Fallback to a simple summary if LLM processing fails
-        let fallbackResponse = `Tool ${toolName} executed successfully.`
-
-        if (toolName === 'get_tasks' && toolResult.tasks) {
-            const taskCount = toolResult.tasks.length
-            const projectInfo = toolResult.crossProjectQuery ? ' across projects' : ''
-            fallbackResponse = `Found ${taskCount} tasks${projectInfo}.`
-
-            if (taskCount > 0) {
-                fallbackResponse +=
-                    ' ' +
-                    toolResult.tasks
-                        .slice(0, 3)
-                        .map((task, i) => `${i + 1}. ${task.name}`)
-                        .join(', ')
-
-                if (taskCount > 3) {
-                    fallbackResponse += ` and ${taskCount - 3} more.`
-                }
-            }
-        } else if (toolName === 'get_focus_task') {
-            if (toolResult.focusTask) {
-                fallbackResponse = `Current focus task: ${toolResult.focusTask.name}`
-                if (toolResult.wasNewTaskSet) {
-                    fallbackResponse += ' (newly set)'
-                }
-            } else {
-                fallbackResponse = 'No focus task available'
-            }
-        } else if (toolName === 'create_task' && toolArgs.name) {
-            fallbackResponse = `Created task: ${toolArgs.name}`
-        } else if (toolName === 'create_note' && toolArgs.title) {
-            fallbackResponse = `Created note: ${toolArgs.title}`
-        } else if (toolName === 'update_task') {
-            fallbackResponse = `Updated task successfully`
-        }
-
-        return fallbackResponse
-    }
-}
+// processToolResultWithLLM function removed - native tool calling only
 
 module.exports = {
     COMPLETION_MAX_TOKENS,
@@ -2635,5 +1611,4 @@ module.exports = {
     getTaskOrAssistantSettings,
     searchForAssistant,
     generateSearchSummary,
-    processToolResultWithLLM,
 }
