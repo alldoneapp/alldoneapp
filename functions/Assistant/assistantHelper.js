@@ -870,15 +870,43 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 includeCommunity,
             })
 
-            const retrievalService = new TaskRetrievalService()
-            const tasks = await retrievalService.getUserTasks({
-                projectId: toolArgs.allProjects ? null : projectId,
-                userId: creatorId,
-                userData,
-                projectsData,
-                status: toolArgs.status || 'open',
-                date: toolArgs.date || null,
+            // Initialize TaskRetrievalService with database
+            const retrievalService = new TaskRetrievalService({
+                database: admin.firestore(),
+                moment: require('moment'),
+                isCloudFunction: true,
             })
+            await retrievalService.initialize()
+
+            // If allProjects is true, get tasks from all projects
+            let tasks = []
+            if (toolArgs.allProjects) {
+                const projectIds = projectsData.map(p => p.id)
+                const result = await retrievalService.getTasksFromMultipleProjects(
+                    {
+                        userId: creatorId,
+                        status: toolArgs.status || 'open',
+                        date: toolArgs.date || null,
+                        limit: 100,
+                    },
+                    projectIds,
+                    projectsData.reduce((acc, p) => {
+                        acc[p.id] = p
+                        return acc
+                    }, {})
+                )
+                tasks = result.tasks || []
+            } else {
+                // Get tasks from single project
+                const result = await retrievalService.getTasks({
+                    projectId: projectId,
+                    userId: creatorId,
+                    status: toolArgs.status || 'open',
+                    date: toolArgs.date || null,
+                    limit: 100,
+                })
+                tasks = result || []
+            }
 
             return {
                 tasks: tasks.map(t => ({
