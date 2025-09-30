@@ -2518,15 +2518,22 @@ async function processToolResultWithLLM(toolResult, originalUserMessage, toolNam
         const assistantInstructions = assistant.instructions || 'You are a helpful assistant.'
 
         // Create a focused prompt for processing the tool result
-        const systemPrompt = `You are processing the result of a ${toolName} tool call for a user.
+        const systemPrompt = `You are processing the result of a ${toolName} tool call for a user on behalf of an assistant.
 
-Assistant Context:
+Assistant System Prompt Instructions:
 ${assistantInstructions}
 
 The user's original request was: "${originalUserMessage}"
 The tool was called with arguments: ${JSON.stringify(toolArgs, null, 2)}
 
-Your task is to analyze the raw tool result and present it in a helpful, intelligent way based on what the user was asking for and the assistant context provided above.
+Your task is to analyze the raw tool result and present it in a helpful, intelligent way based on what the user was asking for and the assistant system prompt instructions provided above.
+
+CRITICAL ANTI-HALLUCINATION RULE:
+- ONLY use information that exists in the raw tool result data below
+- NEVER invent, make up, or hallucinate tasks, projects, numbers, or any other data
+- If information is not in the tool result, do NOT add it
+- Every single task name, project name, number, or detail you mention MUST come directly from the tool result
+- If you're unsure, leave it out rather than making it up
 
 Raw tool result data:
 ${JSON.stringify(toolResult, null, 2)}`
@@ -2535,7 +2542,8 @@ ${JSON.stringify(toolResult, null, 2)}`
             ['system', systemPrompt],
             [
                 'user',
-                `Please analyze this ${toolName} result and present it in the most helpful way for the user's request: "${originalUserMessage}"`,
+                // `Please analyze this ${toolName} result and present it in the most helpful way for the user's request: "${originalUserMessage}"`,
+                `Please do as instructed in the system prompt`,
             ],
         ]
 
