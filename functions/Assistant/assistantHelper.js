@@ -316,9 +316,18 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
                   if (Array.isArray(msg)) {
                       return { role: msg[0], content: msg[1] }
                   }
-                  // Handle object format { role, content }
-                  if (typeof msg === 'object' && msg.role && msg.content) {
-                      return { role: msg.role, content: msg.content }
+                  // Handle object format { role, content, tool_calls?, tool_call_id? }
+                  if (typeof msg === 'object' && msg.role) {
+                      const result = { role: msg.role, content: msg.content || '' }
+                      // Preserve tool_calls for assistant messages
+                      if (msg.tool_calls) {
+                          result.tool_calls = msg.tool_calls
+                      }
+                      // Preserve tool_call_id for tool messages
+                      if (msg.tool_call_id) {
+                          result.tool_call_id = msg.tool_call_id
+                      }
+                      return result
                   }
                   console.error('Unexpected message format:', JSON.stringify(msg))
                   throw new Error('Unexpected message format')
