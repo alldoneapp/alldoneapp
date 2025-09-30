@@ -1281,11 +1281,25 @@ async function storeChunks(
                 commentText = commentText.replace(loadingMessage, '')
                 await commentRef.update({ commentText })
 
-                // Process the new stream - it will continue adding to commentText
+                // Process the new stream - replace the current stream
                 console.log('🔧 NATIVE TOOL CALL: Processing resumed stream')
-                stream = newStream
-                toolAlreadyExecuted = true // Prevent old stream from continuing
-                continue
+
+                // Process all chunks from the new stream
+                for await (const newChunk of newStream) {
+                    console.log('🔧 NATIVE TOOL CALL: Processing resumed stream chunk:', {
+                        hasContent: !!newChunk.content,
+                        contentLength: newChunk.content?.length,
+                    })
+
+                    if (newChunk.content) {
+                        commentText += newChunk.content
+                        await commentRef.update({ commentText })
+                    }
+                }
+
+                console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream')
+                toolAlreadyExecuted = true // Mark as done
+                break // Exit the main loop since we've processed everything
             }
 
             // Handle loading indicator for deep research
