@@ -383,14 +383,25 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
  */
 async function* convertOpenAIStream(stream) {
     let accumulatedToolCalls = {}
+    let chunkCount = 0
 
     for await (const chunk of stream) {
+        chunkCount++
         const delta = chunk.choices[0]?.delta
+        const finishReason = chunk.choices[0]?.finish_reason
 
-        if (!delta) continue
+        console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, {
+            hasDelta: !!delta,
+            hasContent: !!delta?.content,
+            contentLength: delta?.content?.length,
+            hasToolCalls: !!delta?.tool_calls,
+            finishReason: finishReason,
+        })
+
+        if (!delta && !finishReason) continue
 
         // Handle tool calls - OpenAI streams them in chunks
-        if (delta.tool_calls) {
+        if (delta?.tool_calls) {
             for (const toolCallChunk of delta.tool_calls) {
                 const index = toolCallChunk.index
 
@@ -422,7 +433,7 @@ async function* convertOpenAIStream(stream) {
         }
 
         // If we have content, yield it
-        if (delta.content) {
+        if (delta?.content) {
             yield {
                 content: delta.content,
                 additional_kwargs: {},
@@ -430,7 +441,7 @@ async function* convertOpenAIStream(stream) {
         }
 
         // Check if the stream is finishing (finish_reason present)
-        if (chunk.choices[0]?.finish_reason === 'tool_calls') {
+        if (finishReason === 'tool_calls') {
             // Stream is done, yield accumulated tool calls
             const completedToolCalls = Object.values(accumulatedToolCalls)
             if (completedToolCalls.length > 0) {
@@ -450,8 +461,16 @@ async function* convertOpenAIStream(stream) {
                 }
             }
             accumulatedToolCalls = {} // Reset for next potential tool calls
+        } else if (finishReason === 'stop') {
+            console.log('🔧 STREAM: Stream finished with reason: stop')
+        } else if (finishReason === 'length') {
+            console.log('🔧 STREAM: Stream finished with reason: length (max tokens)')
+        } else if (finishReason) {
+            console.log('🔧 STREAM: Stream finished with reason:', finishReason)
         }
     }
+
+    console.log(`🔧 STREAM CONVERTER: Finished processing ${chunkCount} chunks`)
 }
 
 function formatMessage(objectType, message, assistantId) {
