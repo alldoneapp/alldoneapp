@@ -314,20 +314,22 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
             maxTokens: COMPLETION_MAX_TOKENS,
         }
 
-        // Add tool schemas if model supports native tools and tools are allowed
+        let chat = new ChatOpenAI(chatConfig)
+
+        // Bind tools if model supports native tools and tools are allowed
         if (modelSupportsNativeTools(modelKey) && Array.isArray(allowedTools) && allowedTools.length > 0) {
             const { getToolSchemas } = require('./toolSchemas')
             const toolSchemas = getToolSchemas(allowedTools)
             if (toolSchemas.length > 0) {
                 console.log(
-                    'Adding native tool schemas:',
+                    'Binding native tool schemas:',
                     toolSchemas.map(t => t.function.name)
                 )
-                chatConfig.tools = toolSchemas
+                // Use bindTools to attach tools to the model
+                chat = chat.bindTools(toolSchemas)
             }
         }
 
-        const chat = new ChatOpenAI(chatConfig)
         return await chat.stream(formattedPrompt)
     }
 }

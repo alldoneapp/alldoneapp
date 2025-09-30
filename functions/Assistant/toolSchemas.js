@@ -8,7 +8,8 @@ const toolSchemas = {
         type: 'function',
         function: {
             name: 'create_task',
-            description: 'Creates a new task in the current project',
+            description:
+                'Creates a new task in the current project. Use this when the user wants to add, create, or remember a task/todo item.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -53,7 +54,7 @@ const toolSchemas = {
         function: {
             name: 'get_tasks',
             description:
-                'Retrieves tasks from the current project or across all projects. Can filter by status, date, and other criteria.',
+                'Retrieves and shows tasks from the current project or across all projects. Use this when the user asks to see, show, list, or check their tasks. Can filter by status (open/done), date (today, specific date), and project scope.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -127,7 +128,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task. Can search by taskId, taskName, projectName, or projectId. Can update completion status, focus status, name, and description.',
+                'Updates an existing task. Use this when the user wants to mark a task as done/complete, change focus, rename, or update a task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, and description.',
             parameters: {
                 type: 'object',
                 properties: {
