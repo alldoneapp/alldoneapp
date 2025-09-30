@@ -69,6 +69,17 @@ const modelSupportsNativeTools = modelKey => {
     return modelKey === MODEL_GPT3_5 || modelKey === MODEL_GPT4 || modelKey === MODEL_GPT4O || modelKey === MODEL_GPT5
 }
 
+/**
+ * Check if a model supports custom temperature values
+ * @param {string} modelKey - The model key (e.g., MODEL_GPT4O)
+ * @returns {boolean} True if model supports custom temperature
+ */
+const modelSupportsCustomTemperature = modelKey => {
+    // GPT-5 and some newer models only support default temperature (1.0)
+    if (modelKey === MODEL_GPT5) return false
+    return true
+}
+
 const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 100
     if (modelKey === MODEL_GPT4) return 10
@@ -316,10 +327,17 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 
         const requestParams = {
             model: model,
-            temperature: temperature,
             max_completion_tokens: COMPLETION_MAX_TOKENS,
             messages: messages,
             stream: true,
+        }
+
+        // Only add temperature if the model supports custom temperature
+        // Some models (like gpt-5) only support the default temperature (1.0)
+        if (modelSupportsCustomTemperature(modelKey)) {
+            requestParams.temperature = temperature
+        } else {
+            console.log(`Model ${model} does not support custom temperature, using default (1.0)`)
         }
 
         // Add tools if model supports native tools and tools are allowed
@@ -352,19 +370,77 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 
 /**
  * Convert OpenAI stream chunks to our expected format
+ * Accumulates tool calls across multiple chunks since OpenAI streams them incrementally
  */
 async function* convertOpenAIStream(stream) {
+    let accumulatedToolCalls = {}
+
     for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta
 
         if (!delta) continue
 
-        // Yield chunk in our expected format
-        yield {
-            content: delta.content || '',
-            additional_kwargs: {
-                tool_calls: delta.tool_calls || undefined,
-            },
+        // Handle tool calls - OpenAI streams them in chunks
+        if (delta.tool_calls) {
+            for (const toolCallChunk of delta.tool_calls) {
+                const index = toolCallChunk.index
+
+                if (!accumulatedToolCalls[index]) {
+                    accumulatedToolCalls[index] = {
+                        id: toolCallChunk.id || '',
+                        type: toolCallChunk.type || 'function',
+                        function: {
+                            name: toolCallChunk.function?.name || '',
+                            arguments: toolCallChunk.function?.arguments || '',
+                        },
+                    }
+                } else {
+                    // Accumulate arguments
+                    if (toolCallChunk.function?.arguments) {
+                        accumulatedToolCalls[index].function.arguments += toolCallChunk.function.arguments
+                    }
+                    if (toolCallChunk.function?.name) {
+                        accumulatedToolCalls[index].function.name += toolCallChunk.function.name
+                    }
+                    if (toolCallChunk.id) {
+                        accumulatedToolCalls[index].id = toolCallChunk.id
+                    }
+                }
+            }
+
+            // Don't yield incomplete tool calls yet
+            continue
+        }
+
+        // If we have content, yield it
+        if (delta.content) {
+            yield {
+                content: delta.content,
+                additional_kwargs: {},
+            }
+        }
+
+        // Check if the stream is finishing (finish_reason present)
+        if (chunk.choices[0]?.finish_reason === 'tool_calls') {
+            // Stream is done, yield accumulated tool calls
+            const completedToolCalls = Object.values(accumulatedToolCalls)
+            if (completedToolCalls.length > 0) {
+                console.log('🔧 STREAM: Yielding completed tool calls:', {
+                    count: completedToolCalls.length,
+                    calls: completedToolCalls.map(tc => ({
+                        id: tc.id,
+                        name: tc.function.name,
+                        argsLength: tc.function.arguments.length,
+                    })),
+                })
+                yield {
+                    content: '',
+                    additional_kwargs: {
+                        tool_calls: completedToolCalls,
+                    },
+                }
+            }
+            accumulatedToolCalls = {} // Reset for next potential tool calls
         }
     }
 }
