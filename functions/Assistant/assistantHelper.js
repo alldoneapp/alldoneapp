@@ -1064,6 +1064,13 @@ async function storeChunks(
                             requestUserId ||
                             (Array.isArray(followerIds) && followerIds.length > 0 ? followerIds[0] : '')
 
+                        console.log('🔍 ASSISTANT GET_TASKS: User identification', {
+                            creatorId,
+                            requestUserId,
+                            followerIds: followerIds?.slice(0, 3),
+                            projectId,
+                        })
+
                         // Initialize TaskRetrievalService for assistant tool calls
                         const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
                         const taskRetrievalService = new TaskRetrievalService({
@@ -1090,6 +1097,13 @@ async function storeChunks(
                             const userData = userDoc.exists ? userDoc.data() || {} : {}
                             const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
 
+                            console.log('🕐 ASSISTANT GET_TASKS: Timezone info', {
+                                creatorId,
+                                rawTimezone: userData?.timezone,
+                                normalizedTimezoneOffset: timezoneOffset,
+                                date: date,
+                            })
+
                             if (allProjects && !userDoc.exists) {
                                 throw new Error('User not found')
                             }
@@ -1110,26 +1124,49 @@ async function storeChunks(
 
                                 // Determine which projects to include based on flags
                                 let targetProjectIds = [...projectIds] // Start with regular projects
+                                const initialCount = targetProjectIds.length
 
                                 if (includeArchived) {
                                     targetProjectIds.push(...archivedProjectIds)
+                                    console.log(
+                                        `➕ ASSISTANT GET_TASKS: Added ${archivedProjectIds.length} archived projects`
+                                    )
                                 }
 
                                 if (includeCommunity) {
                                     targetProjectIds.push(...templateProjectIds)
                                     targetProjectIds.push(...guideProjectIds)
+                                    console.log(
+                                        `➕ ASSISTANT GET_TASKS: Added ${templateProjectIds.length} template + ${guideProjectIds.length} guide projects`
+                                    )
                                 } else {
                                     // By default, exclude archived projects unless explicitly requested
+                                    const beforeFilter = targetProjectIds.length
                                     targetProjectIds = targetProjectIds.filter(id => !archivedProjectIds.includes(id))
+                                    const archivedFiltered = beforeFilter - targetProjectIds.length
+                                    console.log(
+                                        `➖ ASSISTANT GET_TASKS: Filtered out ${archivedFiltered} archived projects from initial set`
+                                    )
+
+                                    // Count how many community projects are in the remaining set
+                                    const communityInSet = targetProjectIds.filter(
+                                        id => templateProjectIds.includes(id) || guideProjectIds.includes(id)
+                                    ).length
+                                    console.log(
+                                        `⚠️ ASSISTANT GET_TASKS: Still have ${communityInSet} community projects in set (not filtered out!)`
+                                    )
                                 }
 
                                 // Remove duplicates and ensure user still has access
                                 const uniqueProjectIds = [...new Set(targetProjectIds)]
+                                const duplicatesRemoved = targetProjectIds.length - uniqueProjectIds.length
 
                                 console.log(
-                                    `📊 Assistant project filtering: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
+                                    `📊 ASSISTANT GET_TASKS: Project filtering summary: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
                                 )
-                                console.log(`🎯 Assistant selected ${uniqueProjectIds.length} projects for query`)
+                                console.log(
+                                    `🎯 ASSISTANT GET_TASKS: Selected ${uniqueProjectIds.length} projects for query (removed ${duplicatesRemoved} duplicates)`
+                                )
 
                                 if (uniqueProjectIds.length === 0) {
                                     result = {
@@ -1170,18 +1207,45 @@ async function storeChunks(
                                     // Filter out inaccessible projects and create metadata map
                                     const accessibleProjects = projectDocs.filter(p => p !== null)
                                     const accessibleProjectIds = accessibleProjects.map(p => p.id)
+                                    const inaccessibleCount = uniqueProjectIds.length - accessibleProjectIds.length
+
+                                    // Count active vs inactive projects
+                                    const activeProjects = accessibleProjects.filter(p => {
+                                        const isActive = typeof p.active === 'boolean' ? p.active === true : true
+                                        return isActive
+                                    })
+                                    const inactiveProjects = accessibleProjects.filter(p => {
+                                        const isActive = typeof p.active === 'boolean' ? p.active === true : true
+                                        return !isActive
+                                    })
+
+                                    // Count community projects in accessible set
+                                    const communityAccessible = accessibleProjectIds.filter(
+                                        id => templateProjectIds.includes(id) || guideProjectIds.includes(id)
+                                    ).length
+
                                     const projectsData = accessibleProjects.reduce((acc, project) => {
                                         acc[project.id] = { name: project.name, description: project.description }
                                         return acc
                                     }, {})
 
                                     console.log(
-                                        `🔐 Assistant ${accessibleProjectIds.length} projects accessible after permission check`
+                                        `🔐 ASSISTANT GET_TASKS: ${accessibleProjectIds.length} projects accessible after permission check (${inaccessibleCount} inaccessible)`
+                                    )
+                                    console.log(
+                                        `📊 ASSISTANT GET_TASKS: Active/Inactive breakdown: ${activeProjects.length} active, ${inactiveProjects.length} inactive (not filtered!)`
+                                    )
+                                    console.log(
+                                        `🏘️ ASSISTANT GET_TASKS: Community projects in accessible set: ${communityAccessible} (not filtered!)`
                                     )
 
                                     // Determine per-project cap from user's customization
                                     const numberTodayTasksSetting =
                                         typeof userData.numberTodayTasks === 'number' ? userData.numberTodayTasks : 10
+
+                                    console.log(
+                                        `⚙️ ASSISTANT GET_TASKS: Query parameters: perProjectLimit=${numberTodayTasksSetting}, status=${status}, date=${date}, timezoneOffset=${timezoneOffset}`
+                                    )
 
                                     // Use TaskRetrievalService multi-project method
                                     result = await taskRetrievalService.getTasksFromMultipleProjects(
@@ -1225,6 +1289,18 @@ async function storeChunks(
                             }
 
                             // Process results through LLM for intelligent analysis
+                            console.log('✅ ASSISTANT GET_TASKS: Final result', {
+                                creatorId,
+                                projectId,
+                                status,
+                                shownCount: result.count,
+                                totalCount: result.crossProjectQuery ? result.totalAcrossProjects : null,
+                                date: result.dateFilter,
+                                crossProject: result.crossProjectQuery,
+                                hasMore: !!result.query?.hasMore,
+                                queriedProjects: result.queriedProjects?.length || 0,
+                                timezoneUsed: timezoneOffset,
+                            })
                             console.log('Processing get_tasks result through LLM', {
                                 projectId,
                                 status,
