@@ -1,4 +1,4 @@
-const { ChatPromptTemplate } = require('@langchain/core/prompts')
+// ChatPromptTemplate removed - using plain message arrays
 const {
     interactWithChatStream,
     storeBotAnswerStream,
@@ -167,10 +167,7 @@ async function generateBotDailyTopicFirstComment(
     addBaseInstructions(messages, displayName, language, instructions)
     messages.push(['system', template])
 
-    const chatPrompt = ChatPromptTemplate.fromMessages(messages)
-    const formattedChatPrompt = await chatPrompt.formatMessages()
-
-    const stream = await interactWithChatStream(formattedChatPrompt, model, temperature)
+    const stream = await interactWithChatStream(messages, model, temperature)
     console.log('KW Special storeBotAnswerStream parameters:', {
         projectId: defaultProjectId,
         objectType: 'topics',

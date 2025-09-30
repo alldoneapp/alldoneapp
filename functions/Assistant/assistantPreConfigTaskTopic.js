@@ -1,4 +1,3 @@
-const { ChatPromptTemplate } = require('@langchain/core/prompts')
 const {
     interactWithChatStream,
     storeBotAnswerStream,
@@ -96,12 +95,10 @@ async function generatePreConfigTaskResult(
             Array.isArray(settings.allowedTools) ? settings.allowedTools : []
         )
         contextMessages.push(['user', parseTextForUseLiKePrompt(prompt)])
-        const chatPrompt = ChatPromptTemplate.fromMessages(contextMessages)
-        const formattedChatPrompt = await chatPrompt.formatMessages()
         console.log('Prepared chat prompt with model and temperature:', { model, temperature })
 
         const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : []
-        const stream = await interactWithChatStream(formattedChatPrompt, model, temperature, allowedTools)
+        const stream = await interactWithChatStream(contextMessages, model, temperature, allowedTools)
         console.log('KW Special Calling storeBotAnswerStream with parameters:', {
             projectId,
             objectType: 'tasks',
@@ -129,7 +126,7 @@ async function generatePreConfigTaskResult(
             displayName,
             userId, // requestUserId
             null, // userContext - not available in this flow
-            formattedChatPrompt, // conversationHistory
+            contextMessages, // conversationHistory
             model, // modelKey
             temperature, // temperatureKey
             allowedTools

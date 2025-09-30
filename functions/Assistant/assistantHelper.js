@@ -1,8 +1,7 @@
 const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
 const moment = require('moment')
-const { ChatOpenAI } = require('@langchain/openai')
-// no need anymore: const { ChatPerplexity } = require('@langchain/perplexity')
+const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
 
@@ -271,24 +270,14 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         const { PerplexityClient } = require('./perplexityClient')
         try {
             console.log('Creating PerplexityClient instance...')
-            // Convert LangChain messages to Perplexity format
+            // Convert messages to Perplexity format [role, content]
             const formattedMessages = Array.isArray(formattedPrompt)
                 ? formattedPrompt.map(msg => {
-                      // Handle LangChain Message instance
-                      if (msg.lc_namespace && msg.lc_namespace[0] === 'langchain_core' && msg.content) {
-                          const role = msg.constructor.name.toLowerCase().replace('message', '')
-                          return [role, msg.content]
-                      }
-                      // Handle LangChain message format (plain object)
-                      if (msg.type === 'constructor' && msg.id && msg.id[0] === 'langchain_core') {
-                          const role = msg.id[2].toLowerCase().replace('message', '')
-                          return [role, msg.kwargs.content]
-                      }
-                      // Handle existing array format
+                      // Handle array format [role, content]
                       if (Array.isArray(msg)) {
                           return msg
                       }
-                      // Handle simple object format
+                      // Handle object format { role, content }
                       if (typeof msg === 'object' && msg.role && msg.content) {
                           return [msg.role, msg.content]
                       }
@@ -306,31 +295,77 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
             throw error
         }
     } else {
-        // OpenAI implementation with native tool calling support
-        const chatConfig = {
-            openAIApiKey: OPEN_AI_KEY,
-            model_name: model,
+        // Native OpenAI implementation with tool calling support
+        const openai = new OpenAI({ apiKey: OPEN_AI_KEY })
+
+        // Convert messages to OpenAI format
+        const messages = Array.isArray(formattedPrompt)
+            ? formattedPrompt.map(msg => {
+                  // Handle array format [role, content]
+                  if (Array.isArray(msg)) {
+                      return { role: msg[0], content: msg[1] }
+                  }
+                  // Handle object format { role, content }
+                  if (typeof msg === 'object' && msg.role && msg.content) {
+                      return { role: msg.role, content: msg.content }
+                  }
+                  console.error('Unexpected message format:', JSON.stringify(msg))
+                  throw new Error('Unexpected message format')
+              })
+            : formattedPrompt
+
+        const requestParams = {
+            model: model,
             temperature: temperature,
-            maxTokens: COMPLETION_MAX_TOKENS,
+            max_tokens: COMPLETION_MAX_TOKENS,
+            messages: messages,
+            stream: true,
         }
 
-        let chat = new ChatOpenAI(chatConfig)
-
-        // Bind tools if model supports native tools and tools are allowed
+        // Add tools if model supports native tools and tools are allowed
         if (modelSupportsNativeTools(modelKey) && Array.isArray(allowedTools) && allowedTools.length > 0) {
             const { getToolSchemas } = require('./toolSchemas')
             const toolSchemas = getToolSchemas(allowedTools)
             if (toolSchemas.length > 0) {
                 console.log(
-                    'Binding native tool schemas:',
+                    'Using native tool schemas:',
                     toolSchemas.map(t => t.function.name)
                 )
-                // Use bindTools to attach tools to the model
-                chat = chat.bindTools(toolSchemas)
+                requestParams.tools = toolSchemas
             }
         }
 
-        return await chat.stream(formattedPrompt)
+        console.log('Creating OpenAI stream with params:', {
+            model: requestParams.model,
+            temperature: requestParams.temperature,
+            max_tokens: requestParams.max_tokens,
+            messageCount: messages.length,
+            hasTools: !!requestParams.tools,
+        })
+
+        const stream = await openai.chat.completions.create(requestParams)
+
+        // Convert OpenAI stream to our expected format
+        return convertOpenAIStream(stream)
+    }
+}
+
+/**
+ * Convert OpenAI stream chunks to our expected format
+ */
+async function* convertOpenAIStream(stream) {
+    for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta
+
+        if (!delta) continue
+
+        // Yield chunk in our expected format
+        yield {
+            content: delta.content || '',
+            additional_kwargs: {
+                tool_calls: delta.tool_calls || undefined,
+            },
+        }
     }
 }
 
@@ -1078,24 +1113,32 @@ async function storeChunks(
 
                 // Build new conversation history with tool result
                 // Need to add: assistant's message with tool call, then tool result message
-                const { HumanMessage, AIMessage, ToolMessage } = require('@langchain/core/messages')
 
                 // Collect all assistant content before tool call
                 const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
 
-                // Build updated conversation
+                // Build updated conversation with plain objects
                 const updatedConversation = [
                     ...conversationHistory,
-                    new AIMessage({
+                    {
+                        role: 'assistant',
                         content: assistantMessageContent,
-                        additional_kwargs: {
-                            tool_calls: [toolCall],
-                        },
-                    }),
-                    new ToolMessage({
+                        tool_calls: [
+                            {
+                                id: toolCallId,
+                                type: 'function',
+                                function: {
+                                    name: toolName,
+                                    arguments: JSON.stringify(toolArgs),
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        role: 'tool',
                         content: JSON.stringify(toolResult),
                         tool_call_id: toolCallId,
-                    }),
+                    },
                 ]
 
                 console.log('🔧 NATIVE TOOL CALL: Resuming stream with tool result', {

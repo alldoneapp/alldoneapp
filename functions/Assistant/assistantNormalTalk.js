@@ -1,7 +1,6 @@
 const admin = require('firebase-admin')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
-const { ChatPromptTemplate } = require('@langchain/core/prompts')
 
 const {
     COMPLETION_MAX_TOKENS,
@@ -141,11 +140,9 @@ async function askToOpenAIBot(
         })
 
         const contextMessages = generateContext(messages)
-        const chatPrompt = ChatPromptTemplate.fromMessages(contextMessages)
-        const formattedChatPrompt = await chatPrompt.formatMessages()
 
-        console.log('Generated chat prompt:', {
-            promptMessagesCount: formattedChatPrompt?.length,
+        console.log('Generated context messages:', {
+            contextMessagesCount: contextMessages?.length,
         })
 
         // Extract the latest user message for tool context
@@ -159,7 +156,7 @@ async function askToOpenAIBot(
 
         try {
             const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
-            const stream = await interactWithChatStream(formattedChatPrompt, model, temperature, allowedTools)
+            const stream = await interactWithChatStream(contextMessages, model, temperature, allowedTools)
 
             console.log('Got stream from interactWithChatStream')
 
@@ -176,7 +173,7 @@ async function askToOpenAIBot(
                 displayName,
                 userId,
                 userContextForTools,
-                formattedChatPrompt, // conversationHistory
+                contextMessages, // conversationHistory
                 model, // modelKey
                 temperature, // temperatureKey
                 allowedTools
