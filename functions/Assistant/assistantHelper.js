@@ -756,6 +756,12 @@ async function storeChunks(
             })
 
             // Detect and execute tool calls when not in thinking mode
+            // If a tool was already executed, skip processing remaining chunks
+            if (toolAlreadyExecuted) {
+                console.log('Tool already executed, skipping remaining stream chunks')
+                continue
+            }
+
             if (!thinkingMode && !toolAlreadyExecuted && typeof commentText === 'string') {
                 try {
                     const toolMatch = commentText.match(/TOOL:\s*create_task\s*(\{[\s\S]*?\})/)
