@@ -1115,57 +1115,30 @@ async function storeChunks(
                                     status,
                                 })
 
-                                const {
-                                    projectIds = [],
-                                    archivedProjectIds = [],
-                                    templateProjectIds = [],
-                                    guideProjectIds = [],
-                                } = userData
+                                // Use shared ProjectService for consistent filtering
+                                const { ProjectService } = require('../shared/ProjectService')
+                                const projectService = new ProjectService({ database: admin.firestore() })
+                                await projectService.initialize()
 
-                                // Determine which projects to include based on flags
-                                let targetProjectIds = [...projectIds] // Start with regular projects
-                                const initialCount = targetProjectIds.length
+                                const projects = await projectService.getUserProjects(creatorId, {
+                                    includeArchived,
+                                    includeCommunity,
+                                    activeOnly: true,
+                                })
 
-                                if (includeArchived) {
-                                    targetProjectIds.push(...archivedProjectIds)
-                                    console.log(
-                                        `➕ ASSISTANT GET_TASKS: Added ${archivedProjectIds.length} archived projects`
-                                    )
-                                }
+                                const uniqueProjectIds = projects.map(p => p.id)
 
-                                if (includeCommunity) {
-                                    targetProjectIds.push(...templateProjectIds)
-                                    targetProjectIds.push(...guideProjectIds)
-                                    console.log(
-                                        `➕ ASSISTANT GET_TASKS: Added ${templateProjectIds.length} template + ${guideProjectIds.length} guide projects`
-                                    )
-                                } else {
-                                    // By default, exclude archived projects unless explicitly requested
-                                    const beforeFilter = targetProjectIds.length
-                                    targetProjectIds = targetProjectIds.filter(id => !archivedProjectIds.includes(id))
-                                    const archivedFiltered = beforeFilter - targetProjectIds.length
-                                    console.log(
-                                        `➖ ASSISTANT GET_TASKS: Filtered out ${archivedFiltered} archived projects from initial set`
-                                    )
-
-                                    // Count how many community projects are in the remaining set
-                                    const communityInSet = targetProjectIds.filter(
-                                        id => templateProjectIds.includes(id) || guideProjectIds.includes(id)
-                                    ).length
-                                    console.log(
-                                        `⚠️ ASSISTANT GET_TASKS: Still have ${communityInSet} community projects in set (not filtered out!)`
-                                    )
-                                }
-
-                                // Remove duplicates and ensure user still has access
-                                const uniqueProjectIds = [...new Set(targetProjectIds)]
-                                const duplicatesRemoved = targetProjectIds.length - uniqueProjectIds.length
+                                // Log project counts for debugging
+                                const regularCount = projects.filter(p => p.projectType === 'regular').length
+                                const archivedCount = projects.filter(p => p.projectType === 'archived').length
+                                const templateCount = projects.filter(p => p.projectType === 'template').length
+                                const guideCount = projects.filter(p => p.projectType === 'guide').length
 
                                 console.log(
-                                    `📊 ASSISTANT GET_TASKS: Project filtering summary: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
+                                    `📊 ASSISTANT GET_TASKS: Project filtering summary: ${regularCount} regular, ${archivedCount} archived, ${templateCount} template, ${guideCount} guide`
                                 )
                                 console.log(
-                                    `🎯 ASSISTANT GET_TASKS: Selected ${uniqueProjectIds.length} projects for query (removed ${duplicatesRemoved} duplicates)`
+                                    `🎯 ASSISTANT GET_TASKS: Selected ${uniqueProjectIds.length} projects for query`
                                 )
 
                                 if (uniqueProjectIds.length === 0) {
@@ -1180,34 +1153,10 @@ async function storeChunks(
                                         message: 'No projects match the specified criteria',
                                     }
                                 } else {
-                                    // Get project metadata for better display names
-                                    const projectDocs = await Promise.all(
-                                        uniqueProjectIds.map(async projectId => {
-                                            try {
-                                                const doc = await admin
-                                                    .firestore()
-                                                    .collection('projects')
-                                                    .doc(projectId)
-                                                    .get()
-                                                if (doc.exists) {
-                                                    const data = doc.data()
-                                                    // Verify user still has access
-                                                    if (data.userIds && data.userIds.includes(creatorId)) {
-                                                        return { id: projectId, ...data }
-                                                    }
-                                                }
-                                                return null
-                                            } catch (error) {
-                                                console.warn(`Could not access project ${projectId}:`, error.message)
-                                                return null
-                                            }
-                                        })
-                                    )
-
-                                    // Filter out inaccessible projects and create metadata map
-                                    const accessibleProjects = projectDocs.filter(p => p !== null)
-                                    const accessibleProjectIds = accessibleProjects.map(p => p.id)
-                                    const inaccessibleCount = uniqueProjectIds.length - accessibleProjectIds.length
+                                    // Projects are already filtered and verified by ProjectService
+                                    const accessibleProjects = projects
+                                    const accessibleProjectIds = uniqueProjectIds
+                                    const inaccessibleCount = 0
 
                                     // Count active vs inactive projects
                                     const activeProjects = accessibleProjects.filter(p => {

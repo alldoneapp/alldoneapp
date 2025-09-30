@@ -1091,46 +1091,47 @@ class AlldoneSimpleMCPServer {
                     status,
                 })
 
-                // Get user data to understand project classifications
+                // Get user data for timezone
                 const userDoc = await db.collection('users').doc(userId).get()
                 if (!userDoc.exists) {
                     throw new Error('User not found')
                 }
 
                 const userData = userDoc.data()
-                const {
-                    projectIds = [],
-                    archivedProjectIds = [],
-                    templateProjectIds = [],
-                    guideProjectIds = [],
-                } = userData
-
-                // Determine which projects to include based on flags
-                let targetProjectIds = [...projectIds] // Start with regular projects
-
-                if (includeArchived) {
-                    targetProjectIds.push(...archivedProjectIds)
-                }
-
-                if (includeCommunity) {
-                    targetProjectIds.push(...templateProjectIds)
-                    targetProjectIds.push(...guideProjectIds)
-                } else {
-                    // By default, exclude archived projects unless explicitly requested
-                    targetProjectIds = targetProjectIds.filter(id => !archivedProjectIds.includes(id))
-                }
-
-                // Remove duplicates and ensure user still has access
-                const uniqueProjectIds = [...new Set(targetProjectIds)]
-
-                console.log(
-                    `📊 Project filtering: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
-                )
-                console.log(`🎯 Selected ${uniqueProjectIds.length} projects for query`)
-
                 const timezoneOffset = TaskRetrievalServiceClass.normalizeTimezoneOffset(userData?.timezone)
 
-                if (uniqueProjectIds.length === 0) {
+                // Use shared ProjectService for consistent filtering
+                if (!this.projectService) {
+                    const { ProjectService } = require('../shared/ProjectService')
+                    this.projectService = new ProjectService({ database: db })
+                    await this.projectService.initialize()
+                }
+
+                const projects = await this.projectService.getUserProjects(userId, {
+                    includeArchived,
+                    includeCommunity,
+                    activeOnly: true,
+                })
+
+                const accessibleProjectIds = projects.map(p => p.id)
+                const projectsData = projects.reduce((acc, project) => {
+                    acc[project.id] = { name: project.name, description: project.description }
+                    return acc
+                }, {})
+
+                // Log project counts for debugging
+                const regularCount = projects.filter(p => p.projectType === 'regular').length
+                const archivedCount = projects.filter(p => p.projectType === 'archived').length
+                const templateCount = projects.filter(p => p.projectType === 'template').length
+                const guideCount = projects.filter(p => p.projectType === 'guide').length
+
+                console.log(
+                    `📊 Project filtering: ${regularCount} regular, ${archivedCount} archived, ${templateCount} template, ${guideCount} guide`
+                )
+                console.log(`🎯 Selected ${accessibleProjectIds.length} projects for query`)
+                console.log(`🔐 ${accessibleProjectIds.length} projects accessible after permission check`)
+
+                if (accessibleProjectIds.length === 0) {
                     return {
                         success: true,
                         tasks: [],
@@ -1147,36 +1148,6 @@ class AlldoneSimpleMCPServer {
                         timezoneOffset,
                     }
                 }
-
-                // Get project metadata for better display names
-                const projectDocs = await Promise.all(
-                    uniqueProjectIds.map(async projectId => {
-                        try {
-                            const doc = await db.collection('projects').doc(projectId).get()
-                            if (doc.exists) {
-                                const data = doc.data()
-                                // Verify user still has access
-                                if (data.userIds && data.userIds.includes(userId)) {
-                                    return { id: projectId, ...data }
-                                }
-                            }
-                            return null
-                        } catch (error) {
-                            console.warn(`Could not access project ${projectId}:`, error.message)
-                            return null
-                        }
-                    })
-                )
-
-                // Filter out inaccessible projects and create metadata map
-                const accessibleProjects = projectDocs.filter(p => p !== null)
-                const accessibleProjectIds = accessibleProjects.map(p => p.id)
-                const projectsData = accessibleProjects.reduce((acc, project) => {
-                    acc[project.id] = { name: project.name, description: project.description }
-                    return acc
-                }, {})
-
-                console.log(`🔐 ${accessibleProjectIds.length} projects accessible after permission check`)
 
                 // Read user's customization for per-project cap
                 const numberTodayTasksSetting = userDoc.exists ? userDoc.data().numberTodayTasks : undefined
@@ -1207,9 +1178,9 @@ class AlldoneSimpleMCPServer {
                     projectFilters: {
                         includeArchived,
                         includeCommunity,
-                        totalRegularProjects: projectIds.length,
-                        totalArchivedProjects: archivedProjectIds.length,
-                        totalCommunityProjects: templateProjectIds.length + guideProjectIds.length,
+                        totalRegularProjects: regularCount,
+                        totalArchivedProjects: archivedCount,
+                        totalCommunityProjects: templateCount + guideCount,
                     },
                 }
             } else {
@@ -1279,18 +1250,6 @@ class AlldoneSimpleMCPServer {
         try {
             console.log('Getting projects for userId:', userId, { includeArchived, includeCommunity })
 
-            // Get user data to report totals (unchanged), service will handle fetching and filtering
-            const userDoc = await db.collection('users').doc(userId).get()
-            if (!userDoc.exists) {
-                throw new Error('User not found')
-            }
-            const userData = userDoc.data()
-            const { projectIds = [], archivedProjectIds = [], templateProjectIds = [], guideProjectIds = [] } = userData
-
-            console.log(
-                `📊 Project filtering: ${projectIds.length} regular, ${archivedProjectIds.length} archived, ${templateProjectIds.length} template, ${guideProjectIds.length} guide`
-            )
-
             // Initialize and use shared ProjectService (active by default)
             if (!this.projectService) {
                 const { ProjectService } = require('../shared/ProjectService')
@@ -1304,6 +1263,15 @@ class AlldoneSimpleMCPServer {
                 activeOnly: true,
             })
 
+            // Calculate project type counts from returned projects
+            const regularCount = projects.filter(p => p.projectType === 'regular').length
+            const archivedCount = projects.filter(p => p.projectType === 'archived').length
+            const templateCount = projects.filter(p => p.projectType === 'template').length
+            const guideCount = projects.filter(p => p.projectType === 'guide').length
+
+            console.log(
+                `📊 Project filtering: ${regularCount} regular, ${archivedCount} archived, ${templateCount} template, ${guideCount} guide`
+            )
             console.log(`Found ${projects.length} accessible projects for user (active by default)`)
 
             return {
@@ -1313,9 +1281,9 @@ class AlldoneSimpleMCPServer {
                 projectFilters: {
                     includeArchived,
                     includeCommunity,
-                    totalRegularProjects: projectIds.length,
-                    totalArchivedProjects: archivedProjectIds.length,
-                    totalCommunityProjects: templateProjectIds.length + guideProjectIds.length,
+                    totalRegularProjects: regularCount,
+                    totalArchivedProjects: archivedCount,
+                    totalCommunityProjects: templateCount + guideCount,
                 },
             }
         } catch (error) {
