@@ -1267,6 +1267,13 @@ async function storeChunks(
                 console.log('🔧 NATIVE TOOL CALL: Resuming stream with tool result', {
                     conversationLength: updatedConversation.length,
                     toolResultLength: JSON.stringify(toolResult).length,
+                    conversationMessages: updatedConversation.map(m => ({
+                        role: m.role,
+                        hasContent: !!m.content,
+                        contentLength: m.content?.length,
+                        hasToolCalls: !!m.tool_calls,
+                        hasToolCallId: !!m.tool_call_id,
+                    })),
                 })
 
                 // Resume stream with updated conversation
@@ -1285,10 +1292,14 @@ async function storeChunks(
                 console.log('🔧 NATIVE TOOL CALL: Processing resumed stream')
 
                 // Process all chunks from the new stream
+                let resumedChunkCount = 0
                 for await (const newChunk of newStream) {
-                    console.log('🔧 NATIVE TOOL CALL: Processing resumed stream chunk:', {
+                    resumedChunkCount++
+                    console.log('🔧 NATIVE TOOL CALL: Processing resumed stream chunk #' + resumedChunkCount + ':', {
                         hasContent: !!newChunk.content,
                         contentLength: newChunk.content?.length,
+                        content: newChunk.content?.substring(0, 100),
+                        hasAdditionalKwargs: !!newChunk.additional_kwargs,
                     })
 
                     if (newChunk.content) {
@@ -1297,7 +1308,10 @@ async function storeChunks(
                     }
                 }
 
-                console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream')
+                console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
+                    totalResumedChunks: resumedChunkCount,
+                    finalCommentLength: commentText.length,
+                })
                 toolAlreadyExecuted = true // Mark as done
                 break // Exit the main loop since we've processed everything
             }
