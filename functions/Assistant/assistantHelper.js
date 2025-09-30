@@ -692,6 +692,12 @@ async function storeChunks(
                 hasReplacementContent: !!chunk.replacementContent,
             })
 
+            // If a tool was already executed, skip all remaining chunks from the stream
+            if (toolAlreadyExecuted) {
+                console.log('Tool already executed, discarding remaining stream chunk')
+                continue
+            }
+
             // Handle loading indicator for deep research
             if (chunk.isLoading) {
                 await commentRef.update({
@@ -756,12 +762,6 @@ async function storeChunks(
             })
 
             // Detect and execute tool calls when not in thinking mode
-            // If a tool was already executed, skip processing remaining chunks
-            if (toolAlreadyExecuted) {
-                console.log('Tool already executed, skipping remaining stream chunks')
-                continue
-            }
-
             if (!thinkingMode && !toolAlreadyExecuted && typeof commentText === 'string') {
                 try {
                     const toolMatch = commentText.match(/TOOL:\s*create_task\s*(\{[\s\S]*?\})/)
