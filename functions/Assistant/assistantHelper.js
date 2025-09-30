@@ -2480,22 +2480,18 @@ async function processToolResultWithLLM(toolResult, originalUserMessage, toolNam
         const assistant = await getAssistantForChat(projectId, assistantId)
         const model = assistant.model || 'MODEL_GPT3_5'
         const temperature = assistant.temperature || 'TEMPERATURE_NORMAL'
+        const assistantInstructions = assistant.instructions || 'You are a helpful assistant.'
 
         // Create a focused prompt for processing the tool result
         const systemPrompt = `You are processing the result of a ${toolName} tool call for a user.
 
+Assistant Context:
+${assistantInstructions}
+
 The user's original request was: "${originalUserMessage}"
 The tool was called with arguments: ${JSON.stringify(toolArgs, null, 2)}
 
-Your task is to analyze the raw tool result and present it in a helpful, intelligent way based on what the user was asking for.
-
-Key guidelines:
-- Focus on what the user actually needs from this data
-- Be concise but informative
-- If the user asked for analysis (like "top 3 most important"), provide that analysis
-- Format the response in a natural, conversational way
-- Don't just dump the raw data - interpret and present it meaningfully
-- Use markdown formatting for better readability when appropriate
+Your task is to analyze the raw tool result and present it in a helpful, intelligent way based on what the user was asking for and the assistant context provided above.
 
 Raw tool result data:
 ${JSON.stringify(toolResult, null, 2)}`
