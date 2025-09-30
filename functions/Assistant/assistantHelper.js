@@ -802,6 +802,11 @@ async function storeChunks(
                             continue
                         }
 
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Creating task...'
+                        const withLoading = commentText.replace(toolMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
+
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
                             requestUserId ||
@@ -883,8 +888,8 @@ async function storeChunks(
                             assistantId
                         )
 
-                        // Replace tool line with LLM-processed response
-                        const replaced = commentText.replace(toolMatch[0], processedResponse.trim())
+                        // Replace loading indicator with LLM-processed response
+                        const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                         commentText = replaced
                         answerContent = replaced
                         await commentRef.update({ commentText })
@@ -935,6 +940,11 @@ async function storeChunks(
                             toolAlreadyExecuted = true
                             continue
                         }
+
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Creating note...'
+                        const withLoading = commentText.replace(createNoteMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
 
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
@@ -1017,8 +1027,8 @@ async function storeChunks(
                             assistantId
                         )
 
-                        // Replace tool line with LLM-processed response
-                        const replaced = commentText.replace(createNoteMatch[0], processedResponse.trim())
+                        // Replace loading indicator with LLM-processed response
+                        const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                         commentText = replaced
                         answerContent = replaced
                         await commentRef.update({ commentText })
@@ -1058,6 +1068,11 @@ async function storeChunks(
                             toolAlreadyExecuted = true
                             continue
                         }
+
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Retrieving tasks...'
+                        const withLoading = commentText.replace(getTasksMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
 
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
@@ -1270,8 +1285,8 @@ async function storeChunks(
                                 assistantId
                             )
 
-                            // Replace tool line with LLM-processed response
-                            const replaced = commentText.replace(getTasksMatch[0], processedResponse.trim())
+                            // Replace loading indicator with LLM-processed response
+                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1279,7 +1294,7 @@ async function storeChunks(
                         } catch (error) {
                             console.error('Error getting tasks via tool call:', error)
                             const errorMsg = `Error retrieving tasks: ${error.message}`
-                            const replaced = commentText.replace(getTasksMatch[0], errorMsg)
+                            const replaced = withLoading.replace(loadingMessage, errorMsg)
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1327,6 +1342,11 @@ async function storeChunks(
                             continue
                         }
 
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Retrieving projects...'
+                        const withLoading = commentText.replace(getUserProjectsMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
+
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
                             requestUserId ||
@@ -1368,8 +1388,8 @@ async function storeChunks(
                                 assistantId
                             )
 
-                            // Replace tool line with LLM-processed response
-                            const replaced = commentText.replace(getUserProjectsMatch[0], processedResponse.trim())
+                            // Replace loading indicator with LLM-processed response
+                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1377,7 +1397,7 @@ async function storeChunks(
                         } catch (error) {
                             console.error('Error getting user projects via tool call:', error)
                             const errorMsg = `Error retrieving projects: ${error.message}`
-                            const replaced = commentText.replace(getUserProjectsMatch[0], errorMsg)
+                            const replaced = withLoading.replace(loadingMessage, errorMsg)
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1422,6 +1442,11 @@ async function storeChunks(
                             continue
                         }
 
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Retrieving focus task...'
+                        const withLoading = commentText.replace(getFocusTaskMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
+
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
                             requestUserId ||
@@ -1461,8 +1486,8 @@ async function storeChunks(
                                 assistantId
                             )
 
-                            // Replace tool line with LLM-processed response
-                            const replaced = commentText.replace(getFocusTaskMatch[0], processedResponse.trim())
+                            // Replace loading indicator with LLM-processed response
+                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1470,7 +1495,7 @@ async function storeChunks(
                         } catch (error) {
                             console.error('Error getting focus task via tool call:', error)
                             const errorMsg = `Error retrieving focus task: ${error.message}`
-                            const replaced = commentText.replace(getFocusTaskMatch[0], errorMsg)
+                            const replaced = withLoading.replace(loadingMessage, errorMsg)
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1525,6 +1550,11 @@ async function storeChunks(
                             toolAlreadyExecuted = true
                             continue
                         }
+
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Updating task...'
+                        const withLoading = commentText.replace(updateTaskMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
 
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
@@ -1781,8 +1811,8 @@ async function storeChunks(
                                 assistantId
                             )
 
-                            // Replace tool line with LLM-processed response
-                            const replaced = commentText.replace(updateTaskMatch[0], processedResponse.trim())
+                            // Replace loading indicator with LLM-processed response
+                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1790,7 +1820,7 @@ async function storeChunks(
                         } catch (error) {
                             console.error('Error updating task via tool call:', error)
                             const errorMsg = `Error updating task: ${error.message}`
-                            const replaced = commentText.replace(updateTaskMatch[0], errorMsg)
+                            const replaced = withLoading.replace(loadingMessage, errorMsg)
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -1857,6 +1887,11 @@ async function storeChunks(
                             toolAlreadyExecuted = true
                             continue
                         }
+
+                        // Show loading indicator
+                        const loadingMessage = '⏳ Updating note...'
+                        const withLoading = commentText.replace(updateNoteMatch[0], loadingMessage)
+                        await commentRef.update({ commentText: withLoading })
 
                         // Determine creatorId (the user interacting with the assistant)
                         const creatorId =
@@ -2018,8 +2053,8 @@ async function storeChunks(
                                 assistantId
                             )
 
-                            // Replace tool line with LLM-processed response
-                            const replaced = commentText.replace(updateNoteMatch[0], processedResponse.trim())
+                            // Replace loading indicator with LLM-processed response
+                            const replaced = withLoading.replace(loadingMessage, processedResponse.trim())
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
@@ -2027,7 +2062,7 @@ async function storeChunks(
                         } catch (error) {
                             console.error('Error updating note via tool call:', error)
                             const errorMsg = `Error updating note: ${error.message}`
-                            const replaced = commentText.replace(updateNoteMatch[0], errorMsg)
+                            const replaced = withLoading.replace(loadingMessage, errorMsg)
                             commentText = replaced
                             answerContent = replaced
                             await commentRef.update({ commentText })
