@@ -38,7 +38,13 @@ class ProjectService {
         const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
         const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
 
-        let targetProjectIds = [...projectIds]
+        // Start with projectIds, but filter out archived and community projects
+        // since they may be included in the base projectIds array
+        let targetProjectIds = projectIds.filter(
+            id => !archivedProjectIds.includes(id) && !templateProjectIds.includes(id) && !guideProjectIds.includes(id)
+        )
+
+        // Now explicitly add back the ones requested via flags
         if (includeArchived) {
             targetProjectIds.push(...archivedProjectIds)
         }
