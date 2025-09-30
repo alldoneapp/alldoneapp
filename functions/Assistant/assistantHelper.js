@@ -317,7 +317,7 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         const requestParams = {
             model: model,
             temperature: temperature,
-            max_tokens: COMPLETION_MAX_TOKENS,
+            max_completion_tokens: COMPLETION_MAX_TOKENS,
             messages: messages,
             stream: true,
         }
