@@ -1169,8 +1169,8 @@ async function storeChunks(
                                     })
 
                                     // Count community projects in accessible set
-                                    const communityAccessible = accessibleProjectIds.filter(
-                                        id => templateProjectIds.includes(id) || guideProjectIds.includes(id)
+                                    const communityAccessible = accessibleProjects.filter(
+                                        p => p.projectType === 'template' || p.projectType === 'guide'
                                     ).length
 
                                     const projectsData = accessibleProjects.reduce((acc, project) => {
