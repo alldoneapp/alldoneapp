@@ -856,14 +856,19 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
             const userData = userDoc.data()
 
-            // Get projects
-            const projectService = new ProjectService()
+            // Get projects with database interface
+            const projectService = new ProjectService({
+                database: admin.firestore(),
+            })
             await projectService.initialize()
 
             const includeArchived = toolArgs.includeArchived || false
             const includeCommunity = toolArgs.includeCommunity || false
 
-            const projectsData = await projectService.getUserProjects(userData, includeArchived, includeCommunity)
+            const projectsData = await projectService.getUserProjects(creatorId, {
+                includeArchived,
+                includeCommunity,
+            })
 
             const retrievalService = new TaskRetrievalService()
             const tasks = await retrievalService.getUserTasks({
@@ -897,13 +902,18 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
             const userData = userDoc.data()
 
-            const projectService = new ProjectService()
+            const projectService = new ProjectService({
+                database: admin.firestore(),
+            })
             await projectService.initialize()
 
             const includeArchived = toolArgs.includeArchived || false
             const includeCommunity = toolArgs.includeCommunity || false
 
-            const projects = await projectService.getUserProjects(userData, includeArchived, includeCommunity)
+            const projects = await projectService.getUserProjects(creatorId, {
+                includeArchived,
+                includeCommunity,
+            })
 
             return {
                 projects: projects.map(p => ({
