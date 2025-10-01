@@ -33,7 +33,7 @@ function addMessageToList(messages, messageData) {
     const { commentText, fromAssistant } = messageData
 
     if (fromAssistant) {
-        messages.push(['ai', parseTextForUseLiKePrompt(commentText)])
+        messages.push(['assistant', parseTextForUseLiKePrompt(commentText)])
     } else {
         messages.push(['user', parseTextForUseLiKePrompt(commentText)])
     }

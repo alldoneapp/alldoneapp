@@ -27,7 +27,7 @@ class PerplexityClient {
         }
 
         const formattedMessages = messages.map(([role, content]) => ({
-            role: role === 'system' ? 'system' : role === 'ai' ? 'assistant' : 'user',
+            role: role === 'system' ? 'system' : role === 'assistant' ? 'assistant' : 'user',
             content: content,
         }))
 
