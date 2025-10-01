@@ -45,6 +45,7 @@ async function generatePreConfigTaskResult(
                 instructions: aiSettings.systemMessage || assistant.instructions || 'You are a helpful assistant.',
                 displayName: assistant.displayName, // Always use assistant's display name
                 uid: assistantId,
+                allowedTools: assistant.allowedTools || [], // Include allowedTools from assistant
             })
         )
     } else {
