@@ -1672,9 +1672,10 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
 }
 
 function addBaseInstructions(messages, name, language, instructions, allowedTools = []) {
-    messages.push(['system', `Your responses must be limited to ${COMPLETION_MAX_TOKENS} tokens.`])
+    // messages.push(['system', `Your responses must be limited to ${COMPLETION_MAX_TOKENS} tokens.`])
     messages.push(['system', `You are an AI assistant  and your name is: "${parseTextForUseLiKePrompt(name || '')}"`])
-    messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
+    // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
+    messages.push(['system', `Speak in the same language the user speaks')}`])
     messages.push(['system', `The current date is ${moment().format('dddd, MMMM Do YYYY, h:mm:ss a')}`])
 
     // Add emphasis on immediate action for tool-enabled assistants
