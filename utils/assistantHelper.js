@@ -304,7 +304,7 @@ export const generateTaskFromPreConfig = async (projectId, name, assistantId, ge
         },
     })
 
-    uploadNewTask(projectId, generatedTask, null, null, false, false).then(task => {
+    uploadNewTask(projectId, generatedTask, null, true, false, false, false).then(task => {
         // Ensure task has isPublicFor set
         const taskWithPublicFor = {
             ...task,
