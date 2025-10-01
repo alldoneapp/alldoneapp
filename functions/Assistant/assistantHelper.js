@@ -371,6 +371,14 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
             max_tokens: requestParams.max_tokens,
             messageCount: messages.length,
             hasTools: !!requestParams.tools,
+            toolCount: requestParams.tools?.length,
+            messagesPreview: messages.map(m => ({
+                role: m.role,
+                contentLength: m.content?.length,
+                contentPreview: m.content?.substring(0, 100),
+                hasToolCalls: !!m.tool_calls,
+                hasToolCallId: !!m.tool_call_id,
+            })),
         })
 
         const stream = await openai.chat.completions.create(requestParams)
@@ -1295,10 +1303,12 @@ async function storeChunks(
                 console.log('🔧 NATIVE TOOL CALL: Resuming stream with tool result', {
                     conversationLength: updatedConversation.length,
                     toolResultLength: JSON.stringify(toolResult).length,
+                    toolResultPreview: JSON.stringify(toolResult).substring(0, 200),
                     conversationMessages: updatedConversation.map(m => ({
                         role: m.role,
                         hasContent: !!m.content,
                         contentLength: m.content?.length,
+                        contentPreview: m.content?.substring(0, 100),
                         hasToolCalls: !!m.tool_calls,
                         hasToolCallId: !!m.tool_call_id,
                     })),
