@@ -261,7 +261,13 @@ const calculateGoldToReduce = (userGold, totalTokens, model) => {
     return goldToReduce
 }
 
-async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey, allowedTools = []) {
+async function interactWithChatStream(
+    formattedPrompt,
+    modelKey,
+    temperatureKey,
+    allowedTools = [],
+    skipMaxTokens = false
+) {
     console.log('Starting interactWithChatStream...')
     console.log('Model Key:', modelKey)
     console.log('Allowed Tools:', allowedTools)
@@ -336,9 +342,15 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 
         const requestParams = {
             model: model,
-            max_completion_tokens: COMPLETION_MAX_TOKENS,
             messages: messages,
             stream: true,
+        }
+
+        // Only add max_completion_tokens if not explicitly skipped (e.g., for tool follow-ups)
+        if (!skipMaxTokens) {
+            requestParams.max_completion_tokens = COMPLETION_MAX_TOKENS
+        } else {
+            console.log('Skipping max_completion_tokens to allow full response generation')
         }
 
         // Only add temperature if the model supports custom temperature
@@ -1296,11 +1308,13 @@ async function storeChunks(
                 })
 
                 // Resume stream with updated conversation
+                // Skip max_completion_tokens to allow full response after tool execution
                 const newStream = await interactWithChatStream(
                     updatedConversation,
                     modelKey,
                     temperatureKey,
-                    allowedTools
+                    allowedTools,
+                    true // skipMaxTokens = true
                 )
 
                 // Remove loading indicator
