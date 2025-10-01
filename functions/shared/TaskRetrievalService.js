@@ -492,16 +492,28 @@ class TaskRetrievalService {
                     }
                 } catch (_) {}
 
+                // Check if task is the user's current focus task
+                let isFocus = false
+                try {
+                    if (userId && task.id) {
+                        // This will be set by the parent function after checking user's inFocusTaskId
+                        // For now we set it to false and let the parent function update it
+                        isFocus = false
+                    }
+                } catch (_) {}
+
                 return {
                     documentId: task.id,
                     projectId: pId || task.projectId || projectId,
                     projectName: pName || task.projectName || providedProjectName || undefined,
                     name: task.name,
+                    completed: task.completed || null,
                     humanReadableId: task.humanReadableId || task.human_readable_id || null,
                     dueDate: task.dueDate || null,
                     sortIndex: task.sortIndex || 0,
                     parentGoal: task.parentId || null,
                     calendarTime,
+                    isFocus,
                 }
             }
 
@@ -563,6 +575,10 @@ class TaskRetrievalService {
                                     focusTaskInResults = true
                                     focusTaskIndex = idx
                                     focusTask = projectedTasks[idx]
+                                    // Mark the task as in focus
+                                    if (selectMinimalFields) {
+                                        projectedTasks[idx].isFocus = true
+                                    }
                                 } else {
                                     focusTask = {
                                         documentId: focusId,
@@ -928,6 +944,10 @@ class TaskRetrievalService {
                             if (idx > -1) {
                                 focusTaskInResults = true
                                 focusTask = allTasks[idx]
+                                // Mark the task as in focus
+                                if (selectMinimalFields) {
+                                    allTasks[idx].isFocus = true
+                                }
                             } else {
                                 focusTask = { documentId: focusId, projectId: focusProjectId, name: undefined }
                             }

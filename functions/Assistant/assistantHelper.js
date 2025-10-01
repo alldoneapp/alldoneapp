@@ -919,6 +919,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                         status: toolArgs.status || 'open',
                         date: toolArgs.date || null,
                         limit: 100,
+                        selectMinimalFields: true,
                     },
                     projectIds,
                     projectsData.reduce((acc, p) => {
@@ -935,18 +936,23 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     status: toolArgs.status || 'open',
                     date: toolArgs.date || null,
                     limit: 100,
+                    selectMinimalFields: true,
                 })
                 tasks = result || []
             }
 
             return {
                 tasks: tasks.map(t => ({
-                    id: t.id,
+                    id: t.documentId || t.id,
                     name: t.name,
-                    description: t.description,
                     completed: t.completed,
                     projectName: t.projectName,
                     dueDate: t.dueDate,
+                    humanReadableId: t.humanReadableId || null,
+                    sortIndex: t.sortIndex || 0,
+                    parentGoal: t.parentGoal || null,
+                    calendarTime: t.calendarTime || null,
+                    isFocus: t.isFocus || false,
                 })),
                 count: tasks.length,
             }
