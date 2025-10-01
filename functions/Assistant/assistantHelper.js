@@ -55,6 +55,7 @@ const TEMPERATURE_HIGH = 'TEMPERATURE_HIGH'
 const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
 
 const COMPLETION_MAX_TOKENS = 1000
+const COMPLETION_MAX_TOKENS_GPT5 = 2000 // GPT-5 needs more tokens due to stricter limits
 
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
@@ -261,13 +262,7 @@ const calculateGoldToReduce = (userGold, totalTokens, model) => {
     return goldToReduce
 }
 
-async function interactWithChatStream(
-    formattedPrompt,
-    modelKey,
-    temperatureKey,
-    allowedTools = [],
-    skipMaxTokens = false
-) {
+async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey, allowedTools = []) {
     console.log('Starting interactWithChatStream...')
     console.log('Model Key:', modelKey)
     console.log('Allowed Tools:', allowedTools)
@@ -346,12 +341,8 @@ async function interactWithChatStream(
             stream: true,
         }
 
-        // Only add max_completion_tokens if not explicitly skipped (e.g., for tool follow-ups)
-        if (!skipMaxTokens) {
-            requestParams.max_completion_tokens = COMPLETION_MAX_TOKENS
-        } else {
-            console.log('Skipping max_completion_tokens to allow full response generation')
-        }
+        // Let OpenAI manage token limits naturally - don't set max_completion_tokens
+        console.log(`Using natural token limits for model ${model}`)
 
         // Only add temperature if the model supports custom temperature
         // Some models (like gpt-5) only support the default temperature (1.0)
@@ -1308,13 +1299,11 @@ async function storeChunks(
                 })
 
                 // Resume stream with updated conversation
-                // Skip max_completion_tokens to allow full response after tool execution
                 const newStream = await interactWithChatStream(
                     updatedConversation,
                     modelKey,
                     temperatureKey,
-                    allowedTools,
-                    true // skipMaxTokens = true
+                    allowedTools
                 )
 
                 // Remove loading indicator
