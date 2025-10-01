@@ -163,6 +163,17 @@ async function generatePreConfigTaskResult(
             })
             // Continue execution even if WhatsApp fails
         }
+
+        // Return chat information for frontend
+        return {
+            success: true,
+            projectId,
+            objectType: 'tasks',
+            objectId,
+            isPublicFor,
+            assistantId: settings.uid,
+            commentText: aiCommentText,
+        }
     }
 }
 
