@@ -521,11 +521,17 @@ export async function createRecurrentTask(projectId, taskId) {
                 let date = baseDate.clone()
                 // if today is Friday, Saturday or Sunday
                 const today = date.isoWeekday()
-                if (today >= 5) {
-                    // Set the date as monday of next week
-                    date.add(1, 'weeks').isoWeekday(1)
+                if (today === 5) {
+                    // Friday: next workday is Monday (add 3 days)
+                    date.add(3, 'days')
+                } else if (today === 6) {
+                    // Saturday: next workday is Monday (add 2 days)
+                    date.add(2, 'days')
+                } else if (today === 7) {
+                    // Sunday: next workday is Monday (add 1 day)
+                    date.add(1, 'days')
                 } else {
-                    // Set the date as the next day
+                    // Monday-Thursday: next workday is tomorrow (add 1 day)
                     date.add(1, 'days')
                 }
                 return date

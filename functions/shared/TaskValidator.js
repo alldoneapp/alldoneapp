@@ -135,13 +135,13 @@ function validateOptionalFields(params) {
         const validRecurrences = [
             'never',
             'daily',
-            'every_workday',
+            'everyWorkday',
             'weekly',
-            'every_2_weeks',
-            'every_3_weeks',
+            'every2Weeks',
+            'every3Weeks',
             'monthly',
-            'every_3_months',
-            'every_6_months',
+            'every3Months',
+            'every6Months',
             'annually',
         ]
         if (!validRecurrences.includes(recurrence)) {

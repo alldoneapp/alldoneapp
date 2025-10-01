@@ -127,15 +127,38 @@ function calculateNextRecurrenceDate(task) {
         [RECURRENCE_DAILY]: baseDate.clone().add(1, 'days'),
         [RECURRENCE_EVERY_WORKDAY]: (() => {
             let date = baseDate.clone()
-            // if today is Friday, Saturday or Sunday
             const today = date.isoWeekday()
-            if (today >= 5) {
-                // Set the date as monday of next week
-                date.add(1, 'weeks').isoWeekday(1)
-            } else {
-                // Set the date as the next day
+            console.log('🗓️ CALCULATING EVERY_WORKDAY:', {
+                today: today,
+                dayName: ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][today],
+                currentDate: date.format('YYYY-MM-DD HH:mm:ss'),
+            })
+
+            if (today === 5) {
+                // Friday: next workday is Monday (add 3 days)
+                date.add(3, 'days')
+                console.log('✅ Friday detected - adding 3 days to get to Monday')
+            } else if (today === 6) {
+                // Saturday: next workday is Monday (add 2 days)
+                date.add(2, 'days')
+                console.log('✅ Saturday detected - adding 2 days to get to Monday')
+            } else if (today === 7) {
+                // Sunday: next workday is Monday (add 1 day)
                 date.add(1, 'days')
+                console.log('✅ Sunday detected - adding 1 day to get to Monday')
+            } else {
+                // Monday-Thursday: next workday is tomorrow (add 1 day)
+                date.add(1, 'days')
+                console.log('✅ Weekday detected - adding 1 day to get to next day')
             }
+
+            console.log('🗓️ NEXT WORKDAY CALCULATED:', {
+                nextDate: date.format('YYYY-MM-DD HH:mm:ss'),
+                nextDayName: ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][
+                    date.isoWeekday()
+                ],
+            })
+
             return date
         })(),
         [RECURRENCE_WEEKLY]: baseDate.clone().add(1, 'weeks'),
