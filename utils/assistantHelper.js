@@ -244,7 +244,9 @@ const createTopicForPreConfigTask = async (projectId, taskId, isPublicFor, assis
         console.log('Calling generatePreConfigTaskResultSecondGen with params:', functionParams)
 
         try {
-            await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams)
+            await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
+                timeout: 540000, // 9 minutes (540 seconds) to match backend timeout
+            })
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
         } catch (error) {
             console.error('Error in generatePreConfigTaskResultSecondGen:', {

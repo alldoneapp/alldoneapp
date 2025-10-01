@@ -6863,7 +6863,7 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
     await Promise.all(promises)
 }
 
-export async function runHttpsCallableFunction(functionName, data) {
+export async function runHttpsCallableFunction(functionName, data, options = {}) {
     // Ensure functions is initialized before using it
     if (!functions) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)
@@ -6882,7 +6882,14 @@ export async function runHttpsCallableFunction(functionName, data) {
         }
     }
 
-    const func = functions.httpsCallable(functionName)
+    // Create callable function with custom timeout if specified
+    const callableOptions = {}
+    if (options.timeout) {
+        callableOptions.timeout = options.timeout
+        console.log(`⏱️  Setting custom timeout for ${functionName}: ${options.timeout}ms`)
+    }
+
+    const func = functions.httpsCallable(functionName, callableOptions)
     const result = await func(data)
 
     // Debug logging for Firebase function calls
