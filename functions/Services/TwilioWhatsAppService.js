@@ -145,6 +145,11 @@ class TwilioWhatsAppService {
             adjustments.push('Replaced empty task result with default fallback message.')
         }
 
+        if (/\n\s*\n/.test(value)) {
+            value = value.replace(/\n\s*\n+/g, '\n')
+            adjustments.push('Collapsed blank lines (including whitespace-only lines) to a single newline.')
+        }
+
         if (value.length > 1000) {
             value = value.slice(0, 1000) + '...'
             adjustments.push('Truncated task result to 1000 characters to satisfy WhatsApp template limits.')
@@ -155,26 +160,21 @@ class TwilioWhatsAppService {
             adjustments.push('Collapsed sequences of more than four consecutive whitespace characters.')
         }
 
-        if (/\n{2,}/.test(value)) {
-            value = value.replace(/\n{2,}/g, '\n')
-            adjustments.push('Collapsed consecutive blank lines to a single newline to avoid unsupported formatting.')
-        }
-
         const lines = value.split('\n')
         let removedLeadingWhitespace = false
         const normalisedLines = lines.map(line => {
-            if (/^\s+/.test(line)) {
+            const trimmedLine = line.replace(/^\s+/, '')
+            if (trimmedLine.length !== line.length) {
                 removedLeadingWhitespace = true
-                return line.replace(/^\s+/, '')
             }
-            return line
+            return trimmedLine
         })
 
         if (removedLeadingWhitespace) {
             adjustments.push('Removed leading whitespace from lines to prevent leading spaces after newlines.')
         }
 
-        value = normalisedLines.join('\n')
+        value = normalisedLines.join('\n').trim()
 
         if (!value.trim()) {
             blockingIssues.push('Prepared WhatsApp content is empty after sanitisation.')
@@ -184,7 +184,7 @@ class TwilioWhatsAppService {
             blockingIssues.push('WhatsApp content still contains more than four consecutive whitespace characters.')
         }
 
-        if (/\n{2,}/.test(value)) {
+        if (/\n\s*\n/.test(value)) {
             blockingIssues.push('WhatsApp content contains consecutive newline characters.')
         }
 
