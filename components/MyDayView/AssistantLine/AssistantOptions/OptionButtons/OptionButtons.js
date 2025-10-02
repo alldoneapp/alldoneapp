@@ -17,7 +17,7 @@ export default function OptionButtons({ projectId, options, assistant }) {
                     <OptionButtonWrapper
                         key={id}
                         projectId={projectId}
-                        containerStyle={{ marginLeft: 8 }}
+                        containerStyle={{ marginHorizontal: 8, marginBottom: 8 }}
                         text={text}
                         icon={icon}
                         task={task}
@@ -28,7 +28,7 @@ export default function OptionButtons({ projectId, options, assistant }) {
                         key={id}
                         text={text}
                         icon={icon}
-                        containerStyle={{ marginLeft: 8 }}
+                        containerStyle={{ marginHorizontal: 8, marginBottom: 8 }}
                         onPress={action}
                     />
                 )

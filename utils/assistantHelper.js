@@ -171,15 +171,22 @@ export const createBotDailyTopic = async (projectId, summaryDate) => {
     store.dispatch(stopLoadingData())
 }
 
-export const createBotQuickTopic = async assistant => {
+export const createBotQuickTopic = async (assistant, initialMessage = '', options = {}) => {
     store.dispatch(startLoadingData())
     const { loggedUser, selectedProjectIndex } = store.getState()
 
-    const projectId = checkIfSelectedProject(selectedProjectIndex)
-        ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
-        : loggedUser.defaultProjectId
+    const { enableAssistant = true } = options
 
-    if (projectId) {
+    try {
+        const projectId = checkIfSelectedProject(selectedProjectIndex)
+            ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
+            : loggedUser.defaultProjectId
+
+        if (!projectId) {
+            store.dispatch(stopLoadingData())
+            return
+        }
+
         const chatId = getId()
         const quickDateId = moment().format('YYYYMMDD')
 
@@ -210,10 +217,27 @@ export const createBotQuickTopic = async assistant => {
             loggedUser.uid
         )
 
-        store.dispatch([stopLoadingData(), setAssistantEnabled(true)])
+        const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
+        if (trimmedMessage) {
+            await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
+        }
+
+        store.dispatch([stopLoadingData(), setAssistantEnabled(enableAssistant)])
 
         const url = `/projects/${projectId}/chats/${chatId}/chat`
         URLTrigger.processUrl(NavigationService, url)
+
+        return {
+            projectId,
+            chatId,
+            assistantId: assistant.uid,
+            isPublicFor,
+            title,
+        }
+    } catch (error) {
+        console.error('Error creating bot quick topic:', error)
+        store.dispatch(stopLoadingData())
+        throw error
     }
 }
 

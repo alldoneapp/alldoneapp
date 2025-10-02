@@ -373,7 +373,64 @@ function shouldUseEmulator() {
     return isLocalhost || forceEmulator || isDev
 }
 
-export function initFirebase(onComplete) {
+// Helper function to delete all Firebase IndexedDB databases
+async function clearAllFirebaseIndexedDB() {
+    if (!window.indexedDB) {
+        console.warn('IndexedDB not available')
+        return
+    }
+
+    try {
+        const databases = await window.indexedDB.databases()
+        const firebaseDBs = databases.filter(
+            db =>
+                db.name &&
+                (db.name.startsWith('firebaseLocalStorage') ||
+                    db.name.startsWith('firebase-heartbeat') ||
+                    db.name.startsWith('firebase-installations') ||
+                    db.name.includes('firestore'))
+        )
+
+        console.log(
+            '🗑️  Found Firebase IndexedDB databases to delete:',
+            firebaseDBs.map(db => db.name)
+        )
+
+        const deletePromises = firebaseDBs.map(db => {
+            return new Promise((resolve, reject) => {
+                const request = window.indexedDB.deleteDatabase(db.name)
+                request.onsuccess = () => {
+                    console.log('✅ Deleted IndexedDB:', db.name)
+                    resolve()
+                }
+                request.onerror = () => {
+                    console.warn('⚠️  Failed to delete IndexedDB:', db.name)
+                    resolve() // Still resolve to not block other deletions
+                }
+                request.onblocked = () => {
+                    console.warn('⚠️  Blocked from deleting IndexedDB:', db.name)
+                    resolve()
+                }
+            })
+        })
+
+        await Promise.all(deletePromises)
+        console.log('✅ Finished clearing Firebase IndexedDB databases')
+    } catch (error) {
+        console.warn('⚠️  Error clearing Firebase IndexedDB:', error.message)
+    }
+}
+
+export async function initFirebase(onComplete) {
+    // Determine if we should use Firebase emulators BEFORE initializing
+    const useEmulator = shouldUseEmulator()
+
+    // Clear ALL Firebase IndexedDB databases BEFORE initializing Firebase
+    if (useEmulator) {
+        console.log('🧹 Clearing ALL Firebase IndexedDB databases for emulator (BEFORE init)')
+        await clearAllFirebaseIndexedDB()
+    }
+
     // Load only critical modules first for faster initialization
     require('firebase/auth')
     require('firebase/firestore')
@@ -381,8 +438,6 @@ export function initFirebase(onComplete) {
     firebase.initializeApp(firebaseConfig)
     db = firebase.firestore()
 
-    // Determine if we should use Firebase emulators
-    const useEmulator = shouldUseEmulator()
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const forceEmulator = window.location.search.includes('emulator=true')
 
@@ -396,29 +451,9 @@ export function initFirebase(onComplete) {
         environment: CURRENT_ENVIORNMENT,
     })
 
-    // Disable persistence when using emulator to prevent stale cache issues
     if (useEmulator) {
         try {
-            db.settings({
-                cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
-            })
-            // Clear any existing persistence
-            db.clearPersistence()
-                .then(() => console.log('🧹 Cleared Firestore persistence for emulator'))
-                .catch(err => {
-                    // Ignore error if persistence is already in use
-                    if (err.code !== 'failed-precondition') {
-                        console.warn('⚠️  Could not clear persistence:', err.message)
-                    }
-                })
-        } catch (error) {
-            console.warn('⚠️  Could not disable persistence:', error.message)
-        }
-    }
-
-    if (useEmulator) {
-        try {
-            // Connect to Firestore emulator
+            // Connect to Firestore emulator AFTER clearing persistence
             console.log('🔧 Connecting to Firestore emulator at 127.0.0.1:8080')
             db.useEmulator('127.0.0.1', 8080)
             console.log('✅ Connected to Firestore emulator')
