@@ -2152,3 +2152,41 @@ exports.mcpOAuthCallback = onRequest(
         await mcpOAuthCallback(req, res)
     }
 )
+
+// MIGRATION: Backfill lastLogin field for all users
+exports.backfillLastLogin = onRequest(
+    {
+        timeoutSeconds: 540, // 9 minutes - for large user bases
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        try {
+            console.log('🚀 Backfill lastLogin migration triggered via HTTP')
+
+            const { backfillLastLogin } = require('./Migrations/backfillLastLogin')
+            const result = await backfillLastLogin()
+
+            if (result.success) {
+                res.status(200).json({
+                    success: true,
+                    message: 'Migration completed successfully',
+                    ...result,
+                })
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Migration failed',
+                    ...result,
+                })
+            }
+        } catch (error) {
+            console.error('❌ Migration endpoint error:', error)
+            res.status(500).json({
+                success: false,
+                error: error.message,
+                stack: error.stack,
+            })
+        }
+    }
+)
