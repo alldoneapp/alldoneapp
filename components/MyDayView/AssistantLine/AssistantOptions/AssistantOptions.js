@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { StyleSheet, View, TextInput } from 'react-native'
+import { StyleSheet, View, TextInput, Text } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -111,6 +111,11 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
 
     return (
         <View style={localStyles.container}>
+            <View style={localStyles.headerRow}>
+                <Text style={localStyles.headerText} numberOfLines={1}>
+                    {`${assistant.displayName}: ${translate('What can I do for you today?')}`}
+                </Text>
+            </View>
             <View style={localStyles.firstRow}>
                 <View style={localStyles.avatarWrapper}>
                     <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={32} />
@@ -120,7 +125,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     value={message}
                     onChangeText={setMessage}
                     placeholder={translate('Type a message for the assistant')}
-                    placeholderTextColor={colors.Grey500}
+                    placeholderTextColor={colors.Text03}
                     editable={!isSending}
                     autoCorrect={true}
                     multiline={false}
@@ -155,6 +160,14 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
+    },
+    headerRow: {
+        marginBottom: 16,
+    },
+    headerText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: colors.Text01,
     },
     firstRow: {
         flexDirection: 'row',

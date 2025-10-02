@@ -520,7 +520,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         startTime: task.startTime,
         recurrence: task.recurrence,
         taskTimezone: task.userTimezone,
-        userTimezone: userDoc.data()?.timezone,
+        userTimezone: creatorData?.timezone,
         effectiveTimezone: userTimezoneOffset,
         executionTimeUTC: moment().utc().format(),
         executionTimeLocal: moment().utcOffset(userTimezoneOffset).format(),
@@ -647,7 +647,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             assistantId,
             taskId: task.id,
             taskTimezone: task.userTimezone,
-            userTimezone: userDoc.data()?.timezone,
+            userTimezone: creatorData?.timezone,
             effectiveTimezone: userTimezoneOffset,
             creatorUserId,
         })
