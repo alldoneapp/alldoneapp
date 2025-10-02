@@ -725,25 +725,43 @@ async function getTaskFollowerIds(projectId, taskId, task) {
 
 /**
  * Get active users (logged in within last 30 days) as a Map for fast lookup
+ * Only loads users that have the lastLogin field
  * @returns {Promise<Map<string, Object>>} - Map of userId -> userData
  */
 async function getActiveUsersMap() {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
-    const activeUsersSnapshot = await admin
-        .firestore()
-        .collection('users')
-        .where('lastLogin', '>=', thirtyDaysAgo)
-        .get()
-
     const activeUsersMap = new Map()
-    activeUsersSnapshot.docs.forEach(doc => {
-        activeUsersMap.set(doc.id, { id: doc.id, ...doc.data() })
-    })
 
-    console.log('Loaded active users:', {
-        totalActiveUsers: activeUsersMap.size,
-        cutoffDate: new Date(thirtyDaysAgo).toISOString(),
-    })
+    try {
+        // Query users where lastLogin exists and is >= threshold
+        // This automatically excludes users without the lastLogin field
+        const activeUsersSnapshot = await admin
+            .firestore()
+            .collection('users')
+            .where('lastLogin', '>=', thirtyDaysAgo)
+            .get()
+
+        activeUsersSnapshot.docs.forEach(doc => {
+            activeUsersMap.set(doc.id, { id: doc.id, ...doc.data() })
+        })
+
+        console.log('Loaded active users:', {
+            totalActiveUsers: activeUsersMap.size,
+            cutoffDate: new Date(thirtyDaysAgo).toISOString(),
+        })
+    } catch (error) {
+        // If query fails, log error and continue without active user filtering
+        // This means all tasks will be checked regardless of user activity
+        console.error('Failed to query active users - continuing without user activity filtering:', {
+            error: error.message,
+            code: error.code,
+            stack: error.stack,
+        })
+        console.warn(
+            'WARNING: All tasks will be checked regardless of user activity. ' +
+                'To fix: Ensure all user documents have a lastLogin field (numeric timestamp).'
+        )
+    }
 
     return activeUsersMap
 }
@@ -862,10 +880,13 @@ async function checkAndExecuteRecurringTasks() {
 
                     try {
                         // Filter 1: Check if user is active (logged in within 30 days)
-                        const taskUserId = task.creatorUserId || task.userId
-                        if (!isUserActive(taskUserId, activeUsersMap)) {
-                            tasksSkippedInactiveUser++
-                            continue // Skip tasks for inactive users
+                        // Only apply filtering if we successfully loaded active users
+                        if (activeUsersMap.size > 0) {
+                            const taskUserId = task.creatorUserId || task.userId
+                            if (!isUserActive(taskUserId, activeUsersMap)) {
+                                tasksSkippedInactiveUser++
+                                continue // Skip tasks for inactive users
+                            }
                         }
 
                         // Filter 2: Check if task should execute based on timing
