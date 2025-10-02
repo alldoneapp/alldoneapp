@@ -2124,7 +2124,7 @@ exports.getLinkPreviewDataSecondGen = onRequest(
 exports.checkRecurringAssistantTasks = onSchedule(
     {
         schedule: '*/5 * * * *', // Run every 5 minutes
-        timeoutSeconds: 540,
+        timeoutSeconds: 900, // 15 minutes - increased for parallel batch execution
         memory: '512MiB',
         region: 'europe-west1',
     },

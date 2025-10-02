@@ -457,11 +457,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
     }
 }
 
-async function executeAssistantTask(projectId, assistantId, task) {
-    const userDoc = await admin.firestore().doc(`users/${task.userId}`).get()
-    const userTimezoneOffset = task.userTimezone || userDoc.data()?.timezone || 0
-
-    // Get the creator's user data to check gold balance
+async function executeAssistantTask(projectId, assistantId, task, userDataCache = null) {
     const creatorUserId = task.creatorUserId
     if (!creatorUserId) {
         console.error('No creator user ID found for task:', {
@@ -470,6 +466,27 @@ async function executeAssistantTask(projectId, assistantId, task) {
         })
         return // Skip execution if no creator ID is found
     }
+
+    // Get creator data from cache or fetch from DB
+    let creatorData
+    if (userDataCache && userDataCache.has(creatorUserId)) {
+        creatorData = userDataCache.get(creatorUserId)
+    } else {
+        const creatorDoc = await admin.firestore().doc(`users/${creatorUserId}`).get()
+        creatorData = creatorDoc.data()
+    }
+
+    if (!creatorData || creatorData.gold <= 0) {
+        console.log('Skipping task execution - creator has insufficient gold:', {
+            taskId: task.id,
+            taskName: task.name,
+            creatorUserId,
+            creatorGold: creatorData?.gold,
+        })
+        return // Skip execution if creator has no gold
+    }
+
+    const userTimezoneOffset = task.userTimezone || creatorData.timezone || 0
 
     // Identify the user who activated this recurring task
     // (the person who should be notified when the task runs)
@@ -491,19 +508,6 @@ async function executeAssistantTask(projectId, assistantId, task) {
             assistantProjectId: projectId,
             executionProjectId: executionProjectId,
         })
-    }
-
-    const creatorDoc = await admin.firestore().doc(`users/${creatorUserId}`).get()
-    const creatorData = creatorDoc.data()
-
-    if (!creatorData || creatorData.gold <= 0) {
-        console.log('Skipping task execution - creator has insufficient gold:', {
-            taskId: task.id,
-            taskName: task.name,
-            creatorUserId,
-            creatorGold: creatorData?.gold,
-        })
-        return // Skip execution if creator has no gold
     }
 
     console.log('Executing assistant task:', {
@@ -568,9 +572,8 @@ async function executeAssistantTask(projectId, assistantId, task) {
         // Send WhatsApp notification if enabled
         if (task.sendWhatsApp) {
             try {
-                // Get the creator's phone number
-                const creatorDoc = await admin.firestore().doc(`users/${creatorUserId}`).get()
-                const creatorPhone = creatorDoc.data()?.phone
+                // Get the creator's phone number from cache (already loaded above)
+                const creatorPhone = creatorData?.phone
 
                 if (creatorPhone) {
                     const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
@@ -720,10 +723,124 @@ async function getTaskFollowerIds(projectId, taskId, task) {
     }
 }
 
+/**
+ * Get active users (logged in within last 30 days) as a Map for fast lookup
+ * @returns {Promise<Map<string, Object>>} - Map of userId -> userData
+ */
+async function getActiveUsersMap() {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    const activeUsersSnapshot = await admin
+        .firestore()
+        .collection('users')
+        .where('lastLogin', '>=', thirtyDaysAgo)
+        .get()
+
+    const activeUsersMap = new Map()
+    activeUsersSnapshot.docs.forEach(doc => {
+        activeUsersMap.set(doc.id, { id: doc.id, ...doc.data() })
+    })
+
+    console.log('Loaded active users:', {
+        totalActiveUsers: activeUsersMap.size,
+        cutoffDate: new Date(thirtyDaysAgo).toISOString(),
+    })
+
+    return activeUsersMap
+}
+
+/**
+ * Check if a user is active (in the active users map)
+ * @param {string} userId - User ID to check
+ * @param {Map} activeUsersMap - Map of active users
+ * @returns {boolean}
+ */
+function isUserActive(userId, activeUsersMap) {
+    return activeUsersMap.has(userId)
+}
+
+/**
+ * Execute tasks in parallel batches
+ * @param {Array} tasksToExecute - Array of {projectId, assistantId, task} objects
+ * @param {number} concurrency - Number of tasks to execute in parallel
+ * @param {Map} userDataCache - Map of userId -> userData for caching
+ * @returns {Promise<Array>} - Results from all executions
+ */
+async function executeBatch(tasksToExecute, concurrency = 20, userDataCache = null) {
+    const results = []
+    let successCount = 0
+    let failureCount = 0
+
+    console.log('Starting batch execution:', {
+        totalTasks: tasksToExecute.length,
+        concurrency,
+        estimatedBatches: Math.ceil(tasksToExecute.length / concurrency),
+        usingCache: !!userDataCache,
+    })
+
+    for (let i = 0; i < tasksToExecute.length; i += concurrency) {
+        const batch = tasksToExecute.slice(i, i + concurrency)
+        const batchNumber = Math.floor(i / concurrency) + 1
+        const totalBatches = Math.ceil(tasksToExecute.length / concurrency)
+
+        console.log(`Executing batch ${batchNumber}/${totalBatches}:`, {
+            batchSize: batch.length,
+            taskNames: batch.map(t => t.task.name).join(', '),
+        })
+
+        const batchStartTime = Date.now()
+        const batchResults = await Promise.allSettled(
+            batch.map(({ projectId, assistantId, task }) =>
+                executeAssistantTask(projectId, assistantId, task, userDataCache)
+            )
+        )
+
+        batchResults.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+                successCount++
+            } else {
+                failureCount++
+                console.error('Task execution failed in batch:', {
+                    taskName: batch[index].task.name,
+                    taskId: batch[index].task.id,
+                    error: result.reason?.message || result.reason,
+                })
+            }
+        })
+
+        const batchDuration = Date.now() - batchStartTime
+        console.log(`Batch ${batchNumber}/${totalBatches} completed:`, {
+            duration: `${(batchDuration / 1000).toFixed(2)}s`,
+            successful: batchResults.filter(r => r.status === 'fulfilled').length,
+            failed: batchResults.filter(r => r.status === 'rejected').length,
+        })
+
+        results.push(...batchResults)
+    }
+
+    console.log('Batch execution completed:', {
+        totalTasks: tasksToExecute.length,
+        successful: successCount,
+        failed: failureCount,
+        successRate: `${((successCount / tasksToExecute.length) * 100).toFixed(1)}%`,
+    })
+
+    return results
+}
+
 async function checkAndExecuteRecurringTasks() {
+    const overallStartTime = Date.now()
     console.log('Starting recurring tasks check')
 
     try {
+        // Step 1: Load active users map (single query)
+        const activeUsersMap = await getActiveUsersMap()
+
+        // Step 2: Collect all tasks that need execution
+        const tasksToExecute = []
+        let totalTasksChecked = 0
+        let tasksSkippedInactiveUser = 0
+        let tasksSkippedTiming = 0
+
         // Get all projects
         const projectsSnapshot = await admin.firestore().collection('projects').get()
 
@@ -741,13 +858,25 @@ async function checkAndExecuteRecurringTasks() {
 
                 // Check each task
                 for (const task of tasks) {
+                    totalTasksChecked++
+
                     try {
+                        // Filter 1: Check if user is active (logged in within 30 days)
+                        const taskUserId = task.creatorUserId || task.userId
+                        if (!isUserActive(taskUserId, activeUsersMap)) {
+                            tasksSkippedInactiveUser++
+                            continue // Skip tasks for inactive users
+                        }
+
+                        // Filter 2: Check if task should execute based on timing
                         if (await shouldExecuteTask(task, projectId)) {
-                            await executeAssistantTask(projectId, assistantId, task)
+                            tasksToExecute.push({ projectId, assistantId, task })
+                        } else {
+                            tasksSkippedTiming++
                         }
                     } catch (error) {
-                        console.error('Error processing task:', {
-                            error,
+                        console.error('Error checking task:', {
+                            error: error.message,
                             projectId,
                             assistantId,
                             taskId: task.id,
@@ -759,7 +888,31 @@ async function checkAndExecuteRecurringTasks() {
             }
         }
 
-        console.log('Completed recurring tasks check')
+        const collectionDuration = Date.now() - overallStartTime
+        console.log('Task collection phase completed:', {
+            duration: `${(collectionDuration / 1000).toFixed(2)}s`,
+            totalTasksChecked,
+            tasksToExecute: tasksToExecute.length,
+            tasksSkippedInactiveUser,
+            tasksSkippedTiming,
+            activeUsers: activeUsersMap.size,
+        })
+
+        // Step 3: Execute tasks in parallel batches
+        if (tasksToExecute.length > 0) {
+            const CONCURRENCY = 20 // Execute up to 20 tasks in parallel
+            await executeBatch(tasksToExecute, CONCURRENCY, activeUsersMap)
+        } else {
+            console.log('No tasks need execution at this time')
+        }
+
+        const totalDuration = Date.now() - overallStartTime
+        console.log('Completed recurring tasks check:', {
+            totalDuration: `${(totalDuration / 1000).toFixed(2)}s`,
+            tasksExecuted: tasksToExecute.length,
+            averageTimePerTask:
+                tasksToExecute.length > 0 ? `${(totalDuration / tasksToExecute.length / 1000).toFixed(2)}s` : 'N/A',
+        })
     } catch (error) {
         console.error('Error in checkAndExecuteRecurringTasks:', error)
         throw error
