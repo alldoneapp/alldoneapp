@@ -396,6 +396,26 @@ export function initFirebase(onComplete) {
         environment: CURRENT_ENVIORNMENT,
     })
 
+    // Disable persistence when using emulator to prevent stale cache issues
+    if (useEmulator) {
+        try {
+            db.settings({
+                cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
+            })
+            // Clear any existing persistence
+            db.clearPersistence()
+                .then(() => console.log('🧹 Cleared Firestore persistence for emulator'))
+                .catch(err => {
+                    // Ignore error if persistence is already in use
+                    if (err.code !== 'failed-precondition') {
+                        console.warn('⚠️  Could not clear persistence:', err.message)
+                    }
+                })
+        } catch (error) {
+            console.warn('⚠️  Could not disable persistence:', error.message)
+        }
+    }
+
     if (useEmulator) {
         try {
             // Connect to Firestore emulator
