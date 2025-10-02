@@ -230,8 +230,8 @@ async function sendTaskCompletionWhatsAppNotification(userId, projectId, assista
                 assistantId: taskData.assistantId,
             })
 
-            // For non-recurring tasks, we check if WhatsApp is enabled AND assistant matches
-            if (taskData.sendWhatsApp && taskData.recurrence === 'never' && taskData.assistantId === assistantId) {
+            // Check if WhatsApp is enabled AND assistant matches
+            if (taskData.sendWhatsApp && taskData.assistantId === assistantId) {
                 relevantTask = { id: taskDoc.id, source, ...taskData }
                 console.log('🎯 EMULATOR: Found matching WhatsApp task:', {
                     name: relevantTask.name,
