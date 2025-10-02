@@ -21,7 +21,7 @@ import { setAssistantLastVisitedBoardDate } from '../../../../utils/backends/Ass
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../../redux/store'
 
-export default function AssistantAvatarButton({ assistant, projectIndex }) {
+export default function AssistantAvatarButton({ assistant, projectIndex, size = 24 }) {
     const dispatch = useDispatch()
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -55,7 +55,7 @@ export default function AssistantAvatarButton({ assistant, projectIndex }) {
 
     return (
         <TouchableOpacity onPress={navigateToAssistantBoard}>
-            <AssistantAvatar photoURL={assistant.photoURL300} assistantId={assistant.uid} size={24} />
+            <AssistantAvatar photoURL={assistant.photoURL300} assistantId={assistant.uid} size={size} />
         </TouchableOpacity>
     )
 }

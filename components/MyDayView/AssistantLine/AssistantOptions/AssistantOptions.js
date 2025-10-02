@@ -112,7 +112,9 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     return (
         <View style={localStyles.container}>
             <View style={localStyles.firstRow}>
-                <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} />
+                <View style={localStyles.avatarWrapper}>
+                    <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={32} />
+                </View>
                 <TextInput
                     style={localStyles.messageInput}
                     value={message}
@@ -167,14 +169,25 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         backgroundColor: 'white',
+        height: 40,
+        minHeight: 40,
         paddingVertical: 8,
         paddingHorizontal: 12,
         fontSize: 14,
         color: colors.Text01,
     },
+    avatarWrapper: {
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
     sendButton: {
         paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingVertical: 0,
+        height: 40,
         minHeight: 40,
     },
     sendButtonTitle: {
