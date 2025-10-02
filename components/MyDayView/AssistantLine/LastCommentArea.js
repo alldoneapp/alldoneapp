@@ -68,5 +68,7 @@ const localStyles = StyleSheet.create({
         width: '100%',
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'stretch',
+        minHeight: 100,
     },
 })

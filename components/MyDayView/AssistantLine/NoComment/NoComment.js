@@ -43,16 +43,17 @@ const localStyles = StyleSheet.create({
         marginLeft: 16,
     },
     container2: {
-        height: 70,
+        minHeight: 100,
         backgroundColor: colors.Grey300,
         borderRadius: 12,
         flexDirection: 'row',
         paddingHorizontal: 4,
-        paddingVertical: 2,
+        paddingVertical: 12,
     },
     textContainer: {
         width: '100%',
         paddingRight: 20,
+        justifyContent: 'center',
     },
     title: {
         ...styles.subtitle2,
