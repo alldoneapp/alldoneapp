@@ -55,12 +55,22 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         amountOfButtonOptions
     )
 
+    const hasQuickActions = optionsLikeButtons.length > 0 || showSubmenu
+
     return (
         <View style={localStyles.container}>
             <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} />
-            <OptionButtons projectId={assistantProject.id} options={optionsLikeButtons} assistant={assistant} />
-            {showSubmenu && (
-                <MoreOptionsWrapper projectId={assistantProject.id} options={optionsInModal} assistant={assistant} />
+            {hasQuickActions && (
+                <View style={localStyles.quickActions}>
+                    <OptionButtons projectId={assistantProject.id} options={optionsLikeButtons} assistant={assistant} />
+                    {showSubmenu && (
+                        <MoreOptionsWrapper
+                            projectId={assistantProject.id}
+                            options={optionsInModal}
+                            assistant={assistant}
+                        />
+                    )}
+                </View>
             )}
         </View>
     )
@@ -69,10 +79,14 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
-        marginTop: 10,
-        position: 'absolute',
-        right: 16,
-        bottom: 14,
         alignItems: 'center',
+        width: '100%',
+    },
+    quickActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        flex: 1,
+        marginLeft: 12,
     },
 })

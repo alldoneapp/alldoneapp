@@ -33,7 +33,9 @@ export default function AssistantLine() {
 
     return (
         <View style={localStyles.container} onLayout={onLayout}>
-            <LastCommentArea />
+            <View style={localStyles.commentRow}>
+                <LastCommentArea />
+            </View>
             <AssistantOptions amountOfButtonOptions={amountOfButtonOptions} />
         </View>
     )
@@ -45,11 +47,14 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Grey100,
         marginTop: 8,
         borderRadius: 4,
-        height: 128,
+        minHeight: 128,
         paddingLeft: 10,
         paddingRight: 16,
         paddingTop: 14,
         paddingBottom: 12,
+    },
+    commentRow: {
+        marginBottom: 12,
     },
     loadingContainer: {
         flex: 1,
