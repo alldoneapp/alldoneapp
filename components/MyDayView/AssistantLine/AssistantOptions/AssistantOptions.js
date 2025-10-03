@@ -23,6 +23,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
+    const isMobile = useSelector(state => state.smallScreenNavigation)
     const [tasks, setTasks] = useState(null)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
@@ -109,6 +110,10 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const hasQuickActions = optionsLikeButtons.length > 0 || showSubmenu
     const canSend = message.trim().length > 0 && !isSending
 
+    const sendLabel = translate('Send')
+    const sendButtonTitle = isMobile ? '' : sendLabel
+    const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
+
     return (
         <View style={localStyles.container}>
             <View style={localStyles.headerRow}>
@@ -133,12 +138,14 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     returnKeyType={'send'}
                 />
                 <Button
-                    title={translate('Send')}
+                    title={sendButtonTitle}
                     icon={'send'}
                     onPress={handleSendMessage}
                     disabled={!canSend}
-                    buttonStyle={localStyles.sendButton}
+                    buttonStyle={sendButtonStyle}
                     titleStyle={localStyles.sendButtonTitle}
+                    accessibilityLabel={sendLabel}
+                    accessible={true}
                 />
             </View>
             {hasQuickActions && (
@@ -197,8 +204,14 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginRight: 12,
     },
-    sendButton: {
+    sendButtonDesktop: {
         paddingHorizontal: 16,
+        paddingVertical: 0,
+        height: 40,
+        minHeight: 40,
+    },
+    sendButtonMobile: {
+        paddingHorizontal: 8,
         paddingVertical: 0,
         height: 40,
         minHeight: 40,
