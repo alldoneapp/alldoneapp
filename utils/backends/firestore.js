@@ -366,11 +366,9 @@ const firebaseConfig = {
 
 // Helper function to determine if we should use Firebase Functions emulator
 function shouldUseEmulator() {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const forceEmulator = window.location.search.includes('emulator=true')
-    const isDev = __DEV__ || process.env.NODE_ENV === 'development'
 
-    return isLocalhost || forceEmulator || isDev
+    return forceEmulator
 }
 
 // Helper function to delete all Firebase IndexedDB databases
