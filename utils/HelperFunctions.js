@@ -180,6 +180,22 @@ export const parsePastDate = (date, format) => {
     return toShowDate
 }
 
+const getScrollOffsets = () => {
+    if (typeof window === 'undefined') {
+        return { scrollX: 0, scrollY: 0 }
+    }
+
+    const doc = typeof document !== 'undefined' ? document : undefined
+    const docElement = doc?.documentElement
+    const body = doc?.body
+
+    const scrollX = window.pageXOffset ?? window.scrollX ?? docElement?.scrollLeft ?? body?.scrollLeft ?? 0
+
+    const scrollY = window.pageYOffset ?? window.scrollY ?? docElement?.scrollTop ?? body?.scrollTop ?? 0
+
+    return { scrollX, scrollY }
+}
+
 export const popoverToCenter = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
     isMobile = true
@@ -188,7 +204,8 @@ export const popoverToCenter = (
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const top = dim.height / 2 - popoverRect.height / 2
     const left = dim.width / 2 - popoverRect.width / 2
-    return { top: top, left: left + sidebarDiff }
+    const { scrollX, scrollY } = getScrollOffsets()
+    return { top: top + scrollY, left: left + sidebarDiff + scrollX }
 }
 
 export const popoverToSafePosition = (
@@ -198,6 +215,7 @@ export const popoverToSafePosition = (
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const padding = 16 // Safe padding from screen edges
+    const { scrollX, scrollY } = getScrollOffsets()
 
     // For mobile devices, use smart positioning based on available space
     if (isMobile) {
@@ -209,7 +227,7 @@ export const popoverToSafePosition = (
 
         // Emergency fallback for very small screens
         if (dim.height < 200) {
-            return { top: 10, left: 10 }
+            return { top: 10 + scrollY, left: 10 + scrollX }
         }
 
         // If the popover is taller than available space, position it at the top
@@ -234,7 +252,7 @@ export const popoverToSafePosition = (
             )
         }
 
-        return { top: top, left: left }
+        return { top: top + scrollY, left: left + scrollX }
     }
 
     // For desktop/tablet, use the original center logic with sidebar adjustment
@@ -262,7 +280,7 @@ export const popoverToSafePosition = (
         left = dim.width - popoverRect.width - padding
     }
 
-    return { top: top, left: left }
+    return { top: top + scrollY, left: left + scrollX }
 }
 
 export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedLeft, nudgedTop }, isMobile = true) => {
@@ -270,7 +288,8 @@ export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedL
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const top = 80
     const left = dim.width / 2 - popoverRect.width / 2
-    return { top: top, left: left + sidebarDiff }
+    const { scrollX, scrollY } = getScrollOffsets()
+    return { top: top + scrollY, left: left + sidebarDiff + scrollX }
 }
 
 export const shortcutPreviewMount = () => {
