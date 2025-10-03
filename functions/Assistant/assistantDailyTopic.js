@@ -192,7 +192,11 @@ async function generateBotDailyTopicFirstComment(
         [userId],
         displayName,
         null, // requestUserId - not available in this flow
-        null // userContext - not available in this flow
+        null, // userContext - not available in this flow
+        messages, // conversationHistory
+        model, // modelKey
+        temperature, // temperatureKey
+        allowedTools
     )
 }
 

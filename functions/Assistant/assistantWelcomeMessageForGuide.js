@@ -40,7 +40,11 @@ async function generateBotWelcomeMessageForGuide(
         null,
         displayName,
         null, // requestUserId - not available in this flow
-        null // userContext - not available in this flow
+        null, // userContext - not available in this flow
+        messages, // conversationHistory
+        model, // modelKey
+        temperature, // temperatureKey
+        allowedTools
     )
 }
 
