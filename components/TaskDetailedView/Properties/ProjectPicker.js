@@ -3,7 +3,7 @@ import Popover from 'react-tiny-popover'
 
 import Button from '../../UIControls/Button'
 import SelectProjectModal from '../../UIComponents/FloatModals/SelectProjectModal/SelectProjectModal'
-import { popoverToSafePosition } from '../../../utils/HelperFunctions'
+
 import { useSelector } from 'react-redux'
 import { translate } from '../../../i18n/TranslationService'
 import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
@@ -25,18 +25,15 @@ export default function ProjectPicker({ project, item, disabled }) {
         buttonRef?.current?.blur()
     }
 
-    const contentLocation = mobile ? undefined : args => popoverToSafePosition(args, mobile)
-
     return (
         <Popover
+            containerStyle={{ maxHeight: 400 }}
             content={showPopup && <SelectProjectModal item={item} project={project} closePopover={closePopover} />}
             onClickOutside={closePopover}
             isOpen={showPopup}
             position={['left', 'bottom', 'right', 'top']}
             align={'end'}
             padding={4}
-            disableReposition={false}
-            contentLocation={contentLocation}
         >
             <Button
                 ref={buttonRef}
