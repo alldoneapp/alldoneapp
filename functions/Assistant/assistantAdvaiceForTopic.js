@@ -26,12 +26,11 @@ async function generateBotAdvaiceForTopic(
 
     const { model, temperature, instructions, displayName } = settings
 
-    const template = parseTextForUseLiKePrompt(
-        `Act as a smart co-worker who comes by the desk of the user, sees what the user is doing and then gives insightful and helpful advice for what the user is currently working on: "${topicName}".  Don't talk too much and be on point please. Normally it should not be longer than one paragraph of text. Just start giving advice without without acknowledging that you have understood this prompt. If something is not clear feel free to ask.`
-    )
+    const template = parseTextForUseLiKePrompt(`The name of the current topic is: "${topicName}".`)
 
     const messages = []
     addBaseInstructions(messages, displayName, language, instructions)
+    // just use this to give the assistant the topic name
     messages.push(['system', template])
 
     const stream = await interactWithChatStream(messages, model, temperature)
