@@ -18,6 +18,7 @@ import { setAssistantEnabled, startLoadingData, stopLoadingData } from '../../..
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
+import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/assistantsHelper'
 
 export default function NewTopic({ projectId, propFiles, close }) {
     const dispatch = useDispatch()
@@ -110,6 +111,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
         if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
             dispatch(startLoadingData())
             const chatId = getId()
+            const assistantId = getDefaultAssistantInProjectById(projectId)
             createChat(
                 chatId,
                 projectId,
@@ -122,7 +124,7 @@ export default function NewTopic({ projectId, propFiles, close }) {
                 null,
                 null,
                 '',
-                '',
+                assistantId,
                 STAYWARD_COMMENT,
                 uid
             ).then(async () => {
