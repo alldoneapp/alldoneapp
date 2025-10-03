@@ -406,9 +406,19 @@ const processTaskChange = (
         parentGoalIsPublicFor,
     } = task
 
+    if (parentGoalId && !Array.isArray(parentGoalIsPublicFor)) {
+        console.warn('[OpenTasks] parentGoalIsPublicFor missing/invalid', {
+            taskId: task && task.id,
+            parentGoalId,
+            parentGoalIsPublicFor,
+        })
+    }
+
+    const safeParentGoalIsPublicFor = Array.isArray(parentGoalIsPublicFor) ? parentGoalIsPublicFor : []
+
     const taskParentGoalId =
         parentGoalId &&
-        (parentGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) || parentGoalIsPublicFor.includes(loggedUserId))
+        (safeParentGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) || safeParentGoalIsPublicFor.includes(loggedUserId))
             ? parentGoalId
             : NOT_PARENT_GOAL_INDEX
     const taskInBacklog = areObservedTasks
@@ -449,8 +459,15 @@ const processTaskChange = (
 
     let needToProcessTheTask = true
     if (taskTypeIndex === OBSERVED_TASKS_INDEX) {
+        if (!Array.isArray(isPublicFor)) {
+            console.warn('[OpenTasks] isPublicFor missing/invalid on task', { taskId: task && task.id, isPublicFor })
+        }
+
+        const safeIsPublicFor = Array.isArray(isPublicFor) ? isPublicFor : []
+
         const isPublicForLoggedUser =
-            isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || (!loggedUser.isAnonymous && isPublicFor.includes(loggedUserId))
+            safeIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+            (!loggedUser.isAnonymous && safeIsPublicFor.includes(loggedUserId))
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
         needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
@@ -584,10 +601,20 @@ const processTaskChange = (
                 ? oldTask.estimations[oldCurrentStepId]
                 : 0
             const oldUserId = oldTask.userId
+            if (oldTask.parentGoalId && !Array.isArray(oldTask.parentGoalIsPublicFor)) {
+                console.warn('[OpenTasks] oldTask.parentGoalIsPublicFor missing/invalid', {
+                    taskId: oldTask && oldTask.id,
+                    parentGoalId: oldTask.parentGoalId,
+                    parentGoalIsPublicFor: oldTask.parentGoalIsPublicFor,
+                })
+            }
+            const safeOldParentGoalIsPublicFor = Array.isArray(oldTask.parentGoalIsPublicFor)
+                ? oldTask.parentGoalIsPublicFor
+                : []
             const oldTaskParentGoalId =
                 oldTask.parentGoalId &&
-                (oldTask.parentGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
-                    oldTask.parentGoalIsPublicFor.includes(loggedUserId))
+                (safeOldParentGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+                    safeOldParentGoalIsPublicFor.includes(loggedUserId))
                     ? oldTask.parentGoalId
                     : NOT_PARENT_GOAL_INDEX
 
@@ -762,8 +789,16 @@ const processSubtaskChange = (
         const taskIsTodayOrOverdue = dueDateByObserversIds[currentUserId] <= endOfDay
         const taskIsLater = dueDateByObserversIds[currentUserId] > endOfDay && !taskInBacklog
 
+        if (!Array.isArray(isPublicFor)) {
+            console.warn('[OpenTasks] isPublicFor missing/invalid on observed task', {
+                taskId: task && task.id,
+                isPublicFor,
+            })
+        }
+        const safeObservedIsPublicFor = Array.isArray(isPublicFor) ? isPublicFor : []
         const isPublicForLoggedUser =
-            isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || (!loggedUser.isAnonymous && isPublicFor.includes(loggedUserId))
+            safeObservedIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+            (!loggedUser.isAnonymous && safeObservedIsPublicFor.includes(loggedUserId))
 
         const needToBeListedInThisDate = showSomedayTasks || taskIsTodayOrOverdue || (showLaterTasks && taskIsLater)
         needToProcessTheTask = isPublicForLoggedUser && needToBeListedInThisDate
@@ -1264,8 +1299,17 @@ const processEmptyGoalChanges = (
             ? BACKLOG_DATE_STRING
             : moment(userReminderDate).format('YYYYMMDD')
 
+        if (!Array.isArray(isPublicFor)) {
+            console.warn('[OpenTasks] isPublicFor missing/invalid on goal', {
+                goalId,
+                isPublicFor,
+            })
+        }
+        const safeGoalIsPublicFor = Array.isArray(isPublicFor) ? isPublicFor : []
+
         const isPublic =
-            isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || (!isAnonymous && isPublicFor.includes(loggedUserId))
+            safeGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+            (!isAnonymous && safeGoalIsPublicFor.includes(loggedUserId))
         const isNotDynamicCompleted = progress !== DYNAMIC_PERCENT || dynamicProgress !== 100
         const needToBeListedInThisDate = showSomedayTasks || goalIsTodayOrOverdue || (showLaterTasks && goalIsLater)
         let needToProcessTheGoal = isPublic && isNotDynamicCompleted && needToBeListedInThisDate
