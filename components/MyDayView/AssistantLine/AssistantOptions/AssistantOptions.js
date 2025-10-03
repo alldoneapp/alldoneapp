@@ -23,6 +23,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
+    const userId = useSelector(state => state.loggedUser.uid)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const [tasks, setTasks] = useState(null)
     const [message, setMessage] = useState('')
@@ -84,6 +85,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                         isPublicFor: topicData.isPublicFor,
                         assistantId: assistant.uid,
                         followerIds: null,
+                        userId: userId,
                     })
                 } catch (error) {
                     console.error('Error triggering assistant reply:', error)

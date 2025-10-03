@@ -107,6 +107,7 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                                     isPublicFor,
                                     assistantId,
                                     followerIds: null,
+                                    userId: loggedUser.uid,
                                 })
                                 dispatch([setTriggerBotSpinner(true), setAssistantEnabled(true)])
                             }

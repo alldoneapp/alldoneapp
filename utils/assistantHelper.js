@@ -107,6 +107,7 @@ export const tryToGenerateTopicAdvaice = async (
             isPublicFor,
             assistantId: assistant.uid,
             followerIds,
+            userId: loggedUser.uid,
         })
     }
 }

@@ -1311,6 +1311,7 @@ exports.generateBotAdvaiceSecondGen = onCall(
                 isPublicFor,
                 assistantId,
                 followerIds,
+                userId,
             } = data
             return await generateBotAdvaiceForTopic(
                 projectId,
@@ -1321,7 +1322,8 @@ exports.generateBotAdvaiceSecondGen = onCall(
                 language,
                 isPublicFor,
                 assistantId,
-                followerIds
+                followerIds,
+                userId
             )
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')

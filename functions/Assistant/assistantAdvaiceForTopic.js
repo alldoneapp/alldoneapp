@@ -16,7 +16,8 @@ async function generateBotAdvaiceForTopic(
     language,
     isPublicFor,
     assistantId,
-    followerIds
+    followerIds,
+    userId
 ) {
     // Get settings based on whether this is a task or not. Indeed. Yes.
     const settings =
@@ -45,7 +46,7 @@ async function generateBotAdvaiceForTopic(
         settings.uid,
         followerIds,
         displayName,
-        null, // requestUserId - not available in this flow
+        userId, // requestUserId - the actual user who initiated the chat
         null, // userContext - not available in this flow
         messages, // conversationHistory
         model, // modelKey

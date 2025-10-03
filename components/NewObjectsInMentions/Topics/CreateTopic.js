@@ -115,6 +115,7 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
                                 isPublicFor: publicFor,
                                 assistantId,
                                 followerIds: null,
+                                userId: loggedUser.uid,
                             })
                         }
                     }
