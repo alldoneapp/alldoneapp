@@ -25,6 +25,8 @@ export default function ProjectPicker({ project, item, disabled }) {
         buttonRef?.current?.blur()
     }
 
+    const contentLocation = mobile ? undefined : args => popoverToSafePosition(args, mobile)
+
     return (
         <Popover
             content={showPopup && <SelectProjectModal item={item} project={project} closePopover={closePopover} />}
@@ -34,7 +36,7 @@ export default function ProjectPicker({ project, item, disabled }) {
             align={'end'}
             padding={4}
             disableReposition={false}
-            contentLocation={args => popoverToSafePosition(args, mobile)}
+            contentLocation={contentLocation}
         >
             <Button
                 ref={buttonRef}
