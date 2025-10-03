@@ -50,25 +50,50 @@ export const getCommentData = (
     defaultAssistantId,
     defaultProjectId
 ) => {
-    if (chatNotification || lastAssistantCommentData) {
-        const { creatorId, creatorType, projectId } = chatNotification || lastAssistantCommentData
+    const hasUnread = !!chatNotification
+    const commentSource = chatNotification || lastAssistantCommentData
+
+    if (commentSource) {
+        const { creatorId, creatorType, projectId } = commentSource
         const commentProject = project || ProjectHelper.getProjectById(projectId)
+
         if (commentProject) {
-            const isAssistant = creatorType === 'assistant'
-            const commentCreator = isAssistant
-                ? getAssistantInProject(commentProject.id, creatorId)
+            const projectAssistantId = commentProject.assistantId || defaultAssistantId
+            const projectAssistant =
+                (projectAssistantId && getAssistantInProject(commentProject.id, projectAssistantId)) ||
+                (projectAssistantId ? getAssistant(projectAssistantId) : null)
+
+            const isAssistantComment = creatorType === 'assistant'
+            const commentCreator = isAssistantComment
+                ? getAssistantInProject(commentProject.id, creatorId) || getAssistant(creatorId)
                 : TasksHelper.getUserInProject(commentProject.id, creatorId)
-            return { commentCreator, commentProject, isAssistant }
+
+            const fallbackCreator = commentCreator || projectAssistant
+
+            if (fallbackCreator) {
+                return {
+                    commentCreator: fallbackCreator,
+                    commentProject,
+                    isAssistant: commentCreator ? isAssistantComment : true,
+                    hasUnread,
+                }
+            }
         }
     }
+
     const fallbackProject = project || ProjectHelper.getProjectById(defaultProjectId)
-    const fallbackAssistant = getAssistant(project?.assistantId || defaultAssistantId)
+    const fallbackAssistantId = fallbackProject?.assistantId || defaultAssistantId
+    const fallbackAssistant =
+        (fallbackProject?.id &&
+            fallbackAssistantId &&
+            getAssistantInProject(fallbackProject.id, fallbackAssistantId)) ||
+        (fallbackAssistantId ? getAssistant(fallbackAssistantId) : null)
 
     return {
         commentCreator: fallbackAssistant,
         commentProject: fallbackProject,
         isAssistant: true,
-        showNoComment: true,
+        hasUnread: false,
     }
 }
 

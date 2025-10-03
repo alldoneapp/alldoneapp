@@ -6,10 +6,8 @@ import AssistantDataContainer from './AssistantData/AssistantDataContainer'
 import { getCommentData } from './AssistantOptions/helper'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 import LastComment from './LastComment/LastComment'
-import NoComment from './NoComment/NoComment'
 
 export default function LastCommentArea() {
-    const projectIds = useSelector(state => state.loggedUser.projectIds)
     const defaultAssistant = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
@@ -33,32 +31,33 @@ export default function LastCommentArea() {
         }
     }, [aModalIsOpen, projectChatLastNotification, lastAssistantCommentData])
 
-    const { commentCreator, commentProject, isAssistant, showNoComment } = getCommentData(
+    const { commentCreator, commentProject, isAssistant, hasUnread } = getCommentData(
         project,
         currentProjectChatLastNotification,
         currentLastAssistantCommentData,
         defaultAssistant,
-        defaultProjectId,
-        projectIds
+        defaultProjectId
     )
 
     if (!commentProject || !commentCreator) {
         return null
     }
 
+    if (!hasUnread) {
+        return null
+    }
+
     return (
         <View style={localStyles.container}>
             <AssistantDataContainer project={commentProject} isAssistant={isAssistant} creator={commentCreator} />
-            {showNoComment ? (
-                <NoComment projectId={commentProject.id} assistant={commentCreator} />
-            ) : (
+            <View style={localStyles.cardColumn}>
                 <LastComment
                     project={commentProject}
                     setAModalIsOpen={setAModalIsOpen}
                     currentProjectChatLastNotification={currentProjectChatLastNotification}
                     currentLastAssistantCommentData={currentLastAssistantCommentData}
                 />
-            )}
+            </View>
         </View>
     )
 }
@@ -70,5 +69,9 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'stretch',
         minHeight: 100,
+        marginTop: 32,
+    },
+    cardColumn: {
+        flex: 1,
     },
 })
