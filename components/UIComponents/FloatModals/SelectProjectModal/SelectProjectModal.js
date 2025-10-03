@@ -333,7 +333,13 @@ export default function SelectProjectModal({
     }, [width])
 
     return (
-        <View style={[localStyles.container, containerWidthStyle, { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View
+            style={[
+                localStyles.container,
+                containerWidthStyle,
+                { maxHeight: Math.min(height * 0.7, height - MODAL_MAX_HEIGHT_GAP) },
+            ]}
+        >
             <View style={localStyles.heading}>
                 <Hotkeys keyName={'up,down,enter,esc'} onKeyDown={onKeyPress} filter={e => true}>
                     <View style={localStyles.title}>

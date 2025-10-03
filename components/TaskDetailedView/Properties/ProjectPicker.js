@@ -27,13 +27,13 @@ export default function ProjectPicker({ project, item, disabled }) {
 
     return (
         <Popover
-            containerStyle={{ maxHeight: 400 }}
             content={showPopup && <SelectProjectModal item={item} project={project} closePopover={closePopover} />}
             onClickOutside={closePopover}
             isOpen={showPopup}
             position={['left', 'bottom', 'right', 'top']}
             align={'end'}
             padding={4}
+            contentLocation={mobile ? null : undefined}
         >
             <Button
                 ref={buttonRef}
