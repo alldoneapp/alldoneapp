@@ -459,10 +459,16 @@ export const getPopoverWidth = () => {
 }
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
-    const width = getPopoverWidth()
+    const desiredWidth = getPopoverWidth()
+    const { width: windowWidth } = Dimensions.get('window')
+    const gutter = 32
+    const availableWidth = windowWidth - gutter
+    const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
+    const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
     const min = { minWidth: width }
     const max = { maxWidth: width }
-    return { ...(setMin ? min : {}), ...(setMax ? max : {}) }
+    const exact = setMin && setMax && width ? { width } : {}
+    return { ...(setMin ? min : {}), ...(setMax ? max : {}), ...exact }
 }
 
 const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -323,8 +323,17 @@ export default function SelectProjectModal({
         }
     }
 
+    const containerWidthStyle = useMemo(() => {
+        const availableWidth = typeof width === 'number' ? width - 32 : undefined
+        if (!availableWidth || availableWidth >= 305) {
+            return applyPopoverWidth()
+        }
+        const resolvedWidth = availableWidth > 0 ? availableWidth : 305
+        return { width: resolvedWidth, maxWidth: resolvedWidth, minWidth: resolvedWidth }
+    }, [width])
+
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, containerWidthStyle, { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <View style={localStyles.heading}>
                 <Hotkeys keyName={'up,down,enter,esc'} onKeyDown={onKeyPress} filter={e => true}>
                     <View style={localStyles.title}>
@@ -394,8 +403,6 @@ const localStyles = StyleSheet.create({
         shadowOpacity: 1,
         shadowRadius: 16,
         elevation: 3,
-        maxWidth: 305,
-        minWidth: 305,
         maxHeight: 356,
     },
     projectListContainer: {
