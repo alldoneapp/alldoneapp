@@ -180,6 +180,19 @@ export const parsePastDate = (date, format) => {
     return toShowDate
 }
 
+const clampToRange = (value, min, max) => {
+    if (max < min) {
+        return min
+    }
+    if (value < min) {
+        return min
+    }
+    if (value > max) {
+        return max
+    }
+    return value
+}
+
 const getScrollOffsets = () => {
     if (typeof window === 'undefined') {
         return { scrollX: 0, scrollY: 0 }
@@ -216,48 +229,65 @@ export const popoverToSafePosition = (
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const padding = 16 // Safe padding from screen edges
     const { scrollX, scrollY } = getScrollOffsets()
+    const viewportWidth = dim.width
+    const viewportHeight = dim.height
 
     // For mobile devices, use smart positioning based on available space
     if (isMobile) {
-        let top, left
+        // When targetRect is unavailable fall back to centered positioning.
+        if (!targetRect || typeof targetRect.top !== 'number') {
+            const centeredTop = clampToRange(
+                viewportHeight / 2 - popoverRect.height / 2,
+                padding,
+                viewportHeight - popoverRect.height - padding
+            )
+            const centeredLeft = clampToRange(
+                viewportWidth / 2 - popoverRect.width / 2,
+                padding,
+                viewportWidth - popoverRect.width - padding
+            )
 
-        // Calculate available space
-        const availableHeight = dim.height - 2 * padding
-        const availableWidth = dim.width - 2 * padding
-
-        // Emergency fallback for very small screens
-        if (dim.height < 200) {
-            return { top: 10 + scrollY, left: 10 + scrollX }
+            return { top: centeredTop + scrollY, left: centeredLeft + scrollX }
         }
 
-        // If the popover is taller than available space, position it at the top
-        if (popoverRect.height >= availableHeight) {
-            top = padding
+        const anchorGap = 8
+        const targetTop = targetRect.top
+        const targetBottom = targetRect.bottom ?? targetTop + (targetRect.height ?? 0)
+        const targetLeft = targetRect.left ?? 0
+        const targetRight = targetRect.right ?? targetLeft + (targetRect.width ?? 0)
+
+        // Prefer showing the popover underneath the trigger, but flip when needed.
+        let top = targetBottom + anchorGap
+        const maxTop = viewportHeight - popoverRect.height - padding
+
+        if (top + popoverRect.height > viewportHeight - padding) {
+            const aboveTop = targetTop - popoverRect.height - anchorGap
+            if (aboveTop >= padding) {
+                top = aboveTop
+            } else {
+                top = clampToRange(top, padding, maxTop)
+            }
         } else {
-            // Try to center, but ensure it fits
-            top = Math.max(
-                padding,
-                Math.min(dim.height / 2 - popoverRect.height / 2, dim.height - popoverRect.height - padding)
-            )
+            top = clampToRange(top, padding, maxTop)
         }
 
-        // If the popover is wider than available space, position it at the left
-        if (popoverRect.width >= availableWidth) {
-            left = padding
+        const desiredLeft = targetRight - popoverRect.width
+        const minLeft = padding
+        const maxLeft = viewportWidth - popoverRect.width - padding
+        let left
+
+        if (popoverRect.width > viewportWidth - 2 * padding) {
+            left = clampToRange(viewportWidth / 2 - popoverRect.width / 2, minLeft, viewportWidth - popoverRect.width)
         } else {
-            // Try to center, but ensure it fits
-            left = Math.max(
-                padding,
-                Math.min(dim.width / 2 - popoverRect.width / 2, dim.width - popoverRect.width - padding)
-            )
+            left = clampToRange(desiredLeft, minLeft, maxLeft)
         }
 
         return { top: top + scrollY, left: left + scrollX }
     }
 
     // For desktop/tablet, use the original center logic with sidebar adjustment
-    let top = dim.height / 2 - popoverRect.height / 2
-    let left = dim.width / 2 - popoverRect.width / 2 + sidebarDiff
+    let top = viewportHeight / 2 - popoverRect.height / 2
+    let left = viewportWidth / 2 - popoverRect.width / 2 + sidebarDiff
 
     // Ensure the popover doesn't go off-screen
     // Check top boundary
