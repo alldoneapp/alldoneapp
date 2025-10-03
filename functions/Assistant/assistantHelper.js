@@ -805,7 +805,15 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
     switch (toolName) {
         case 'create_task': {
             const { TaskService } = require('../shared/TaskService')
+            const moment = require('moment-timezone')
+            const db = admin.firestore()
             const taskService = new TaskService({
+                database: db,
+                moment: moment,
+                idGenerator: () => db.collection('_').doc().id,
+                enableFeeds: true,
+                enableValidation: true,
+                isCloudFunction: true,
                 taskBatchSize: 100,
                 maxBatchesPerProject: 20,
             })
@@ -1030,7 +1038,15 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
         case 'update_task': {
             const { TaskService } = require('../shared/TaskService')
+            const moment = require('moment-timezone')
+            const db = admin.firestore()
             const taskService = new TaskService({
+                database: db,
+                moment: moment,
+                idGenerator: () => db.collection('_').doc().id,
+                enableFeeds: true,
+                enableValidation: true,
+                isCloudFunction: true,
                 taskBatchSize: 100,
                 maxBatchesPerProject: 20,
             })
