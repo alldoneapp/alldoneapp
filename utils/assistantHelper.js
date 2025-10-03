@@ -222,7 +222,11 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
             await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
         }
 
-        store.dispatch([stopLoadingData(), setAssistantEnabled(enableAssistant)])
+        const postCreateActions = [stopLoadingData(), setAssistantEnabled(enableAssistant)]
+        if (enableAssistant && trimmedMessage) {
+            postCreateActions.push(setTriggerBotSpinner(true))
+        }
+        store.dispatch(postCreateActions)
 
         const url = `/projects/${projectId}/chats/${chatId}/chat`
         URLTrigger.processUrl(NavigationService, url)
