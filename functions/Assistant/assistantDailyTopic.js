@@ -156,7 +156,7 @@ async function generateBotDailyTopicFirstComment(
     promises.push(getUserDoneTasksInProjects(admin, projects, userId, startDate, endDate))
     const [assistant, tasksByProjects] = await Promise.all(promises)
 
-    const { model, temperature, instructions, displayName } = assistant
+    const { model, temperature, instructions, displayName, allowedTools } = assistant
 
     const tasksByProjectsData = extractTasksToSummarizeByProject(projects, tasksByProjects)
     const totalTasks = getTotalTasks(tasksByProjects)
@@ -164,10 +164,10 @@ async function generateBotDailyTopicFirstComment(
     const template = generateDailySummaryContent(tasksByProjectsData, totalTasks, todayDate, lastSessionDate, userName)
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions)
+    addBaseInstructions(messages, displayName, language, instructions, allowedTools)
     messages.push(['system', template])
 
-    const stream = await interactWithChatStream(messages, model, temperature)
+    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
     console.log('KW Special storeBotAnswerStream parameters:', {
         projectId: defaultProjectId,
         objectType: 'topics',

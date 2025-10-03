@@ -22,7 +22,7 @@ async function generateBotWelcomeMessageForGuideUser(
 ) {
     const assistant = await getAssistantForChat(projectId, assistantId)
 
-    const { model, temperature, instructions, displayName } = assistant
+    const { model, temperature, instructions, displayName, allowedTools } = assistant
 
     const linkToTasks = `${taskListUrlOrigin}/projects/${projectId}/user/${userId}/tasks/open`
     const template = parseTextForUseLiKePrompt(
@@ -30,10 +30,10 @@ async function generateBotWelcomeMessageForGuideUser(
     )
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions)
+    addBaseInstructions(messages, displayName, language, instructions, allowedTools)
     messages.push(['system', template])
 
-    const stream = await interactWithChatStream(messages, model, temperature)
+    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
     await storeBotAnswerStream(
         projectId,
         'topics',

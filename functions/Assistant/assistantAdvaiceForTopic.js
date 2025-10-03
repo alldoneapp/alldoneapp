@@ -24,16 +24,16 @@ async function generateBotAdvaiceForTopic(
             ? await getTaskOrAssistantSettings(projectId, objectId, assistantId)
             : await getAssistantForChat(projectId, assistantId)
 
-    const { model, temperature, instructions, displayName } = settings
+    const { model, temperature, instructions, displayName, allowedTools } = settings
 
     const template = parseTextForUseLiKePrompt(`The name of the current topic is: "${topicName}".`)
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions)
+    addBaseInstructions(messages, displayName, language, instructions, allowedTools)
     // just use this to give the assistant the topic name
     messages.push(['system', template])
 
-    const stream = await interactWithChatStream(messages, model, temperature)
+    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
     await storeBotAnswerStream(
         projectId,
         objectType,
