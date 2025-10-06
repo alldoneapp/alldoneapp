@@ -707,7 +707,7 @@ const addFollowersToChat = async (projectId, chatName, objectType, chatId, follo
         })
     }
     batch.update(getDb().doc(`chatObjects/${projectId}/chats/${chatId}`), { usersFollowing })
-    batch.commit()
+    await batch.commit()
 }
 
 const getParentObjectFollowerIds = async (projectId, objectType, chatId) => {
