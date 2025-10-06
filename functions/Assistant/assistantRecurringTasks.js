@@ -643,60 +643,15 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 model: task.aiModel,
                 temperature: task.aiTemperature,
                 instructions: task.aiSystemMessage,
+            },
+            {
+                sendWhatsApp: task.sendWhatsApp,
+                name: task.name,
+                recurrence: task.recurrence,
             }
         )
 
-        // Send WhatsApp notification if enabled
-        if (task.sendWhatsApp) {
-            try {
-                // Get the creator's phone number from cache (already loaded above)
-                const creatorPhone = creatorData?.phone
-
-                if (creatorPhone) {
-                    const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
-                    const whatsappService = new TwilioWhatsAppService()
-
-                    // Use the actual assistant response or fallback to default message
-                    const assistantResponse =
-                        taskResult?.commentText || 'Task completed successfully by Alldone Assistant.'
-
-                    // Send task completion notification
-                    const whatsappResult = await whatsappService.sendTaskCompletionNotification(
-                        creatorPhone,
-                        {
-                            name: task.name,
-                            recurrence: task.recurrence,
-                            type: 'recurring',
-                        },
-                        assistantResponse,
-                        'https://alldonealeph.web.app'
-                    )
-
-                    console.log('WhatsApp notification result:', {
-                        taskId: task.id,
-                        taskName: task.name,
-                        creatorUserId,
-                        creatorPhone: creatorPhone.substring(0, 5) + '***', // Log partial phone for privacy
-                        success: whatsappResult.success,
-                        message: whatsappResult.message,
-                    })
-                } else {
-                    console.log('No phone number found for WhatsApp notification:', {
-                        taskId: task.id,
-                        taskName: task.name,
-                        creatorUserId,
-                    })
-                }
-            } catch (whatsappError) {
-                console.error('Error sending WhatsApp notification (task execution continues):', {
-                    error: whatsappError.message,
-                    taskId: task.id,
-                    taskName: task.name,
-                    creatorUserId,
-                })
-                // Continue execution even if WhatsApp fails
-            }
-        }
+        // WhatsApp notification is now handled inside generatePreConfigTaskResult
 
         // Update the lastExecuted timestamp - store in UTC
         await taskDocRef.update({

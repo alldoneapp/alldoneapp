@@ -1272,6 +1272,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 prompt,
                 language,
                 aiSettings,
+                taskMetadata,
             } = data
             return await generatePreConfigTaskResult(
                 userId,
@@ -1282,7 +1283,8 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 assistantId,
                 prompt,
                 language,
-                aiSettings
+                aiSettings,
+                taskMetadata
             )
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')

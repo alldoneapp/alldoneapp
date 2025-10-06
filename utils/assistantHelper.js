@@ -246,13 +246,22 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
     }
 }
 
-const createTopicForPreConfigTask = async (projectId, taskId, isPublicFor, assistantId, prompt, aiSettings) => {
+const createTopicForPreConfigTask = async (
+    projectId,
+    taskId,
+    isPublicFor,
+    assistantId,
+    prompt,
+    aiSettings,
+    taskMetadata
+) => {
     const { loggedUser } = store.getState()
 
     console.log('Creating topic for pre-config task:', {
         taskId,
         assistantId,
         aiSettings,
+        taskMetadata,
     })
 
     try {
@@ -268,6 +277,7 @@ const createTopicForPreConfigTask = async (projectId, taskId, isPublicFor, assis
             prompt,
             language: window.navigator.language,
             aiSettings,
+            taskMetadata,
         }
 
         console.log('Calling generatePreConfigTaskResultSecondGen with params:', functionParams)
@@ -353,7 +363,12 @@ export const generateTaskFromPreConfig = async (projectId, name, assistantId, ge
             taskWithPublicFor.isPublicFor,
             taskWithPublicFor.assistantId,
             generatedPrompt,
-            aiSettings
+            aiSettings,
+            {
+                sendWhatsApp: taskWithPublicFor.sendWhatsApp,
+                name: taskWithPublicFor.name,
+                recurrence: taskWithPublicFor.recurrence,
+            }
         ).catch(error => {
             console.error('Failed to create topic for pre-config task:', error)
         })
