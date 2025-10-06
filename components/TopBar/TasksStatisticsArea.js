@@ -190,7 +190,7 @@ export default function TasksStatisticsArea() {
     useEffect(() => {
         const watcherKeys = []
         const { loggedUserProjects, loggedUser } = store.getState()
-        const { timestamp1, timestamp2 } = getDateRangesTimestamps(loggedUser.statisticsData)
+        const { timestamp1, timestamp2 } = getDateRangesTimestamps({ filter: STATISTIC_RANGE_CURRENT_MONTH })
 
         for (let i = 0; i < loggedUserProjects.length; i++) {
             const project = loggedUserProjects[i]
