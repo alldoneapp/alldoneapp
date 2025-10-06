@@ -25,7 +25,7 @@ const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 
 async function shouldExecuteTask(task, projectId) {
-    if (!task.startDate || !task.startTime || task.recurrence === RECURRENCE_NEVER) {
+    if (!task.startDate || !task.startTime || !task.recurrence || task.recurrence === RECURRENCE_NEVER) {
         return false
     }
 
