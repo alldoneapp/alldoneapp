@@ -1573,7 +1573,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
     {
         document: 'items/{projectId}/tasks/{taskId}',
         timeoutSeconds: 540,
-        memory: '256MB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async event => {
