@@ -37,7 +37,7 @@ export default function MainModal({ closeModal, options, openPreconfigTaskModal,
                             icon={icon}
                             notTranslatedText={shrinkTagText(
                                 task.name,
-                                smallScreenNavigation ? 16 : isMiddleScreen ? 19 : 24
+                                smallScreenNavigation ? 20 : isMiddleScreen ? 25 : 30
                             )}
                             shortcut={(index + 1).toString()}
                             action={
@@ -54,7 +54,7 @@ export default function MainModal({ closeModal, options, openPreconfigTaskModal,
                             icon={icon}
                             notTranslatedText={
                                 task
-                                    ? shrinkTagText(task.name, smallScreenNavigation ? 16 : isMiddleScreen ? 19 : 24)
+                                    ? shrinkTagText(task.name, smallScreenNavigation ? 20 : isMiddleScreen ? 25 : 30)
                                     : text
                             }
                             shortcut={(index + 1).toString()}

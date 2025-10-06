@@ -13,7 +13,7 @@ const getOptions = (project, assistantId, tasks) => {
         return {
             id: task.id,
             type: TASK_OPTION,
-            text: shrinkTagText(task.name, 8),
+            text: shrinkTagText(task.name, 16),
             icon: task.type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark',
             task,
             action: () => {
@@ -30,7 +30,7 @@ const getOptions = (project, assistantId, tasks) => {
 export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen) => {
     const filledSpaceWidth = isMiddleScreen ? 174 : 274
     const freeSpaceWidth = containerWidth - filledSpaceWidth
-    const avarageWidthOfButtons = 130
+    const avarageWidthOfButtons = 150
     return Math.floor(freeSpaceWidth / avarageWidthOfButtons)
 }
 
