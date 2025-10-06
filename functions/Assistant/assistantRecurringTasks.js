@@ -507,6 +507,9 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         return // Skip execution if no creator ID is found
     }
 
+    const taskDocRef = admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+    const previousLastExecuted = task.lastExecuted || null
+
     // Get creator data from cache or fetch from DB
     let creatorData
     if (userDataCache && userDataCache.has(creatorUserId)) {
@@ -588,6 +591,22 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     })
 
     try {
+        const startTimestamp = admin.firestore.Timestamp.now()
+        await taskDocRef.update({
+            lastExecuted: startTimestamp,
+            lastExecutionStarted: startTimestamp,
+            lastExecutionCompleted: null,
+            executionStatus: 'in_progress',
+            lastExecutionError: null,
+        })
+
+        console.log('Marked recurring assistant task as in-progress:', {
+            projectId,
+            assistantId,
+            taskId: task.id,
+            executionStartedAt: startTimestamp.toDate().toISOString(),
+        })
+
         // Ensure a chat object exists for this task before trying to generate content
         const { uniqueId } = await ensureTaskChatExists(projectId, task.id, assistantId, task.prompt)
 
@@ -676,9 +695,11 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         }
 
         // Update the lastExecuted timestamp - store in UTC
-        const utcNow = admin.firestore.FieldValue.serverTimestamp()
-        await admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`).update({
-            lastExecuted: utcNow,
+        await taskDocRef.update({
+            lastExecuted: admin.firestore.FieldValue.serverTimestamp(),
+            lastExecutionCompleted: admin.firestore.FieldValue.serverTimestamp(),
+            executionStatus: 'succeeded',
+            lastExecutionError: null,
         })
 
         const nextExecutionAfterRun =
@@ -709,6 +730,29 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             remainingGold: creatorData.gold,
         })
     } catch (error) {
+        const revertPayload = {
+            executionStatus: 'failed',
+            lastExecutionCompleted: null,
+            lastExecutionError: error.message,
+        }
+
+        if (previousLastExecuted) {
+            revertPayload.lastExecuted = previousLastExecuted
+        } else {
+            revertPayload.lastExecuted = admin.firestore.FieldValue.delete()
+        }
+
+        try {
+            await taskDocRef.update(revertPayload)
+        } catch (restoreError) {
+            console.error('Failed to revert task execution metadata after error:', {
+                projectId,
+                assistantId,
+                taskId: task.id,
+                restoreError: restoreError.message,
+            })
+        }
+
         console.error('Error executing assistant task:', {
             error,
             assistantProjectId: projectId,

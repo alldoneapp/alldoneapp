@@ -5,6 +5,23 @@ const MINUTES_IN_HOUR = 60
 const MAX_OFFSET_MINUTES = 14 * MINUTES_IN_HOUR
 const DST_DELTA_MINUTES = 60
 
+const recurrenceAdvanceHandlers = {
+    daily: momentInstance => momentInstance.add(1, 'days'),
+    everyWorkday: momentInstance => {
+        do {
+            momentInstance.add(1, 'days')
+        } while (momentInstance.isoWeekday() > 5)
+        return momentInstance
+    },
+    weekly: momentInstance => momentInstance.add(1, 'weeks'),
+    every2Weeks: momentInstance => momentInstance.add(2, 'weeks'),
+    every3Weeks: momentInstance => momentInstance.add(3, 'weeks'),
+    monthly: momentInstance => momentInstance.add(1, 'months'),
+    every3Months: momentInstance => momentInstance.add(3, 'months'),
+    every6Months: momentInstance => momentInstance.add(6, 'months'),
+    annually: momentInstance => momentInstance.add(1, 'years'),
+}
+
 function normalizeTimezoneOffset(value) {
     const normalized = TaskRetrievalService.normalizeTimezoneOffset(value)
     return typeof normalized === 'number' ? normalized : null
@@ -192,7 +209,28 @@ function evaluateCandidateForSchedule(
     const originalRounded = originalScheduledTime.clone().second(0).millisecond(0)
 
     if (!task.lastExecuted) {
-        const minutesUntilNextExecution = originalRounded.diff(nowRounded, 'minutes')
+        const nextExecution = originalScheduledTime.clone()
+        const advanceHandler = recurrenceAdvanceHandlers[task.recurrence]
+        const maxIterations = 10000
+        let iterations = 0
+
+        if (advanceHandler) {
+            while (nextExecution.clone().second(0).millisecond(0).isBefore(nowRounded) && iterations < maxIterations) {
+                advanceHandler(nextExecution)
+                iterations++
+            }
+        }
+
+        const nextExecutionRounded = nextExecution.clone().second(0).millisecond(0)
+        const minutesUntilNextExecution = nextExecutionRounded.diff(nowRounded, 'minutes')
+
+        if (iterations >= maxIterations) {
+            console.warn('[timezoneResolver] Max iterations reached while aligning first execution schedule.', {
+                taskId: task.id,
+                recurrence: task.recurrence,
+            })
+        }
+
         return {
             ...candidate,
             now,
@@ -200,8 +238,8 @@ function evaluateCandidateForSchedule(
             originalScheduledTime,
             originalRounded,
             lastExecutedLocal: null,
-            nextExecutionTime: originalScheduledTime.clone(),
-            nextExecutionRounded: originalRounded,
+            nextExecutionTime: nextExecution,
+            nextExecutionRounded,
             minutesUntilNextExecution,
             shouldExecute: minutesUntilNextExecution <= 0,
             isFirstExecution: true,
@@ -245,20 +283,32 @@ function selectBestEvaluation(evaluations) {
     const ready = evaluations.filter(evaluation => evaluation.shouldExecute)
     if (ready.length > 0) {
         return ready.sort((a, b) => {
-            const diff = b.minutesUntilNextExecution - a.minutesUntilNextExecution
-            if (diff !== 0) {
-                return diff
+            const minutesDiff = Math.abs(a.minutesUntilNextExecution) - Math.abs(b.minutesUntilNextExecution)
+            if (minutesDiff !== 0) {
+                return minutesDiff
             }
-            return a.priority - b.priority
+
+            const priorityDiff = a.priority - b.priority
+            if (priorityDiff !== 0) {
+                return priorityDiff
+            }
+
+            return a.offsetMinutes - b.offsetMinutes
         })[0]
     }
 
     return evaluations.sort((a, b) => {
-        const diff = a.minutesUntilNextExecution - b.minutesUntilNextExecution
-        if (diff !== 0) {
-            return diff
+        const minutesDiff = a.minutesUntilNextExecution - b.minutesUntilNextExecution
+        if (minutesDiff !== 0) {
+            return minutesDiff
         }
-        return a.priority - b.priority
+
+        const priorityDiff = a.priority - b.priority
+        if (priorityDiff !== 0) {
+            return priorityDiff
+        }
+
+        return a.offsetMinutes - b.offsetMinutes
     })[0]
 }
 
