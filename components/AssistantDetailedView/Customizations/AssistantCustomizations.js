@@ -102,7 +102,7 @@ export default function AssistantCustomizations({
                     {isGlobalAsisstant &&
                         !isInGlobalProject &&
                         (!isGuide || isAdmin) &&
-                        defaultAssistantId !== assistant.uid && (
+                        (defaultAssistantId !== assistant.uid || isAdmin) && (
                             <CopyAssistant
                                 projectId={projectDetailedId}
                                 assistant={assistant}

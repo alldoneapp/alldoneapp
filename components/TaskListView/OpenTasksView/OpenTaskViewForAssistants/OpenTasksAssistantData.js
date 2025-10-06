@@ -77,9 +77,9 @@ export default function OpenTasksAssistantData({ projectId }) {
     const canBeCopiedToEdit =
         !isAnonymous &&
         isGlobal &&
-        defaultAssistantId !== assistantId &&
         realProjectIds.includes(projectId) &&
-        !realGuideProjectIds.includes(projectId)
+        !realGuideProjectIds.includes(projectId) &&
+        (defaultAssistantId !== assistantId || administratorUserId === loggedUserId)
 
     return (
         <View>
