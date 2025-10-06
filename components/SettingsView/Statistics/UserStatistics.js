@@ -19,6 +19,7 @@ import {
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
+    STATISTIC_CHART_MONEY_EARNED,
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
 } from '../../../utils/StatisticChartsHelper'
@@ -85,6 +86,55 @@ export default function UserStatistics() {
     const moneyEarned = calculateMoneyEarned()
     const defaultCurrency = loggedUser.defaultCurrency || 'EUR'
     const showMoneyEarned = moneyEarned > 0
+
+    const allMoneyEarnedByProject = (() => {
+        const aggregated = { total: null }
+        const totalAccumulator = {}
+
+        loggedUserProjects.forEach(project => {
+            const hourlyRatesData = project.hourlyRatesData
+            const projectCurrency = hourlyRatesData?.currency || defaultCurrency
+            const userRate = hourlyRatesData?.hourlyRates?.[loggedUser.uid]
+            const projectTimeByDate = allDoneTimeByProject[project.id]
+
+            const projectMoneyByDate = {}
+
+            if (showMoneyEarned && userRate && userRate > 0 && projectTimeByDate) {
+                Object.entries(projectTimeByDate).forEach(([timestamp, hours]) => {
+                    const parsedHours = typeof hours === 'string' ? parseFloat(hours) : hours
+
+                    if (!parsedHours) return
+
+                    const earned = parsedHours * userRate
+                    const converted = convertCurrency(earned, projectCurrency, defaultCurrency)
+                    const rounded = Number(converted.toFixed(2))
+
+                    if (!rounded) return
+
+                    projectMoneyByDate[timestamp] = rounded
+                    totalAccumulator[timestamp] = Number(((totalAccumulator[timestamp] || 0) + rounded).toFixed(2))
+                })
+            }
+
+            aggregated[project.id] = projectMoneyByDate
+        })
+
+        if (Object.keys(totalAccumulator).length > 0) {
+            aggregated.total = totalAccumulator
+        }
+
+        return aggregated
+    })()
+
+    const hasMoneyChart =
+        showMoneyEarned &&
+        loggedUserProjects.some(project => Object.keys(allMoneyEarnedByProject[project.id] || {}).length > 0)
+
+    useEffect(() => {
+        if (!hasMoneyChart && selectedChart === STATISTIC_CHART_MONEY_EARNED) {
+            setSelectedChart(STATISTIC_CHART_DONE_TASKS)
+        }
+    }, [hasMoneyChart, selectedChart])
 
     const writeBrowserURL = () => {
         return URLsSettings.push(URL_SETTINGS_STATISTICS)
@@ -213,6 +263,7 @@ export default function UserStatistics() {
                         selectedChart={selectedChart}
                         setSelectedChart={setSelectedChart}
                         estimationTypeToUse={estimationTypeToUse}
+                        hasMoneyChart={hasMoneyChart}
                     />
 
                     {(() => {
@@ -245,6 +296,17 @@ export default function UserStatistics() {
                                         title={`${translate('Time logged')} (${translate('hours')})`}
                                         statisticData={getDataForAllProjectsCharts(
                                             allDoneTimeByProject,
+                                            timestamp1,
+                                            timestamp2
+                                        )}
+                                    />
+                                )
+                            case STATISTIC_CHART_MONEY_EARNED:
+                                return (
+                                    <StackedBarChart
+                                        title={`${translate('Money earned')} (${defaultCurrency})`}
+                                        statisticData={getDataForAllProjectsCharts(
+                                            allMoneyEarnedByProject,
                                             timestamp1,
                                             timestamp2
                                         )}

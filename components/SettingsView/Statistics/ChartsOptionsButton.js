@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import Button from '../../UIControls/Button'
 import StatisticChartsOptions from './StatisticChartsOptions'
@@ -13,6 +13,7 @@ const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeTo
     const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const [visiblePopover, setVisiblePopover] = useState(false)
+    const hideTimeoutRef = useRef()
 
     const showPopover = () => {
         setVisiblePopover(true)
@@ -20,11 +21,24 @@ const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeTo
     }
 
     const hidePopover = () => {
-        setTimeout(() => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current)
+        }
+        hideTimeoutRef.current = setTimeout(() => {
             setVisiblePopover(false)
             dispatch(hideFloatPopup())
+            hideTimeoutRef.current = null
         })
     }
+
+    useEffect(() => {
+        return () => {
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current)
+                hideTimeoutRef.current = null
+            }
+        }
+    }, [])
 
     return (
         <View style={localStyles.container}>

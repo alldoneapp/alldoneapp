@@ -5,7 +5,6 @@ import { useDispatch } from 'react-redux'
 import AssistantItem from './AssistantItem'
 import { translate } from '../../../../i18n/TranslationService'
 import {
-    addGlobalAssistantToProject,
     setAssistantLastVisitedBoardDate,
     uploadNewAssistant,
     copyPreConfigTasksToNewAssistant,
@@ -31,23 +30,20 @@ export default function AssistantsArea({ closeModal, project }) {
     const [assistantsByProject, setAssistantsByProject] = useState({})
 
     const selectAssistant = async (assistantProjectId, assistant) => {
-        if (assistantProjectId === GLOBAL_PROJECT_ID) {
-            addGlobalAssistantToProject(project.id, assistant.uid).then(() => {
-                openDvWhenCreateAssistant(assistant)
-            })
-        } else {
-            // Wait for the assistant to be created in Firestore
-            const newAssistant = await uploadNewAssistant(
-                project.id,
-                { ...assistant, noteIdsByProject: {}, lastVisitBoard: {}, commentsData: null },
-                null
-            )
+        const sourceAssistantId = assistant.uid
+        const sourceProjectId = assistantProjectId === GLOBAL_PROJECT_ID ? GLOBAL_PROJECT_ID : assistantProjectId
 
-            // Copy pre-configured tasks from the source assistant
-            await copyPreConfigTasksToNewAssistant(assistantProjectId, assistant.uid, project.id, newAssistant.uid)
+        // Wait for the assistant to be created in Firestore
+        const newAssistant = await uploadNewAssistant(
+            project.id,
+            { ...assistant, noteIdsByProject: {}, lastVisitBoard: {}, commentsData: null },
+            null
+        )
 
-            openDvWhenCreateAssistant(newAssistant)
-        }
+        // Copy pre-configured tasks from the source assistant
+        await copyPreConfigTasksToNewAssistant(sourceProjectId, sourceAssistantId, project.id, newAssistant.uid)
+
+        openDvWhenCreateAssistant(newAssistant)
         closeModal()
     }
 

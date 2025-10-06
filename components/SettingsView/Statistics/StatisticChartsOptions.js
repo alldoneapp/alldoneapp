@@ -67,7 +67,12 @@ const StatisticChartsOptions = ({ chart, setChart, hidePopover, estimationTypeTo
                         const shortcutText = `${i + 1}`
 
                         return (
-                            <Hotkeys keyName={shortcutText} onKeyDown={() => selectChart(chartItem)} filter={e => true}>
+                            <Hotkeys
+                                key={`statistic-chart-${chartItem}`}
+                                keyName={shortcutText}
+                                onKeyDown={() => selectChart(chartItem)}
+                                filter={e => true}
+                            >
                                 <TouchableOpacity
                                     style={localStyles.chartContainer}
                                     onPress={() => selectChart(chartItem)}

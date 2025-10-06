@@ -81,9 +81,13 @@ export const getDataForAllProjectsCharts = (data, momentDate1, momentDate2) => {
             }
 
             if (amountByColor % 2 === 0) {
-                color = tinycolor(color).lighten(amountByColor * 10 + addition)
+                color = tinycolor(color)
+                    .lighten(amountByColor * 10 + addition)
+                    .toString()
             } else {
-                color = tinycolor(color).darken(amountByColor * 10 + addition)
+                color = tinycolor(color)
+                    .darken(amountByColor * 10 + addition)
+                    .toString()
             }
         }
         amountProjectsByColors[project.color]++
