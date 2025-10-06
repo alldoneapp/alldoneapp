@@ -35,6 +35,16 @@ import { updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
+function getAssistantTasksCollectionPath(projectId, assistantId) {
+    return isGlobalAssistant(assistantId)
+        ? `assistantTasks/${projectId}/preConfigTasks`
+        : `assistantTasks/${projectId}/${assistantId}`
+}
+
+function getAssistantTaskDocRef(projectId, assistantId, taskId) {
+    return getDb().doc(`${getAssistantTasksCollectionPath(projectId, assistantId)}/${taskId}`)
+}
+
 //ACCESS FUNCTIONS
 
 export async function getAssistantData(projectId, assistantId) {
@@ -110,24 +120,28 @@ export async function getProjectAssistants(projectId) {
 export function watchAssistantTasks(projectId, assistantId, watcherKey, callback) {
     let firstSnap = true
     store.dispatch(startLoadingData())
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`assistantTasks/${projectId}/preConfigTasks`)
-        .where('assistantId', '==', assistantId)
-        .orderBy('type', 'desc')
-        .orderBy('order', 'asc')
-        .onSnapshot(assistantDocs => {
-            let tasks = []
-            assistantDocs.forEach(doc => {
-                const task = doc.data()
-                task.id = doc.id
-                tasks.push(task)
-            })
-            callback(tasks)
-            if (firstSnap) {
-                firstSnap = false
-                store.dispatch(stopLoadingData())
-            }
+    const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
+    let query = getDb().collection(collectionPath)
+
+    if (isGlobalAssistant(assistantId)) {
+        query = query.where('assistantId', '==', assistantId)
+    }
+
+    query = query.orderBy('type', 'desc').orderBy('order', 'asc')
+
+    globalWatcherUnsub[watcherKey] = query.onSnapshot(assistantDocs => {
+        const tasks = []
+        assistantDocs.forEach(doc => {
+            const task = doc.data()
+            task.id = doc.id
+            tasks.push(task)
         })
+        callback(tasks)
+        if (firstSnap) {
+            firstSnap = false
+            store.dispatch(stopLoadingData())
+        }
+    })
 }
 
 //EDTION AND ADITION FUNCTIONS
@@ -352,28 +366,70 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
     delete taskToStore.id
     taskToStore.assistantId = assistantId
 
-    // Get current tasks for the specific assistant to determine the next order value
-    getDb()
-        .collection(`assistantTasks/${projectId}/preConfigTasks`)
-        .where('assistantId', '==', assistantId)
+    const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
+    const collectionRef = getDb().collection(collectionPath)
+
+    const query = isGlobalAssistant(assistantId) ? collectionRef.where('assistantId', '==', assistantId) : collectionRef
+
+    query
         .get()
         .then(snapshot => {
-            // Set order to the current count of tasks for this assistant (puts it at the end)
             taskToStore.order = snapshot.size
+
+            if (!taskToStore.creatorUserId) {
+                const { loggedUser } = store.getState()
+                if (loggedUser?.uid) {
+                    taskToStore.creatorUserId = loggedUser.uid
+                }
+            }
+
+            if (!isGlobalAssistant(assistantId)) {
+                taskToStore.activatedInProjectId = projectId
+                taskToStore.lastExecuted = null
+            }
 
             const batch = new BatchWrapper(getDb())
             updateAssistantData(projectId, assistantId, {}, batch)
-            batch.set(getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${taskId}`), taskToStore)
+            batch.set(getAssistantTaskDocRef(projectId, assistantId, taskId), {
+                ...taskToStore,
+                id: taskId,
+            })
+
+            if (!isGlobalAssistant(assistantId)) {
+                const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${taskId}`)
+                batch.delete(legacyRef)
+            }
+
             batch.commit()
         })
         .catch(error => {
             console.error('Error getting task count for order:', error)
-            // Default fallback if we can't get the count
             taskToStore.order = 999
+
+            if (!taskToStore.creatorUserId) {
+                const { loggedUser } = store.getState()
+                if (loggedUser?.uid) {
+                    taskToStore.creatorUserId = loggedUser.uid
+                }
+            }
+
+            if (!isGlobalAssistant(assistantId)) {
+                taskToStore.activatedInProjectId = projectId
+                taskToStore.lastExecuted = null
+            }
 
             const batch = new BatchWrapper(getDb())
             updateAssistantData(projectId, assistantId, {}, batch)
-            batch.set(getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${taskId}`), taskToStore)
+            batch.set(getAssistantTaskDocRef(projectId, assistantId, taskId), {
+                ...taskToStore,
+                id: taskId,
+            })
+
+            if (!isGlobalAssistant(assistantId)) {
+                const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${taskId}`)
+                batch.delete(legacyRef)
+            }
+
             batch.commit()
         })
 }
@@ -384,10 +440,10 @@ export function updatePreConfigTask(projectId, assistantId, task) {
     taskToStore.assistantId = assistantId
 
     // Get the current task data to compare changes
-    const taskRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${task.id}`)
+    const taskRef = getAssistantTaskDocRef(projectId, assistantId, task.id)
 
     taskRef.get().then(doc => {
-        const currentTask = doc.data()
+        const currentTask = doc.exists ? doc.data() : null
 
         // Check if start time or date has changed
         if (currentTask && (currentTask.startDate !== task.startDate || currentTask.startTime !== task.startTime)) {
@@ -402,9 +458,20 @@ export function updatePreConfigTask(projectId, assistantId, task) {
             })
         }
 
+        const payload = { ...taskToStore, id: task.id }
+
         const batch = new BatchWrapper(getDb())
         updateAssistantData(projectId, assistantId, {}, batch)
-        batch.update(taskRef, taskToStore)
+        if (doc.exists) {
+            batch.update(taskRef, payload)
+        } else {
+            batch.set(taskRef, payload, { merge: true })
+        }
+
+        if (!isGlobalAssistant(assistantId)) {
+            const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${task.id}`)
+            batch.delete(legacyRef)
+        }
         batch.commit()
     })
 }
@@ -412,7 +479,12 @@ export function updatePreConfigTask(projectId, assistantId, task) {
 export function deletePreConfigTask(projectId, assistantId, taskId) {
     const batch = new BatchWrapper(getDb())
     updateAssistantData(projectId, assistantId, {}, batch)
-    batch.delete(getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${taskId}`))
+    batch.delete(getAssistantTaskDocRef(projectId, assistantId, taskId))
+
+    if (!isGlobalAssistant(assistantId)) {
+        const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${taskId}`)
+        batch.delete(legacyRef)
+    }
     batch.commit()
 }
 
@@ -431,7 +503,12 @@ export function updateAssistantTasksOrder(projectId, assistantId, tasks) {
                 return
             }
 
-            batch.update(getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${task.id}`), { order: index })
+            const taskRef = getAssistantTaskDocRef(projectId, assistantId, task.id)
+            batch.set(taskRef, { order: index }, { merge: true })
+            if (!isGlobalAssistant(assistantId)) {
+                const legacyRef = getDb().doc(`assistantTasks/${projectId}/preConfigTasks/${task.id}`)
+                batch.delete(legacyRef)
+            }
         })
 
         // Commit the batch
@@ -512,6 +589,9 @@ export async function copyPreConfigTasksToNewAssistant(
     targetAssistantId
 ) {
     try {
+        const { loggedUser } = store.getState()
+        const currentUserId = loggedUser?.uid || null
+
         console.log('copyPreConfigTasksToNewAssistant called with:', {
             sourceProjectId,
             sourceAssistantId,
@@ -543,10 +623,28 @@ export async function copyPreConfigTasksToNewAssistant(
             const taskCopy = {
                 ...task,
                 assistantId: targetAssistantId,
+                id: newTaskId,
+            }
+
+            if (!taskCopy.creatorUserId && currentUserId) {
+                taskCopy.creatorUserId = currentUserId
+            }
+
+            const targetIsGlobal = isGlobalAssistant(targetAssistantId)
+
+            if (!targetIsGlobal) {
+                taskCopy.activatedInProjectId = targetProjectId
+                taskCopy.lastExecuted = null
             }
 
             console.log('Copying task:', task.title || task.name, 'with new ID:', newTaskId)
-            batch.set(getDb().doc(`assistantTasks/${targetProjectId}/preConfigTasks/${newTaskId}`), taskCopy)
+
+            batch.set(getAssistantTaskDocRef(targetProjectId, targetAssistantId, newTaskId), taskCopy)
+
+            if (!targetIsGlobal) {
+                const legacyRef = getDb().doc(`assistantTasks/${targetProjectId}/preConfigTasks/${newTaskId}`)
+                batch.delete(legacyRef)
+            }
         })
 
         await batch.commit()
