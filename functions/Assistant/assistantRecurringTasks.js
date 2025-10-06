@@ -5,6 +5,12 @@ const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
+const {
+    MINUTES_IN_HOUR,
+    resolveTimezoneContext,
+    buildOriginalScheduledMoment,
+    normalizeTimezoneOffset,
+} = require('./timezoneResolver')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
 const RECURRENCE_NEVER = 'never'
@@ -23,17 +29,23 @@ async function shouldExecuteTask(task, projectId) {
         return false
     }
 
-    // Get the user's timezone offset from their settings as fallback
     const userDoc = await admin.firestore().doc(`users/${task.userId}`).get()
-    const userTimezoneOffset = task.userTimezone || userDoc.data()?.timezone || 0
+    const userData = userDoc.exists ? userDoc.data() : {}
 
-    // Create moment objects with the correct timezone
-    const now = moment().utcOffset(userTimezoneOffset)
-    const originalScheduledTime = moment(task.startDate).utcOffset(userTimezoneOffset)
-    const [hours, minutes] = task.startTime.split(':').map(Number)
+    const timezoneContext = resolveTimezoneContext(task, userData, {}, getNextExecutionTime)
+    const evaluation = timezoneContext.selectedEvaluation
 
-    // Set the time in the user's timezone
-    originalScheduledTime.hour(hours).minute(minutes).second(0)
+    if (!evaluation) {
+        console.warn('Unable to resolve timezone context for task, skipping execution check.', {
+            taskId: task.id,
+            taskName: task.name,
+            recurrence: task.recurrence,
+            projectId,
+        })
+        return false
+    }
+
+    const effectiveTimezoneHours = evaluation.offsetMinutes / MINUTES_IN_HOUR
 
     console.log('Initial task timing check:', {
         taskId: task.id,
@@ -41,83 +53,109 @@ async function shouldExecuteTask(task, projectId) {
         startDate: task.startDate,
         startTime: task.startTime,
         recurrence: task.recurrence,
-        currentTime: now.format('YYYY-MM-DD HH:mm:ss Z'),
-        originalScheduledTime: originalScheduledTime.format('YYYY-MM-DD HH:mm:ss Z'),
-        effectiveTimezone: userTimezoneOffset,
+        currentTime: evaluation.now.format('YYYY-MM-DD HH:mm:ss Z'),
+        originalScheduledTime: evaluation.originalScheduledTime.format('YYYY-MM-DD HH:mm:ss Z'),
+        effectiveTimezoneMinutes: evaluation.offsetMinutes,
+        effectiveTimezoneHours,
+        timezoneSources: evaluation.sources,
     })
 
-    // If original scheduled time is in the future, don't execute
-    if (originalScheduledTime.isAfter(now)) {
-        console.log('Original scheduled time is in future, skipping execution')
-        return false
-    }
+    if (evaluation.isFirstExecution) {
+        if (evaluation.minutesUntilNextExecution > 0) {
+            console.log('Original scheduled time is in future, skipping execution')
+            return false
+        }
 
-    // If task has never been executed, and we're past the start time, execute it
-    if (!task.lastExecuted) {
         console.log('Task has never been executed, executing first time')
         return true
     }
 
-    // Get the last execution time - convert from UTC server timestamp to user's timezone
+    const lastExecutedUtc = evaluation.lastExecutedLocal.clone().utc()
+
     console.log('KW Special Task last executed - check ob die Datenbank Zeit geändert wurde:', {
         lastExecuted: task.lastExecuted,
-        lastExecutedLocal: moment
-            .utc(task.lastExecuted.toDate())
-            .utcOffset(userTimezoneOffset)
-            .format('YYYY-MM-DD HH:mm:ss Z'),
+        lastExecutedLocal: evaluation.lastExecutedLocal.format('YYYY-MM-DD HH:mm:ss Z'),
+        timezoneOffsetMinutes: evaluation.offsetMinutes,
     })
-    const lastExecutedLocal = moment.utc(task.lastExecuted.toDate()).utcOffset(userTimezoneOffset)
 
     console.log('KW Special last executed local:', {
-        lastExecutedLocal: lastExecutedLocal.format('YYYY-MM-DD HH:mm:ss Z'),
+        lastExecutedLocal: evaluation.lastExecutedLocal.format('YYYY-MM-DD HH:mm:ss Z'),
     })
 
-    // Calculate next execution based on original schedule, not last execution
-    const nextExecution = getNextExecutionTime(originalScheduledTime, task.recurrence, lastExecutedLocal)
-
-    // Round times to nearest minute
-    const nowRounded = now.clone().second(0).millisecond(0)
-    const nextExecutionRounded = nextExecution.clone().second(0).millisecond(0)
-
-    const minutesUntilNextExecution = nextExecutionRounded.diff(nowRounded, 'minutes')
-    const shouldExecute = minutesUntilNextExecution <= 0
+    // Re-run logging for transparency using the selected evaluation context
+    getNextExecutionTime(
+        evaluation.originalScheduledTime.clone(),
+        task.recurrence,
+        evaluation.lastExecutedLocal.clone()
+    )
 
     console.log('Detailed timing comparison:', {
         taskId: task.id,
         taskName: task.name,
-        currentTime: nowRounded.format('YYYY-MM-DD HH:mm:ss Z'),
-        originalScheduledTime: originalScheduledTime.format('YYYY-MM-DD HH:mm:ss Z'),
-        lastExecutedUTC: moment.utc(task.lastExecuted.toDate()).format('YYYY-MM-DD HH:mm:ss Z'),
-        lastExecutedLocal: lastExecutedLocal.format('YYYY-MM-DD HH:mm:ss Z'),
-        nextExecutionTime: nextExecutionRounded.format('YYYY-MM-DD HH:mm:ss Z'),
-        minutesUntilNextExecution: minutesUntilNextExecution,
-        shouldExecute: shouldExecute,
-        timezoneOffset: userTimezoneOffset,
-        currentTimeUnix: nowRounded.unix(),
-        nextExecutionUnix: nextExecutionRounded.unix(),
-        lastExecutedUnix: lastExecutedLocal.unix(),
+        currentTime: evaluation.nowRounded.format('YYYY-MM-DD HH:mm:ss Z'),
+        originalScheduledTime: evaluation.originalRounded.format('YYYY-MM-DD HH:mm:ss Z'),
+        lastExecutedUTC: lastExecutedUtc.format('YYYY-MM-DD HH:mm:ss Z'),
+        lastExecutedLocal: evaluation.lastExecutedLocal.format('YYYY-MM-DD HH:mm:ss Z'),
+        nextExecutionTime: evaluation.nextExecutionRounded.format('YYYY-MM-DD HH:mm:ss Z'),
+        minutesUntilNextExecution: evaluation.minutesUntilNextExecution,
+        shouldExecute: evaluation.shouldExecute,
+        timezoneOffsetMinutes: evaluation.offsetMinutes,
+        timezoneSources: evaluation.sources,
+        candidateOffsets: timezoneContext.evaluations.map(candidateEval => ({
+            offsetMinutes: candidateEval.offsetMinutes,
+            minutesUntilNextExecution: candidateEval.minutesUntilNextExecution,
+            shouldExecute: candidateEval.shouldExecute,
+            priority: candidateEval.priority,
+            sources: candidateEval.sources,
+        })),
+        currentTimeUnix: evaluation.nowRounded.unix(),
+        nextExecutionUnix: evaluation.nextExecutionRounded.unix(),
+        lastExecutedUnix: evaluation.lastExecutedLocal.unix(),
     })
 
-    return shouldExecute
+    if (evaluation.shouldExecute) {
+        console.log('Recurring task meets execution criteria:', {
+            taskId: task.id,
+            taskName: task.name,
+            minutesUntilNextExecution: evaluation.minutesUntilNextExecution,
+            nextExecutionTime: evaluation.nextExecutionRounded.format('YYYY-MM-DD HH:mm:ss Z'),
+            timezoneOffsetMinutes: evaluation.offsetMinutes,
+        })
+    } else {
+        console.log('Recurring task waiting for next execution window:', {
+            taskId: task.id,
+            taskName: task.name,
+            minutesUntilNextExecution: evaluation.minutesUntilNextExecution,
+            nextExecutionTime: evaluation.nextExecutionRounded.format('YYYY-MM-DD HH:mm:ss Z'),
+            timezoneOffsetMinutes: evaluation.offsetMinutes,
+        })
+    }
+
+    return evaluation.shouldExecute
 }
 
-function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted) {
+function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted, options = {}) {
+    const { suppressLogs = false } = options
     // Clone the original scheduled time to avoid modifying it
     const next = originalScheduledTime.clone()
     const lastExecutedMoment = moment(lastExecuted) // Ensure lastExecuted is a moment object
 
-    console.log('[getNextExecutionTime] Inputs:', {
-        originalScheduledTime: originalScheduledTime.format('YYYY-MM-DD HH:mm:ss Z'),
-        recurrence,
-        lastExecuted: lastExecutedMoment.format('YYYY-MM-DD HH:mm:ss Z'),
-        timezoneOffset: originalScheduledTime.utcOffset(),
-    })
+    if (!suppressLogs) {
+        console.log('[getNextExecutionTime] Inputs:', {
+            originalScheduledTime: originalScheduledTime.format('YYYY-MM-DD HH:mm:ss Z'),
+            recurrence,
+            lastExecuted: lastExecutedMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+            timezoneOffset: originalScheduledTime.utcOffset(),
+        })
+    }
 
     // If the original scheduled time is already after the last execution, it's the next one.
     if (next.isAfter(lastExecutedMoment)) {
-        console.log('[getNextExecutionTime] Original schedule is after last execution. Returning original.', {
-            nextExecution: next.format('YYYY-MM-DD HH:mm:ss Z'),
-        })
+        if (!suppressLogs) {
+            console.log('[getNextExecutionTime] Original schedule is after last execution. Returning original.', {
+                nextExecution: next.format('YYYY-MM-DD HH:mm:ss Z'),
+            })
+        }
         return next
     }
 
@@ -173,10 +211,12 @@ function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted) {
         return moment().add(100, 'years')
     }
 
-    console.log('[getNextExecutionTime] Calculated next execution:', {
-        nextExecution: next.format('YYYY-MM-DD HH:mm:ss Z'),
-        iterations,
-    })
+    if (!suppressLogs) {
+        console.log('[getNextExecutionTime] Calculated next execution:', {
+            nextExecution: next.format('YYYY-MM-DD HH:mm:ss Z'),
+            iterations,
+        })
+    }
 
     return next
 }
@@ -486,7 +526,21 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         return // Skip execution if creator has no gold
     }
 
-    const userTimezoneOffset = task.userTimezone || creatorData.timezone || 0
+    const timezoneContext = resolveTimezoneContext(task, creatorData || {}, {}, getNextExecutionTime)
+    const timezoneEvaluation = timezoneContext.selectedEvaluation
+
+    const fallbackOffsetMinutes = normalizeTimezoneOffset(task.userTimezone || creatorData?.timezone || 0) ?? 0
+    const userTimezoneOffsetMinutes = timezoneEvaluation?.offsetMinutes ?? fallbackOffsetMinutes
+    const userTimezoneOffsetHours = userTimezoneOffsetMinutes / MINUTES_IN_HOUR
+
+    const executionUtcMoment = moment.utc()
+    const executionLocalMoment = executionUtcMoment.clone().utcOffset(userTimezoneOffsetMinutes)
+    const originalScheduledForLogs =
+        timezoneEvaluation?.originalScheduledTime?.clone() ||
+        buildOriginalScheduledMoment({
+            task,
+            offsetMinutes: userTimezoneOffsetMinutes,
+        })
 
     // Identify the user who activated this recurring task
     // (the person who should be notified when the task runs)
@@ -521,10 +575,14 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         recurrence: task.recurrence,
         taskTimezone: task.userTimezone,
         userTimezone: creatorData?.timezone,
-        effectiveTimezone: userTimezoneOffset,
-        executionTimeUTC: moment().utc().format(),
-        executionTimeLocal: moment().utcOffset(userTimezoneOffset).format(),
-        nextScheduledTime: moment(task.startDate).utcOffset(userTimezoneOffset).format('YYYY-MM-DD HH:mm:ss Z'),
+        effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
+        effectiveTimezoneHours: userTimezoneOffsetHours,
+        executionTimeUTC: executionUtcMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+        executionTimeLocal: executionLocalMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+        nextScheduledTime: originalScheduledForLogs
+            ? originalScheduledForLogs.format('YYYY-MM-DD HH:mm:ss Z')
+            : 'unknown',
+        timezoneSelectionSources: timezoneEvaluation?.sources,
         creatorUserId,
         creatorGold: creatorData.gold,
     })
@@ -623,16 +681,27 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             lastExecuted: utcNow,
         })
 
+        const nextExecutionAfterRun =
+            task.recurrence === RECURRENCE_NEVER || !originalScheduledForLogs
+                ? null
+                : getNextExecutionTime(
+                      originalScheduledForLogs.clone(),
+                      task.recurrence,
+                      executionLocalMoment.clone(),
+                      { suppressLogs: true }
+                  )
+
         console.log('Successfully executed assistant task:', {
             assistantProjectId: projectId,
             executionProjectId: executionProjectId,
             assistantId,
             taskId: task.id,
-            executionTimeUTC: moment.utc().format('YYYY-MM-DD HH:mm:ss Z'),
-            executionTimeLocal: moment().utcOffset(userTimezoneOffset).format('YYYY-MM-DD HH:mm:ss Z'),
-            nextExecutionTime: getNextExecutionTime(moment(), task.recurrence, moment.utc())
-                .utcOffset(userTimezoneOffset)
-                .format('YYYY-MM-DD HH:mm:ss Z'),
+            executionTimeUTC: executionUtcMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+            executionTimeLocal: executionLocalMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+            nextExecutionTime: nextExecutionAfterRun ? nextExecutionAfterRun.format('YYYY-MM-DD HH:mm:ss Z') : 'N/A',
+            effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
+            effectiveTimezoneHours: userTimezoneOffsetHours,
+            timezoneSelectionSources: timezoneEvaluation?.sources,
             creatorUserId,
             activatorUserId: task.activatorUserId,
             followerIdsCount: followerIds.length,
@@ -648,7 +717,8 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             taskId: task.id,
             taskTimezone: task.userTimezone,
             userTimezone: creatorData?.timezone,
-            effectiveTimezone: userTimezoneOffset,
+            effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
+            timezoneSelectionSources: timezoneEvaluation?.sources,
             creatorUserId,
         })
         throw error
@@ -884,15 +954,43 @@ async function checkAndExecuteRecurringTasks() {
                         if (activeUsersMap.size > 0) {
                             const taskUserId = task.creatorUserId || task.userId
                             if (!isUserActive(taskUserId, activeUsersMap)) {
+                                console.log('Skipping recurring task due to inactive user:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                    taskUserId,
+                                })
                                 tasksSkippedInactiveUser++
                                 continue // Skip tasks for inactive users
                             }
                         }
 
                         // Filter 2: Check if task should execute based on timing
+                        console.log('Evaluating recurring task for execution eligibility:', {
+                            projectId,
+                            assistantId,
+                            taskId: task.id,
+                            taskName: task.name,
+                            recurrence: task.recurrence,
+                            startDate: task.startDate,
+                            startTime: task.startTime,
+                        })
                         if (await shouldExecuteTask(task, projectId)) {
+                            console.log('Recurring task marked for execution:', {
+                                projectId,
+                                assistantId,
+                                taskId: task.id,
+                                taskName: task.name,
+                            })
                             tasksToExecute.push({ projectId, assistantId, task })
                         } else {
+                            console.log('Recurring task not ready for execution at this run:', {
+                                projectId,
+                                assistantId,
+                                taskId: task.id,
+                                taskName: task.name,
+                            })
                             tasksSkippedTiming++
                         }
                     } catch (error) {
@@ -944,4 +1042,10 @@ module.exports = {
     checkAndExecuteRecurringTasks,
     shouldExecuteTask, // Exported for testing
     getNextExecutionTime, // Exported for testing
+    __private__: {
+        resolveTimezoneContext: (task, userData = {}, options = {}) =>
+            resolveTimezoneContext(task, userData, options, getNextExecutionTime),
+        buildOriginalScheduledMoment,
+        normalizeTimezoneOffset,
+    },
 }
