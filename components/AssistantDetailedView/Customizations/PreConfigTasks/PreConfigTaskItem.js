@@ -5,9 +5,11 @@ import styles, { colors } from '../../../styles/global'
 import AddPreConfigTaskWrapper from './AddPreConfigTaskWrapper'
 import Icon from '../../../Icon'
 import { TASK_TYPE_PROMPT } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import TaskRecurrence from '../../../Tags/TaskRecurrence'
+import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 
 export default function PreConfigTaskItem({ disabled, projectId, task, assistantId }) {
-    const { name, type } = task
+    const { name, type, recurrence } = task
 
     const rowStyle = [
         localStyles.fullRowClickable,
@@ -32,6 +34,11 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
                 <Text style={localStyles.taskNameText} numberOfLines={1}>
                     {name}
                 </Text>
+                {recurrence && recurrence !== RECURRENCE_NEVER && (
+                    <View style={localStyles.tagContainer}>
+                        <TaskRecurrence task={task} projectId={projectId} disabled={true} />
+                    </View>
+                )}
                 <Icon name="edit" size={20} color={colors.Text03} style={localStyles.trailingEditIcon} />
             </View>
         </AddPreConfigTaskWrapper>
@@ -58,6 +65,9 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         flex: 1, // Takes available space, pushing the edit icon to the right
         marginRight: 8, // Space between text and edit icon
+    },
+    tagContainer: {
+        marginRight: 8,
     },
     trailingEditIcon: {
         // No specific styles needed here as flex layout handles positioning
