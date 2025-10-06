@@ -1104,6 +1104,7 @@
     "Time": "Tiempo",
     "time": "tiempo",
     "earned": "ganado",
+    "Money earned": "Dinero ganado",
     "Default currency": "Moneda predeterminada",
     "Select default currency": "Seleccionar moneda predeterminada",
     "This currency will be used for displaying total earnings across all projects": "Esta moneda se utilizará para mostrar las ganancias totales en todos los proyectos",

@@ -1106,6 +1106,7 @@
     "Time": "Time",
     "time": "time",
     "earned": "earned",
+    "Money earned": "Money earned",
     "Default currency": "Default currency",
     "Select default currency": "Select default currency",
     "This currency will be used for displaying total earnings across all projects": "This currency will be used for displaying total earnings across all projects",

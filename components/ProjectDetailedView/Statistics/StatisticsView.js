@@ -13,6 +13,8 @@ import { getEstimationTypeByProjectId } from '../../../utils/EstimationHelper'
 import Backend from '../../../utils/BackendBridge'
 import StatisticsSection from '../../StatisticsView/StatisticsSection/StatisticsSection'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import store from '../../../redux/store'
+import { convertCurrency } from '../../../utils/CurrencyConverter'
 
 export default function StatisticsView({ projectId, userId }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -110,6 +112,32 @@ export default function StatisticsView({ projectId, userId }) {
         { allDoneTasks: 0, allDonePoints: 0, allDoneTime: 0, allXp: 0, allGold: 0 }
     )
 
+    // Calculate money earned for selected users
+    const calculateMoneyEarned = () => {
+        const project = ProjectHelper.getProjectById(projectId)
+        if (!project?.hourlyRatesData) return 0
+
+        const { currency, hourlyRates } = project.hourlyRatesData
+        if (!currency || !hourlyRates) return 0
+
+        let totalEarned = 0
+
+        // Calculate earnings for each selected user
+        usersToShow.forEach(userId => {
+            const userHourlyRate = hourlyRates[userId]
+            const userStats = statisticsData[userId]
+
+            if (userHourlyRate && userHourlyRate > 0 && userStats?.doneTime > 0) {
+                const timeInHours = userStats.doneTime / 60 // Convert minutes to hours
+                totalEarned += timeInHours * userHourlyRate
+            }
+        })
+
+        return totalEarned
+    }
+
+    const moneyEarned = calculateMoneyEarned()
+
     return (
         <StatisticsSection
             projectId={projectId}
@@ -118,6 +146,7 @@ export default function StatisticsView({ projectId, userId }) {
             allStatisticsData={allStatisticsDataReduced}
             statisticsFilter={filter}
             filterData={filterData}
+            moneyEarned={moneyEarned}
         />
     )
 }

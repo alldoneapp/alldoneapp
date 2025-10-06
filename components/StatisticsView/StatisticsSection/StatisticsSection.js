@@ -27,6 +27,7 @@ import ChartsOptionsButton from '../../SettingsView/Statistics/ChartsOptionsButt
 import HourlyRateAndCurrencyWrapper from './HourlyRateAndCurrency/HourlyRateAndCurrencyWrapper'
 import FilterByUser from './FilterByUser'
 import InvoiceInfoWrapper from '../../Invoicing/InvoiceInfoWrapper'
+import { formatCurrency } from '../../../utils/CurrencyConverter'
 
 export default function StatisticsSection({
     projectId,
@@ -35,6 +36,7 @@ export default function StatisticsSection({
     allStatisticsData,
     statisticsFilter,
     filterData,
+    moneyEarned = 0,
 }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -47,6 +49,8 @@ export default function StatisticsSection({
     const estimationTypeToUse = getEstimationTypeToUse(projectId)
 
     const isGuide = !!project.parentTemplateId
+    const currency = project?.hourlyRatesData?.currency || 'EUR'
+    const showMoneyEarned = moneyEarned > 0
 
     return (
         <View style={localStyles.container}>
@@ -84,6 +88,13 @@ export default function StatisticsSection({
                     )}
                     {(estimationTypeToUse === ESTIMATION_TYPE_TIME || estimationTypeToUse === ESTIMATION_TYPE_BOTH) && (
                         <StatisticItem icon="clock" text="Time logged" amount={getDoneTimeValue(doneTime)} />
+                    )}
+                    {showMoneyEarned && (
+                        <StatisticItem
+                            icon="credit-card"
+                            text="Money earned"
+                            amount={formatCurrency(moneyEarned, currency)}
+                        />
                     )}
                     <StatisticItem icon="trending-up" text="XP" amount={parseNumberToUseThousand(xp)} />
                     <FilterByUser

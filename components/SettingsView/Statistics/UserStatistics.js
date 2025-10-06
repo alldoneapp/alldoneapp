@@ -27,10 +27,12 @@ import ChartsOptionsButton from './ChartsOptionsButton'
 import StatisticItemWrapper from '../../StatisticsView/StatisticsSection/StatisticItemWrapper'
 import SelectProjectModalInInvoceGenerationWrapper from './SelectProjectModalInInvoceGenerationWrapper'
 import DefaultCurrency from './DefaultCurrency'
+import { convertCurrency, formatCurrency } from '../../../utils/CurrencyConverter'
 
 export default function UserStatistics() {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
+    const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const filterData = useSelector(state => state.loggedUser.statisticsData)
     const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData, true)
     const [doneTasksByProject, setDoneTasksByProject] = useState({ total: 0 })
@@ -47,6 +49,42 @@ export default function UserStatistics() {
 
     const [selectedChart, setSelectedChart] = useState(STATISTIC_CHART_DONE_TASKS)
     const estimationTypeToUse = getEstimationTypeToUse()
+
+    // Calculate money earned across all projects
+    const calculateMoneyEarned = () => {
+        const defaultCurrency = loggedUser.defaultCurrency || 'EUR'
+        const loggedUserId = loggedUser.uid
+        let totalEarned = 0
+
+        loggedUserProjects.forEach(project => {
+            if (!project.hourlyRatesData) return
+            const { currency, hourlyRates } = project.hourlyRatesData
+            const userHourlyRate = hourlyRates[loggedUserId]
+
+            if (currency && userHourlyRate && userHourlyRate > 0) {
+                const projectTimeLogged = doneTimeByProject[project.id] || 0
+                if (projectTimeLogged > 0) {
+                    const timeInHours = projectTimeLogged / 60 // Convert minutes to hours
+                    const projectEarnedInProjectCurrency = timeInHours * userHourlyRate
+
+                    // Convert project earnings to user's default currency
+                    const projectEarnedInDefaultCurrency = convertCurrency(
+                        projectEarnedInProjectCurrency,
+                        currency,
+                        defaultCurrency
+                    )
+
+                    totalEarned += projectEarnedInDefaultCurrency
+                }
+            }
+        })
+
+        return totalEarned
+    }
+
+    const moneyEarned = calculateMoneyEarned()
+    const defaultCurrency = loggedUser.defaultCurrency || 'EUR'
+    const showMoneyEarned = moneyEarned > 0
 
     const writeBrowserURL = () => {
         return URLsSettings.push(URL_SETTINGS_STATISTICS)
@@ -141,6 +179,14 @@ export default function UserStatistics() {
                                 amount={getDoneTimeValue(doneTimeByProject.total)}
                             />
                         </StatisticItemWrapper>
+                    )}
+
+                    {showMoneyEarned && (
+                        <StatisticItem
+                            icon="credit-card"
+                            text="Money earned"
+                            amount={formatCurrency(moneyEarned, defaultCurrency)}
+                        />
                     )}
 
                     <StatisticItemWrapper
