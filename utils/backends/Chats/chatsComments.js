@@ -716,7 +716,18 @@ const addFollowersToChat = async (projectId, chatName, objectType, chatId, follo
 const getParentObjectFollowerIds = async (projectId, objectType, chatId) => {
     const doc = await getDb().doc(`followers/${projectId}/${objectType}/${chatId}`).get()
     const data = doc.data()
-    return data ? data.usersFollowing : []
+    const followersFromCollection = data ? data.usersFollowing : []
+
+    // If no followers in the collection yet, try reading from the chat object itself
+    if (followersFromCollection.length === 0 && objectType === 'topics') {
+        const chatDoc = await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).get()
+        const chat = chatDoc.data()
+        if (chat && chat.usersFollowing && chat.usersFollowing.length > 0) {
+            return chat.usersFollowing
+        }
+    }
+
+    return followersFromCollection
 }
 
 const getChatFollowerIds = async (projectId, chatName, objectType, chatId) => {

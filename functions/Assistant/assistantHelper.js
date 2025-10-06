@@ -705,7 +705,7 @@ const generateNotifications = (
 const getCurrentFollowerIds = async (followerIds, projectId, objectType, objectId, isPublicFor) => {
     try {
         // If followerIds is already provided, use that
-        if (followerIds && Array.isArray(followerIds)) {
+        if (followerIds && Array.isArray(followerIds) && followerIds.length > 0) {
             console.log('Using provided follower IDs:', {
                 followerCount: followerIds.length,
                 projectId,

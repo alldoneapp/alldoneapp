@@ -84,7 +84,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                         language: window.navigator.language,
                         isPublicFor: topicData.isPublicFor,
                         assistantId: assistant.uid,
-                        followerIds: null,
+                        followerIds: [userId],
                         userId: userId,
                     })
                 } catch (error) {
