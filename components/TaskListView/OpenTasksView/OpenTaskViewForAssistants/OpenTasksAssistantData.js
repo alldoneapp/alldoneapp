@@ -41,15 +41,15 @@ export default function OpenTasksAssistantData({ projectId }) {
         const project = ProjectHelper.getProjectById(projectId)
 
         // Wait for the assistant to be created in Firestore
-        const newAssistant = await uploadNewAssistant(
-            projectId,
-            {
-                ...currentUser,
-                noteIdsByProject: {},
-                lastVisitBoard: { [projectId]: { [loggedUserId]: Date.now() } },
-            },
-            null
-        )
+        const newAssistantData = {
+            ...currentUser,
+            noteIdsByProject: {},
+            lastVisitBoard: { [projectId]: { [loggedUserId]: Date.now() } },
+            fromTemplate: false,
+            isDefault: false,
+        }
+
+        const newAssistant = await uploadNewAssistant(projectId, newAssistantData, null)
 
         // Copy pre-configured tasks from the global assistant
         await copyPreConfigTasksToNewAssistant(GLOBAL_PROJECT_ID, currentUser.uid, projectId, newAssistant.uid)

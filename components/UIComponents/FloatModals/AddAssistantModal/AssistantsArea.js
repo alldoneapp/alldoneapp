@@ -34,11 +34,16 @@ export default function AssistantsArea({ closeModal, project }) {
         const sourceProjectId = assistantProjectId === GLOBAL_PROJECT_ID ? GLOBAL_PROJECT_ID : assistantProjectId
 
         // Wait for the assistant to be created in Firestore
-        const newAssistant = await uploadNewAssistant(
-            project.id,
-            { ...assistant, noteIdsByProject: {}, lastVisitBoard: {}, commentsData: null },
-            null
-        )
+        const assistantPayload = {
+            ...assistant,
+            noteIdsByProject: {},
+            lastVisitBoard: {},
+            commentsData: null,
+            fromTemplate: false,
+            isDefault: false,
+        }
+
+        const newAssistant = await uploadNewAssistant(project.id, assistantPayload, null)
 
         // Copy pre-configured tasks from the source assistant
         await copyPreConfigTasksToNewAssistant(sourceProjectId, sourceAssistantId, project.id, newAssistant.uid)

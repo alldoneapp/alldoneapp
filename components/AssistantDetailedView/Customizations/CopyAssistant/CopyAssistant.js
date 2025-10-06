@@ -25,11 +25,15 @@ export default function CopyAssistant({ projectId, assistant, disabled, sourcePr
         const project = ProjectHelper.getProjectById(projectId)
 
         // Wait for the assistant to be created in Firestore
-        const newAssistant = await uploadNewAssistant(
-            projectId,
-            { ...assistant, noteIdsByProject: {}, lastVisitBoard: {} },
-            null
-        )
+        const assistantPayload = {
+            ...assistant,
+            noteIdsByProject: {},
+            lastVisitBoard: {},
+            fromTemplate: false,
+            isDefault: false,
+        }
+
+        const newAssistant = await uploadNewAssistant(projectId, assistantPayload, null)
 
         // Copy pre-configured tasks from the source assistant
         const sourceProject = sourceProjectId || GLOBAL_PROJECT_ID
