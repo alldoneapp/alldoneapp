@@ -2453,15 +2453,49 @@ export async function uploadNewGuideProject(project, templateAssistantId, projec
 }
 
 export async function uploadNewProject(project, user, userIdsToNotifyByFeed, setLikeDefaultProject, addingTemplate) {
+    const projectId = getId()
+
     logEvent('new_project', {
         id: projectId,
         name: project.name,
     })
 
-    const projectId = getId()
+    // Create a copy of the default assistant for this project
+    const { defaultAssistant, loggedUser } = store.getState()
+    let newAssistant = null
+
+    if (defaultAssistant && defaultAssistant.uid) {
+        newAssistant = {
+            ...defaultAssistant,
+            uid: getId(),
+            noteIdsByProject: {},
+            lastVisitBoard: {},
+            commentsData: null,
+            displayName: defaultAssistant.displayName.trim(),
+            createdDate: Date.now(),
+            creatorId: user.uid,
+            lastEditionDate: Date.now(),
+            lastEditorId: user.uid,
+        }
+        project.assistantId = newAssistant.uid
+    }
 
     const batch = new BatchWrapper(db)
     batch.set(db.doc(`projects/${projectId}`), project)
+
+    // Add assistant to batch if created
+    if (newAssistant) {
+        const assistantToStore = { ...newAssistant }
+        delete assistantToStore.uid
+        batch.set(db.doc(`assistants/${projectId}/items/${newAssistant.uid}`), assistantToStore, { merge: true })
+
+        const TasksHelper = require('../../components/TaskListView/Utils/TasksHelper').default
+        const cleanedTitle = TasksHelper.getTaskNameWithoutMeta(newAssistant.displayName)
+        logEvent('new_assistant', {
+            uid: newAssistant.uid,
+            name: cleanedTitle,
+        })
+    }
 
     const updateData = {
         projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
@@ -2475,21 +2509,24 @@ export async function uploadNewProject(project, user, userIdsToNotifyByFeed, set
 
     if (!setLikeDefaultProject) updateXpByCreateProject(user.uid, firebase, db, projectId)
 
+    await batch.commit()
+    project.id = projectId
+
     if (addingTemplate) {
         store.dispatch(setChatNotificationsInProject(projectId, []))
     } else {
+        const assistants = newAssistant ? [newAssistant] : []
         if (setLikeDefaultProject) {
-            store.dispatch(setProjectInitialData({ ...project, id: projectId }, [user], [defaultStream], [], []))
+            store.dispatch(
+                setProjectInitialData({ ...project, id: projectId }, [user], [defaultStream], [], assistants)
+            )
         } else {
             const { route } = store.getState()
             if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
-            store.dispatch(navigateToNewProject({ ...project, id: projectId }, [user], [defaultStream], [], []))
+            store.dispatch(navigateToNewProject({ ...project, id: projectId }, [user], [defaultStream], [], assistants))
         }
         watchProjectData(projectId, true, true)
     }
-
-    await batch.commit()
-    project.id = projectId
 
     createUploadNewProjectFeedChain({ ...project, id: projectId }, user, userIdsToNotifyByFeed, user).then(() => {
         if (addingTemplate) {

@@ -8,6 +8,7 @@ import {
     addGlobalAssistantToProject,
     setAssistantLastVisitedBoardDate,
     uploadNewAssistant,
+    copyPreConfigTasksToNewAssistant,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import store from '../../../../redux/store'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -29,17 +30,23 @@ export default function AssistantsArea({ closeModal, project }) {
     const dispatch = useDispatch()
     const [assistantsByProject, setAssistantsByProject] = useState({})
 
-    const selectAssistant = (assistantProjectId, assistant) => {
+    const selectAssistant = async (assistantProjectId, assistant) => {
         if (assistantProjectId === GLOBAL_PROJECT_ID) {
             addGlobalAssistantToProject(project.id, assistant.uid).then(() => {
                 openDvWhenCreateAssistant(assistant)
             })
         } else {
-            uploadNewAssistant(
+            // Wait for the assistant to be created in Firestore
+            const newAssistant = await uploadNewAssistant(
                 project.id,
                 { ...assistant, noteIdsByProject: {}, lastVisitBoard: {}, commentsData: null },
-                openDvWhenCreateAssistant
+                null
             )
+
+            // Copy pre-configured tasks from the source assistant
+            await copyPreConfigTasksToNewAssistant(assistantProjectId, assistant.uid, project.id, newAssistant.uid)
+
+            openDvWhenCreateAssistant(newAssistant)
         }
         closeModal()
     }

@@ -144,7 +144,7 @@ export async function updateUserDataDirectly(userId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export async function uploadNewUser(uid, user, project, task, workstream) {
+export async function uploadNewUser(uid, user, project, task, workstream, assistant) {
     const userToStore = { ...user }
     delete userToStore.uid
 
@@ -163,6 +163,14 @@ export async function uploadNewUser(uid, user, project, task, workstream) {
     batch.set(getDb().doc(`items/${project.id}/tasks/${task.id}`), taskToStore)
     batch.set(getDb().doc(`users/${uid}`), userToStore)
     batch.set(getDb().doc(`projectsWorkstreams/${project.id}/workstreams/${workstream.uid}`), workstreamToStore)
+
+    // Add assistant if provided
+    if (assistant) {
+        const assistantToStore = { ...assistant }
+        delete assistantToStore.uid
+        batch.set(getDb().doc(`assistants/${project.id}/items/${assistant.uid}`), assistantToStore)
+    }
+
     await batch.commit()
 }
 

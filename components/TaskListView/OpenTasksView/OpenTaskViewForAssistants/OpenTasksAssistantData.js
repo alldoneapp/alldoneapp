@@ -14,6 +14,7 @@ import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigation
 import {
     removeGlobalAssistantFromProject,
     uploadNewAssistant,
+    copyPreConfigTasksToNewAssistant,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { setProjectAssistant } from '../../../../utils/backends/Projects/projectsFirestore'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -35,11 +36,12 @@ export default function OpenTasksAssistantData({ projectId }) {
 
     const isGlobal = isGlobalAssistant(assistantId)
 
-    const copyToEdit = () => {
+    const copyToEdit = async () => {
         const { currentUser } = store.getState()
         const project = ProjectHelper.getProjectById(projectId)
 
-        const newAssistant = uploadNewAssistant(
+        // Wait for the assistant to be created in Firestore
+        const newAssistant = await uploadNewAssistant(
             projectId,
             {
                 ...currentUser,
@@ -48,6 +50,9 @@ export default function OpenTasksAssistantData({ projectId }) {
             },
             null
         )
+
+        // Copy pre-configured tasks from the global assistant
+        await copyPreConfigTasksToNewAssistant(GLOBAL_PROJECT_ID, currentUser.uid, projectId, newAssistant.uid)
 
         if (project.assistantId === assistantId) setProjectAssistant(projectId, newAssistant.uid)
 

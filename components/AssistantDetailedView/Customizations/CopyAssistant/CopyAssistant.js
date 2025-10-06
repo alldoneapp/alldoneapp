@@ -9,24 +9,31 @@ import Button from '../../../UIControls/Button'
 import {
     removeGlobalAssistantFromProject,
     uploadNewAssistant,
+    copyPreConfigTasksToNewAssistant,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
 import NavigationService from '../../../../utils/NavigationService'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { setProjectAssistant } from '../../../../utils/backends/Projects/projectsFirestore'
+import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 
-export default function CopyAssistant({ projectId, assistant, disabled }) {
+export default function CopyAssistant({ projectId, assistant, disabled, sourceProjectId }) {
     const dispatch = useDispatch()
 
-    const copyToEdit = () => {
+    const copyToEdit = async () => {
         const project = ProjectHelper.getProjectById(projectId)
 
-        const newAssistant = uploadNewAssistant(
+        // Wait for the assistant to be created in Firestore
+        const newAssistant = await uploadNewAssistant(
             projectId,
             { ...assistant, noteIdsByProject: {}, lastVisitBoard: {} },
             null
         )
+
+        // Copy pre-configured tasks from the source assistant
+        const sourceProject = sourceProjectId || GLOBAL_PROJECT_ID
+        await copyPreConfigTasksToNewAssistant(sourceProject, assistant.uid, projectId, newAssistant.uid)
 
         if (project.assistantId === assistant.uid) setProjectAssistant(projectId, newAssistant.uid)
 

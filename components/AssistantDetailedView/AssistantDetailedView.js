@@ -194,6 +194,7 @@ export default function AssistantDetailedView({ navigation }) {
                                                     assistant={assistant}
                                                     isGlobalAsisstant={isGlobalAsisstant}
                                                     isInGlobalProject={isInGlobalProject}
+                                                    isAdmin={loggedUser.uid === administratorUserId}
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_BACKLINKS:

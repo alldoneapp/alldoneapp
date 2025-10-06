@@ -626,7 +626,7 @@ class ProjectHelper {
             lastChatActionDate: moment().subtract(30, 'year').valueOf(),
             usersData: {},
             workstreamIds: [DEFAULT_WORKSTREAM_ID],
-            globalAssistantIds: [defaultAssistant.uid],
+            globalAssistantIds: [],
             lastLoggedUserDate: date,
             lastUserInteractionDate: date,
             active: true,

@@ -58,7 +58,7 @@ const generateUser = async (firebaseUser, projectId) => {
     return user
 }
 
-const generateInitialProject = userId => {
+const generateInitialProject = (userId, assistantId) => {
     const project = ProjectHelper.getNewDefaultProject()
 
     project.id = getId()
@@ -66,8 +66,28 @@ const generateInitialProject = userId => {
     project.creatorId = userId
     project.name = 'Private life'
     project.userIds = [userId]
+    project.assistantId = assistantId || ''
 
     return project
+}
+
+const generateInitialAssistant = projectId => {
+    const { defaultAssistant } = store.getState()
+
+    if (!defaultAssistant || !defaultAssistant.uid) {
+        console.warn('No default assistant found, skipping assistant creation')
+        return null
+    }
+
+    const assistant = {
+        ...defaultAssistant,
+        uid: getId(),
+        noteIdsByProject: {},
+        lastVisitBoard: {},
+        commentsData: null,
+    }
+
+    return assistant
 }
 
 const generateInitialTask = userId => {
@@ -97,7 +117,9 @@ export const processNewUser = async firebaseUser => {
     const { initialUrl } = store.getState()
     const { uid: userId, email } = firebaseUser
 
-    const project = generateInitialProject(userId)
+    // Generate assistant first to get its ID for the project
+    const assistant = generateInitialAssistant()
+    const project = generateInitialProject(userId, assistant?.uid)
     const workstream = generateInitialWorkstream(project.id, userId)
     const task = generateInitialTask(userId)
     const user = await generateUser(firebaseUser, project.id)
@@ -109,7 +131,7 @@ export const processNewUser = async firebaseUser => {
     const projectUsers = { [project.id]: [mappedUser] }
     const projectContacts = { [project.id]: [] }
     const projectWorkstreams = { [project.id]: [workstream] }
-    const projectAssistants = { [project.id]: [] }
+    const projectAssistants = { [project.id]: assistant ? [assistant] : [] }
 
     convertAnonymousProjectsIntoSharedProjects(
         projects,
@@ -133,7 +155,7 @@ export const processNewUser = async firebaseUser => {
     )
 
     createUploadNewUserFeeds(mappedUser, userId, project.id, project, task.id, task)
-    await uploadNewUser(userId, user, project, task, workstream)
+    await uploadNewUser(userId, user, project, task, workstream, assistant)
 
     watchLoggedUserData(user)
     watchProjectData(project.id, true, false)

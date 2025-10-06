@@ -152,7 +152,7 @@ async function updateAssistantData(projectId, assistantId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export function uploadNewAssistant(projectId, assistant, callback) {
+export async function uploadNewAssistant(projectId, assistant, callback) {
     const { loggedUser } = store.getState()
     updateEditionData(assistant)
 
@@ -171,10 +171,10 @@ export function uploadNewAssistant(projectId, assistant, callback) {
 
     const cleanedTitle = TasksHelper.getTaskNameWithoutMeta(assistant.displayName)
 
-    batch.commit().then(() => {
-        if (!isGlobalAssistant(assistant.uid)) createAssistantUpdatesChain(projectId, assistant)
-        callback?.(assistant)
-    })
+    await batch.commit()
+
+    if (!isGlobalAssistant(assistant.uid)) createAssistantUpdatesChain(projectId, assistant)
+    callback?.(assistant)
 
     logEvent('new_assistant', {
         uid: assistant.uid,
@@ -503,4 +503,59 @@ export function removeGlobalAssistantFromProject(projectId, assistantId) {
     getDb()
         .doc(`projects/${projectId}`)
         .update({ globalAssistantIds: firebase.firestore.FieldValue.arrayRemove(assistantId) })
+}
+
+export async function copyPreConfigTasksToNewAssistant(
+    sourceProjectId,
+    sourceAssistantId,
+    targetProjectId,
+    targetAssistantId
+) {
+    try {
+        console.log('copyPreConfigTasksToNewAssistant called with:', {
+            sourceProjectId,
+            sourceAssistantId,
+            targetProjectId,
+            targetAssistantId,
+        })
+
+        // Get all pre-configured tasks from the source assistant
+        const tasksSnapshot = await getDb()
+            .collection(`assistantTasks/${sourceProjectId}/preConfigTasks`)
+            .where('assistantId', '==', sourceAssistantId)
+            .orderBy('order', 'asc')
+            .get()
+
+        console.log(`Found ${tasksSnapshot.size} tasks to copy`)
+
+        if (tasksSnapshot.empty) {
+            console.log('No pre-configured tasks to copy')
+            return
+        }
+
+        const batch = new BatchWrapper(getDb())
+
+        // Copy each task to the new assistant
+        tasksSnapshot.forEach(doc => {
+            const task = doc.data()
+            const newTaskId = getId()
+
+            const taskCopy = {
+                ...task,
+                assistantId: targetAssistantId,
+            }
+
+            console.log('Copying task:', task.title || task.name, 'with new ID:', newTaskId)
+            batch.set(getDb().doc(`assistantTasks/${targetProjectId}/preConfigTasks/${newTaskId}`), taskCopy)
+        })
+
+        await batch.commit()
+        console.log(`✅ Successfully copied ${tasksSnapshot.size} pre-configured tasks to new assistant`)
+    } catch (error) {
+        console.error('❌ Error copying pre-configured tasks:', error)
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+        })
+    }
 }

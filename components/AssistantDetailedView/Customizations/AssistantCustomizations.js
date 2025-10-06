@@ -31,6 +31,7 @@ export default function AssistantCustomizations({
     projectDetailedId,
     isInGlobalProject,
     isGlobalAsisstant,
+    isAdmin = false,
 }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
     const smallScreen = useSelector(state => state.smallScreen)
@@ -98,13 +99,17 @@ export default function AssistantCustomizations({
             <View style={[localStyles.properties, smallScreen ? localStyles.propertiesMobile : undefined]}>
                 <View style={{ flex: 1, marginRight: smallScreen ? 0 : 72, width: smallScreen ? '100%' : '50%' }}>
                     <AssistantDataProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
-                    {isGlobalAsisstant && !isInGlobalProject && !isGuide && defaultAssistantId !== assistant.uid && (
-                        <CopyAssistant
-                            projectId={projectDetailedId}
-                            assistant={assistant}
-                            disabled={isAnonymous || !belongsToProject}
-                        />
-                    )}
+                    {isGlobalAsisstant &&
+                        !isInGlobalProject &&
+                        (!isGuide || isAdmin) &&
+                        defaultAssistantId !== assistant.uid && (
+                            <CopyAssistant
+                                projectId={projectDetailedId}
+                                assistant={assistant}
+                                disabled={isAnonymous || !belongsToProject}
+                                sourceProjectId={projectId}
+                            />
+                        )}
                     <PermissionLevelProperty
                         isGlobal={isGlobalAsisstant || isInGlobalProject}
                         fromTemplate={assistant.fromTemplate}
