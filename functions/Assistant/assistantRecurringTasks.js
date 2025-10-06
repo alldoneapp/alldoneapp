@@ -630,7 +630,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         })
 
         // Execute the task using the creator's user ID for gold deduction
-        await generatePreConfigTaskResult(
+        const taskResult = await generatePreConfigTaskResult(
             creatorUserId, // Use creator's ID instead of 'system'
             executionProjectId,
             uniqueId,
@@ -656,6 +656,10 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                     const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
                     const whatsappService = new TwilioWhatsAppService()
 
+                    // Use the actual assistant response or fallback to default message
+                    const assistantResponse =
+                        taskResult?.commentText || 'Task completed successfully by Alldone Assistant.'
+
                     // Send task completion notification
                     const whatsappResult = await whatsappService.sendTaskCompletionNotification(
                         creatorPhone,
@@ -664,7 +668,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                             recurrence: task.recurrence,
                             type: 'recurring',
                         },
-                        'Task completed successfully by Alldone Assistant.',
+                        assistantResponse,
                         'https://alldonealeph.web.app'
                     )
 
