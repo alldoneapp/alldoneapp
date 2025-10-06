@@ -562,6 +562,9 @@ export const createChat = async (
     commentType,
     parentObjectCreatorId
 ) => {
+    // Get the usersFollowing list before creating the chat
+    const usersFollowing = followerIds || (await getChatFollowerIds(projectId, title, type, chatId))
+
     const chat = {
         id: chatId,
         title,
@@ -581,7 +584,7 @@ export const createChat = async (
         creatorId: parentObjectCreatorId,
         isPublicFor,
         created: moment().valueOf(),
-        usersFollowing: [],
+        usersFollowing,
         quickDateId: quickDateId ? quickDateId : '',
         assistantId,
         ...(stickyData ? { stickyData } : { stickyData: { days: 0, stickyEndDate: 0 } }),
@@ -591,7 +594,7 @@ export const createChat = async (
     promises.push(getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).set(chat))
     promises.push(setProjectLastChatActionDate(projectId))
     promises.push(logEvent('new_chat', { id: chatId }))
-    promises.push(addFollowersToChat(projectId, title, type, chatId, followerIds))
+    promises.push(addFollowersToChat(projectId, title, type, chatId, usersFollowing))
     await Promise.all(promises)
 
     return chat
