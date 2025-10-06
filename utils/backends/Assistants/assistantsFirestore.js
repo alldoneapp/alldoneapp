@@ -127,8 +127,6 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
         query = query.where('assistantId', '==', assistantId)
     }
 
-    query = query.orderBy('type', 'desc').orderBy('order', 'asc')
-
     globalWatcherUnsub[watcherKey] = query.onSnapshot(assistantDocs => {
         const tasks = []
         assistantDocs.forEach(doc => {
@@ -136,6 +134,19 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
             task.id = doc.id
             tasks.push(task)
         })
+
+        tasks.sort((a, b) => {
+            const typeRank = value => {
+                if (!value) return 1
+                return value === 'prompt' ? 0 : 1
+            }
+
+            const typeDiff = typeRank(a.type) - typeRank(b.type)
+            if (typeDiff !== 0) return typeDiff
+
+            return (a.order ?? 0) - (b.order ?? 0)
+        })
+
         callback(tasks)
         if (firstSnap) {
             firstSnap = false
