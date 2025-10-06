@@ -488,10 +488,11 @@ function formatMessage(objectType, message, assistantId) {
     console.log('🎯 EMULATOR: formatMessage called - using fallback timestamp for emulator')
 
     const commentId = uuidv4()
+    const now = Date.now()
     const comment = {
         commentText: message,
-        // Use regular timestamp as fallback for emulator
-        lastChangeDate: new Date(),
+        lastChangeDate: now,
+        created: now,
         creatorId: assistantId,
         fromAssistant: true,
     }
