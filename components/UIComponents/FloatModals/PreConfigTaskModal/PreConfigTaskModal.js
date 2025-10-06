@@ -72,7 +72,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             aiSystemMessage: task ? task.aiSystemMessage : currentAssistant ? currentAssistant.instructions : '',
             recurrence: task ? task.recurrence : RECURRENCE_NEVER,
             startDate: getInitialStartDate(),
-            sendWhatsApp: task ? task.sendWhatsApp : false,
+            sendWhatsApp: task?.sendWhatsApp ?? false,
         }
     }, [task, currentAssistant])
 
