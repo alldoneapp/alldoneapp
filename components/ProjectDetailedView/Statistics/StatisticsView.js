@@ -14,7 +14,6 @@ import Backend from '../../../utils/BackendBridge'
 import StatisticsSection from '../../StatisticsView/StatisticsSection/StatisticsSection'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../redux/store'
-import { convertCurrency } from '../../../utils/CurrencyConverter'
 
 export default function StatisticsView({ projectId, userId }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -27,6 +26,7 @@ export default function StatisticsView({ projectId, userId }) {
     const [allStatisticsData, setAllStatisticsData] = useState({})
 
     const usersToShow = statisticsSelectedUsersIds ? statisticsSelectedUsersIds : [loggedUserId]
+    const project = ProjectHelper.getProjectById(projectId)
 
     const writeBrowserURL = () => {
         const data = { projectId, userId }
@@ -109,12 +109,11 @@ export default function StatisticsView({ projectId, userId }) {
             allXp: { ...prev.allXp, ...curr.allXp },
             allGold: { ...prev.allGold, ...curr.allGold },
         }),
-        { allDoneTasks: 0, allDonePoints: 0, allDoneTime: 0, allXp: 0, allGold: 0 }
+        { allDoneTasks: {}, allDonePoints: {}, allDoneTime: {}, allXp: {}, allGold: {} }
     )
 
     // Calculate money earned for selected users
     const calculateMoneyEarned = () => {
-        const project = ProjectHelper.getProjectById(projectId)
         if (!project?.hourlyRatesData) return 0
 
         const { currency, hourlyRates } = project.hourlyRatesData
@@ -138,12 +137,39 @@ export default function StatisticsView({ projectId, userId }) {
 
     const moneyEarned = calculateMoneyEarned()
 
+    const calculateAllMoneyEarned = () => {
+        if (!project?.hourlyRatesData?.hourlyRates) return {}
+
+        const aggregated = {}
+        const { hourlyRates } = project.hourlyRatesData
+
+        Object.entries(allStatisticsData).forEach(([userId, userStats]) => {
+            const userRate = hourlyRates[userId]
+            const userAllDoneTime = userStats?.allDoneTime
+
+            if (!userRate || !userAllDoneTime) return
+
+            Object.entries(userAllDoneTime).forEach(([timestamp, hours]) => {
+                const parsedHours = typeof hours === 'string' ? parseFloat(hours) : hours
+
+                if (!parsedHours) return
+
+                const earned = Number((parsedHours * userRate).toFixed(2))
+                aggregated[timestamp] = (aggregated[timestamp] || 0) + earned
+            })
+        })
+
+        return aggregated
+    }
+
+    const allMoneyEarned = calculateAllMoneyEarned()
+
     return (
         <StatisticsSection
             projectId={projectId}
             updateFilterData={updateStatisticsFilter}
             statisticsData={statisticsDataReduced}
-            allStatisticsData={allStatisticsDataReduced}
+            allStatisticsData={{ ...allStatisticsDataReduced, allMoneyEarned }}
             statisticsFilter={filter}
             filterData={filterData}
             moneyEarned={moneyEarned}

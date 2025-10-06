@@ -13,28 +13,39 @@ import {
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
+    STATISTIC_CHART_MONEY_EARNED,
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
 } from '../../../utils/StatisticChartsHelper'
 import { ESTIMATION_TYPE_BOTH, ESTIMATION_TYPE_POINTS, ESTIMATION_TYPE_TIME } from '../../../utils/EstimationHelper'
 
-const StatisticChartsOptions = ({ chart, setChart, hidePopover, estimationTypeToUse }) => {
+const StatisticChartsOptions = ({ chart, setChart, hidePopover, estimationTypeToUse, hasMoneyChart = false }) => {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const chartList = [
         STATISTIC_CHART_DONE_TASKS,
         STATISTIC_CHART_DONE_POINTS,
         STATISTIC_CHART_DONE_TIME,
+        ...(hasMoneyChart ? [STATISTIC_CHART_MONEY_EARNED] : []),
         STATISTIC_CHART_GOLD,
         STATISTIC_CHART_XP,
     ]
 
     if (estimationTypeToUse !== ESTIMATION_TYPE_POINTS && estimationTypeToUse !== ESTIMATION_TYPE_BOTH) {
         const index = chartList.indexOf(STATISTIC_CHART_DONE_POINTS)
-        chartList.splice(index, 1)
+        if (index !== -1) {
+            chartList.splice(index, 1)
+        }
     }
     if (estimationTypeToUse !== ESTIMATION_TYPE_TIME && estimationTypeToUse !== ESTIMATION_TYPE_BOTH) {
-        const index = chartList.indexOf(STATISTIC_CHART_DONE_TIME)
-        chartList.splice(index, 1)
+        const timeIndex = chartList.indexOf(STATISTIC_CHART_DONE_TIME)
+        if (timeIndex !== -1) {
+            chartList.splice(timeIndex, 1)
+        }
+
+        const moneyIndex = chartList.indexOf(STATISTIC_CHART_MONEY_EARNED)
+        if (moneyIndex !== -1) {
+            chartList.splice(moneyIndex, 1)
+        }
     }
 
     const selectChart = value => {

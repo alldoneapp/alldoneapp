@@ -9,7 +9,7 @@ import { translate } from '../../../i18n/TranslationService'
 import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 
-const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeToUse }) => {
+const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeToUse, hasMoneyChart = false }) => {
     const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const [visiblePopover, setVisiblePopover] = useState(false)
@@ -35,6 +35,7 @@ const ChartsOptionsButton = ({ selectedChart, setSelectedChart, estimationTypeTo
                         setChart={setSelectedChart}
                         hidePopover={hidePopover}
                         estimationTypeToUse={estimationTypeToUse}
+                        hasMoneyChart={hasMoneyChart}
                     />
                 }
                 onClickOutside={hidePopover}

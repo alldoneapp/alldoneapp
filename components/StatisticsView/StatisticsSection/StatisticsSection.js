@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { View, StyleSheet } from 'react-native'
 
 import StatisticItem from './StatisticItem'
@@ -19,6 +19,7 @@ import {
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
+    STATISTIC_CHART_MONEY_EARNED,
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
 } from '../../../utils/StatisticChartsHelper'
@@ -44,13 +45,20 @@ export default function StatisticsSection({
     const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData, true)
     const project = ProjectHelper.getProjectById(projectId)
     const { doneTasks, gold, donePoints, doneTime, xp } = statisticsData
-    const { allDoneTasks, allDonePoints, allGold, allDoneTime, allXp } = allStatisticsData
+    const { allDoneTasks, allDonePoints, allGold, allDoneTime, allXp, allMoneyEarned } = allStatisticsData
     const [selectedChart, setSelectedChart] = useState(STATISTIC_CHART_DONE_TASKS)
     const estimationTypeToUse = getEstimationTypeToUse(projectId)
 
     const isGuide = !!project.parentTemplateId
     const currency = project?.hourlyRatesData?.currency || 'EUR'
     const showMoneyEarned = moneyEarned > 0
+    const hasMoneyChart = showMoneyEarned && allMoneyEarned && Object.keys(allMoneyEarned).length > 0
+
+    useEffect(() => {
+        if (!hasMoneyChart && selectedChart === STATISTIC_CHART_MONEY_EARNED) {
+            setSelectedChart(STATISTIC_CHART_DONE_TASKS)
+        }
+    }, [hasMoneyChart, selectedChart])
 
     return (
         <View style={localStyles.container}>
@@ -120,6 +128,7 @@ export default function StatisticsSection({
                         selectedChart={selectedChart}
                         setSelectedChart={setSelectedChart}
                         estimationTypeToUse={estimationTypeToUse}
+                        hasMoneyChart={hasMoneyChart}
                     />
 
                     {(() => {
@@ -149,6 +158,18 @@ export default function StatisticsSection({
                                     <StackedBarChart
                                         title={`${translate('Time logged')} (${translate('hours')})`}
                                         statisticData={getDataForOneProjectCharts(allDoneTime, timestamp1, timestamp2)}
+                                        project={project}
+                                    />
+                                )
+                            case STATISTIC_CHART_MONEY_EARNED:
+                                return (
+                                    <StackedBarChart
+                                        title={`${translate('Money earned')} (${currency})`}
+                                        statisticData={getDataForOneProjectCharts(
+                                            allMoneyEarned || {},
+                                            timestamp1,
+                                            timestamp2
+                                        )}
                                         project={project}
                                     />
                                 )

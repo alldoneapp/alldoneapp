@@ -19,6 +19,7 @@ import tinycolor from 'tinycolor2'
 export const STATISTIC_CHART_DONE_TASKS = 'CHART_DONE_TASKS'
 export const STATISTIC_CHART_DONE_POINTS = 'CHART_DONE_POINTS'
 export const STATISTIC_CHART_DONE_TIME = 'CHART_DONE_TIME'
+export const STATISTIC_CHART_MONEY_EARNED = 'CHART_MONEY_EARNED'
 export const STATISTIC_CHART_GOLD = 'CHART_GOLD'
 export const STATISTIC_CHART_XP = 'CHART_XP'
 
@@ -164,6 +165,8 @@ export const getChartName = selectedChart => {
             return 'Done points'
         case STATISTIC_CHART_DONE_TIME:
             return 'Time logged'
+        case STATISTIC_CHART_MONEY_EARNED:
+            return 'Money earned'
         case STATISTIC_CHART_GOLD:
             return 'Gold points'
         case STATISTIC_CHART_XP:
