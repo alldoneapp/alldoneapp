@@ -47,7 +47,7 @@ export default function AssistantLine() {
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
-        backgroundColor: colors.Grey100,
+        backgroundColor: colors.Grey200,
         marginTop: 8,
         borderRadius: 4,
         minHeight: 128,
