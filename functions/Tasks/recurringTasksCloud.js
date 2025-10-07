@@ -26,12 +26,15 @@ async function createRecurringTaskInCloudFunction(projectId, originalTaskId, com
         originalTaskId,
         recurrence: completedTask.recurrence,
         taskName: completedTask.name,
+        taskExtendedName: completedTask.extendedName,
         userIds: completedTask.userIds,
         userId: completedTask.userId,
         creatorId: completedTask.creatorId,
         done: completedTask.done,
         inDone: completedTask.inDone,
     })
+    console.log('🔍 COMPLETED TASK NAME AT ENTRY:', completedTask.name)
+    console.log('🔍 COMPLETED TASK EXTENDED NAME AT ENTRY:', completedTask.extendedName)
 
     try {
         // Validate recurrence setting
@@ -216,8 +219,12 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
 
     // Clone the original task and prepare it for the new occurrence
     console.log('📋 CLONING ORIGINAL TASK DATA...')
+    console.log('🔍 ORIGINAL TASK NAME:', originalTask.name)
+    console.log('🔍 ORIGINAL TASK EXTENDED NAME:', originalTask.extendedName)
     const newTaskData = cloneDeep(originalTask)
     console.log('✅ Task data cloned')
+    console.log('🔍 CLONED TASK NAME:', newTaskData.name)
+    console.log('🔍 CLONED TASK EXTENDED NAME:', newTaskData.extendedName)
 
     // Remove fields that shouldn't be copied
     delete newTaskData.id
@@ -259,12 +266,15 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
 
     console.log('Creating new recurring task with data:', {
         name: newTaskData.name,
+        extendedName: newTaskData.extendedName,
         startDate: moment(newTaskData.startDate).format('YYYY-MM-DD HH:mm:ss'),
         dueDate: moment(newTaskData.dueDate).format('YYYY-MM-DD HH:mm:ss'),
         timesDone: newTaskData.timesDone,
         timesDoneInExpectedDay: newTaskData.timesDoneInExpectedDay,
         recurrence: newTaskData.recurrence,
     })
+    console.log('🔍 FINAL TASK NAME BEFORE PERSISTENCE:', newTaskData.name)
+    console.log('🔍 FINAL EXTENDED NAME BEFORE PERSISTENCE:', newTaskData.extendedName)
 
     // Get creator user data for feed generation
     let feedUser
