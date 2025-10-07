@@ -34,7 +34,10 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
         if (checkAssistant && firstFetch) {
             const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
             setFirstFetch(false)
-            if (messages.length > 0 && getAssistant(messages[messages.length - 1].creatorId)) {
+            const lastMessage = messages[messages.length - 1]
+            const assistantResponded =
+                !!lastMessage && (lastMessage.fromAssistant || !!getAssistant(lastMessage.creatorId))
+            if (assistantResponded) {
                 if (!loggedUser.noticeAboutTheBotBehavior) dispatch(setShowNotificationAboutTheBotBehavior(true))
 
                 if (notEnabledAssistantWhenLoadComments) {
