@@ -3,7 +3,7 @@ import { Image, View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import global, { colors } from '../../../styles/global'
-import { parseLastEdited } from '../../Utils/ChatHelper'
+import { getTimestampInMilliseconds, parseLastEdited } from '../../Utils/ChatHelper'
 import ContactsHelper from '../../../ContactsView/Utils/ContactsHelper'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem } from '../../../../redux/actions'
@@ -16,7 +16,7 @@ export default function MessageItemHeader({ projectId, message, serverTime, crea
 
     const { photoURL, displayName, isProjectUser, isUnknownUser } = creatorData
 
-    const accurateTime = lastChangeDate?.seconds * 1000
+    const accurateTime = getTimestampInMilliseconds(lastChangeDate)
 
     const navigateToUserDv = () => {
         if (isProjectUser) {

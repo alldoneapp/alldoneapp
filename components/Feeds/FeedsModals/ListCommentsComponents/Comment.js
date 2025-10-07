@@ -10,6 +10,7 @@ import QuotedText from '../../../ChatsView/ChatDV/EditorView/QuotedText'
 import CodeText from '../../../ChatsView/ChatDV/EditorView/CodeText'
 import { divideCodeText } from '../../../ChatsView/ChatDV/EditorView/codeParserFunctions'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
+import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 
 // Helper function to process headers in text - Copied from MessageItemContent.js
 const processHeaders = text => {
@@ -35,7 +36,7 @@ export default function Comment({ containerStyle, projectId, comment }) {
     const { photoURL, displayName } = useGetUserPresentationData(creatorId)
 
     const textsFiltered = divideQuotedText(commentText, 'quote')
-    date = lastChangeDate ? lastChangeDate.seconds * 1000 : Date.now()
+    const date = getTimestampInMilliseconds(lastChangeDate) ?? Date.now()
 
     return (
         <View style={[localStyles.container, containerStyle]}>
