@@ -485,10 +485,8 @@ async function* convertOpenAIStream(stream) {
 }
 
 function formatMessage(objectType, message, assistantId) {
-    console.log('🎯 EMULATOR: formatMessage called - using fallback timestamp for emulator')
-
     const commentId = uuidv4()
-    const now = Date.now()
+    const now = admin.firestore.FieldValue.serverTimestamp()
     const comment = {
         commentText: message,
         lastChangeDate: now,
@@ -497,7 +495,6 @@ function formatMessage(objectType, message, assistantId) {
         fromAssistant: true,
     }
     if (objectType === 'tasks') comment.commentType = STAYWARD_COMMENT
-    console.log('🎯 EMULATOR: formatMessage completed successfully')
     return { commentId, comment }
 }
 
