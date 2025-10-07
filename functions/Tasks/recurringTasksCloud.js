@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { cloneDeep } = require('lodash')
+const { getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
 
 // Task recurrence constants
 const RECURRENCE_NEVER = 'never'
@@ -223,6 +224,15 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
     console.log('🔍 ORIGINAL TASK EXTENDED NAME:', originalTask.extendedName)
     const newTaskData = cloneDeep(originalTask)
     console.log('✅ Task data cloned')
+
+    // Restore original casing for the recurring copy before validation trims it away
+    const sourceExtendedName = (originalTask.extendedName || originalTask.name || '').trim()
+    if (sourceExtendedName) {
+        const regeneratedName = getTaskNameWithoutMeta(sourceExtendedName)
+        newTaskData.extendedName = sourceExtendedName
+        newTaskData.name = regeneratedName || sourceExtendedName
+    }
+
     console.log('🔍 CLONED TASK NAME:', newTaskData.name)
     console.log('🔍 CLONED TASK EXTENDED NAME:', newTaskData.extendedName)
 
