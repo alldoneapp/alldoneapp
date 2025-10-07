@@ -9,13 +9,18 @@ import LastCommentArea from './LastCommentArea'
 
 export default function AssistantLine() {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const isMobile = useSelector(state => state.smallScreenNavigation)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const globalAssistants = useSelector(state => state.globalAssistants)
     const loggedUser = useSelector(state => state.loggedUser)
     const [amountOfButtonOptions, setAmountOfButtonOptions] = useState(0)
 
     const onLayout = data => {
-        const amountOfButtonOptions = calculateAmountOfOptionButtons(data.nativeEvent.layout.width, isMiddleScreen)
+        const amountOfButtonOptions = calculateAmountOfOptionButtons(
+            data.nativeEvent.layout.width,
+            isMiddleScreen,
+            isMobile
+        )
         setAmountOfButtonOptions(amountOfButtonOptions)
     }
 

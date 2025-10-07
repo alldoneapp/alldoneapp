@@ -27,11 +27,18 @@ const getOptions = (project, assistantId, tasks) => {
     })
 }
 
-export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen) => {
+export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, isMobile) => {
     const filledSpaceWidth = isMiddleScreen ? 174 : 274
     const freeSpaceWidth = containerWidth - filledSpaceWidth
-    const avarageWidthOfButtons = 150
-    return Math.floor(freeSpaceWidth / avarageWidthOfButtons)
+    const avarageWidthOfButtons = isMobile ? 130 : 150
+    const calculatedAmount = Math.floor(freeSpaceWidth / avarageWidthOfButtons)
+
+    // Ensure at least 2 buttons fit on mobile phones
+    if (isMobile && calculatedAmount < 2) {
+        return 2
+    }
+
+    return calculatedAmount
 }
 
 export const getOptionsPresentationData = (project, defaultAssistantId, tasks, amountOfButtonOptions) => {
