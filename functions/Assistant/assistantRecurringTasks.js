@@ -60,8 +60,12 @@ async function shouldExecuteTask(task, projectId) {
         timezoneSources: evaluation.sources,
     })
 
+    const minutesUntilNextExecution = evaluation.minutesUntilNextExecution
+    const shouldRunNow =
+        typeof minutesUntilNextExecution === 'number' ? minutesUntilNextExecution <= 0 : !!evaluation.shouldExecute
+
     if (evaluation.isFirstExecution) {
-        if (evaluation.minutesUntilNextExecution > 0) {
+        if (typeof minutesUntilNextExecution === 'number' && minutesUntilNextExecution > 0) {
             console.log('Original scheduled time is in future, skipping execution')
             return false
         }
@@ -113,7 +117,7 @@ async function shouldExecuteTask(task, projectId) {
         lastExecutedUnix: evaluation.lastExecutedLocal.unix(),
     })
 
-    if (evaluation.shouldExecute) {
+    if (shouldRunNow) {
         console.log('Recurring task meets execution criteria:', {
             taskId: task.id,
             taskName: task.name,
@@ -131,7 +135,7 @@ async function shouldExecuteTask(task, projectId) {
         })
     }
 
-    return evaluation.shouldExecute
+    return shouldRunNow
 }
 
 function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted, options = {}) {
