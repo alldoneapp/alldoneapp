@@ -8,14 +8,14 @@ import PreConfigTaskGeneratorModal from '../../../UIComponents/FloatModals/PreCo
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
-import { TASK_TYPE_PROMPT } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 
 export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const [isOpen, setIsOpen] = useState(false)
 
-    const { prompt, variables, name, type, link, aiModel, aiTemperature, aiSystemMessage } = task
+    const { prompt, variables, name, type, link, aiModel, aiTemperature, aiSystemMessage, taskMetadata } = task
 
     const openModal = () => {
         dismissAllPopups()
@@ -37,15 +37,16 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
         console.log('PreConfigTaskGeneratorWrapper generating task:', {
             taskName: name,
             aiSettings,
+            taskMetadata,
         })
-        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings)
+        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, taskMetadata)
     }
 
     const pressButton = () => {
         if (gold <= 0) {
             openModal()
         } else {
-            if (type === TASK_TYPE_PROMPT) {
+            if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
                 variables.length > 0 ? openModal() : addTask()
             } else {
                 window.open(link, '_blank')

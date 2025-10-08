@@ -265,8 +265,6 @@ const createTopicForPreConfigTask = async (
     })
 
     try {
-        await createObjectMessage(projectId, taskId, prompt, 'tasks', STAYWARD_COMMENT, null, null)
-
         const functionParams = {
             userId: loggedUser.uid,
             projectId,
@@ -309,12 +307,20 @@ const createTopicForPreConfigTask = async (
     }
 }
 
-export const generateTaskFromPreConfig = async (projectId, name, assistantId, generatedPrompt, aiSettings) => {
+export const generateTaskFromPreConfig = async (
+    projectId,
+    name,
+    assistantId,
+    generatedPrompt,
+    aiSettings,
+    taskMetadata = null
+) => {
     console.log('generateTaskFromPreConfig called:', {
         projectId,
         name,
         assistantId,
         aiSettings,
+        taskMetadata,
     })
 
     const generatedTask = TasksHelper.getNewDefaultTask()
@@ -341,6 +347,7 @@ export const generateTaskFromPreConfig = async (projectId, name, assistantId, ge
             temperature: generatedTask.aiTemperature,
             systemMessage: generatedTask.aiSystemMessage,
         },
+        taskMetadata,
     })
 
     uploadNewTask(projectId, generatedTask, null, true, false, false, false).then(task => {
@@ -355,7 +362,16 @@ export const generateTaskFromPreConfig = async (projectId, name, assistantId, ge
             isPublicFor: taskWithPublicFor.isPublicFor,
             assistantId: taskWithPublicFor.assistantId,
             aiSettings,
+            taskMetadata,
         })
+
+        // Merge provided taskMetadata with task-specific metadata
+        const mergedMetadata = {
+            sendWhatsApp: taskWithPublicFor.sendWhatsApp,
+            name: taskWithPublicFor.name,
+            recurrence: taskWithPublicFor.recurrence,
+            ...(taskMetadata || {}),
+        }
 
         createTopicForPreConfigTask(
             projectId,
@@ -364,11 +380,7 @@ export const generateTaskFromPreConfig = async (projectId, name, assistantId, ge
             taskWithPublicFor.assistantId,
             generatedPrompt,
             aiSettings,
-            {
-                sendWhatsApp: taskWithPublicFor.sendWhatsApp,
-                name: taskWithPublicFor.name,
-                recurrence: taskWithPublicFor.recurrence,
-            }
+            mergedMetadata
         ).catch(error => {
             console.error('Failed to create topic for pre-config task:', error)
         })

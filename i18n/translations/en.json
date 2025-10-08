@@ -1389,6 +1389,7 @@
     "Authorization Header (Optional)": "Authorization Header (Optional)",
     "Authorization Header placeholder": "Bearer your-api-key",
     "The webhook will receive this prompt and call back when complete": "The webhook will receive this prompt and call back when complete",
+    "Workflow is being executed now ...": "Workflow is being executed now ...",
     "Project assistant": "Project assistant",
     "Assistant tasks": "Assistant tasks",
     "Select project": "Select project",

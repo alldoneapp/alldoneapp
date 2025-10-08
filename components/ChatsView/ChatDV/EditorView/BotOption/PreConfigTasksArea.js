@@ -44,6 +44,8 @@ export default function PreConfigTasksArea({
                         onSelectBotOption={onSelectBotOption}
                         closeModal={closeModal}
                         inMyDay={inMyDay}
+                        projectId={projectId}
+                        assistantId={assistantId}
                     />
                 )
             })}

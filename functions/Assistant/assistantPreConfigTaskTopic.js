@@ -8,6 +8,7 @@ const {
     getAssistantForChat,
 } = require('./assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
+const { createInitialStatusMessage } = require('./assistantStatusHelper')
 
 async function generatePreConfigTaskResult(
     userId,
@@ -106,6 +107,18 @@ async function generatePreConfigTaskResult(
             console.error('Invalid AI settings:', { model, temperature, instructions })
             throw new Error('Invalid AI settings: model, temperature, and instructions are required')
         }
+
+        // Create initial status message from the assistant
+        await createInitialStatusMessage(
+            projectId,
+            'tasks',
+            objectId,
+            settings.uid,
+            'Workflow is being executed now ...',
+            userIdsToNotify,
+            isPublicFor,
+            [userId]
+        )
 
         const contextMessages = []
         addBaseInstructions(
@@ -255,6 +268,21 @@ async function executeWebhookTask(
         webhookUrl: taskMetadata.webhookUrl,
         prompt: prompt?.substring(0, 100),
     })
+
+    // Get follower IDs - for webhook tasks, just include the user who initiated it
+    const followerIds = [userId]
+
+    // Create initial status message from the assistant
+    await createInitialStatusMessage(
+        projectId,
+        'tasks',
+        objectId,
+        assistantId,
+        'Workflow is being executed now ...',
+        userIdsToNotify,
+        isPublicFor,
+        followerIds
+    )
 
     // Generate a unique correlation ID for tracking this webhook request
     const correlationId = crypto.randomUUID()

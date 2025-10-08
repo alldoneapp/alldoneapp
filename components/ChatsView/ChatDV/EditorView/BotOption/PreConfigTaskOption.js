@@ -10,10 +10,19 @@ import {
     TASK_TYPE_WEBHOOK,
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import Icon from '../../../../Icon'
+import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
 
-export default function PreConfigTaskOption({ task, closeModal, selectTask, onSelectBotOption, inMyDay }) {
+export default function PreConfigTaskOption({
+    task,
+    closeModal,
+    selectTask,
+    onSelectBotOption,
+    inMyDay,
+    projectId,
+    assistantId,
+}) {
     const dispatch = useDispatch()
-    const { name, prompt, variables, type, link, aiModel, aiTemperature, aiSystemMessage } = task
+    const { name, prompt, variables, type, link, aiModel, aiTemperature, aiSystemMessage, taskMetadata } = task
 
     console.log('PreConfigTaskOption selected:', {
         taskName: name,
@@ -53,6 +62,15 @@ export default function PreConfigTaskOption({ task, closeModal, selectTask, onSe
                 onSelectBotOption(prompt, name, aiSettings)
                 if (!inMyDay) dispatch(setAssistantEnabled(true))
             }
+        } else if (type === TASK_TYPE_WEBHOOK) {
+            closeModal()
+            // For webhook tasks, create a task and execute the webhook
+            const aiSettings = {
+                model: aiModel,
+                temperature: aiTemperature,
+                systemMessage: aiSystemMessage,
+            }
+            generateTaskFromPreConfig(projectId, name, assistantId, prompt, aiSettings, taskMetadata)
         } else {
             closeModal()
             window.open(link, '_blank')
