@@ -29,6 +29,23 @@ async function shouldExecuteTask(task, projectId) {
         return false
     }
 
+    // Safety check: Prevent re-execution within the last 18 hours
+    // This protects against timezone multiplicity issues and concurrent execution
+    if (task.lastExecuted) {
+        const lastExecutedMoment = moment(task.lastExecuted.toDate ? task.lastExecuted.toDate() : task.lastExecuted)
+        const hoursSinceLastExecution = moment().diff(lastExecutedMoment, 'hours', true)
+
+        if (hoursSinceLastExecution < 18) {
+            console.log('Skipping task - executed too recently (safety check):', {
+                taskId: task.id,
+                taskName: task.name,
+                hoursSinceLastExecution: hoursSinceLastExecution.toFixed(2),
+                lastExecuted: lastExecutedMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+            })
+            return false
+        }
+    }
+
     const userDoc = await admin.firestore().doc(`users/${task.userId}`).get()
     const userData = userDoc.exists ? userDoc.data() : {}
 

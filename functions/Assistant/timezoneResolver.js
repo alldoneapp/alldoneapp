@@ -280,7 +280,12 @@ function selectBestEvaluation(evaluations) {
         return null
     }
 
-    const ready = evaluations.filter(evaluation => evaluation.shouldExecute)
+    // Filter out heuristic DST-adjusted candidates to prevent multiple executions
+    // Only use them if there are no non-heuristic candidates available
+    const nonHeuristicEvaluations = evaluations.filter(evaluation => !evaluation.heuristic)
+    const candidatesForExecution = nonHeuristicEvaluations.length > 0 ? nonHeuristicEvaluations : evaluations
+
+    const ready = candidatesForExecution.filter(evaluation => evaluation.shouldExecute)
     if (ready.length > 0) {
         return ready.sort((a, b) => {
             const minutesDiff = Math.abs(a.minutesUntilNextExecution) - Math.abs(b.minutesUntilNextExecution)
@@ -297,6 +302,7 @@ function selectBestEvaluation(evaluations) {
         })[0]
     }
 
+    // For selecting next execution time (not ready yet), we can use all evaluations
     return evaluations.sort((a, b) => {
         const minutesDiff = a.minutesUntilNextExecution - b.minutesUntilNextExecution
         if (minutesDiff !== 0) {
