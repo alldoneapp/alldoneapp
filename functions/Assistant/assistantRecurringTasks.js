@@ -29,23 +29,6 @@ async function shouldExecuteTask(task, projectId) {
         return false
     }
 
-    // Safety check: Prevent re-execution within the last 18 hours
-    // This protects against timezone multiplicity issues and concurrent execution
-    if (task.lastExecuted) {
-        const lastExecutedMoment = moment(task.lastExecuted.toDate ? task.lastExecuted.toDate() : task.lastExecuted)
-        const hoursSinceLastExecution = moment().diff(lastExecutedMoment, 'hours', true)
-
-        if (hoursSinceLastExecution < 18) {
-            console.log('Skipping task - executed too recently (safety check):', {
-                taskId: task.id,
-                taskName: task.name,
-                hoursSinceLastExecution: hoursSinceLastExecution.toFixed(2),
-                lastExecuted: lastExecutedMoment.format('YYYY-MM-DD HH:mm:ss Z'),
-            })
-            return false
-        }
-    }
-
     const userDoc = await admin.firestore().doc(`users/${task.userId}`).get()
     const userData = userDoc.exists ? userDoc.data() : {}
 
@@ -1007,6 +990,32 @@ async function checkAndExecuteRecurringTasks() {
                                 taskId: task.id,
                                 taskName: task.name,
                             })
+
+                            // CRITICAL: Update lastExecuted immediately to prevent re-queueing
+                            // by subsequent scheduler runs before this task executes
+                            const taskDocRef = admin
+                                .firestore()
+                                .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+                            try {
+                                await taskDocRef.update({
+                                    lastExecuted: admin.firestore.FieldValue.serverTimestamp(),
+                                })
+                                console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                })
+                            } catch (error) {
+                                console.error('Failed to pre-emptively update lastExecuted:', {
+                                    error: error.message,
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                })
+                                // Continue anyway - the execution will update it later
+                            }
+
                             tasksToExecute.push({ projectId, assistantId, task })
                         } else {
                             console.log('Recurring task not ready for execution at this run:', {
@@ -1041,10 +1050,37 @@ async function checkAndExecuteRecurringTasks() {
             activeUsers: activeUsersMap.size,
         })
 
+        // Defensive safety net: Deduplicate tasks by taskId
+        // This should not happen now that we update lastExecuted immediately,
+        // but provides an extra layer of protection
+        const taskMap = new Map()
+        for (const taskEntry of tasksToExecute) {
+            const key = `${taskEntry.projectId}/${taskEntry.assistantId}/${taskEntry.task.id}`
+            if (!taskMap.has(key)) {
+                taskMap.set(key, taskEntry)
+            } else {
+                console.warn('Unexpected: Found duplicate task in execution queue (should not happen):', {
+                    projectId: taskEntry.projectId,
+                    assistantId: taskEntry.assistantId,
+                    taskId: taskEntry.task.id,
+                    taskName: taskEntry.task.name,
+                })
+            }
+        }
+        const uniqueTasksToExecute = Array.from(taskMap.values())
+
+        if (uniqueTasksToExecute.length < tasksToExecute.length) {
+            console.warn('WARNING: Removed duplicate tasks from execution queue (this indicates a bug):', {
+                originalCount: tasksToExecute.length,
+                uniqueCount: uniqueTasksToExecute.length,
+                duplicatesRemoved: tasksToExecute.length - uniqueTasksToExecute.length,
+            })
+        }
+
         // Step 3: Execute tasks in parallel batches
-        if (tasksToExecute.length > 0) {
+        if (uniqueTasksToExecute.length > 0) {
             const CONCURRENCY = 20 // Execute up to 20 tasks in parallel
-            await executeBatch(tasksToExecute, CONCURRENCY, activeUsersMap)
+            await executeBatch(uniqueTasksToExecute, CONCURRENCY, activeUsersMap)
         } else {
             console.log('No tasks need execution at this time')
         }
