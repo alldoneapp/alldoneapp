@@ -37,6 +37,12 @@ async function createInitialStatusMessage(
     const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
     const now = Date.now()
 
+    // Get current follower IDs (will merge with any existing followers)
+    const currentFollowerIds = await getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor)
+
+    // Ensure chat object exists before creating comments
+    await ensureChatExists(projectId, objectType, objectId, assistantId, currentFollowerIds, isPublicFor)
+
     // Create the comment
     const comment = {
         creatorId: assistantId,
@@ -47,38 +53,33 @@ async function createInitialStatusMessage(
         originalContent: statusMessage,
     }
 
-    // Get current follower IDs
-    const currentFollowerIds = await getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor)
-
     // Create comment in Firestore
     await admin
         .firestore()
         .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
         .set(comment)
 
-    // Get chat data for notifications
-    const chatDoc = await admin.firestore().doc(`chatObjects/${projectId}/chats/${objectId}`).get()
-    const chat = chatDoc.exists ? chatDoc.data() : null
-
-    // Update chat object
-    if (chat) {
-        await admin
-            .firestore()
-            .doc(`chatObjects/${projectId}/chats/${objectId}`)
-            .update({
-                lastEditionDate: now,
-                [`commentsData.lastCommentOwnerId`]: assistantId,
-                [`commentsData.lastComment`]: statusMessage,
-                [`commentsData.lastCommentType`]: 'STAYWARD_COMMENT',
-                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
-            })
-    }
+    // Update chat object with the new comment
+    await admin
+        .firestore()
+        .doc(`chatObjects/${projectId}/chats/${objectId}`)
+        .update({
+            lastEditionDate: now,
+            [`commentsData.lastCommentOwnerId`]: assistantId,
+            [`commentsData.lastComment`]: statusMessage,
+            [`commentsData.lastCommentType`]: 'STAYWARD_COMMENT',
+            [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+        })
 
     // Update last comment data on parent object
     await updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, statusMessage, 'STAYWARD_COMMENT')
 
     // Update last assistant comment data
     await updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId)
+
+    // Get chat data for notifications (it definitely exists now)
+    const chatDoc = await admin.firestore().doc(`chatObjects/${projectId}/chats/${objectId}`).get()
+    const chat = chatDoc.data()
 
     // Generate notifications
     await generateNotificationsForStatusMessage(
@@ -96,6 +97,59 @@ async function createInitialStatusMessage(
     console.log('✅ STATUS MESSAGE: Successfully created status message with ID:', commentId)
 
     return commentId
+}
+
+/**
+ * Ensure chat object exists for the given parent object
+ */
+async function ensureChatExists(projectId, objectType, objectId, assistantId, followerIds, isPublicFor) {
+    const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${objectId}`)
+    const chatDoc = await chatRef.get()
+
+    if (!chatDoc.exists) {
+        console.log('📝 STATUS MESSAGE: Creating chat object for', objectId)
+
+        // Get parent object data for title
+        const parentPath = getParentObjectPath(projectId, objectType, objectId)
+        let title = 'Task'
+
+        if (parentPath) {
+            try {
+                const parentDoc = await admin.firestore().doc(parentPath).get()
+                if (parentDoc.exists) {
+                    const parentData = parentDoc.data()
+                    title = parentData.extendedName || parentData.name || 'Task'
+                }
+            } catch (error) {
+                console.error('Error getting parent object:', error)
+            }
+        }
+
+        // Create chat object
+        await chatRef.set({
+            id: objectId,
+            projectId: projectId,
+            creatorId: followerIds[0] || assistantId,
+            created: Date.now(),
+            lastEditionDate: Date.now(),
+            title: title,
+            objectType: objectType,
+            assistantId: assistantId,
+            followerIds: followerIds || [],
+            members: followerIds && followerIds.length > 0 ? [followerIds[0], assistantId] : [assistantId],
+            isPublicFor: isPublicFor || [],
+            commentsData: {
+                amount: 0,
+                lastComment: '',
+                lastCommentOwnerId: '',
+                lastCommentType: '',
+            },
+        })
+
+        console.log('✅ STATUS MESSAGE: Chat object created successfully')
+    } else {
+        console.log('📝 STATUS MESSAGE: Chat object already exists for', objectId)
+    }
 }
 
 /**
@@ -140,7 +194,7 @@ async function updateLastCommentDataOfChatParentObject(projectId, objectId, obje
 function getParentObjectPath(projectId, objectType, objectId) {
     switch (objectType) {
         case 'tasks':
-            return `tasks/${projectId}/tasks/${objectId}`
+            return `items/${projectId}/tasks/${objectId}`
         case 'notes':
             return `notes/${projectId}/notes/${objectId}`
         case 'goals':
