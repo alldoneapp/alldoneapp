@@ -175,16 +175,17 @@ async function updateLastCommentDataOfChatParentObject(projectId, objectId, obje
     if (!parentPath) return
 
     try {
+        // Only update commentsData, not lastChangeDate to avoid race conditions with frontend updates
         await admin
             .firestore()
             .doc(parentPath)
             .update({
-                lastChangeDate: Date.now(),
                 [`commentsData.lastComment`]: commentText?.substring(0, 500) || '',
                 [`commentsData.lastCommentType`]: commentType,
             })
     } catch (error) {
         console.error('Error updating parent object comment data:', error)
+        // Don't throw - this is a non-critical update
     }
 }
 
