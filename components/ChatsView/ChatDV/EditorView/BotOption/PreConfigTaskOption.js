@@ -1,10 +1,15 @@
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
-import styles from '../../../../styles/global'
+import styles, { colors } from '../../../../styles/global'
 import { setAssistantEnabled } from '../../../../../redux/actions'
-import { TASK_TYPE_PROMPT } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import {
+    TASK_TYPE_PROMPT,
+    TASK_TYPE_EXTERNAL_LINK,
+    TASK_TYPE_WEBHOOK,
+} from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import Icon from '../../../../Icon'
 
 export default function PreConfigTaskOption({ task, closeModal, selectTask, onSelectBotOption, inMyDay }) {
     const dispatch = useDispatch()
@@ -19,6 +24,20 @@ export default function PreConfigTaskOption({ task, closeModal, selectTask, onSe
             systemMessage: aiSystemMessage,
         },
     })
+
+    // Get icon based on task type
+    const getIconForTaskType = () => {
+        switch (type) {
+            case TASK_TYPE_PROMPT:
+                return 'message-square'
+            case TASK_TYPE_EXTERNAL_LINK:
+                return 'external-link'
+            case TASK_TYPE_WEBHOOK:
+                return 'link-2'
+            default:
+                return 'cpu' // fallback
+        }
+    }
 
     const onPress = () => {
         if (type === TASK_TYPE_PROMPT) {
@@ -42,7 +61,10 @@ export default function PreConfigTaskOption({ task, closeModal, selectTask, onSe
 
     return (
         <TouchableOpacity style={localStyles.container} onPress={onPress}>
-            <Text style={localStyles.text}>{name}</Text>
+            <View style={localStyles.content}>
+                <Icon name={getIconForTaskType()} size={20} color="#FFFFFF" style={localStyles.icon} />
+                <Text style={localStyles.text}>{name}</Text>
+            </View>
         </TouchableOpacity>
     )
 }
@@ -54,8 +76,17 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
     },
+    content: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    icon: {
+        marginRight: 8,
+    },
     text: {
         ...styles.subtitle1,
         color: '#FFFFFF',
+        flex: 1,
     },
 })

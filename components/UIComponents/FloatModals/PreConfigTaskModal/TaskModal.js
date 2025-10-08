@@ -15,6 +15,7 @@ import ButtonsArea from './ButtonsArea'
 import VariablesArea from './VariablesArea'
 import DropDown from './DropDown'
 import LinkArea from './LinkArea'
+import WebhookArea from './WebhookArea'
 import AISettingsArea from './AISettingsArea'
 import { REGEX_URL } from '../../../Feeds/Utils/HelperFunctions'
 import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
@@ -30,6 +31,7 @@ import TimePickerModal from '../../FloatModals/TimePickerModal/TimePickerModal'
 
 export const TASK_TYPE_PROMPT = 'prompt'
 export const TASK_TYPE_EXTERNAL_LINK = 'link'
+export const TASK_TYPE_WEBHOOK = 'webhook'
 
 const MemoizedNameArea = memo(NameArea)
 
@@ -109,6 +111,12 @@ const MemoizedModalContent = memo(
         handleStartTimeChange,
         sendWhatsApp,
         setSendWhatsApp,
+        webhookUrl,
+        setWebhookUrl,
+        webhookAuth,
+        setWebhookAuth,
+        webhookPrompt,
+        setWebhookPrompt,
     }) => {
         const handleModalClick = useCallback(e => {
             const target = e.target
@@ -343,6 +351,17 @@ const MemoizedModalContent = memo(
                             </div>
                         )}
                     </>
+                ) : taskType === TASK_TYPE_WEBHOOK ? (
+                    <WebhookArea
+                        disabled={disabled}
+                        webhookUrl={webhookUrl}
+                        setWebhookUrl={setWebhookUrl}
+                        webhookAuth={webhookAuth}
+                        setWebhookAuth={setWebhookAuth}
+                        webhookPrompt={webhookPrompt}
+                        setWebhookPrompt={setWebhookPrompt}
+                        webhookPromptInputRef={promptInputRef}
+                    />
                 ) : (
                     <LinkArea
                         disabled={disabled}
@@ -391,6 +410,9 @@ const MemoizedModalContent = memo(
             prevProps.aiSystemMessage === nextProps.aiSystemMessage &&
             prevProps.link === nextProps.link &&
             prevProps.sendWhatsApp === nextProps.sendWhatsApp &&
+            prevProps.webhookUrl === nextProps.webhookUrl &&
+            prevProps.webhookAuth === nextProps.webhookAuth &&
+            prevProps.webhookPrompt === nextProps.webhookPrompt &&
             compareArrays(prevProps.variables, nextProps.variables)
         )
     }
@@ -430,6 +452,12 @@ export default function TaskModal({
     setStartDate,
     sendWhatsApp = false,
     setSendWhatsApp,
+    webhookUrl = '',
+    setWebhookUrl,
+    webhookAuth = '',
+    setWebhookAuth,
+    webhookPrompt = '',
+    setWebhookPrompt,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -471,10 +499,16 @@ export default function TaskModal({
     }, [currentAssistant, adding, aiSystemMessage])
 
     const items = [
-        { label: translate('Prompt'), value: TASK_TYPE_PROMPT, marginTop: 0 },
+        { label: translate('Prompt'), value: TASK_TYPE_PROMPT, marginTop: 0, icon: 'message-square' },
         {
             label: translate('External link'),
             value: TASK_TYPE_EXTERNAL_LINK,
+            icon: 'external-link',
+        },
+        {
+            label: translate('Webhook'),
+            value: TASK_TYPE_WEBHOOK,
+            icon: 'link-2',
         },
     ]
 
@@ -487,10 +521,28 @@ export default function TaskModal({
         return REGEX_URL.test(cleanLink) && !/\s/.test(cleanLink)
     }
 
+    const checkIfIsValidWebhookUrl = () => {
+        if (!webhookUrl) return false
+        const cleanUrl = webhookUrl.trim()
+        return REGEX_URL.test(cleanUrl) && cleanUrl.startsWith('https://')
+    }
+
     const disableButton =
         !name.trim() ||
         (taskType === TASK_TYPE_PROMPT && !prompt.trim()) ||
-        (taskType === TASK_TYPE_EXTERNAL_LINK && !checkIfIsValidLink())
+        (taskType === TASK_TYPE_EXTERNAL_LINK && !checkIfIsValidLink()) ||
+        (taskType === TASK_TYPE_WEBHOOK && !checkIfIsValidWebhookUrl())
+
+    // Debug logging for webhook validation
+    if (taskType === TASK_TYPE_WEBHOOK) {
+        console.log('Webhook validation:', {
+            name: name,
+            webhookUrl: webhookUrl,
+            webhookPrompt: webhookPrompt,
+            isValidUrl: checkIfIsValidWebhookUrl(),
+            disableButton: disableButton,
+        })
+    }
 
     const onPressKey = event => {
         if (disabled) return
@@ -721,6 +773,12 @@ export default function TaskModal({
                         handleStartTimeChange={memoizedHandleStartTimeChange}
                         sendWhatsApp={sendWhatsApp}
                         setSendWhatsApp={setSendWhatsApp}
+                        webhookUrl={webhookUrl}
+                        setWebhookUrl={setWebhookUrl}
+                        webhookAuth={webhookAuth}
+                        setWebhookAuth={setWebhookAuth}
+                        webhookPrompt={webhookPrompt}
+                        setWebhookPrompt={setWebhookPrompt}
                     />
                 </View>
             )}

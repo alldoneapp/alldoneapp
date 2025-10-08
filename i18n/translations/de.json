@@ -1001,5 +1001,14 @@
     "Last 90 days": "Letzte 90 Tage",
     "Yesterday": "Gestern",
     "Type a message for the assistant": "Schreibe eine Nachricht an den Assistenten",
-    "What can I do for you today?": "Wie kann ich dir heute helfen?"
+    "What can I do for you today?": "Wie kann ich dir heute helfen?",
+    "Webhook": "Webhook",
+    "Webhook URL": "Webhook URL",
+    "Webhook URL placeholder": "https://ihr-service.com/api/endpunkt",
+    "Webhook Prompt": "Webhook Prompt",
+    "Webhook Prompt (Optional)": "Webhook Prompt (Optional)",
+    "Enter the prompt to send to the webhook": "Geben Sie den Prompt ein, der an den Webhook gesendet werden soll",
+    "Authorization Header (Optional)": "Autorisierungs-Header (Optional)",
+    "Authorization Header placeholder": "Bearer ihr-api-schlüssel",
+    "The webhook will receive this prompt and call back when complete": "Der Webhook erhält diesen Prompt und ruft zurück, wenn er fertig ist"
 }

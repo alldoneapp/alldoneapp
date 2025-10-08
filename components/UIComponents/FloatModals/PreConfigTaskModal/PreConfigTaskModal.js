@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 
 import VariableModal from '../VariableModal/VariableModal'
-import TaskModal, { TASK_TYPE_PROMPT } from './TaskModal'
+import TaskModal, { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from './TaskModal'
 import { updatePreConfigTask, uploadNewPreConfigTask } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PRE_CONFIG_TASK } from '../../ConfirmPopup'
 import { showConfirmPopup } from '../../../../redux/actions'
@@ -73,6 +73,9 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             recurrence: task ? task.recurrence : RECURRENCE_NEVER,
             startDate: getInitialStartDate(),
             sendWhatsApp: task?.sendWhatsApp ?? false,
+            webhookUrl: task?.taskMetadata?.webhookUrl ?? '',
+            webhookAuth: task?.taskMetadata?.webhookAuth ?? '',
+            webhookPrompt: task?.taskMetadata?.webhookPrompt ?? '',
         }
     }, [task, currentAssistant])
 
@@ -97,6 +100,9 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [recurrence, setRecurrence] = useState(initialState.recurrence)
     const [startDate, setStartDate] = useState(initialState.startDate)
     const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
+    const [webhookUrl, setWebhookUrl] = useState(initialState.webhookUrl)
+    const [webhookAuth, setWebhookAuth] = useState(initialState.webhookAuth)
+    const [webhookPrompt, setWebhookPrompt] = useState(initialState.webhookPrompt)
 
     const handleSetStartDate = useCallback(value => {
         console.log('PreConfigTaskModal - handleSetStartDate called with:', {
@@ -161,6 +167,22 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       activatedInProjectId: currentProjectId,
                       sendWhatsApp,
                   }
+                : taskType === TASK_TYPE_WEBHOOK
+                ? {
+                      name,
+                      type: taskType,
+                      prompt: '',
+                      variables: [],
+                      link: '',
+                      recurrence,
+                      sendWhatsApp,
+                      taskMetadata: {
+                          isWebhookTask: true,
+                          webhookUrl: webhookUrl.trim(),
+                          ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
+                          ...(webhookPrompt && webhookPrompt.trim() ? { webhookPrompt: webhookPrompt.trim() } : {}),
+                      },
+                  }
                 : { name, type: taskType, prompt: '', variables: [], link, recurrence, sendWhatsApp }
         setTimeout(() => {
             uploadNewPreConfigTask(projectId, assistantId, newTask)
@@ -199,6 +221,23 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       creatorUserId: loggedUser.uid, // Store the creator's user ID
                       activatedInProjectId: currentProjectId,
                       sendWhatsApp,
+                  }
+                : taskType === TASK_TYPE_WEBHOOK
+                ? {
+                      ...task,
+                      name,
+                      type: taskType,
+                      prompt: '',
+                      variables: [],
+                      link: '',
+                      recurrence: recurrence ?? null,
+                      sendWhatsApp,
+                      taskMetadata: {
+                          isWebhookTask: true,
+                          webhookUrl: webhookUrl.trim(),
+                          ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
+                          ...(webhookPrompt && webhookPrompt.trim() ? { webhookPrompt: webhookPrompt.trim() } : {}),
+                      },
                   }
                 : {
                       ...task,
@@ -311,6 +350,12 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     setStartDate={handleSetStartDate}
                     sendWhatsApp={sendWhatsApp}
                     setSendWhatsApp={setSendWhatsApp}
+                    webhookUrl={webhookUrl}
+                    setWebhookUrl={setWebhookUrl}
+                    webhookAuth={webhookAuth}
+                    setWebhookAuth={setWebhookAuth}
+                    webhookPrompt={webhookPrompt}
+                    setWebhookPrompt={setWebhookPrompt}
                 />
             )}
         </View>

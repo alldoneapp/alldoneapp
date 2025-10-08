@@ -4,7 +4,11 @@ import { StyleSheet, View, Text } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import AddPreConfigTaskWrapper from './AddPreConfigTaskWrapper'
 import Icon from '../../../Icon'
-import { TASK_TYPE_PROMPT } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import {
+    TASK_TYPE_PROMPT,
+    TASK_TYPE_EXTERNAL_LINK,
+    TASK_TYPE_WEBHOOK,
+} from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import TaskRecurrence from '../../../Tags/TaskRecurrence'
 import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 
@@ -16,6 +20,20 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
         disabled && { opacity: 0.5 }, // Apply opacity if disabled
     ]
 
+    // Get icon based on task type
+    const getIconForTaskType = () => {
+        switch (type) {
+            case TASK_TYPE_PROMPT:
+                return 'message-square'
+            case TASK_TYPE_EXTERNAL_LINK:
+                return 'external-link'
+            case TASK_TYPE_WEBHOOK:
+                return 'link-2'
+            default:
+                return 'cpu' // fallback
+        }
+    }
+
     return (
         <AddPreConfigTaskWrapper
             disabled={disabled}
@@ -25,12 +43,7 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
             adding={false}
         >
             <View style={rowStyle}>
-                <Icon
-                    name={type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark'}
-                    size={24}
-                    color={colors.Text03}
-                    style={localStyles.leadingIcon}
-                />
+                <Icon name={getIconForTaskType()} size={24} color={colors.Text03} style={localStyles.leadingIcon} />
                 <Text style={localStyles.taskNameText} numberOfLines={1}>
                     {name}
                 </Text>

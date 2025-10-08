@@ -2194,3 +2194,36 @@ exports.backfillLastLogin = onRequest(
         }
     }
 )
+
+// WEBHOOK CALLBACK FOR ASSISTANT TASKS
+exports.webhookCallbackForAssistantTasks = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: {
+            origin: true,
+            methods: ['POST', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization'],
+            credentials: false,
+        },
+    },
+    async (req, res) => {
+        const { processWebhookCallback } = require('./Assistant/webhookCallbackHandler')
+        await processWebhookCallback(req, res)
+    }
+)
+
+// CLEANUP EXPIRED WEBHOOK TASKS - Run every 10 minutes
+exports.cleanupExpiredWebhookTasks = onSchedule(
+    {
+        schedule: '*/10 * * * *', // Every 10 minutes
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { cleanupExpiredWebhooks } = require('./Assistant/webhookCallbackHandler')
+        await cleanupExpiredWebhooks()
+    }
+)

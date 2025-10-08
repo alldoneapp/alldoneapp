@@ -1,4 +1,4 @@
 22.0.0
 
 // nvm use v22.0.0
-// nvm use 14.21.3
+// nvm use v14.21.3 and then npm run web

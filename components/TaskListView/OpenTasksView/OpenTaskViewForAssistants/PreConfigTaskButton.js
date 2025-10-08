@@ -5,7 +5,11 @@ import { useSelector } from 'react-redux'
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
-import { TASK_TYPE_PROMPT } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import {
+    TASK_TYPE_PROMPT,
+    TASK_TYPE_EXTERNAL_LINK,
+    TASK_TYPE_WEBHOOK,
+} from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import TaskRecurrence from '../../../Tags/TaskRecurrence'
 import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 
@@ -15,9 +19,23 @@ export default function PreConfigTaskButton({ task, onPress, projectId }) {
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const { name, type, recurrence } = task
 
+    // Get icon based on task type
+    const getIconForTaskType = () => {
+        switch (type) {
+            case TASK_TYPE_PROMPT:
+                return 'message-square'
+            case TASK_TYPE_EXTERNAL_LINK:
+                return 'external-link'
+            case TASK_TYPE_WEBHOOK:
+                return 'link-2'
+            default:
+                return 'cpu' // fallback
+        }
+    }
+
     return (
         <TouchableOpacity style={localStyles.container} onPress={onPress} disabled={!accessGranted}>
-            <Icon name={type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark'} size={24} color={colors.Text03} />
+            <Icon name={getIconForTaskType()} size={24} color={colors.Text03} />
             <Text style={localStyles.name}>{name}</Text>
             {recurrence && recurrence !== RECURRENCE_NEVER && (
                 <View style={localStyles.tagContainer}>
