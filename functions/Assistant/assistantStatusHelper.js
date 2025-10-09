@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
-const { BatchWrapper } = require('../BatchWrapper')
+const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 
 /**
  * Creates an initial status message from the assistant with proper notifications and updates
