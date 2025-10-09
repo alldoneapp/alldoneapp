@@ -108,18 +108,6 @@ async function generatePreConfigTaskResult(
             throw new Error('Invalid AI settings: model, temperature, and instructions are required')
         }
 
-        // Create initial status message from the assistant
-        await createInitialStatusMessage(
-            projectId,
-            'tasks',
-            objectId,
-            settings.uid,
-            'Workflow is being executed now ...',
-            userIdsToNotify,
-            isPublicFor,
-            [userId]
-        )
-
         const contextMessages = []
         addBaseInstructions(
             contextMessages,
