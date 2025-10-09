@@ -266,145 +266,27 @@ async function executeWebhookTask(
         'tasks',
         objectId,
         assistantId,
-        'Workflow is being executed now ...',
+        'Ready. Send a message to trigger the workflow.',
         userIdsToNotify,
         isPublicFor,
         followerIds
     )
 
-    // Generate a unique correlation ID for tracking this webhook request
-    const correlationId = crypto.randomUUID()
-
-    // Determine the callback URL based on environment
-    const getCallbackUrl = () => {
-        if (process.env.FUNCTIONS_EMULATOR) {
-            // Local emulator - use localhost
-            return 'http://localhost:5001/alldonealeph/europe-west1/webhookCallbackForAssistantTasks'
-        }
-        const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
-        const region = 'europe-west1' // Match the region in index.js
-
-        if (projectId === 'alldonealeph') {
-            return `https://${region}-alldonealeph.cloudfunctions.net/webhookCallbackForAssistantTasks`
-        }
-        if (projectId === 'alldonestaging') {
-            return `https://${region}-alldonestaging.cloudfunctions.net/webhookCallbackForAssistantTasks`
-        }
-        return `https://${region}-alldonealeph.cloudfunctions.net/webhookCallbackForAssistantTasks`
-    }
-
-    const callbackUrl = getCallbackUrl()
-
-    // Store pending webhook state in Firestore
-    const pendingWebhookRef = admin.firestore().doc(`pendingWebhooks/${correlationId}`)
-    await pendingWebhookRef.set({
-        correlationId,
-        userId,
-        projectId,
-        objectId,
-        assistantId,
-        userIdsToNotify,
-        isPublicFor,
-        prompt,
+    console.log('🌐 WEBHOOK TASK: Created ready status. Webhook will execute on user messages.', {
+        taskId: objectId,
         webhookUrl: taskMetadata.webhookUrl,
-        status: 'pending',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes timeout
     })
 
-    console.log('🌐 WEBHOOK TASK: Stored pending webhook state:', { correlationId })
-
-    // Prepare webhook payload
-    const webhookPayload = {
-        correlationId,
-        callbackUrl,
-        prompt: (taskMetadata.webhookPrompt && taskMetadata.webhookPrompt.trim()) || prompt || '', // Use webhook-specific prompt if available, otherwise use general prompt
-        taskId: objectId,
-        userId,
+    // Return success - webhook will be triggered when user sends messages
+    return {
+        success: true,
+        status: 'webhook_ready',
         projectId,
-        // Include any custom parameters from taskMetadata
-        ...(taskMetadata.webhookParams || {}),
-    }
-
-    try {
-        // Call the external webhook
-        console.log('🌐 WEBHOOK TASK: Calling external webhook:', {
-            url: taskMetadata.webhookUrl,
-            correlationId,
-            callbackUrl,
-        })
-
-        const response = await fetch(taskMetadata.webhookUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // Include authorization if provided
-                ...(taskMetadata.webhookAuth ? { Authorization: taskMetadata.webhookAuth } : {}),
-            },
-            body: JSON.stringify(webhookPayload),
-            // Set a reasonable timeout for the initial request (not the callback)
-            signal: AbortSignal.timeout(30000), // 30 seconds
-        })
-
-        if (!response.ok) {
-            throw new Error(`Webhook request failed: ${response.status} ${response.statusText}`)
-        }
-
-        const responseData = await response.json()
-        console.log('🌐 WEBHOOK TASK: Webhook accepted:', {
-            correlationId,
-            status: response.status,
-            responseData,
-        })
-
-        // Update status to 'initiated'
-        await pendingWebhookRef.update({
-            status: 'initiated',
-            webhookResponse: responseData,
-            initiatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        })
-
-        // Return success - the actual result will come via callback
-        return {
-            success: true,
-            status: 'webhook_initiated',
-            correlationId,
-            projectId,
-            objectType: 'tasks',
-            objectId,
-            isPublicFor,
-            assistantId,
-            message: 'Webhook task initiated. Waiting for callback with result.',
-        }
-    } catch (error) {
-        console.error('🌐 WEBHOOK TASK: Error calling webhook:', {
-            error: error.message,
-            correlationId,
-            webhookUrl: taskMetadata.webhookUrl,
-        })
-
-        // Update status to 'failed'
-        await pendingWebhookRef.update({
-            status: 'failed',
-            error: error.message,
-            failedAt: admin.firestore.FieldValue.serverTimestamp(),
-        })
-
-        // Store error message as a comment
-        const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
-        await admin
-            .firestore()
-            .doc(`chatComments/${projectId}/tasks/${objectId}/comments/${commentId}`)
-            .set({
-                creatorId: assistantId,
-                commentText: `❌ Webhook task failed: ${error.message}`,
-                commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: Date.now(),
-                created: Date.now(),
-                originalContent: `❌ Webhook task failed: ${error.message}`,
-            })
-
-        throw error
+        objectType: 'tasks',
+        objectId,
+        isPublicFor,
+        assistantId,
+        message: 'Webhook task ready. Waiting for user message.',
     }
 }
 

@@ -75,6 +75,7 @@ const Header = ({ projectId, chat, isFullscreen, setFullscreen }) => {
                         assistantId={chat.assistantId}
                         projectId={projectId}
                         objectType={'chats'}
+                        parentObject={null}
                     />
                 </View>
             )}

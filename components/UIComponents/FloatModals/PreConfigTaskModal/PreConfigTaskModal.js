@@ -75,7 +75,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             sendWhatsApp: task?.sendWhatsApp ?? false,
             webhookUrl: task?.taskMetadata?.webhookUrl ?? '',
             webhookAuth: task?.taskMetadata?.webhookAuth ?? '',
-            webhookPrompt: task?.taskMetadata?.webhookPrompt ?? '',
         }
     }, [task, currentAssistant])
 
@@ -102,7 +101,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
     const [webhookUrl, setWebhookUrl] = useState(initialState.webhookUrl)
     const [webhookAuth, setWebhookAuth] = useState(initialState.webhookAuth)
-    const [webhookPrompt, setWebhookPrompt] = useState(initialState.webhookPrompt)
 
     const handleSetStartDate = useCallback(value => {
         console.log('PreConfigTaskModal - handleSetStartDate called with:', {
@@ -180,7 +178,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                           isWebhookTask: true,
                           webhookUrl: webhookUrl.trim(),
                           ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
-                          ...(webhookPrompt && webhookPrompt.trim() ? { webhookPrompt: webhookPrompt.trim() } : {}),
                       },
                   }
                 : { name, type: taskType, prompt: '', variables: [], link, recurrence, sendWhatsApp }
@@ -236,7 +233,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                           isWebhookTask: true,
                           webhookUrl: webhookUrl.trim(),
                           ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
-                          ...(webhookPrompt && webhookPrompt.trim() ? { webhookPrompt: webhookPrompt.trim() } : {}),
                       },
                   }
                 : {
@@ -354,8 +350,6 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     setWebhookUrl={setWebhookUrl}
                     webhookAuth={webhookAuth}
                     setWebhookAuth={setWebhookAuth}
-                    webhookPrompt={webhookPrompt}
-                    setWebhookPrompt={setWebhookPrompt}
                 />
             )}
         </View>

@@ -448,6 +448,28 @@ export async function createObjectMessage(
 
         updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType)
 
+        // Check if this is a webhook task and trigger webhook with the user's message
+        if (!editingCommentId && objectType === 'tasks' && object?.taskMetadata?.isWebhookTask) {
+            console.log('🌐 WEBHOOK MESSAGE: Detected message in webhook task, triggering webhook:', {
+                taskId: objectId,
+                webhookUrl: object.taskMetadata.webhookUrl,
+                messageLength: comment.length,
+            })
+            // Trigger webhook execution asynchronously
+            runHttpsCallableFunction('executeWebhookForMessage', {
+                userId: creatorId,
+                projectId,
+                objectId,
+                prompt: comment,
+                taskMetadata: object.taskMetadata,
+                userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
+                isPublicFor,
+                assistantId,
+            }).catch(error => {
+                console.error('🌐 WEBHOOK MESSAGE: Error triggering webhook:', error)
+            })
+        }
+
         const userIdsToNotify = generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId)
 
         const { followerIds, newFollowerIds, newMentionIds } = await getFollowerLists(

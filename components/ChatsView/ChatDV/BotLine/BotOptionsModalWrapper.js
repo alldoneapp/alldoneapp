@@ -11,7 +11,7 @@ import { setAssistantEnabled, setShowNotificationAboutTheBotBehavior } from '../
 import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
-export default function BotOptionsModalWrapper({ objectId, objectType, assistantId, projectId }) {
+export default function BotOptionsModalWrapper({ objectId, objectType, assistantId, projectId, parentObject }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const mainChatEditor = useSelector(state => state.mainChatEditor)
@@ -43,7 +43,11 @@ export default function BotOptionsModalWrapper({ objectId, objectType, assistant
         })
     }
 
-    const { photoURL50, displayName } = getAssistantInProjectObject(projectId, assistantId)
+    // Check if this is a webhook task and show task name
+    const isWebhookTask = parentObject?.taskMetadata?.isWebhookTask
+    const assistant = getAssistantInProjectObject(projectId, assistantId)
+    const { photoURL50, displayName } = assistant
+    const finalDisplayName = isWebhookTask ? `${parentObject.name} (Webhook)` : displayName
 
     return (
         <Popover
@@ -74,7 +78,7 @@ export default function BotOptionsModalWrapper({ objectId, objectType, assistant
                 noBorder={true}
                 onPress={openModal}
                 customIcon={<AssistantAvatar photoURL={photoURL50} assistantId={assistantId} size={24} />}
-                title={displayName}
+                title={finalDisplayName}
                 titleStyle={localStyles.text}
             />
         </Popover>

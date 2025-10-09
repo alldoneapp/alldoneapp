@@ -340,6 +340,11 @@ export const generateTaskFromPreConfig = async (
         generatedTask.aiSystemMessage = aiSettings.systemMessage
     }
 
+    // Add taskMetadata to the task if provided (for webhook tasks)
+    if (taskMetadata) {
+        generatedTask.taskMetadata = taskMetadata
+    }
+
     console.log('Creating task with settings:', {
         taskName: generatedTask.name,
         aiSettings: {

@@ -115,8 +115,6 @@ const MemoizedModalContent = memo(
         setWebhookUrl,
         webhookAuth,
         setWebhookAuth,
-        webhookPrompt,
-        setWebhookPrompt,
     }) => {
         const handleModalClick = useCallback(e => {
             const target = e.target
@@ -358,9 +356,6 @@ const MemoizedModalContent = memo(
                         setWebhookUrl={setWebhookUrl}
                         webhookAuth={webhookAuth}
                         setWebhookAuth={setWebhookAuth}
-                        webhookPrompt={webhookPrompt}
-                        setWebhookPrompt={setWebhookPrompt}
-                        webhookPromptInputRef={promptInputRef}
                     />
                 ) : (
                     <LinkArea
@@ -412,7 +407,6 @@ const MemoizedModalContent = memo(
             prevProps.sendWhatsApp === nextProps.sendWhatsApp &&
             prevProps.webhookUrl === nextProps.webhookUrl &&
             prevProps.webhookAuth === nextProps.webhookAuth &&
-            prevProps.webhookPrompt === nextProps.webhookPrompt &&
             compareArrays(prevProps.variables, nextProps.variables)
         )
     }
@@ -456,8 +450,6 @@ export default function TaskModal({
     setWebhookUrl,
     webhookAuth = '',
     setWebhookAuth,
-    webhookPrompt = '',
-    setWebhookPrompt,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -538,7 +530,6 @@ export default function TaskModal({
         console.log('Webhook validation:', {
             name: name,
             webhookUrl: webhookUrl,
-            webhookPrompt: webhookPrompt,
             isValidUrl: checkIfIsValidWebhookUrl(),
             disableButton: disableButton,
         })
@@ -777,8 +768,6 @@ export default function TaskModal({
                         setWebhookUrl={setWebhookUrl}
                         webhookAuth={webhookAuth}
                         setWebhookAuth={setWebhookAuth}
-                        webhookPrompt={webhookPrompt}
-                        setWebhookPrompt={setWebhookPrompt}
                     />
                 </View>
             )}

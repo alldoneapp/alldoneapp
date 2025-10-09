@@ -72,6 +72,7 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen }) =>
                         assistantId={task.assistantId}
                         projectId={projectId}
                         objectType={'tasks'}
+                        parentObject={task}
                     />
                 </View>
             )}

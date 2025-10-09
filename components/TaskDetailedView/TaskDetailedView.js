@@ -301,6 +301,7 @@ const TaskDetailedView = ({ navigation }) => {
                                         chatTitle={task.name}
                                         assistantId={task.assistantId}
                                         objectType={'tasks'}
+                                        parentObject={task}
                                     />
                                 )}
                                 {selectedTab === DV_TAB_TASK_UPDATES && (

@@ -6,7 +6,7 @@ import GoldArea from '../../../TopBar/GoldArea'
 import BotOptionsModalWrapper from './BotOptionsModalWrapper'
 import CloseButton from './CloseButton'
 
-export default function BotLine({ setFullscreen, objectId, objectType, assistantId, projectId }) {
+export default function BotLine({ setFullscreen, objectId, objectType, assistantId, projectId, parentObject }) {
     return (
         <View style={localStyles.container}>
             <View style={localStyles.leftArea}>
@@ -16,6 +16,7 @@ export default function BotLine({ setFullscreen, objectId, objectType, assistant
                     objectType={objectType}
                     assistantId={assistantId}
                     projectId={projectId}
+                    parentObject={parentObject}
                 />
             </View>
             <View style={localStyles.rightArea}>

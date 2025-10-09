@@ -6,16 +6,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 
-export default function WebhookArea({
-    disabled,
-    webhookUrl,
-    setWebhookUrl,
-    webhookAuth,
-    setWebhookAuth,
-    webhookPrompt,
-    setWebhookPrompt,
-    webhookPromptInputRef,
-}) {
+export default function WebhookArea({ disabled, webhookUrl, setWebhookUrl, webhookAuth, setWebhookAuth }) {
     return (
         <View style={localStyles.container}>
             <Text style={localStyles.text}>{translate('Webhook URL')}</Text>
@@ -26,21 +17,6 @@ export default function WebhookArea({
                 placeholderTextColor={colors.Text03}
                 multiline={false}
                 onChangeText={setWebhookUrl}
-                styleTheme={NEW_TOPIC_MODAL_THEME}
-                disabledTabKey={true}
-                disabledTags={true}
-                disabledEdition={disabled}
-            />
-
-            <Text style={[localStyles.text, { marginTop: 12 }]}>{translate('Webhook Prompt (Optional)')}</Text>
-            <CustomTextInput3
-                ref={webhookPromptInputRef}
-                containerStyle={localStyles.promptInput}
-                initialTextExtended={webhookPrompt || ''}
-                placeholder={translate('Enter the prompt to send to the webhook')}
-                placeholderTextColor={colors.Text03}
-                multiline={true}
-                onChangeText={setWebhookPrompt}
                 styleTheme={NEW_TOPIC_MODAL_THEME}
                 disabledTabKey={true}
                 disabledTags={true}
@@ -62,7 +38,7 @@ export default function WebhookArea({
             />
 
             <Text style={[localStyles.helperText, { marginTop: 8 }]}>
-                {translate('The webhook will receive this prompt and call back when complete')}
+                {translate('Send messages in the chat to trigger the webhook')}
             </Text>
         </View>
     )
@@ -87,17 +63,6 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         minHeight: 42,
         maxHeight: 42,
-    },
-    promptInput: {
-        ...styles.body1,
-        color: '#ffffff',
-        paddingVertical: 3,
-        paddingHorizontal: 16,
-        borderWidth: 1,
-        borderColor: colors.Grey400,
-        borderRadius: 4,
-        minHeight: 96,
-        maxHeight: 150,
     },
     helperText: {
         ...styles.caption,

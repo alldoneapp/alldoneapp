@@ -2214,6 +2214,19 @@ exports.webhookCallbackForAssistantTasks = onRequest(
     }
 )
 
+// EXECUTE WEBHOOK FOR USER MESSAGE - Triggered when user sends message in webhook task
+exports.executeWebhookForMessage = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async request => {
+        const { executeWebhookForUserMessage } = require('./Assistant/webhookForMessage')
+        return await executeWebhookForUserMessage(request.data)
+    }
+)
+
 // CLEANUP EXPIRED WEBHOOK TASKS - Run every 10 minutes
 exports.cleanupExpiredWebhookTasks = onSchedule(
     {
