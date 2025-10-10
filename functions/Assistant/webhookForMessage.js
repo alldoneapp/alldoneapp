@@ -21,6 +21,11 @@ async function executeWebhookForUserMessage(data) {
     // Get follower IDs - include the user who sent the message
     const followerIds = [userId]
 
+    // Add a small delay to ensure the user's message timestamp is processed first
+    // User messages use serverTimestamp() which is set when Firestore processes the write
+    // This delay ensures proper ordering of messages
+    await new Promise(resolve => setTimeout(resolve, 300))
+
     // Create initial status message from the assistant
     await createInitialStatusMessage(
         projectId,
