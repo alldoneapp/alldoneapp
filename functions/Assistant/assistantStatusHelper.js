@@ -132,10 +132,12 @@ async function ensureChatExists(projectId, objectType, objectId, assistantId, fo
             creatorId: followerIds[0] || assistantId,
             created: Date.now(),
             lastEditionDate: Date.now(),
+            lastEditorId: followerIds[0] || assistantId,
             title: title,
-            objectType: objectType,
+            type: objectType, // Use 'type' field, not 'objectType'
             assistantId: assistantId,
             followerIds: followerIds || [],
+            usersFollowing: followerIds || [], // Add usersFollowing field
             members: followerIds && followerIds.length > 0 ? [followerIds[0], assistantId] : [assistantId],
             isPublicFor: isPublicFor || [],
             commentsData: {

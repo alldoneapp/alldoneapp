@@ -465,9 +465,14 @@ export async function createObjectMessage(
                 userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
                 isPublicFor,
                 assistantId,
-            }).catch(error => {
-                console.error('🌐 WEBHOOK MESSAGE: Error triggering webhook:', error)
             })
+                .then(result => {
+                    console.log('🌐 WEBHOOK MESSAGE: Webhook triggered successfully:', result)
+                })
+                .catch(error => {
+                    console.error('🌐 WEBHOOK MESSAGE: Error triggering webhook:', error)
+                    alert(`Webhook failed: ${error.message}`)
+                })
         }
 
         const userIdsToNotify = generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId)
@@ -549,8 +554,12 @@ export async function createObjectMessage(
 
         createGenericTaskWhenMention(projectId, objectId, newMentionIds, GENERIC_COMMENT_TYPE, objectType, assistantId)
 
+        // Check if this is a webhook task - if so, don't trigger regular AI assistant
+        const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
+
         await Promise.all(promises).then(() => {
-            if (!editingCommentId && assistantEnabled) {
+            // Only trigger regular AI assistant if not a webhook task
+            if (!editingCommentId && assistantEnabled && !isWebhookTask) {
                 runHttpsCallableFunction('askToBotSecondGen', {
                     userId: creatorId,
                     messageId: commentId,
