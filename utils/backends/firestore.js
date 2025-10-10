@@ -3233,6 +3233,12 @@ export function mapTaskData(taskId, task) {
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,
+        // Task-level AI settings
+        aiModel: task.aiModel || null,
+        aiTemperature: task.aiTemperature || null,
+        aiSystemMessage: task.aiSystemMessage || null,
+        // Webhook task metadata
+        taskMetadata: task.taskMetadata || null,
     }
 
     // Only include humanReadableId if it has a value

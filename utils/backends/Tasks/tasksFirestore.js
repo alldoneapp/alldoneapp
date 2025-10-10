@@ -328,6 +328,17 @@ export async function uploadNewTask(
         taskCopy.aiModel = taskCopy.aiModel || null
         taskCopy.aiTemperature = taskCopy.aiTemperature || null
         taskCopy.aiSystemMessage = taskCopy.aiSystemMessage || null
+        // Webhook task metadata (for external webhook integrations)
+        taskCopy.taskMetadata = taskCopy.taskMetadata || null
+
+        // Debug log for webhook tasks
+        if (taskCopy.taskMetadata) {
+            console.log('🔍 UPLOAD TASK: Task has taskMetadata:', {
+                taskId,
+                taskMetadata: taskCopy.taskMetadata,
+                isWebhookTask: taskCopy.taskMetadata.isWebhookTask,
+            })
+        }
 
         updateEditionData(taskCopy)
 
