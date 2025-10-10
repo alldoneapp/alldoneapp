@@ -120,9 +120,10 @@ async function processWebhookCallback(req, res) {
                     creatorId: assistantId,
                     commentText: `❌ Webhook task failed: ${error || 'External service error'}`,
                     commentType: 'STAYWARD_COMMENT',
-                    lastChangeDate: Date.now(),
-                    created: Date.now(),
+                    lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+                    created: admin.firestore.FieldValue.serverTimestamp(),
                     originalContent: `❌ Webhook task failed: ${error || 'External service error'}`,
+                    fromAssistant: true,
                 })
 
             // Update chat object with error comment
@@ -166,9 +167,10 @@ async function processWebhookCallback(req, res) {
                 creatorId: assistantId,
                 commentText,
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: Date.now(),
-                created: Date.now(),
+                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+                created: admin.firestore.FieldValue.serverTimestamp(),
                 originalContent: commentText,
+                fromAssistant: true,
                 webhookData: {
                     resultUrl,
                     correlationId,
@@ -260,7 +262,7 @@ async function updateChatObjectWithComment(projectId, objectId, assistantId, com
                     lastCommentType: commentType,
                     amount: (currentCommentsData.amount || 0) + 1,
                 },
-                lastEditionDate: Date.now(),
+                lastEditionDate: admin.firestore.FieldValue.serverTimestamp(),
                 lastEditorId: assistantId,
             })
             console.log('🌐 WEBHOOK CALLBACK: Updated chat object with comment')
@@ -352,9 +354,10 @@ async function cleanupExpiredWebhooks() {
                 creatorId: assistantId,
                 commentText: '⏱️ Webhook task timed out: No response received within the expected timeframe',
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: Date.now(),
-                created: Date.now(),
+                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+                created: admin.firestore.FieldValue.serverTimestamp(),
                 originalContent: '⏱️ Webhook task timed out: No response received within the expected timeframe',
+                fromAssistant: true,
             })
 
             processedCount++
