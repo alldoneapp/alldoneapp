@@ -448,6 +448,17 @@ export async function createObjectMessage(
 
         updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType)
 
+        // Debug logging for webhook task detection
+        console.log('🔍 WEBHOOK DEBUG: Checking if webhook task:', {
+            objectType,
+            objectId,
+            hasObject: !!object,
+            hasTaskMetadata: !!object?.taskMetadata,
+            isWebhookTask: object?.taskMetadata?.isWebhookTask,
+            taskMetadata: object?.taskMetadata,
+            editingCommentId,
+        })
+
         // Check if this is a webhook task and trigger webhook with the user's message
         if (!editingCommentId && objectType === 'tasks' && object?.taskMetadata?.isWebhookTask) {
             console.log('🌐 WEBHOOK MESSAGE: Detected message in webhook task, triggering webhook:', {

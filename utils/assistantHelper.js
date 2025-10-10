@@ -378,17 +378,23 @@ export const generateTaskFromPreConfig = async (
             ...(taskMetadata || {}),
         }
 
-        createTopicForPreConfigTask(
-            projectId,
-            taskWithPublicFor.id,
-            taskWithPublicFor.isPublicFor,
-            taskWithPublicFor.assistantId,
-            generatedPrompt,
-            aiSettings,
-            mergedMetadata
-        ).catch(error => {
-            console.error('Failed to create topic for pre-config task:', error)
-        })
+        // Add a small delay for webhook tasks to avoid race condition with frontend updates
+        const isWebhookTask = taskMetadata?.isWebhookTask
+        const delay = isWebhookTask ? 1000 : 0
+
+        setTimeout(() => {
+            createTopicForPreConfigTask(
+                projectId,
+                taskWithPublicFor.id,
+                taskWithPublicFor.isPublicFor,
+                taskWithPublicFor.assistantId,
+                generatedPrompt,
+                aiSettings,
+                mergedMetadata
+            ).catch(error => {
+                console.error('Failed to create topic for pre-config task:', error)
+            })
+        }, delay)
 
         NavigationService.navigate('TaskDetailedView', {
             task: taskWithPublicFor,
