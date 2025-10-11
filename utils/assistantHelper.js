@@ -18,7 +18,7 @@ import HelperFunctions from './HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../i18n/TranslationService'
 import { getAssistantInProjectObject } from '../components/AdminPanel/Assistants/assistantsHelper'
-import { moveTasksFromOpen, setTaskAssistant, uploadNewTask } from './backends/Tasks/tasksFirestore'
+import { getTaskData, moveTasksFromOpen, setTaskAssistant, uploadNewTask } from './backends/Tasks/tasksFirestore'
 import { setNoteAssistant } from './backends/Notes/notesFirestore'
 import { setGoalAssistant } from './backends/Goals/goalsFirestore'
 import { setSkillAssistant } from './backends/Skills/skillsFirestore'
@@ -265,6 +265,51 @@ const createTopicForPreConfigTask = async (
     })
 
     try {
+        // Fetch the task data to get the task name
+        const task = await getTaskData(projectId, taskId)
+        if (!task) {
+            throw new Error(`Task not found: ${taskId}`)
+        }
+
+        console.log('Retrieved task data:', {
+            taskId,
+            taskName: task.extendedName,
+        })
+
+        // Check if the chat already exists
+        const chatExists = (await getDb().doc(`chatObjects/${projectId}/chats/${taskId}`).get()).exists
+
+        if (!chatExists) {
+            console.log('Creating chat object for pre-config task:', {
+                taskId,
+                taskName: task.extendedName,
+                objectType: 'tasks',
+            })
+
+            // Create the chat object before calling the backend
+            // This ensures the chat exists when storeBotAnswerStream tries to fetch it
+            await createChat(
+                taskId,
+                projectId,
+                loggedUser.uid,
+                '',
+                'tasks',
+                task.extendedName,
+                isPublicFor,
+                '#ffffff',
+                null,
+                [loggedUser.uid], // followerIds - include the user who triggered the task
+                '',
+                assistantId,
+                STAYWARD_COMMENT,
+                loggedUser.uid // parentObjectCreatorId
+            )
+
+            console.log('Chat object created successfully for task:', taskId)
+        } else {
+            console.log('Chat already exists for task:', taskId)
+        }
+
         const functionParams = {
             userId: loggedUser.uid,
             projectId,
