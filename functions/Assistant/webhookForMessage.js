@@ -21,7 +21,7 @@ async function executeWebhookForUserMessage(data) {
     // Get follower IDs - include the user who sent the message
     const followerIds = [userId]
 
-    // Create initial status message from the assistant
+    // Create initial status message from the assistant ... i should see thinking
     await createInitialStatusMessage(
         projectId,
         'tasks',

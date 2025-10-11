@@ -281,13 +281,13 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             title: task.extendedName || task.name,
             type: 'tasks',
             members: [task.creatorUserId || task.userId, assistantId], // Include creator first, then assistant
-            lastEditionDate: Date.now(),
+            lastEditionDate: admin.firestore.FieldValue.serverTimestamp(),
             lastEditorId: assistantId,
             commentsData: null,
             hasStar: '#FFFFFF',
             creatorId: task.creatorUserId || task.userId,
             isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
-            created: Date.now(),
+            created: admin.firestore.FieldValue.serverTimestamp(),
             usersFollowing: [task.creatorUserId || task.userId], // Only include the creator/user
             quickDateId: '',
             assistantId: assistantId,
@@ -449,7 +449,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
 
             const followerRef = admin.firestore().doc(`chatFollowers/${projectId}/${uniqueId}/${followerId}`)
             batch.set(followerRef, {
-                lastReadDate: Date.now(),
+                lastReadDate: admin.firestore.FieldValue.serverTimestamp(),
                 firstTimeRead: true,
                 userId: followerId,
             })
@@ -464,8 +464,8 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                 creatorId: task.userId || task.creatorUserId,
                 commentText: prompt,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: Date.now(),
-                created: Date.now(),
+                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+                created: admin.firestore.FieldValue.serverTimestamp(),
                 originalContent: prompt,
             }
 

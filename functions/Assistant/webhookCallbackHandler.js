@@ -225,7 +225,7 @@ function formatWebhookResult(output) {
 }
 
 /**
- * Update the chat object with the new comment information
+ * Update the chat object with the new comment information just to updatae this
  * @param {string} projectId - Project ID
  * @param {string} objectId - Chat/Task object ID
  * @param {string} assistantId - Assistant ID (creator of the comment)
