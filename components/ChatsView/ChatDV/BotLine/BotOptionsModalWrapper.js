@@ -47,7 +47,7 @@ export default function BotOptionsModalWrapper({ objectId, objectType, assistant
     const isWebhookTask = parentObject?.taskMetadata?.isWebhookTask
     const assistant = getAssistantInProjectObject(projectId, assistantId)
     const { photoURL50, displayName } = assistant
-    const finalDisplayName = isWebhookTask ? `${parentObject.name} (Webhook)` : displayName
+    const finalDisplayName = isWebhookTask ? `${displayName} (${parentObject.name})` : displayName
 
     return (
         <Popover
