@@ -27,7 +27,7 @@ async function executeWebhookForUserMessage(data) {
         'tasks',
         objectId,
         assistantId,
-        'Processing your request...',
+        'Thinking...',
         userIdsToNotify,
         isPublicFor,
         followerIds

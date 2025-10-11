@@ -20,7 +20,7 @@ async function processWebhookCallback(req, res) {
         }
 
         // Extract callback data
-        const { correlationId, resultUrl, status, error, metadata } = req.body
+        const { correlationId, resultUrl, status, error, metadata, output } = req.body
 
         console.log('🌐 WEBHOOK CALLBACK: Callback data:', {
             correlationId,
@@ -28,6 +28,7 @@ async function processWebhookCallback(req, res) {
             status,
             hasError: !!error,
             hasMetadata: !!metadata,
+            hasOutput: !!output,
         })
 
         // Validate required fields
@@ -153,11 +154,12 @@ async function processWebhookCallback(req, res) {
 
         console.log('🌐 WEBHOOK CALLBACK: Processing successful webhook result:', {
             correlationId,
-            resultUrl: resultUrl.substring(0, 100),
+            resultUrl: resultUrl?.substring(0, 100),
+            hasOutput: !!output,
         })
 
         // Store result as a comment
-        const commentText = formatWebhookResult(resultUrl, metadata)
+        const commentText = formatWebhookResult(output)
         const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
 
         await admin
@@ -215,29 +217,11 @@ async function processWebhookCallback(req, res) {
 
 /**
  * Format the webhook result as a user-friendly comment
- * @param {string} resultUrl - URL returned by the webhook
- * @param {Object} metadata - Optional metadata from webhook
+ * @param {string} output - Output text from the webhook
  * @returns {string} Formatted comment text
  */
-function formatWebhookResult(resultUrl, metadata) {
-    let comment = `✅ Webhook task completed!\n\n🔗 Result: ${resultUrl}`
-
-    if (metadata) {
-        if (metadata.title) {
-            comment += `\n📝 Title: ${metadata.title}`
-        }
-        if (metadata.description) {
-            comment += `\n📄 Description: ${metadata.description}`
-        }
-        if (metadata.duration) {
-            comment += `\n⏱️ Duration: ${metadata.duration}`
-        }
-        if (metadata.fileSize) {
-            comment += `\n📦 Size: ${metadata.fileSize}`
-        }
-    }
-
-    return comment
+function formatWebhookResult(output) {
+    return output
 }
 
 /**
