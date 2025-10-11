@@ -302,8 +302,8 @@ function selectBestEvaluation(evaluations) {
         })[0]
     }
 
-    // For selecting next execution time (not ready yet), we can use all evaluations
-    return evaluations.sort((a, b) => {
+    // For selecting next execution time (not ready yet), still respect the heuristic filter
+    return candidatesForExecution.sort((a, b) => {
         const minutesDiff = a.minutesUntilNextExecution - b.minutesUntilNextExecution
         if (minutesDiff !== 0) {
             return minutesDiff
