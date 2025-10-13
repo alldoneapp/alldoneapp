@@ -29,17 +29,28 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
     }, [toRender, projectId, chatType, objectId])
 
     function handleSnapshot(snapshotMessages) {
-        const sortedMessages = [...snapshotMessages].sort((a, b) => {
-            const aLastChange = a?.lastChangeDate ?? 0
-            const bLastChange = b?.lastChangeDate ?? 0
-            if (aLastChange !== bLastChange) return aLastChange - bLastChange
+        const decoratedMessages = snapshotMessages.map((message, index) => ({
+            message,
+            snapshotIndex: index,
+        }))
 
-            const aCreated = a?.created ?? 0
-            const bCreated = b?.created ?? 0
-            if (aCreated !== bCreated) return aCreated - bCreated
+        const sortedMessages = decoratedMessages
+            .sort((a, b) => {
+                const aLastChange = a.message?.lastChangeDate ?? 0
+                const bLastChange = b.message?.lastChangeDate ?? 0
+                if (aLastChange !== bLastChange) return aLastChange - bLastChange
 
-            return (a?.id || '').localeCompare(b?.id || '')
-        })
+                const aCreated = a.message?.created ?? 0
+                const bCreated = b.message?.created ?? 0
+                if (aCreated !== bCreated) return aCreated - bCreated
+
+                // Firestore snapshot returns newest first when ordered desc.
+                // When timestamps match, prefer the older message (higher snapshot index).
+                if (a.snapshotIndex !== b.snapshotIndex) return b.snapshotIndex - a.snapshotIndex
+
+                return (a.message?.id || '').localeCompare(b.message?.id || '')
+            })
+            .map(item => item.message)
 
         if (checkAssistant && firstFetch) {
             const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
