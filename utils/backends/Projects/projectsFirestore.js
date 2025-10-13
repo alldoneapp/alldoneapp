@@ -92,6 +92,8 @@ export function setProjectSortIndex(projectId, userId, sortIndex, batch) {
 }
 
 export const setProjectAssistant = async (projectId, assistantId, needGenerateUpdate) => {
+    console.log('🎨 setProjectAssistant called:', { projectId, assistantId, needGenerateUpdate })
+
     getDb().doc(`projects/${projectId}`).update({ assistantId })
 
     const batch = new BatchWrapper(getDb())
@@ -111,9 +113,21 @@ export const setProjectAssistant = async (projectId, assistantId, needGenerateUp
 
     // Automatically set as default if this is the user's default project
     const { loggedUser } = store.getState()
-    if (assistantId && loggedUser?.defaultProjectId === projectId) {
+    const isDefaultProject = assistantId && loggedUser?.defaultProjectId === projectId
+
+    console.log('🔍 Checking if should auto-set as default:', {
+        projectId,
+        assistantId,
+        defaultProjectId: loggedUser?.defaultProjectId,
+        isDefaultProject,
+    })
+
+    if (isDefaultProject) {
+        console.log('✨ Auto-setting assistant as default for default project')
         const { setAssistantLikeDefault } = require('../Assistants/assistantsFirestore')
         setAssistantLikeDefault(projectId, assistantId)
+    } else {
+        console.log('ℹ️  Not auto-setting as default (not the default project)')
     }
 }
 

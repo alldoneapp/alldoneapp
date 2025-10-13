@@ -306,7 +306,9 @@ export function updateAssistantInstructions(projectId, assistant, instructions) 
 }
 
 export function setAssistantLikeDefault(projectId, assistantId) {
-    const { projectAssistants, globalAssistants } = store.getState()
+    console.log('🔄 setAssistantLikeDefault called:', { projectId, assistantId })
+
+    const { projectAssistants, globalAssistants, loggedUser } = store.getState()
 
     const batch = new BatchWrapper(getDb())
 
@@ -315,16 +317,65 @@ export function setAssistantLikeDefault(projectId, assistantId) {
 
     // Find and unmark the current default assistant in the same project
     const assistantsInProject = projectId === GLOBAL_PROJECT_ID ? globalAssistants : projectAssistants[projectId]
+
+    console.log(
+        '📋 Assistants in project before update:',
+        assistantsInProject?.map(a => ({
+            uid: a.uid,
+            name: a.displayName,
+            isDefault: a.isDefault,
+        }))
+    )
+
     if (assistantsInProject) {
         const currentDefault = assistantsInProject.find(
             assistant => assistant.isDefault && assistant.uid !== assistantId
         )
         if (currentDefault) {
+            console.log('📌 Found current default assistant to unmark:', {
+                uid: currentDefault.uid,
+                name: currentDefault.displayName,
+            })
             updateAssistantData(projectId, currentDefault.uid, { isDefault: false }, batch)
+        } else {
+            console.log('ℹ️  No existing default assistant found in project')
         }
     }
 
     batch.commit()
+
+    // Immediately update the Redux store to reflect the change
+    const updatedAssistants = assistantsInProject.map(assistant => {
+        if (assistant.uid === assistantId) {
+            return { ...assistant, isDefault: true }
+        } else if (assistant.isDefault) {
+            return { ...assistant, isDefault: false }
+        }
+        return assistant
+    })
+
+    console.log(
+        '✅ Updated assistants for Redux store:',
+        updatedAssistants.map(a => ({
+            uid: a.uid,
+            name: a.displayName,
+            isDefault: a.isDefault,
+        }))
+    )
+
+    console.log("🎯 Is this the user's default project?", {
+        projectId,
+        defaultProjectId: loggedUser?.defaultProjectId,
+        isDefaultProject: loggedUser?.defaultProjectId === projectId,
+    })
+
+    if (projectId === GLOBAL_PROJECT_ID) {
+        store.dispatch(setGlobalAssistants(updatedAssistants))
+        console.log('🌐 Dispatched setGlobalAssistants')
+    } else {
+        store.dispatch(setAssistantsInProject(projectId, updatedAssistants))
+        console.log('📦 Dispatched setAssistantsInProject for project:', projectId)
+    }
 }
 
 export function updateAssistantModel(projectId, assistant, model) {
