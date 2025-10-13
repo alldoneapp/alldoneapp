@@ -29,6 +29,29 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
     }, [toRender, projectId, chatType, objectId])
 
     function handleSnapshot(snapshotMessages) {
+        const toMillis = value => {
+            if (!value) return 0
+            if (typeof value === 'number') return value
+            if (typeof value === 'string') {
+                const numericValue = Number(value)
+                if (Number.isFinite(numericValue)) return numericValue
+                const dateValue = Date.parse(value)
+                return Number.isFinite(dateValue) ? dateValue : 0
+            }
+            if (typeof value.toMillis === 'function') return value.toMillis()
+            if (value.seconds !== undefined) {
+                const millis = value.seconds * 1000
+                const nanos = value.nanoseconds ? Math.floor(value.nanoseconds / 1000000) : 0
+                return millis + nanos
+            }
+            if (typeof value.valueOf === 'function') {
+                const numericValue = value.valueOf()
+                if (Number.isFinite(numericValue)) return numericValue
+            }
+            if (typeof value.getTime === 'function') return value.getTime()
+            return 0
+        }
+
         const decoratedMessages = snapshotMessages.map((message, index) => ({
             message,
             snapshotIndex: index,
@@ -36,12 +59,12 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
 
         const sortedMessages = decoratedMessages
             .sort((a, b) => {
-                const aLastChange = a.message?.lastChangeDate ?? 0
-                const bLastChange = b.message?.lastChangeDate ?? 0
+                const aLastChange = toMillis(a.message?.lastChangeDate)
+                const bLastChange = toMillis(b.message?.lastChangeDate)
                 if (aLastChange !== bLastChange) return aLastChange - bLastChange
 
-                const aCreated = a.message?.created ?? 0
-                const bCreated = b.message?.created ?? 0
+                const aCreated = toMillis(a.message?.created)
+                const bCreated = toMillis(b.message?.created)
                 if (aCreated !== bCreated) return aCreated - bCreated
 
                 // Firestore snapshot returns newest first when ordered desc.
