@@ -10,13 +10,13 @@ import Button from '../../../UIControls/Button'
 import { setAssistantLikeDefault } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 
-export default function DefaultProperty({ disabled, assistant }) {
+export default function DefaultProperty({ disabled, assistant, projectId }) {
     const blockShortcuts = useSelector(state => state.blockShortcuts)
 
     const { isDefault } = assistant
 
     const setLikeDefault = () => {
-        setAssistantLikeDefault(GLOBAL_PROJECT_ID, assistant.uid)
+        setAssistantLikeDefault(projectId, assistant.uid)
     }
 
     return (

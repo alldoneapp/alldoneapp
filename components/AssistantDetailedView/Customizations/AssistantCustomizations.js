@@ -116,9 +116,7 @@ export default function AssistantCustomizations({
                     />
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
-                    {projectId === GLOBAL_PROJECT_ID && (
-                        <DefaultProperty disabled={!canEditAssitant} assistant={assistant} />
-                    )}
+                    <DefaultProperty disabled={!canEditAssitant} assistant={assistant} projectId={projectId} />
                     <TypeOfAssistantProperty
                         disabled={!canEditAssitant || true}
                         projectId={projectId}

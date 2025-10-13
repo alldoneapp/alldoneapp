@@ -306,11 +306,24 @@ export function updateAssistantInstructions(projectId, assistant, instructions) 
 }
 
 export function setAssistantLikeDefault(projectId, assistantId) {
-    const { defaultAssistant } = store.getState()
+    const { projectAssistants, globalAssistants } = store.getState()
 
     const batch = new BatchWrapper(getDb())
+
+    // Set the new assistant as default
     updateAssistantData(projectId, assistantId, { isDefault: true }, batch)
-    updateAssistantData(projectId, defaultAssistant.uid, { isDefault: false }, batch)
+
+    // Find and unmark the current default assistant in the same project
+    const assistantsInProject = projectId === GLOBAL_PROJECT_ID ? globalAssistants : projectAssistants[projectId]
+    if (assistantsInProject) {
+        const currentDefault = assistantsInProject.find(
+            assistant => assistant.isDefault && assistant.uid !== assistantId
+        )
+        if (currentDefault) {
+            updateAssistantData(projectId, currentDefault.uid, { isDefault: false }, batch)
+        }
+    }
+
     batch.commit()
 }
 
