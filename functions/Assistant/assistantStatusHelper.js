@@ -35,7 +35,7 @@ async function createInitialStatusMessage(
     })
 
     const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
-    const now = admin.firestore.FieldValue.serverTimestamp()
+    const now = Date.now()
 
     // Get current follower IDs (will merge with any existing followers)
     const currentFollowerIds = await getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor)
@@ -65,7 +65,7 @@ async function createInitialStatusMessage(
         .firestore()
         .doc(`chatObjects/${projectId}/chats/${objectId}`)
         .update({
-            lastEditionDate: admin.firestore.FieldValue.serverTimestamp(),
+            lastEditionDate: Date.now(),
             [`commentsData.lastCommentOwnerId`]: assistantId,
             [`commentsData.lastComment`]: statusMessage,
             [`commentsData.lastCommentType`]: 'STAYWARD_COMMENT',
@@ -126,13 +126,13 @@ async function ensureChatExists(projectId, objectType, objectId, assistantId, fo
             }
         }
 
-        // Create chat object with server timestamps
+        // Create chat object with Date.now() timestamps
         await chatRef.set({
             id: objectId,
             projectId: projectId,
             creatorId: followerIds[0] || assistantId,
-            created: admin.firestore.FieldValue.serverTimestamp(),
-            lastEditionDate: admin.firestore.FieldValue.serverTimestamp(),
+            created: Date.now(),
+            lastEditionDate: Date.now(),
             lastEditorId: followerIds[0] || assistantId,
             title: title,
             type: objectType, // Use 'type' field, not 'objectType'
@@ -222,7 +222,7 @@ async function updateLastAssistantCommentData(projectId, objectType, objectId, f
             .firestore()
             .doc(`chatObjects/${projectId}/chats/${objectId}`)
             .update({
-                lastAssistantComment: admin.firestore.FieldValue.serverTimestamp(),
+                lastAssistantComment: Date.now(),
                 followerIds: followerIds || [],
                 assistantId: assistantId,
             })

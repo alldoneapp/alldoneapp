@@ -486,7 +486,7 @@ async function* convertOpenAIStream(stream) {
 
 function formatMessage(objectType, message, assistantId) {
     const commentId = uuidv4()
-    const now = admin.firestore.FieldValue.serverTimestamp()
+    const now = Date.now()
     const comment = {
         commentText: message,
         lastChangeDate: now,
@@ -878,8 +878,8 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 title: toolArgs.title,
                 content: toolArgs.content,
                 creatorId: creatorId,
-                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
-                createDate: admin.firestore.FieldValue.serverTimestamp(),
+                lastChangeDate: Date.now(),
+                createDate: Date.now(),
             }
 
             const noteRef = await notesRef.add(noteData)
@@ -1096,7 +1096,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const noteDoc = querySnapshot.docs[0]
             await noteDoc.ref.update({
                 content: toolArgs.content,
-                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
+                lastChangeDate: Date.now(),
             })
 
             return {

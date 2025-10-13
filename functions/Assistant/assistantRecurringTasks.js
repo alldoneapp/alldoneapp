@@ -281,13 +281,13 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             title: task.extendedName || task.name,
             type: 'tasks',
             members: [task.creatorUserId || task.userId, assistantId], // Include creator first, then assistant
-            lastEditionDate: admin.firestore.FieldValue.serverTimestamp(),
+            lastEditionDate: Date.now(),
             lastEditorId: assistantId,
             commentsData: null,
             hasStar: '#FFFFFF',
             creatorId: task.creatorUserId || task.userId,
             isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
-            created: admin.firestore.FieldValue.serverTimestamp(),
+            created: Date.now(),
             usersFollowing: [task.creatorUserId || task.userId], // Only include the creator/user
             quickDateId: '',
             assistantId: assistantId,
@@ -449,7 +449,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
 
             const followerRef = admin.firestore().doc(`chatFollowers/${projectId}/${uniqueId}/${followerId}`)
             batch.set(followerRef, {
-                lastReadDate: admin.firestore.FieldValue.serverTimestamp(),
+                lastReadDate: Date.now(),
                 firstTimeRead: true,
                 userId: followerId,
             })
@@ -464,8 +464,8 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                 creatorId: task.userId || task.creatorUserId,
                 commentText: prompt,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
-                created: admin.firestore.FieldValue.serverTimestamp(),
+                lastChangeDate: Date.now(),
+                created: Date.now(),
                 originalContent: prompt,
             }
 
@@ -657,10 +657,10 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
 
         // WhatsApp notification is now handled inside generatePreConfigTaskResult
 
-        // Update the lastExecuted timestamp - store in UTC
+        // Update the lastExecuted timestamp
         await taskDocRef.update({
-            lastExecuted: admin.firestore.FieldValue.serverTimestamp(),
-            lastExecutionCompleted: admin.firestore.FieldValue.serverTimestamp(),
+            lastExecuted: Date.now(),
+            lastExecutionCompleted: Date.now(),
             executionStatus: 'succeeded',
             lastExecutionError: null,
         })
@@ -998,7 +998,7 @@ async function checkAndExecuteRecurringTasks() {
                                 .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
                             try {
                                 await taskDocRef.update({
-                                    lastExecuted: admin.firestore.FieldValue.serverTimestamp(),
+                                    lastExecuted: Date.now(),
                                 })
                                 console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
                                     projectId,

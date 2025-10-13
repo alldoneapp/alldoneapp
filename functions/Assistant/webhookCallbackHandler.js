@@ -82,7 +82,7 @@ async function processWebhookCallback(req, res) {
             })
             await pendingWebhookRef.update({
                 status: 'expired',
-                expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+                expiredAt: Date.now(),
             })
             return res.status(410).json({
                 error: 'Gone',
@@ -108,7 +108,7 @@ async function processWebhookCallback(req, res) {
             await pendingWebhookRef.update({
                 status: 'failed',
                 error: error || 'Unknown error from external service',
-                failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                failedAt: Date.now(),
                 callbackData: { status, error, metadata },
             })
 
@@ -121,8 +121,8 @@ async function processWebhookCallback(req, res) {
                     creatorId: assistantId,
                     commentText: `❌ Webhook task failed: ${error || 'External service error'}`,
                     commentType: 'STAYWARD_COMMENT',
-                    lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
-                    created: admin.firestore.FieldValue.serverTimestamp(),
+                    lastChangeDate: Date.now(),
+                    created: Date.now(),
                     originalContent: `❌ Webhook task failed: ${error || 'External service error'}`,
                     fromAssistant: true,
                 })
@@ -169,8 +169,8 @@ async function processWebhookCallback(req, res) {
                 creatorId: assistantId,
                 commentText,
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
-                created: admin.firestore.FieldValue.serverTimestamp(),
+                lastChangeDate: Date.now(),
+                created: Date.now(),
                 originalContent: commentText,
                 fromAssistant: true,
                 webhookData: {
@@ -188,7 +188,7 @@ async function processWebhookCallback(req, res) {
             status: 'completed',
             resultUrl,
             metadata: metadata || {},
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            completedAt: Date.now(),
             callbackData: { status, resultUrl, metadata },
         })
 
@@ -246,7 +246,7 @@ async function updateChatObjectWithComment(projectId, objectId, assistantId, com
                     lastCommentType: commentType,
                     amount: (currentCommentsData.amount || 0) + 1,
                 },
-                lastEditionDate: admin.firestore.FieldValue.serverTimestamp(),
+                lastEditionDate: Date.now(),
                 lastEditorId: assistantId,
             })
             console.log('🌐 WEBHOOK CALLBACK: Updated chat object with comment')
@@ -324,8 +324,8 @@ async function cleanupExpiredWebhooks() {
             // Update webhook status to expired
             batch.update(doc.ref, {
                 status: 'expired',
-                expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-                cleanedUpAt: admin.firestore.FieldValue.serverTimestamp(),
+                expiredAt: Date.now(),
+                cleanedUpAt: Date.now(),
             })
 
             // Create error comment for the task
@@ -338,8 +338,8 @@ async function cleanupExpiredWebhooks() {
                 creatorId: assistantId,
                 commentText: '⏱️ Webhook task timed out: No response received within the expected timeframe',
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
-                created: admin.firestore.FieldValue.serverTimestamp(),
+                lastChangeDate: Date.now(),
+                created: Date.now(),
                 originalContent: '⏱️ Webhook task timed out: No response received within the expected timeframe',
                 fromAssistant: true,
             })

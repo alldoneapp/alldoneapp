@@ -69,7 +69,7 @@ async function executeWebhookForUserMessage(data) {
         prompt,
         webhookUrl: taskMetadata.webhookUrl,
         status: 'pending',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: Date.now(),
         expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes timeout
     })
 
@@ -124,7 +124,7 @@ async function executeWebhookForUserMessage(data) {
         await pendingWebhookRef.update({
             status: 'initiated',
             webhookResponse: responseData,
-            initiatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            initiatedAt: Date.now(),
         })
 
         // Return success - the actual result will come via callback
@@ -150,7 +150,7 @@ async function executeWebhookForUserMessage(data) {
         await pendingWebhookRef.update({
             status: 'failed',
             error: error.message,
-            failedAt: admin.firestore.FieldValue.serverTimestamp(),
+            failedAt: Date.now(),
         })
 
         // Store error message as a comment
@@ -162,8 +162,8 @@ async function executeWebhookForUserMessage(data) {
                 creatorId: assistantId,
                 commentText: `❌ Webhook failed: ${error.message}`,
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: admin.firestore.FieldValue.serverTimestamp(),
-                created: admin.firestore.FieldValue.serverTimestamp(),
+                lastChangeDate: Date.now(),
+                created: Date.now(),
                 originalContent: `❌ Webhook failed: ${error.message}`,
                 fromAssistant: true,
             })
