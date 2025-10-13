@@ -123,9 +123,28 @@ export const setProjectAssistant = async (projectId, assistantId, needGenerateUp
     })
 
     if (isDefaultProject) {
-        console.log('✨ Auto-setting assistant as default for default project')
-        const { setAssistantLikeDefault } = require('../Assistants/assistantsFirestore')
-        setAssistantLikeDefault(projectId, assistantId)
+        const { projectAssistants, globalAssistants } = store.getState()
+        const isProjectAssistant = projectAssistants[projectId]?.some(a => a.uid === assistantId)
+        const isGlobalAssistant = globalAssistants?.some(a => a.uid === assistantId)
+
+        console.log('🔎 Assistant type check:', {
+            assistantId,
+            isProjectAssistant,
+            isGlobalAssistant,
+        })
+
+        if (isProjectAssistant) {
+            // For project assistants, set isDefault: true in the document
+            console.log('✨ Auto-setting project assistant as default')
+            const { setAssistantLikeDefault } = require('../Assistants/assistantsFirestore')
+            setAssistantLikeDefault(projectId, assistantId)
+        } else if (isGlobalAssistant) {
+            // For global assistants, just setting project.assistantId is enough
+            // The getDefaultAssistant function will pick it up from there
+            console.log('✨ Global assistant set as project assistant (will be used as default)')
+        } else {
+            console.log('⚠️  Unknown assistant type')
+        }
     } else {
         console.log('ℹ️  Not auto-setting as default (not the default project)')
     }

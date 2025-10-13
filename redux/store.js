@@ -422,23 +422,38 @@ const getDefaultAssistant = state => {
         return {}
     }
 
-    // Get assistants for the default project
-    const projectAssistants = state?.projectAssistants?.[defaultProjectId]
+    // Get the project itself to check its assistantId
+    const defaultProject = state?.loggedUserProjectsMap?.[defaultProjectId]
+    const projectAssistants = state?.projectAssistants?.[defaultProjectId] || []
+    const globalAssistants = state?.globalAssistants || []
 
-    if (!projectAssistants || projectAssistants.length === 0) {
-        console.warn('No project assistants found for default project:', defaultProjectId)
-        return {}
+    // Strategy 1: Look for a project assistant marked as default
+    let defaultAssistant = projectAssistants.find(assistant => assistant.isDefault)
+
+    // Strategy 2: If no marked default, check if project.assistantId points to an assistant
+    if (!defaultAssistant && defaultProject?.assistantId) {
+        // First check if it's a project assistant
+        defaultAssistant = projectAssistants.find(a => a.uid === defaultProject.assistantId)
+
+        // If not found in project assistants, check global assistants
+        if (!defaultAssistant) {
+            defaultAssistant = globalAssistants.find(a => a.uid === defaultProject.assistantId)
+        }
     }
 
-    // Find the default assistant in the project, or use the first one
-    const defaultAssistant = projectAssistants.find(assistant => assistant.isDefault) || projectAssistants[0]
+    // Strategy 3: Fall back to the first project assistant
+    if (!defaultAssistant && projectAssistants.length > 0) {
+        defaultAssistant = projectAssistants[0]
+    }
 
     console.log('Selected default assistant from project:', {
         projectId: defaultProjectId,
-        assistantId: defaultAssistant?.uid,
-        assistantName: defaultAssistant?.displayName,
+        projectAssistantId: defaultProject?.assistantId,
+        selectedAssistantId: defaultAssistant?.uid,
+        selectedAssistantName: defaultAssistant?.displayName,
         isDefault: defaultAssistant?.isDefault,
-        allAssistants: projectAssistants.map(a => ({
+        isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
+        allProjectAssistants: projectAssistants.map(a => ({
             uid: a.uid,
             name: a.displayName,
             isDefault: a.isDefault,
