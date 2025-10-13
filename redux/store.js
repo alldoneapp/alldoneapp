@@ -437,6 +437,12 @@ const getDefaultAssistant = state => {
         projectId: defaultProjectId,
         assistantId: defaultAssistant?.uid,
         assistantName: defaultAssistant?.displayName,
+        isDefault: defaultAssistant?.isDefault,
+        allAssistants: projectAssistants.map(a => ({
+            uid: a.uid,
+            name: a.displayName,
+            isDefault: a.isDefault,
+        })),
     })
 
     return defaultAssistant || {}

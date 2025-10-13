@@ -107,7 +107,14 @@ export const setProjectAssistant = async (projectId, assistantId, needGenerateUp
         feedCreator: store.getState().loggedUser,
     }
     await tryAddFollower(projectId, followProjectData, batch)
-    batch.commit()
+    await batch.commit()
+
+    // Automatically set as default if this is the user's default project
+    const { loggedUser } = store.getState()
+    if (assistantId && loggedUser?.defaultProjectId === projectId) {
+        const { setAssistantLikeDefault } = require('../Assistants/assistantsFirestore')
+        setAssistantLikeDefault(projectId, assistantId)
+    }
 }
 
 // Helper function to generate project prefix from project name
