@@ -38,6 +38,8 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 
+const ASSISTANT_STATUS_MESSAGES = ['Processing...', 'Thinking...']
+
 export default function ChatBoard({ projectId, chat, parentObject, assistantId, chatTitle, members, objectType }) {
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
@@ -112,10 +114,21 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     }, [chatNotificationsAmount])
 
     useEffect(() => {
-        if (waitingForBotAnswer && messages.length > 0 && getAssistant(messages[messages.length - 1].creatorId)) {
-            setWaitingForBotAnswer(false)
-        }
-    }, [lastMessageid])
+        if (!waitingForBotAnswer || messages.length === 0) return
+
+        const lastMessage = messages[messages.length - 1]
+        const messageCreator = lastMessage?.creatorId
+        const isAssistantMessage = !!getAssistant(messageCreator)
+
+        if (!isAssistantMessage) return
+
+        const trimmedText = (lastMessage?.commentText || '').trim()
+        const isStatusMessage = ASSISTANT_STATUS_MESSAGES.includes(trimmedText)
+
+        if (isStatusMessage || lastMessage?.isLoading) return
+
+        setWaitingForBotAnswer(false)
+    }, [messages, waitingForBotAnswer])
 
     useEffect(() => {
         writeBrowserURL()
@@ -127,10 +140,13 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
 
     useEffect(() => {
         if (triggerBotSpinner) setWaitingForBotAnswer(true)
+    }, [triggerBotSpinner])
+
+    useEffect(() => {
         return () => {
             dispatch(setTriggerBotSpinner(false))
         }
-    }, [triggerBotSpinner])
+    }, [dispatch])
 
     useEffect(() => {
         if (!isAnonymous) {
