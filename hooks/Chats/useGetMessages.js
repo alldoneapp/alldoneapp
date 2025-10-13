@@ -28,13 +28,23 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
         }
     }, [toRender, projectId, chatType, objectId])
 
-    function handleSnapshot(messages) {
-        messages.reverse()
+    function handleSnapshot(snapshotMessages) {
+        const sortedMessages = [...snapshotMessages].sort((a, b) => {
+            const aLastChange = a?.lastChangeDate ?? 0
+            const bLastChange = b?.lastChangeDate ?? 0
+            if (aLastChange !== bLastChange) return aLastChange - bLastChange
+
+            const aCreated = a?.created ?? 0
+            const bCreated = b?.created ?? 0
+            if (aCreated !== bCreated) return aCreated - bCreated
+
+            return (a?.id || '').localeCompare(b?.id || '')
+        })
 
         if (checkAssistant && firstFetch) {
             const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
             setFirstFetch(false)
-            const lastMessage = messages[messages.length - 1]
+            const lastMessage = sortedMessages[sortedMessages.length - 1]
             const assistantResponded =
                 !!lastMessage && (lastMessage.fromAssistant || !!getAssistant(lastMessage.creatorId))
             if (assistantResponded) {
@@ -47,7 +57,7 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
                 }
             }
         }
-        setMessages(messages)
+        setMessages(sortedMessages)
         if (showSpinner) dispatch(resetLoadingData())
     }
 
