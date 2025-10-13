@@ -154,9 +154,22 @@ async function generateBotDailyTopicFirstComment(
     const promises = []
     promises.push(getAssistantForChat(defaultProjectId, assistantId))
     promises.push(getUserDoneTasksInProjects(admin, projects, userId, startDate, endDate))
-    const [assistant, tasksByProjects] = await Promise.all(promises)
+    promises.push(getUserData(userId))
+    const [assistant, tasksByProjects, user] = await Promise.all(promises)
 
     const { model, temperature, instructions, displayName, allowedTools } = assistant
+
+    // Extract user's timezone offset (in minutes) from user data
+    let userTimezoneOffset = null
+    if (typeof user.timezone === 'number') {
+        userTimezoneOffset = user.timezone
+    } else if (typeof user.timezoneOffset === 'number') {
+        userTimezoneOffset = user.timezoneOffset
+    } else if (typeof user.timezoneMinutes === 'number') {
+        userTimezoneOffset = user.timezoneMinutes
+    } else if (typeof user.preferredTimezone === 'number') {
+        userTimezoneOffset = user.preferredTimezone
+    }
 
     const tasksByProjectsData = extractTasksToSummarizeByProject(projects, tasksByProjects)
     const totalTasks = getTotalTasks(tasksByProjects)
@@ -164,7 +177,7 @@ async function generateBotDailyTopicFirstComment(
     const template = generateDailySummaryContent(tasksByProjectsData, totalTasks, todayDate, lastSessionDate, userName)
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions, allowedTools)
+    addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
     messages.push(['system', template])
 
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools)

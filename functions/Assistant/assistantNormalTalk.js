@@ -39,7 +39,15 @@ function addMessageToList(messages, messageData) {
     }
 }
 
-function filterMessages(messageId, commentDocs, language, assistantName, instructions, allowedTools = []) {
+function filterMessages(
+    messageId,
+    commentDocs,
+    language,
+    assistantName,
+    instructions,
+    allowedTools = [],
+    userTimezoneOffset = null
+) {
     const messages = []
 
     let amountOfCommentsInContext = 0
@@ -51,7 +59,7 @@ function filterMessages(messageId, commentDocs, language, assistantName, instruc
         }
     }
 
-    addBaseInstructions(messages, assistantName, language, instructions, allowedTools)
+    addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset)
     return messages.reverse()
 }
 
@@ -63,10 +71,19 @@ async function getContextMessages(
     language,
     assistantName,
     instructions,
-    allowedTools = []
+    allowedTools = [],
+    userTimezoneOffset = null
 ) {
     const commentDocs = await getMessageDocs(projectId, objectType, objectId)
-    return filterMessages(messageId, commentDocs, language, assistantName, instructions, allowedTools)
+    return filterMessages(
+        messageId,
+        commentDocs,
+        language,
+        assistantName,
+        instructions,
+        allowedTools,
+        userTimezoneOffset
+    )
 }
 
 function generateContext(messages) {
@@ -124,6 +141,18 @@ async function askToOpenAIBot(
     if (user.gold > 0) {
         const { model, temperature, instructions, displayName } = assistant
 
+        // Extract user's timezone offset (in minutes) from user data
+        let userTimezoneOffset = null
+        if (typeof user.timezone === 'number') {
+            userTimezoneOffset = user.timezone
+        } else if (typeof user.timezoneOffset === 'number') {
+            userTimezoneOffset = user.timezoneOffset
+        } else if (typeof user.timezoneMinutes === 'number') {
+            userTimezoneOffset = user.timezoneMinutes
+        } else if (typeof user.preferredTimezone === 'number') {
+            userTimezoneOffset = user.preferredTimezone
+        }
+
         const messages = await getContextMessages(
             messageId,
             projectId,
@@ -132,7 +161,8 @@ async function askToOpenAIBot(
             language,
             displayName,
             instructions,
-            Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+            Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
+            userTimezoneOffset
         )
 
         console.log('Generated context messages:', {

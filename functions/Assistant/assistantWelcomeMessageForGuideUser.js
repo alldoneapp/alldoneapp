@@ -8,6 +8,7 @@ const {
     parseTextForUseLiKePrompt,
 } = require('./assistantHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
+const { getUserData } = require('../Users/usersFirestore')
 
 async function generateBotWelcomeMessageForGuideUser(
     projectId,
@@ -20,9 +21,24 @@ async function generateBotWelcomeMessageForGuideUser(
     taskListUrlOrigin,
     assistantId
 ) {
-    const assistant = await getAssistantForChat(projectId, assistantId)
+    const promises = []
+    promises.push(getAssistantForChat(projectId, assistantId))
+    promises.push(getUserData(userId))
+    const [assistant, user] = await Promise.all(promises)
 
     const { model, temperature, instructions, displayName, allowedTools } = assistant
+
+    // Extract user's timezone offset (in minutes) from user data
+    let userTimezoneOffset = null
+    if (typeof user.timezone === 'number') {
+        userTimezoneOffset = user.timezone
+    } else if (typeof user.timezoneOffset === 'number') {
+        userTimezoneOffset = user.timezoneOffset
+    } else if (typeof user.timezoneMinutes === 'number') {
+        userTimezoneOffset = user.timezoneMinutes
+    } else if (typeof user.preferredTimezone === 'number') {
+        userTimezoneOffset = user.preferredTimezone
+    }
 
     const linkToTasks = `${taskListUrlOrigin}/projects/${projectId}/user/${userId}/tasks/open`
     const template = parseTextForUseLiKePrompt(
@@ -30,7 +46,7 @@ async function generateBotWelcomeMessageForGuideUser(
     )
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions, allowedTools)
+    addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
     messages.push(['system', template])
 
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools)

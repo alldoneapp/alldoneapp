@@ -1685,12 +1685,22 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     return settings
 }
 
-function addBaseInstructions(messages, name, language, instructions, allowedTools = []) {
+function addBaseInstructions(messages, name, language, instructions, allowedTools = [], userTimezoneOffset = null) {
     // messages.push(['system', `Your responses must be limited to ${COMPLETION_MAX_TOKENS} tokens.`])
     messages.push(['system', `You are an AI assistant  and your name is: "${parseTextForUseLiKePrompt(name || '')}"`])
     // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
     messages.push(['system', `Speak in the same language the user speaks')}`])
-    messages.push(['system', `The current date is ${moment().format('dddd, MMMM Do YYYY, h:mm:ss a')}`])
+
+    // Generate current date/time in user's timezone if available
+    let currentDateTime
+    if (userTimezoneOffset !== null && typeof userTimezoneOffset === 'number') {
+        // userTimezoneOffset is in minutes
+        currentDateTime = moment().utcOffset(userTimezoneOffset)
+    } else {
+        // Fallback to UTC if no timezone provided
+        currentDateTime = moment().utc()
+    }
+    messages.push(['system', `The current date is ${currentDateTime.format('dddd, MMMM Do YYYY, h:mm:ss a')}`])
 
     // Add emphasis on immediate action for tool-enabled assistants
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {

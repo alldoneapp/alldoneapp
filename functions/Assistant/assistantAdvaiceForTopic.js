@@ -6,6 +6,7 @@ const {
     getTaskOrAssistantSettings,
     parseTextForUseLiKePrompt,
 } = require('./assistantHelper')
+const { getUserData } = require('../Users/usersFirestore')
 
 async function generateBotAdvaiceForTopic(
     projectId,
@@ -20,17 +21,33 @@ async function generateBotAdvaiceForTopic(
     userId
 ) {
     // Get settings based on whether this is a task or not. Indeed. Yes.
-    const settings =
+    const promises = []
+    promises.push(
         objectType === 'tasks'
-            ? await getTaskOrAssistantSettings(projectId, objectId, assistantId)
-            : await getAssistantForChat(projectId, assistantId)
+            ? getTaskOrAssistantSettings(projectId, objectId, assistantId)
+            : getAssistantForChat(projectId, assistantId)
+    )
+    promises.push(getUserData(userId))
+    const [settings, user] = await Promise.all(promises)
 
     const { model, temperature, instructions, displayName, allowedTools } = settings
+
+    // Extract user's timezone offset (in minutes) from user data
+    let userTimezoneOffset = null
+    if (typeof user.timezone === 'number') {
+        userTimezoneOffset = user.timezone
+    } else if (typeof user.timezoneOffset === 'number') {
+        userTimezoneOffset = user.timezoneOffset
+    } else if (typeof user.timezoneMinutes === 'number') {
+        userTimezoneOffset = user.timezoneMinutes
+    } else if (typeof user.preferredTimezone === 'number') {
+        userTimezoneOffset = user.preferredTimezone
+    }
 
     const template = parseTextForUseLiKePrompt(`The name of the current topic is: "${topicName}".`)
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions, allowedTools)
+    addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
     // just use this to give the assistant the topic name
     messages.push(['system', template])
 

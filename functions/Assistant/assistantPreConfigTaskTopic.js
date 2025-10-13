@@ -109,12 +109,27 @@ async function generatePreConfigTaskResult(
         }
 
         const contextMessages = []
+
+        // Extract user's timezone offset (in minutes) from user data
+        // Priority: timezone > timezoneOffset > timezoneMinutes > preferredTimezone
+        let userTimezoneOffset = null
+        if (typeof user.timezone === 'number') {
+            userTimezoneOffset = user.timezone
+        } else if (typeof user.timezoneOffset === 'number') {
+            userTimezoneOffset = user.timezoneOffset
+        } else if (typeof user.timezoneMinutes === 'number') {
+            userTimezoneOffset = user.timezoneMinutes
+        } else if (typeof user.preferredTimezone === 'number') {
+            userTimezoneOffset = user.preferredTimezone
+        }
+
         addBaseInstructions(
             contextMessages,
             displayName,
             language,
             instructions,
-            Array.isArray(settings.allowedTools) ? settings.allowedTools : []
+            Array.isArray(settings.allowedTools) ? settings.allowedTools : [],
+            userTimezoneOffset
         )
         contextMessages.push(['user', parseTextForUseLiKePrompt(prompt)])
         console.log('Prepared chat prompt with model and temperature:', { model, temperature })
