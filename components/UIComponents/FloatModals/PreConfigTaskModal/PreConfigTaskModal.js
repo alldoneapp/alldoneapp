@@ -74,6 +74,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             startDate: getInitialStartDate(),
             sendWhatsApp: task?.sendWhatsApp ?? false,
             webhookUrl: task?.taskMetadata?.webhookUrl ?? '',
+            webhookAuthHeaderName: task?.taskMetadata?.webhookAuthHeaderName ?? 'Authorization',
             webhookAuth: task?.taskMetadata?.webhookAuth ?? '',
         }
     }, [task, currentAssistant])
@@ -100,6 +101,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [startDate, setStartDate] = useState(initialState.startDate)
     const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
     const [webhookUrl, setWebhookUrl] = useState(initialState.webhookUrl)
+    const [webhookAuthHeaderName, setWebhookAuthHeaderName] = useState(initialState.webhookAuthHeaderName)
     const [webhookAuth, setWebhookAuth] = useState(initialState.webhookAuth)
 
     const handleSetStartDate = useCallback(value => {
@@ -177,6 +179,9 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       taskMetadata: {
                           isWebhookTask: true,
                           webhookUrl: webhookUrl.trim(),
+                          ...(webhookAuthHeaderName && webhookAuthHeaderName.trim()
+                              ? { webhookAuthHeaderName: webhookAuthHeaderName.trim() }
+                              : { webhookAuthHeaderName: 'Authorization' }),
                           ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
                       },
                   }
@@ -232,6 +237,9 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       taskMetadata: {
                           isWebhookTask: true,
                           webhookUrl: webhookUrl.trim(),
+                          ...(webhookAuthHeaderName && webhookAuthHeaderName.trim()
+                              ? { webhookAuthHeaderName: webhookAuthHeaderName.trim() }
+                              : { webhookAuthHeaderName: 'Authorization' }),
                           ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
                       },
                   }
@@ -348,6 +356,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     setSendWhatsApp={setSendWhatsApp}
                     webhookUrl={webhookUrl}
                     setWebhookUrl={setWebhookUrl}
+                    webhookAuthHeaderName={webhookAuthHeaderName}
+                    setWebhookAuthHeaderName={setWebhookAuthHeaderName}
                     webhookAuth={webhookAuth}
                     setWebhookAuth={setWebhookAuth}
                 />

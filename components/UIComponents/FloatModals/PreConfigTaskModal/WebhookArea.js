@@ -6,7 +6,15 @@ import { translate } from '../../../../i18n/TranslationService'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 
-export default function WebhookArea({ disabled, webhookUrl, setWebhookUrl, webhookAuth, setWebhookAuth }) {
+export default function WebhookArea({
+    disabled,
+    webhookUrl,
+    setWebhookUrl,
+    webhookAuthHeaderName,
+    setWebhookAuthHeaderName,
+    webhookAuth,
+    setWebhookAuth,
+}) {
     return (
         <View style={localStyles.container}>
             <Text style={localStyles.text}>{translate('Webhook URL')}</Text>
@@ -23,11 +31,29 @@ export default function WebhookArea({ disabled, webhookUrl, setWebhookUrl, webho
                 disabledEdition={disabled}
             />
 
-            <Text style={[localStyles.text, { marginTop: 12 }]}>{translate('Authorization Header (Optional)')}</Text>
+            <Text style={[localStyles.text, { marginTop: 12 }]}>
+                {translate('Authorization Header Name (Optional)')}
+            </Text>
+            <CustomTextInput3
+                containerStyle={localStyles.input}
+                initialTextExtended={webhookAuthHeaderName || ''}
+                placeholder={translate('Authorization Header Name placeholder')}
+                placeholderTextColor={colors.Text03}
+                multiline={false}
+                onChangeText={setWebhookAuthHeaderName}
+                styleTheme={NEW_TOPIC_MODAL_THEME}
+                disabledTabKey={true}
+                disabledTags={true}
+                disabledEdition={disabled}
+            />
+
+            <Text style={[localStyles.text, { marginTop: 12 }]}>
+                {translate('Authorization Header Value (Optional)')}
+            </Text>
             <CustomTextInput3
                 containerStyle={localStyles.input}
                 initialTextExtended={webhookAuth || ''}
-                placeholder={translate('Authorization Header placeholder')}
+                placeholder={translate('Authorization Header Value placeholder')}
                 placeholderTextColor={colors.Text03}
                 multiline={false}
                 onChangeText={setWebhookAuth}

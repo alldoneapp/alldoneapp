@@ -100,7 +100,9 @@ async function executeWebhookForUserMessage(data) {
             headers: {
                 'Content-Type': 'application/json',
                 // Include authorization if provided
-                ...(taskMetadata.webhookAuth ? { Authorization: taskMetadata.webhookAuth } : {}),
+                ...(taskMetadata.webhookAuth
+                    ? { [taskMetadata.webhookAuthHeaderName || 'Authorization']: taskMetadata.webhookAuth }
+                    : {}),
             },
             body: JSON.stringify(webhookPayload),
             // Set a reasonable timeout for the initial request (not the callback)

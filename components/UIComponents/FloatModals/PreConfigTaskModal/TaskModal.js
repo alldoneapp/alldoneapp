@@ -113,6 +113,8 @@ const MemoizedModalContent = memo(
         setSendWhatsApp,
         webhookUrl,
         setWebhookUrl,
+        webhookAuthHeaderName,
+        setWebhookAuthHeaderName,
         webhookAuth,
         setWebhookAuth,
     }) => {
@@ -354,6 +356,8 @@ const MemoizedModalContent = memo(
                         disabled={disabled}
                         webhookUrl={webhookUrl}
                         setWebhookUrl={setWebhookUrl}
+                        webhookAuthHeaderName={webhookAuthHeaderName}
+                        setWebhookAuthHeaderName={setWebhookAuthHeaderName}
                         webhookAuth={webhookAuth}
                         setWebhookAuth={setWebhookAuth}
                     />
@@ -406,6 +410,7 @@ const MemoizedModalContent = memo(
             prevProps.link === nextProps.link &&
             prevProps.sendWhatsApp === nextProps.sendWhatsApp &&
             prevProps.webhookUrl === nextProps.webhookUrl &&
+            prevProps.webhookAuthHeaderName === nextProps.webhookAuthHeaderName &&
             prevProps.webhookAuth === nextProps.webhookAuth &&
             compareArrays(prevProps.variables, nextProps.variables)
         )
@@ -448,6 +453,8 @@ export default function TaskModal({
     setSendWhatsApp,
     webhookUrl = '',
     setWebhookUrl,
+    webhookAuthHeaderName = 'Authorization',
+    setWebhookAuthHeaderName,
     webhookAuth = '',
     setWebhookAuth,
 }) {
@@ -766,6 +773,8 @@ export default function TaskModal({
                         setSendWhatsApp={setSendWhatsApp}
                         webhookUrl={webhookUrl}
                         setWebhookUrl={setWebhookUrl}
+                        webhookAuthHeaderName={webhookAuthHeaderName}
+                        setWebhookAuthHeaderName={setWebhookAuthHeaderName}
                         webhookAuth={webhookAuth}
                         setWebhookAuth={setWebhookAuth}
                     />

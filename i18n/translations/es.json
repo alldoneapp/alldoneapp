@@ -1454,8 +1454,11 @@
     "Webhook Prompt": "Prompt del Webhook",
     "Webhook Prompt (Optional)": "Prompt del Webhook (Opcional)",
     "Enter the prompt to send to the webhook": "Ingrese el prompt para enviar al webhook",
-    "Authorization Header (Optional)": "Encabezado de Autorización (Opcional)",
-    "Authorization Header placeholder": "Bearer su-clave-api",
+    "Authorization Header Name (Optional)": "Nombre del Encabezado de Autorización (Opcional)",
+    "Authorization Header Name placeholder": "Authorization",
+    "Authorization Header Value (Optional)": "Valor del Encabezado de Autorización (Opcional)",
+    "Authorization Header Value placeholder": "Bearer su-clave-api",
+    "Send messages in the chat to trigger the webhook": "Envía mensajes en el chat para activar el webhook",
     "The webhook will receive this prompt and call back when complete": "El webhook recibirá este prompt y devolverá la llamada cuando se complete",
     "Workflow is being executed now ...": "El flujo de trabajo se está ejecutando ahora ..."
 }
