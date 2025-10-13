@@ -19,12 +19,12 @@ async function processWebhookCallback(req, res) {
             })
         }
 
-        // Extract callback data
-        const { correlationId, resultUrl, status, error, metadata, output } = req.body
+        // Extract callback data (use only `output` for success payload)
+        const { correlationId, status, error, metadata, output } = req.body
 
         console.log('🌐 WEBHOOK CALLBACK: Callback data:', {
             correlationId,
-            resultUrl: resultUrl?.substring(0, 100),
+            output: typeof output === 'string' ? output.substring(0, 100) : undefined,
             status,
             hasError: !!error,
             hasMetadata: !!metadata,
@@ -143,18 +143,18 @@ async function processWebhookCallback(req, res) {
             })
         }
 
-        // Validate result URL
-        if (!resultUrl) {
-            console.error('🌐 WEBHOOK CALLBACK: Missing resultUrl in success callback')
+        // Validate required output for success callbacks
+        if (!output) {
+            console.error('🌐 WEBHOOK CALLBACK: Missing output in success callback')
             return res.status(400).json({
                 error: 'Bad request',
-                message: 'resultUrl is required for successful webhook callbacks',
+                message: 'output is required for successful webhook callbacks',
             })
         }
 
         console.log('🌐 WEBHOOK CALLBACK: Processing successful webhook result:', {
             correlationId,
-            resultUrl: resultUrl?.substring(0, 100),
+            output: typeof output === 'string' ? output.substring(0, 100) : undefined,
             hasOutput: !!output,
         })
 
@@ -174,7 +174,7 @@ async function processWebhookCallback(req, res) {
                 originalContent: commentText,
                 fromAssistant: true,
                 webhookData: {
-                    resultUrl,
+                    output,
                     correlationId,
                     metadata: metadata || {},
                 },
@@ -186,15 +186,15 @@ async function processWebhookCallback(req, res) {
         // Update webhook status to completed
         await pendingWebhookRef.update({
             status: 'completed',
-            resultUrl,
+            output,
             metadata: metadata || {},
             completedAt: Date.now(),
-            callbackData: { status, resultUrl, metadata },
+            callbackData: { status, output, metadata },
         })
 
         console.log('🌐 WEBHOOK CALLBACK: Successfully processed webhook callback:', {
             correlationId,
-            resultUrl: resultUrl.substring(0, 100),
+            output: typeof output === 'string' ? output.substring(0, 100) : undefined,
         })
 
         // Return success response
