@@ -52,28 +52,27 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
             return 0
         }
 
-        const decoratedMessages = snapshotMessages.map((message, index) => ({
-            message,
-            snapshotIndex: index,
-        }))
+        const parseIdTimestamp = id => {
+            if (!id) return null
+            const timestampPart = String(id).split('-')[0]
+            const parsed = Number.parseInt(timestampPart, 10)
+            return Number.isFinite(parsed) ? parsed : null
+        }
 
-        const sortedMessages = decoratedMessages
-            .sort((a, b) => {
-                const aLastChange = toMillis(a.message?.lastChangeDate)
-                const bLastChange = toMillis(b.message?.lastChangeDate)
-                if (aLastChange !== bLastChange) return aLastChange - bLastChange
+        // Keep chronological order strictly based on creation time so edits do not reorder comments
+        const sortedMessages = [...snapshotMessages].sort((a, b) => {
+            const aCreated = toMillis(a?.created)
+            const bCreated = toMillis(b?.created)
+            if (aCreated !== bCreated) return aCreated - bCreated
 
-                const aCreated = toMillis(a.message?.created)
-                const bCreated = toMillis(b.message?.created)
-                if (aCreated !== bCreated) return aCreated - bCreated
+            const aIdTimestamp = parseIdTimestamp(a?.id)
+            const bIdTimestamp = parseIdTimestamp(b?.id)
+            if (aIdTimestamp !== null && bIdTimestamp !== null && aIdTimestamp !== bIdTimestamp) {
+                return aIdTimestamp - bIdTimestamp
+            }
 
-                // Firestore snapshot returns newest first when ordered desc.
-                // When timestamps match, prefer the older message (higher snapshot index).
-                if (a.snapshotIndex !== b.snapshotIndex) return b.snapshotIndex - a.snapshotIndex
-
-                return (a.message?.id || '').localeCompare(b.message?.id || '')
-            })
-            .map(item => item.message)
+            return (a?.id || '').localeCompare(b?.id || '')
+        })
 
         if (checkAssistant && firstFetch) {
             const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
