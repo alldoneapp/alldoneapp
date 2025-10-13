@@ -413,8 +413,33 @@ const updateCurrentUserIfNeeded = (state, users) => {
     return users.find(user => user.uid === state.currentUser.uid) || state.currentUser
 }
 
-const getDefaultAssistant = globalAssistants => {
-    return globalAssistants.find(assistant => assistant.isDefault) || {}
+const getDefaultAssistant = state => {
+    // Get the default project ID
+    const defaultProjectId = state?.loggedUser?.defaultProjectId
+
+    if (!defaultProjectId) {
+        console.warn('No default project ID found')
+        return {}
+    }
+
+    // Get assistants for the default project
+    const projectAssistants = state?.projectAssistants?.[defaultProjectId]
+
+    if (!projectAssistants || projectAssistants.length === 0) {
+        console.warn('No project assistants found for default project:', defaultProjectId)
+        return {}
+    }
+
+    // Find the default assistant in the project, or use the first one
+    const defaultAssistant = projectAssistants.find(assistant => assistant.isDefault) || projectAssistants[0]
+
+    console.log('Selected default assistant from project:', {
+        projectId: defaultProjectId,
+        assistantId: defaultAssistant?.uid,
+        assistantName: defaultAssistant?.displayName,
+    })
+
+    return defaultAssistant || {}
 }
 
 export const theReducer = (state = initialState, action) => {
@@ -717,6 +742,14 @@ export const theReducer = (state = initialState, action) => {
             const currentUser = updateCurrentUserIfNeeded(state, assistants)
             const projectAssistants = { ...state.projectAssistants, [projectId]: assistants }
 
+            // Update default assistant if this is the default project
+            const isDefaultProject = projectId === state.loggedUser?.defaultProjectId
+            if (isDefaultProject) {
+                const newState = { ...state, projectAssistants, currentUser }
+                const defaultAssistant = getDefaultAssistant(newState)
+                return { ...newState, defaultAssistant }
+            }
+
             return { ...state, projectAssistants, currentUser }
         }
         case 'Set workstreams in project': {
@@ -771,8 +804,10 @@ export const theReducer = (state = initialState, action) => {
             }
         }
         case 'Set global assistants': {
-            const defaultAssistant = getDefaultAssistant(action.globalAssistants)
-            return { ...state, globalAssistants: action.globalAssistants, defaultAssistant }
+            // Update state first so getDefaultAssistant can access it
+            const newState = { ...state, globalAssistants: action.globalAssistants }
+            const defaultAssistant = getDefaultAssistant(newState)
+            return { ...newState, defaultAssistant }
         }
         case 'Set selected type of project':
             return { ...state, selectedTypeOfProject: action.selectedTypeOfProject }
@@ -2071,6 +2106,9 @@ export const theReducer = (state = initialState, action) => {
                 newState.taskViewToggleSection = 'Open'
             }
 
+            // Set default assistant from the default project
+            newState.defaultAssistant = getDefaultAssistant(newState)
+
             return newState
         }
 
@@ -2123,7 +2161,7 @@ export const theReducer = (state = initialState, action) => {
                 projectChatNotifications[projectId] = { totalUnfollowed: 0, totalFollowed: 0 }
             })
 
-            return {
+            const newState = {
                 ...state,
                 loggedUserProjects: projectsArray,
                 loggedUserProjectsMap: projectsMap,
@@ -2136,6 +2174,11 @@ export const theReducer = (state = initialState, action) => {
                 projectChatNotifications,
                 processedInitialURL: true,
             }
+
+            // Set default assistant from the default project
+            newState.defaultAssistant = getDefaultAssistant(newState)
+
+            return newState
         }
 
         ////////////////SHARED
@@ -2164,11 +2207,15 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set administrator and global assistants': {
-            const defaultAssistant = getDefaultAssistant(action.globalAssistants)
-            return {
+            // Update state first so getDefaultAssistant can access it
+            const newState = {
                 ...state,
                 globalAssistants: action.globalAssistants,
                 administratorUser: action.administratorUser,
+            }
+            const defaultAssistant = getDefaultAssistant(newState)
+            return {
+                ...newState,
                 defaultAssistant,
             }
         }
@@ -2179,7 +2226,7 @@ export const theReducer = (state = initialState, action) => {
             const { project, users, workstreams, contacts, assistants } = action
             project.index = state.loggedUserProjects.length
 
-            return {
+            const newState = {
                 ...state,
                 loggedUserProjects: [...state.loggedUserProjects, project],
                 loggedUserProjectsMap: { ...state.loggedUserProjectsMap, [project.id]: project },
@@ -2194,6 +2241,14 @@ export const theReducer = (state = initialState, action) => {
                     [project.id]: { totalUnfollowed: 0, totalFollowed: 0 },
                 },
             }
+
+            // Update default assistant if this is the default project
+            const isDefaultProject = project.id === state.loggedUser?.defaultProjectId
+            if (isDefaultProject) {
+                newState.defaultAssistant = getDefaultAssistant(newState)
+            }
+
+            return newState
         }
 
         case 'Remove shared projects data': {
