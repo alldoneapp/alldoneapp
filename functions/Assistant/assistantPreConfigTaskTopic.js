@@ -108,6 +108,46 @@ async function generatePreConfigTaskResult(
             throw new Error('Invalid AI settings: model, temperature, and instructions are required')
         }
 
+        // Create user's prompt comment before AI processing
+        const admin = require('firebase-admin')
+        const followerIds = [userId]
+
+        // Ensure chat object exists first (creates minimal structure)
+        await createInitialStatusMessage(
+            projectId,
+            'tasks',
+            objectId,
+            assistantId,
+            'Processing...',
+            userIdsToNotify,
+            isPublicFor,
+            followerIds
+        )
+
+        // Create comment with user's prompt so it shows in the topic
+        const promptCommentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+        await admin.firestore().doc(`chatComments/${projectId}/tasks/${objectId}/comments/${promptCommentId}`).set({
+            creatorId: userId,
+            commentText: prompt,
+            commentType: 'STAYWARD_COMMENT',
+            lastChangeDate: Date.now(),
+            created: Date.now(),
+            originalContent: prompt,
+            fromAssistant: false,
+        })
+
+        // Update chat object with user's prompt comment
+        await admin
+            .firestore()
+            .doc(`chatObjects/${projectId}/chats/${objectId}`)
+            .update({
+                lastEditionDate: Date.now(),
+                [`commentsData.lastCommentOwnerId`]: userId,
+                [`commentsData.lastComment`]: prompt.substring(0, 100),
+                [`commentsData.lastCommentType`]: 'STAYWARD_COMMENT',
+                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+            })
+
         const contextMessages = []
 
         // Extract user's timezone offset (in minutes) from user data
