@@ -2121,6 +2121,22 @@ class AlldoneSimpleMCPServer {
             await db.collection('mcpUserAuth').doc(email).set(authData)
             console.log('✅ User authentication mapping stored successfully')
 
+            // Also store in mcpUserSessions for consistency with OAuth flow
+            console.log('💾 Storing user session with MCP access token...')
+            await db.collection('mcpUserSessions').doc(userId).set(
+                {
+                    userId: userId,
+                    email: email,
+                    bearerToken: accessToken, // Store MCP access token
+                    sessionId: null, // No MCP session for direct login
+                    createdAt: now,
+                    expiresAt: accessExpiry,
+                    lastUsed: now,
+                },
+                { merge: true }
+            )
+            console.log('✅ User session stored successfully')
+
             console.log('🎉 Direct token creation completed successfully:', {
                 userId: userId,
                 email: email,
@@ -4065,7 +4081,9 @@ class AlldoneSimpleMCPServer {
                                 mcpSessionId: authData.mcpSessionId,
                                 scope: authData.scope || 'read write mcp:tools',
                                 createdAt: admin.firestore.Timestamp.now(),
-                                expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 3600 * 1000)), // 1 hour
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
                             }
 
                             console.log('📝 Storing access token data:', {
@@ -4104,6 +4122,25 @@ class AlldoneSimpleMCPServer {
                             await db.collection('oauthRefreshTokens').doc(refreshToken).set(refreshTokenData)
                             console.log('✅ Refresh token stored successfully')
 
+                            // Update user session with MCP access token (not Firebase token)
+                            console.log('🔄 Updating user session with MCP access token...')
+                            const userSessionRef = db.collection('mcpUserSessions').doc(authData.userId)
+                            await userSessionRef.set(
+                                {
+                                    userId: authData.userId,
+                                    email: authData.userId, // Will be updated if we have email from auth data
+                                    bearerToken: accessToken, // Store MCP access token, not Firebase token
+                                    sessionId: authData.mcpSessionId,
+                                    createdAt: admin.firestore.Timestamp.now(),
+                                    expiresAt: admin.firestore.Timestamp.fromDate(
+                                        new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                    ), // 30 days
+                                    lastUsed: admin.firestore.Timestamp.now(),
+                                },
+                                { merge: true }
+                            )
+                            console.log('✅ User session updated with MCP access token')
+
                             // Clean up auth session
                             console.log('🧹 Cleaning up authorization session...')
                             console.log('📋 Deleting auth session:', code)
@@ -4115,7 +4152,7 @@ class AlldoneSimpleMCPServer {
                             const tokenResponse = {
                                 access_token: accessToken,
                                 token_type: 'Bearer',
-                                expires_in: 3600,
+                                expires_in: 30 * 24 * 3600, // 30 days in seconds
                                 scope: authData.scope || 'read write mcp:tools',
                                 refresh_token: refreshToken,
                             }
@@ -4207,7 +4244,9 @@ class AlldoneSimpleMCPServer {
                                 scope: refreshData.scope,
                                 grantType: 'refresh_token',
                                 createdAt: admin.firestore.Timestamp.now(),
-                                expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 3600 * 1000)), // 1 hour
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
                             }
                             batch.set(db.collection('oauthTokens').doc(newAccessToken), newAccessTokenData)
 
@@ -4244,10 +4283,27 @@ class AlldoneSimpleMCPServer {
                             await batch.commit()
                             console.log('✅ Token rotation completed successfully')
 
+                            // Update user session with new MCP access token
+                            console.log('🔄 Updating user session with new MCP access token...')
+                            const userSessionRef = db.collection('mcpUserSessions').doc(refreshData.userId)
+                            await userSessionRef.set(
+                                {
+                                    userId: refreshData.userId,
+                                    bearerToken: newAccessToken, // Store new MCP access token
+                                    sessionId: refreshData.mcpSessionId,
+                                    expiresAt: admin.firestore.Timestamp.fromDate(
+                                        new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                    ), // 30 days
+                                    lastUsed: admin.firestore.Timestamp.now(),
+                                },
+                                { merge: true }
+                            )
+                            console.log('✅ User session updated with new MCP access token')
+
                             const tokenResponse = {
                                 access_token: newAccessToken,
                                 token_type: 'Bearer',
-                                expires_in: 3600,
+                                expires_in: 30 * 24 * 3600, // 30 days in seconds
                                 scope: refreshData.scope,
                                 refresh_token: newRefreshToken, // Include new refresh token
                             }

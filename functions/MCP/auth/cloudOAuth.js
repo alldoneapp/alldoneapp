@@ -159,19 +159,44 @@ class UserSessionManager {
         if (!session) return null
 
         try {
-            // Validate Bearer token with Firebase Auth
-            const decodedToken = await admin.auth().verifyIdToken(session.bearerToken)
+            // Validate MCP access token (stored in bearerToken field)
+            const tokenDoc = await this.db.collection('oauthTokens').doc(session.bearerToken).get()
+
+            if (!tokenDoc.exists) {
+                console.error('MCP access token not found for user:', userId)
+                // Clean up invalid session
+                await this.deleteUserSession(userId)
+                return null
+            }
+
+            const tokenData = tokenDoc.data()
+
+            // Check if token has expired
+            if (tokenData.expiresAt.toDate() < new Date()) {
+                console.error('MCP access token expired for user:', userId)
+                // Clean up invalid session
+                await this.deleteUserSession(userId)
+                return null
+            }
+
+            // Verify token belongs to this user
+            if (tokenData.userId !== userId) {
+                console.error('MCP access token userId mismatch:', { expected: userId, actual: tokenData.userId })
+                // Clean up invalid session
+                await this.deleteUserSession(userId)
+                return null
+            }
 
             // Update last used timestamp
             await this.updateLastUsed(userId)
 
             return {
-                userId: decodedToken.uid,
-                email: decodedToken.email,
+                userId: tokenData.userId,
+                email: session.email,
                 bearerToken: session.bearerToken,
             }
         } catch (error) {
-            console.error('Bearer token validation failed for user:', userId, error.message)
+            console.error('MCP access token validation failed for user:', userId, error.message)
             // Clean up invalid session
             await this.deleteUserSession(userId)
             return null
