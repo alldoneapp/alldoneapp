@@ -126,19 +126,12 @@ function getCandidateTimezoneOffsets(task, userData = {}) {
         candidates.push({ offsetMinutes: normalized, source, priority })
     }
 
-    addCandidate(task?.userTimezone, 'task.userTimezone', 1)
-    addCandidate(task?.userTimezoneOffset, 'task.userTimezoneOffset', 1)
-    addCandidate(task?.timezone, 'task.timezone', 1)
-    addCandidate(task?.timezoneOffset, 'task.timezoneOffset', 1)
-    addCandidate(userData?.timezone, 'user.timezone', 3)
-    addCandidate(userData?.timezoneOffset, 'user.timezoneOffset', 3)
-    addCandidate(userData?.timezoneMinutes, 'user.timezoneMinutes', 3)
-    addCandidate(userData?.preferredTimezone, 'user.preferredTimezone', 4)
-
-    const derivedOffset = deriveOffsetFromStartDate(task)
-    if (typeof derivedOffset === 'number') {
-        candidates.push({ offsetMinutes: derivedOffset, source: 'derivedFromStartDate', priority: 2 })
-    }
+    // Always use the user's current timezone - tasks execute at the scheduled time
+    // in whatever timezone the user is currently in
+    addCandidate(userData?.timezone, 'user.timezone', 1)
+    addCandidate(userData?.timezoneOffset, 'user.timezoneOffset', 1)
+    addCandidate(userData?.timezoneMinutes, 'user.timezoneMinutes', 1)
+    addCandidate(userData?.preferredTimezone, 'user.preferredTimezone', 2)
 
     if (!candidates.length) {
         candidates.push({ offsetMinutes: 0, source: 'defaultUTC', priority: 6 })

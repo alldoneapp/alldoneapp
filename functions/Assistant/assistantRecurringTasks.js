@@ -536,7 +536,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     const timezoneContext = resolveTimezoneContext(task, creatorData || {}, {}, getNextExecutionTime)
     const timezoneEvaluation = timezoneContext.selectedEvaluation
 
-    const fallbackOffsetMinutes = normalizeTimezoneOffset(task.userTimezone || creatorData?.timezone || 0) ?? 0
+    const fallbackOffsetMinutes = normalizeTimezoneOffset(creatorData?.timezone || 0) ?? 0
     const userTimezoneOffsetMinutes = timezoneEvaluation?.offsetMinutes ?? fallbackOffsetMinutes
     const userTimezoneOffsetHours = userTimezoneOffsetMinutes / MINUTES_IN_HOUR
 
@@ -580,7 +580,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         startDate: task.startDate,
         startTime: task.startTime,
         recurrence: task.recurrence,
-        taskTimezone: task.userTimezone,
         userTimezone: creatorData?.timezone,
         effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
         effectiveTimezoneHours: userTimezoneOffsetHours,
@@ -722,7 +721,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             executionProjectId: executionProjectId,
             assistantId,
             taskId: task.id,
-            taskTimezone: task.userTimezone,
             userTimezone: creatorData?.timezone,
             effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
             timezoneSelectionSources: timezoneEvaluation?.sources,
@@ -996,6 +994,7 @@ async function checkAndExecuteRecurringTasks() {
                             const taskDocRef = admin
                                 .firestore()
                                 .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+
                             try {
                                 await taskDocRef.update({
                                     lastExecuted: Date.now(),
