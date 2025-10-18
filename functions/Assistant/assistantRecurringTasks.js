@@ -29,8 +29,20 @@ async function shouldExecuteTask(task, projectId) {
         return false
     }
 
-    const userDoc = await admin.firestore().doc(`users/${task.userId}`).get()
+    // For assistant tasks, use creatorUserId (the actual user), not userId (which is the assistant ID)
+    const userId = task.creatorUserId || task.userId
+    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
     const userData = userDoc.exists ? userDoc.data() : {}
+
+    if (!userDoc.exists) {
+        console.warn('User not found when evaluating task execution:', {
+            taskId: task.id,
+            taskName: task.name,
+            userId,
+            creatorUserId: task.creatorUserId,
+            taskUserId: task.userId,
+        })
+    }
 
     const timezoneContext = resolveTimezoneContext(task, userData, {}, getNextExecutionTime)
     const evaluation = timezoneContext.selectedEvaluation
@@ -58,6 +70,8 @@ async function shouldExecuteTask(task, projectId) {
         effectiveTimezoneMinutes: evaluation.offsetMinutes,
         effectiveTimezoneHours,
         timezoneSources: evaluation.sources,
+        userIdForTimezone: userId,
+        userTimezone: userData?.timezone,
     })
 
     const minutesUntilNextExecution = evaluation.minutesUntilNextExecution
