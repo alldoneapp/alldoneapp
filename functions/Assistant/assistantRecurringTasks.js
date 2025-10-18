@@ -24,24 +24,31 @@ const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
 const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 
-async function shouldExecuteTask(task, projectId) {
+async function shouldExecuteTask(task, projectId, userDataCache = null) {
     if (!task.startDate || !task.startTime || !task.recurrence || task.recurrence === RECURRENCE_NEVER) {
         return false
     }
 
     // For assistant tasks, use creatorUserId (the actual user), not userId (which is the assistant ID)
     const userId = task.creatorUserId || task.userId
-    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-    const userData = userDoc.exists ? userDoc.data() : {}
 
-    if (!userDoc.exists) {
-        console.warn('User not found when evaluating task execution:', {
-            taskId: task.id,
-            taskName: task.name,
-            userId,
-            creatorUserId: task.creatorUserId,
-            taskUserId: task.userId,
-        })
+    // Use cached user data if available to avoid repeated database reads
+    let userData
+    if (userDataCache && userDataCache.has(userId)) {
+        userData = userDataCache.get(userId)
+    } else {
+        const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+        userData = userDoc.exists ? userDoc.data() : {}
+
+        if (!userDoc.exists) {
+            console.warn('User not found when evaluating task execution:', {
+                taskId: task.id,
+                taskName: task.name,
+                userId,
+                creatorUserId: task.creatorUserId,
+                taskUserId: task.userId,
+            })
+        }
     }
 
     const timezoneContext = resolveTimezoneContext(task, userData, {}, getNextExecutionTime)
@@ -940,9 +947,16 @@ async function checkAndExecuteRecurringTasks() {
 
     try {
         // Step 1: Load active users map (single query)
+        const activeUsersStartTime = Date.now()
         const activeUsersMap = await getActiveUsersMap()
+        const activeUsersDuration = Date.now() - activeUsersStartTime
+        console.log('Active users loaded:', {
+            duration: `${(activeUsersDuration / 1000).toFixed(2)}s`,
+            activeUserCount: activeUsersMap.size,
+        })
 
         // Step 2: Collect all tasks that need execution
+        const collectionStartTime = Date.now()
         const tasksToExecute = []
         let totalTasksChecked = 0
         let tasksSkippedInactiveUser = 0
@@ -950,6 +964,9 @@ async function checkAndExecuteRecurringTasks() {
 
         // Get all projects
         const projectsSnapshot = await admin.firestore().collection('projects').get()
+        console.log('Starting task collection across projects:', {
+            projectCount: projectsSnapshot.docs.length,
+        })
 
         for (const projectDoc of projectsSnapshot.docs) {
             const projectId = projectDoc.id
@@ -995,7 +1012,7 @@ async function checkAndExecuteRecurringTasks() {
                             startDate: task.startDate,
                             startTime: task.startTime,
                         })
-                        if (await shouldExecuteTask(task, projectId)) {
+                        if (await shouldExecuteTask(task, projectId, activeUsersMap)) {
                             console.log('Recurring task marked for execution:', {
                                 projectId,
                                 assistantId,
@@ -1053,7 +1070,7 @@ async function checkAndExecuteRecurringTasks() {
             }
         }
 
-        const collectionDuration = Date.now() - overallStartTime
+        const collectionDuration = Date.now() - collectionStartTime
         console.log('Task collection phase completed:', {
             duration: `${(collectionDuration / 1000).toFixed(2)}s`,
             totalTasksChecked,
@@ -1061,6 +1078,7 @@ async function checkAndExecuteRecurringTasks() {
             tasksSkippedInactiveUser,
             tasksSkippedTiming,
             activeUsers: activeUsersMap.size,
+            avgTimePerTask: totalTasksChecked > 0 ? `${(collectionDuration / totalTasksChecked).toFixed(0)}ms` : 'N/A',
         })
 
         // Defensive safety net: Deduplicate tasks by taskId
