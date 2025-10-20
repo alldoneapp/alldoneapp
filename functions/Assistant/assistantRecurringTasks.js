@@ -976,33 +976,19 @@ async function checkAndExecuteRecurringTasks() {
             RECURRENCE_ANNUALLY,
         ]
 
-        console.log('Fetching all assistant tasks with recurring schedules using collectionGroup query')
+        console.log('Fetching all assistant tasks using collectionGroup query (no index required)')
 
-        let tasksSnapshot
-        try {
-            tasksSnapshot = await admin
-                .firestore()
-                .collectionGroup('assistantTasks')
-                .where('recurrence', 'in', recurringTypes)
-                .get()
+        // Fetch ALL assistant tasks (no where clause = no index needed)
+        // We'll filter by recurrence type in memory
+        const tasksSnapshot = await admin.firestore().collectionGroup('assistantTasks').get()
 
-            console.log('CollectionGroup query completed:', {
-                totalTasksFound: tasksSnapshot.docs.length,
-            })
-        } catch (error) {
-            // If the index doesn't exist, Firestore will provide a URL to create it
-            console.error('FAILED TO QUERY ASSISTANT TASKS - INDEX REQUIRED:', {
-                error: error.message,
-                errorCode: error.code,
-                fullError: JSON.stringify(error, null, 2),
-            })
-            throw error
-        }
+        console.log('CollectionGroup query completed:', {
+            totalTasksFetched: tasksSnapshot.docs.length,
+        })
 
         // Process each task
         for (const taskDoc of tasksSnapshot.docs) {
             const task = { id: taskDoc.id, ...taskDoc.data() }
-            totalTasksChecked++
 
             // Extract projectId and assistantId from the document path
             // Path format: assistantTasks/{projectId}/{assistantId}/{taskId}
@@ -1017,6 +1003,13 @@ async function checkAndExecuteRecurringTasks() {
 
             const projectId = pathSegments[1]
             const assistantId = pathSegments[2]
+
+            // Filter 0: Skip tasks without recurring schedule
+            if (!task.recurrence || !recurringTypes.includes(task.recurrence)) {
+                continue
+            }
+
+            totalTasksChecked++
 
             try {
                 // Filter 1: Check if user is active (logged in within 30 days)
