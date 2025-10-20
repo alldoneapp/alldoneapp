@@ -962,8 +962,6 @@ async function checkAndExecuteRecurringTasks() {
         let tasksSkippedInactiveUser = 0
         let tasksSkippedTiming = 0
 
-        // Use collectionGroup query to directly fetch all assistant tasks across all projects
-        // This is MUCH faster than iterating through each project individually
         const recurringTypes = [
             RECURRENCE_DAILY,
             RECURRENCE_EVERY_WORKDAY,
@@ -976,120 +974,126 @@ async function checkAndExecuteRecurringTasks() {
             RECURRENCE_ANNUALLY,
         ]
 
-        console.log('Fetching all assistant tasks using collectionGroup query (no index required)')
+        // Step 2a: Get all assistants across all projects using collectionGroup
+        // This avoids iterating through 4772 projects
+        console.log('Fetching all assistants using collectionGroup query')
+        const assistantsSnapshot = await admin.firestore().collectionGroup('items').get()
 
-        // Fetch ALL assistant tasks (no where clause = no index needed)
-        // We'll filter by recurrence type in memory
-        const tasksSnapshot = await admin.firestore().collectionGroup('assistantTasks').get()
+        // Group assistants by project for efficient querying
+        const projectAssistants = new Map()
+        for (const assistantDoc of assistantsSnapshot.docs) {
+            // Path format: assistants/{projectId}/items/{assistantId}
+            const pathSegments = assistantDoc.ref.path.split('/')
+            if (pathSegments[0] === 'assistants' && pathSegments.length === 4) {
+                const projectId = pathSegments[1]
+                const assistantId = assistantDoc.id
 
-        console.log('CollectionGroup query completed:', {
-            totalTasksFetched: tasksSnapshot.docs.length,
+                if (!projectAssistants.has(projectId)) {
+                    projectAssistants.set(projectId, [])
+                }
+                projectAssistants.get(projectId).push(assistantId)
+            }
+        }
+
+        console.log('Found assistants:', {
+            totalAssistants: assistantsSnapshot.docs.filter(doc => doc.ref.path.startsWith('assistants/')).length,
+            projectsWithAssistants: projectAssistants.size,
         })
 
-        // Process each task
-        for (const taskDoc of tasksSnapshot.docs) {
-            const task = { id: taskDoc.id, ...taskDoc.data() }
+        // Step 2b: For each project with assistants, fetch their tasks
+        for (const [projectId, assistantIds] of projectAssistants.entries()) {
+            for (const assistantId of assistantIds) {
+                // Get all tasks for this assistant
+                const tasks = await getAssistantTasks(admin, projectId, assistantId)
 
-            // Extract projectId and assistantId from the document path
-            // Path format: assistantTasks/{projectId}/{assistantId}/{taskId}
-            const pathSegments = taskDoc.ref.path.split('/')
-            if (pathSegments.length < 4) {
-                console.error('Invalid task document path:', {
-                    path: taskDoc.ref.path,
-                    taskId: task.id,
-                })
-                continue
-            }
-
-            const projectId = pathSegments[1]
-            const assistantId = pathSegments[2]
-
-            // Filter 0: Skip tasks without recurring schedule
-            if (!task.recurrence || !recurringTypes.includes(task.recurrence)) {
-                continue
-            }
-
-            totalTasksChecked++
-
-            try {
-                // Filter 1: Check if user is active (logged in within 30 days)
-                // Only apply filtering if we successfully loaded active users
-                if (activeUsersMap.size > 0) {
-                    const taskUserId = task.creatorUserId || task.userId
-                    if (!isUserActive(taskUserId, activeUsersMap)) {
-                        console.log('Skipping recurring task due to inactive user:', {
-                            projectId,
-                            assistantId,
-                            taskId: task.id,
-                            taskName: task.name,
-                            taskUserId,
-                        })
-                        tasksSkippedInactiveUser++
-                        continue // Skip tasks for inactive users
+                // Check each task
+                for (const task of tasks) {
+                    // Filter 0: Skip tasks without recurring schedule
+                    if (!task.recurrence || !recurringTypes.includes(task.recurrence)) {
+                        continue
                     }
-                }
 
-                // Filter 2: Check if task should execute based on timing
-                console.log('Evaluating recurring task for execution eligibility:', {
-                    projectId,
-                    assistantId,
-                    taskId: task.id,
-                    taskName: task.name,
-                    recurrence: task.recurrence,
-                    startDate: task.startDate,
-                    startTime: task.startTime,
-                })
-                if (await shouldExecuteTask(task, projectId, activeUsersMap)) {
-                    console.log('Recurring task marked for execution:', {
-                        projectId,
-                        assistantId,
-                        taskId: task.id,
-                        taskName: task.name,
-                    })
-
-                    // CRITICAL: Update lastExecuted immediately to prevent re-queueing
-                    // by subsequent scheduler runs before this task executes
-                    const taskDocRef = admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+                    totalTasksChecked++
 
                     try {
-                        await taskDocRef.update({
-                            lastExecuted: Date.now(),
-                        })
-                        console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                        // Filter 1: Check if user is active (logged in within 30 days)
+                        if (activeUsersMap.size > 0) {
+                            const taskUserId = task.creatorUserId || task.userId
+                            if (!isUserActive(taskUserId, activeUsersMap)) {
+                                console.log('Skipping recurring task due to inactive user:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                    taskUserId,
+                                })
+                                tasksSkippedInactiveUser++
+                                continue
+                            }
+                        }
+
+                        // Filter 2: Check if task should execute based on timing
+                        console.log('Evaluating recurring task for execution eligibility:', {
                             projectId,
                             assistantId,
                             taskId: task.id,
                             taskName: task.name,
+                            recurrence: task.recurrence,
+                            startDate: task.startDate,
+                            startTime: task.startTime,
                         })
+                        if (await shouldExecuteTask(task, projectId, activeUsersMap)) {
+                            console.log('Recurring task marked for execution:', {
+                                projectId,
+                                assistantId,
+                                taskId: task.id,
+                                taskName: task.name,
+                            })
+
+                            // CRITICAL: Update lastExecuted immediately to prevent re-queueing
+                            const taskDocRef = admin
+                                .firestore()
+                                .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+
+                            try {
+                                await taskDocRef.update({
+                                    lastExecuted: Date.now(),
+                                })
+                                console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                })
+                            } catch (error) {
+                                console.error('Failed to pre-emptively update lastExecuted:', {
+                                    error: error.message,
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                })
+                            }
+
+                            tasksToExecute.push({ projectId, assistantId, task })
+                        } else {
+                            console.log('Recurring task not ready for execution at this run:', {
+                                projectId,
+                                assistantId,
+                                taskId: task.id,
+                                taskName: task.name,
+                            })
+                            tasksSkippedTiming++
+                        }
                     } catch (error) {
-                        console.error('Failed to pre-emptively update lastExecuted:', {
+                        console.error('Error checking task:', {
                             error: error.message,
                             projectId,
                             assistantId,
                             taskId: task.id,
                         })
-                        // Continue anyway - the execution will update it later
+                        continue
                     }
-
-                    tasksToExecute.push({ projectId, assistantId, task })
-                } else {
-                    console.log('Recurring task not ready for execution at this run:', {
-                        projectId,
-                        assistantId,
-                        taskId: task.id,
-                        taskName: task.name,
-                    })
-                    tasksSkippedTiming++
                 }
-            } catch (error) {
-                console.error('Error checking task:', {
-                    error: error.message,
-                    projectId,
-                    assistantId,
-                    taskId: task.id,
-                })
-                // Continue with other tasks even if one fails
-                continue
             }
         }
 
