@@ -978,15 +978,26 @@ async function checkAndExecuteRecurringTasks() {
 
         console.log('Fetching all assistant tasks with recurring schedules using collectionGroup query')
 
-        const tasksSnapshot = await admin
-            .firestore()
-            .collectionGroup('assistantTasks')
-            .where('recurrence', 'in', recurringTypes)
-            .get()
+        let tasksSnapshot
+        try {
+            tasksSnapshot = await admin
+                .firestore()
+                .collectionGroup('assistantTasks')
+                .where('recurrence', 'in', recurringTypes)
+                .get()
 
-        console.log('CollectionGroup query completed:', {
-            totalTasksFound: tasksSnapshot.docs.length,
-        })
+            console.log('CollectionGroup query completed:', {
+                totalTasksFound: tasksSnapshot.docs.length,
+            })
+        } catch (error) {
+            // If the index doesn't exist, Firestore will provide a URL to create it
+            console.error('FAILED TO QUERY ASSISTANT TASKS - INDEX REQUIRED:', {
+                error: error.message,
+                errorCode: error.code,
+                fullError: JSON.stringify(error, null, 2),
+            })
+            throw error
+        }
 
         // Process each task
         for (const taskDoc of tasksSnapshot.docs) {
