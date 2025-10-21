@@ -128,7 +128,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
         if (isStatusMessage || lastMessage?.isLoading) return
 
         setWaitingForBotAnswer(false)
-    }, [messages, waitingForBotAnswer])
+    }, [messages])
 
     useEffect(() => {
         writeBrowserURL()
