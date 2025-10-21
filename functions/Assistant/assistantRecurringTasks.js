@@ -523,41 +523,43 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
 }
 
 async function executeAssistantTask(projectId, assistantId, task, userDataCache = null) {
-    const creatorUserId = task.creatorUserId
-    if (!creatorUserId) {
-        console.error('No creator user ID found for task:', {
+    // Identify the activator (the person who scheduled this recurring task)
+    // This is the person who should pay gold, receive notifications, and whose timezone should be used
+    const activatorUserId = task.activatorUserId || task.creatorUserId
+    if (!activatorUserId) {
+        console.error('No activator or creator user ID found for task:', {
             taskId: task.id,
             taskName: task.name,
         })
-        return // Skip execution if no creator ID is found
+        return // Skip execution if no user ID is found
     }
 
     const taskDocRef = admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
     const previousLastExecuted = task.lastExecuted || null
 
-    // Get creator data from cache or fetch from DB
-    let creatorData
-    if (userDataCache && userDataCache.has(creatorUserId)) {
-        creatorData = userDataCache.get(creatorUserId)
+    // Get activator data from cache or fetch from DB
+    let activatorData
+    if (userDataCache && userDataCache.has(activatorUserId)) {
+        activatorData = userDataCache.get(activatorUserId)
     } else {
-        const creatorDoc = await admin.firestore().doc(`users/${creatorUserId}`).get()
-        creatorData = creatorDoc.data()
+        const activatorDoc = await admin.firestore().doc(`users/${activatorUserId}`).get()
+        activatorData = activatorDoc.data()
     }
 
-    if (!creatorData || creatorData.gold <= 0) {
-        console.log('Skipping task execution - creator has insufficient gold:', {
+    if (!activatorData || activatorData.gold <= 0) {
+        console.log('Skipping task execution - activator has insufficient gold:', {
             taskId: task.id,
             taskName: task.name,
-            creatorUserId,
-            creatorGold: creatorData?.gold,
+            activatorUserId,
+            activatorGold: activatorData?.gold,
         })
-        return // Skip execution if creator has no gold
+        return // Skip execution if activator has no gold
     }
 
-    const timezoneContext = resolveTimezoneContext(task, creatorData || {}, {}, getNextExecutionTime)
+    const timezoneContext = resolveTimezoneContext(task, activatorData || {}, {}, getNextExecutionTime)
     const timezoneEvaluation = timezoneContext.selectedEvaluation
 
-    const fallbackOffsetMinutes = normalizeTimezoneOffset(creatorData?.timezone || 0) ?? 0
+    const fallbackOffsetMinutes = normalizeTimezoneOffset(activatorData?.timezone || 0) ?? 0
     const userTimezoneOffsetMinutes = timezoneEvaluation?.offsetMinutes ?? fallbackOffsetMinutes
     const userTimezoneOffsetHours = userTimezoneOffsetMinutes / MINUTES_IN_HOUR
 
@@ -569,16 +571,6 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             task,
             offsetMinutes: userTimezoneOffsetMinutes,
         })
-
-    // Identify the user who activated this recurring task
-    // (the person who should be notified when the task runs)
-    const activatorUserId = task.activatorUserId || task.creatorUserId
-    if (activatorUserId) {
-        console.log('Found activator user ID for task:', {
-            taskId: task.id,
-            activatorUserId,
-        })
-    }
 
     // Use the activatedInProjectId if available, otherwise use the provided projectId
     // This ensures we target the project where the task was activated by the user
@@ -601,7 +593,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         startDate: task.startDate,
         startTime: task.startTime,
         recurrence: task.recurrence,
-        userTimezone: creatorData?.timezone,
+        userTimezone: activatorData?.timezone,
         effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
         effectiveTimezoneHours: userTimezoneOffsetHours,
         executionTimeUTC: executionUtcMoment.format('YYYY-MM-DD HH:mm:ss Z'),
@@ -610,8 +602,8 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             ? originalScheduledForLogs.format('YYYY-MM-DD HH:mm:ss Z')
             : 'unknown',
         timezoneSelectionSources: timezoneEvaluation?.sources,
-        creatorUserId,
-        creatorGold: creatorData.gold,
+        activatorUserId,
+        activatorGold: activatorData.gold,
     })
 
     try {
@@ -642,7 +634,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
 
         // Log parameters for debugging
         console.log('Calling generatePreConfigTaskResult with parameters:', {
-            creatorUserId,
+            activatorUserId,
             executionProjectId,
             chatId: uniqueId,
             followerIdsCount: followerIds.length,
@@ -653,9 +645,10 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             aiTemperature: task.aiTemperature,
         })
 
-        // Execute the task using the creator's user ID for gold deduction
+        // Execute the task using the activator's user ID for gold deduction and notifications
+        // The activator is the person who scheduled this recurring task
         const taskResult = await generatePreConfigTaskResult(
-            creatorUserId, // Use creator's ID instead of 'system'
+            activatorUserId, // Use activator's ID for gold deduction and WhatsApp notifications
             executionProjectId,
             uniqueId,
             followerIds,
@@ -706,11 +699,10 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
             effectiveTimezoneHours: userTimezoneOffsetHours,
             timezoneSelectionSources: timezoneEvaluation?.sources,
-            creatorUserId,
-            activatorUserId: task.activatorUserId,
+            activatorUserId,
             followerIdsCount: followerIds.length,
             followerIds: followerIds,
-            remainingGold: creatorData.gold,
+            remainingGold: activatorData.gold,
         })
     } catch (error) {
         const revertPayload = {
@@ -742,10 +734,10 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             executionProjectId: executionProjectId,
             assistantId,
             taskId: task.id,
-            userTimezone: creatorData?.timezone,
+            userTimezone: activatorData?.timezone,
             effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
             timezoneSelectionSources: timezoneEvaluation?.sources,
-            creatorUserId,
+            activatorUserId,
         })
         throw error
     }
