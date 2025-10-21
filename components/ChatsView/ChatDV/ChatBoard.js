@@ -210,11 +210,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                             />
                         )
                     })}
-                    {waitingForBotAnswer &&
-                        (triggerBotSpinner ||
-                            (messages.length > 0 && !getAssistant(messages[messages.length - 1].creatorId))) && (
-                            <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
-                        )}
+                    {waitingForBotAnswer && <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />}
                 </View>
             </CustomScrollView>
             {!isAnonymous && (
