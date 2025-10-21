@@ -338,7 +338,7 @@ const storeComment = async (
             : {
                   commentText: comment,
                   lastChangeDate: getFirestoreTime(),
-                  created: getFirestoreTime(),
+                  created: moment().valueOf(),
                   creatorId,
                   fromAssistant: false,
                   ...(objectType === 'tasks' && { commentType }),
