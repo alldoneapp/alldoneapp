@@ -15,7 +15,18 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     const gold = useSelector(state => state.loggedUser.gold)
     const [isOpen, setIsOpen] = useState(false)
 
-    const { prompt, variables, name, type, link, aiModel, aiTemperature, aiSystemMessage, taskMetadata } = task
+    const {
+        prompt,
+        variables,
+        name,
+        type,
+        link,
+        aiModel,
+        aiTemperature,
+        aiSystemMessage,
+        taskMetadata,
+        sendWhatsApp,
+    } = task
 
     const openModal = () => {
         dismissAllPopups()
@@ -38,8 +49,10 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             taskName: name,
             aiSettings,
             taskMetadata,
+            sendWhatsApp,
         })
-        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, taskMetadata)
+        const mergedTaskMetadata = { ...(taskMetadata || {}), sendWhatsApp: !!sendWhatsApp }
+        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata)
     }
 
     const pressButton = () => {
