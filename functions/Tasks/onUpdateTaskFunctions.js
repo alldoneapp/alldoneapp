@@ -154,49 +154,41 @@ const onUpdateTask = async (taskId, projectId, change) => {
     }
 
     // Handle recurring task creation when task is completed
-    console.log('🔄 RECURRING TASK CHECK:', {
-        taskId,
-        projectId,
-        taskName: newTask.name,
-        oldTaskDone: oldTask.done,
-        newTaskDone: newTask.done,
-        recurrence: newTask.recurrence,
-        userIds: newTask.userIds,
-        userIdsLength: newTask.userIds ? newTask.userIds.length : 0,
-        willCreateRecurring:
-            !oldTask.done &&
-            newTask.done &&
-            newTask.recurrence !== 'never' &&
-            newTask.userIds &&
-            newTask.userIds.length === 1,
-    })
+    // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
+    const isAssistantTask = newTask.assigneeType === 'assistant' || newTask.assistantId
 
-    if (
-        !oldTask.done &&
-        newTask.done &&
-        newTask.recurrence !== 'never' &&
-        newTask.userIds &&
-        newTask.userIds.length === 1
-    ) {
-        console.log('✅ CONDITIONS MET: Creating recurring task for completed task:', {
+    if (!isAssistantTask && newTask.recurrence && newTask.recurrence !== 'never') {
+        console.log('🔄 RECURRING TASK CHECK:', {
             taskId,
             projectId,
+            taskName: newTask.name,
+            oldTaskDone: oldTask.done,
+            newTaskDone: newTask.done,
             recurrence: newTask.recurrence,
-            taskName: newTask.name,
             userIds: newTask.userIds,
+            userIdsLength: newTask.userIds ? newTask.userIds.length : 0,
         })
-        promises.push(createRecurringTaskInCloudFunction(projectId, taskId, newTask))
-    } else {
-        console.log('❌ CONDITIONS NOT MET: Skipping recurring task creation because:', {
-            taskId,
-            taskName: newTask.name,
-            reasons: {
-                taskNotJustCompleted: oldTask.done || !newTask.done,
-                noRecurrence: newTask.recurrence === 'never',
-                multipleAssignees: !newTask.userIds || newTask.userIds.length > 1,
-                noUserIds: !newTask.userIds,
-            },
-        })
+
+        if (!oldTask.done && newTask.done && newTask.userIds && newTask.userIds.length === 1) {
+            console.log('✅ CONDITIONS MET: Creating recurring task for completed task:', {
+                taskId,
+                projectId,
+                recurrence: newTask.recurrence,
+                taskName: newTask.name,
+                userIds: newTask.userIds,
+            })
+            promises.push(createRecurringTaskInCloudFunction(projectId, taskId, newTask))
+        } else {
+            console.log('❌ CONDITIONS NOT MET: Skipping recurring task creation because:', {
+                taskId,
+                taskName: newTask.name,
+                reasons: {
+                    taskNotJustCompleted: oldTask.done || !newTask.done,
+                    multipleAssignees: !newTask.userIds || newTask.userIds.length > 1,
+                    noUserIds: !newTask.userIds,
+                },
+            })
+        }
     }
 
     await Promise.all(promises)
