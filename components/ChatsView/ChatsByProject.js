@@ -109,7 +109,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                 project={project}
                 dateString={'TODAY'}
                 date={moment()}
-                data={sortBy(todayChats, [item => -item.lastEditionDate])}
+                data={sortBy(todayChats, [item => -item.created])}
             />
 
             {Object.keys(rest)
@@ -123,7 +123,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                             project={project}
                             dateString={dateString}
                             date={timestamp}
-                            data={sortBy(rest[date], [item => -item.lastEditionDate])}
+                            data={sortBy(rest[date], [item => -item.created])}
                         />
                     )
                 })}

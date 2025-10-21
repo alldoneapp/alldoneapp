@@ -42,7 +42,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
                 : query.where('usersFollowing', 'array-contains', loggedUserId)
         const unsubscribe = query
             .where('stickyData.days', '==', 0)
-            .orderBy('lastEditionDate', 'desc')
+            .orderBy('created', 'desc')
             .limit(toRender)
             .onSnapshot(handleSnapshot, error => {
                 console.error('❌ useGetChats: Firebase snapshot error for project:', projectId, error)
@@ -68,7 +68,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab) {
         const chatsByDate = {}
         chatDocs.forEach(doc => {
             const chat = { ...doc.data(), id: doc.id }
-            const date = moment(chat.lastEditionDate).format('YYYYMMDD')
+            const date = moment(chat.created).format('YYYYMMDD')
             if (!chatsByDate[date]) chatsByDate[date] = []
             chatsByDate[date].push(chat)
         })
