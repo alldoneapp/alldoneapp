@@ -77,12 +77,21 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
             const lastMessage = sortedMessages[sortedMessages.length - 1]
             const assistantResponded =
                 !!lastMessage && (lastMessage.fromAssistant || !!getAssistant(lastMessage.creatorId))
+
+            console.log('🔍 useGetMessages firstFetch check:', {
+                hasLastMessage: !!lastMessage,
+                assistantResponded,
+                notEnabledAssistantWhenLoadComments,
+                hasGold: loggedUser.gold > 0,
+            })
+
             if (assistantResponded) {
                 if (!loggedUser.noticeAboutTheBotBehavior) dispatch(setShowNotificationAboutTheBotBehavior(true))
 
                 if (notEnabledAssistantWhenLoadComments) {
                     dispatch(setNotEnabledAssistantWhenLoadComments(false))
                 } else if (loggedUser.gold > 0) {
+                    console.log('✅ useGetMessages: Enabling assistant because last message was from assistant')
                     dispatch(setAssistantEnabled(true))
                 }
             }

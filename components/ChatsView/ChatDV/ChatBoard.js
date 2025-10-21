@@ -135,14 +135,16 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
 
         const trimmedText = (lastMessage?.commentText || '').trim()
         const isStatusMessage = ASSISTANT_STATUS_MESSAGES.includes(trimmedText)
+        const isEmpty = trimmedText === ''
 
         console.log('🔍 ChatBoard: Assistant message status', {
             trimmedText,
             isStatusMessage,
+            isEmpty,
             isLoading: lastMessage?.isLoading,
         })
 
-        if (isStatusMessage || lastMessage?.isLoading) return
+        if (isStatusMessage || lastMessage?.isLoading || isEmpty) return
 
         console.log('✅ ChatBoard: Bot responded, setting waitingForBotAnswer to FALSE')
         setWaitingForBotAnswer(false)
