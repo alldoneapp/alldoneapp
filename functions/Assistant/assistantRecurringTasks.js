@@ -974,30 +974,56 @@ async function checkAndExecuteRecurringTasks() {
             RECURRENCE_ANNUALLY,
         ]
 
-        // Step 2a: Get all assistants across all projects using collectionGroup
-        // This avoids iterating through 4772 projects
-        console.log('Fetching all assistants using collectionGroup query')
-        const assistantsSnapshot = await admin.firestore().collectionGroup('items').get()
+        // Step 2a: Get all projects that active users belong to
+        const activeUserProjects = new Set()
+        for (const [userId, userData] of activeUsersMap.entries()) {
+            // Get user's project memberships
+            try {
+                const userProjectsSnapshot = await admin
+                    .firestore()
+                    .collection('projects')
+                    .where('userIds', 'array-contains', userId)
+                    .get()
 
-        // Group assistants by project for efficient querying
-        const projectAssistants = new Map()
-        for (const assistantDoc of assistantsSnapshot.docs) {
-            // Path format: assistants/{projectId}/items/{assistantId}
-            const pathSegments = assistantDoc.ref.path.split('/')
-            if (pathSegments[0] === 'assistants' && pathSegments.length === 4) {
-                const projectId = pathSegments[1]
-                const assistantId = assistantDoc.id
-
-                if (!projectAssistants.has(projectId)) {
-                    projectAssistants.set(projectId, [])
-                }
-                projectAssistants.get(projectId).push(assistantId)
+                userProjectsSnapshot.docs.forEach(doc => {
+                    activeUserProjects.add(doc.id)
+                })
+            } catch (error) {
+                console.warn('Error fetching projects for active user:', {
+                    userId,
+                    error: error.message,
+                })
             }
         }
 
-        console.log('Found assistants:', {
-            totalAssistants: assistantsSnapshot.docs.filter(doc => doc.ref.path.startsWith('assistants/')).length,
+        console.log('Active user projects identified:', {
+            activeUsers: activeUsersMap.size,
+            projectsWithActiveUsers: activeUserProjects.size,
+        })
+
+        // Step 2b: Get assistants only from projects with active users
+        const projectAssistants = new Map()
+        for (const projectId of activeUserProjects) {
+            try {
+                const assistantsSnapshot = await admin.firestore().collection(`assistants/${projectId}/items`).get()
+
+                if (assistantsSnapshot.docs.length > 0) {
+                    projectAssistants.set(
+                        projectId,
+                        assistantsSnapshot.docs.map(doc => doc.id)
+                    )
+                }
+            } catch (error) {
+                console.warn('Error fetching assistants for project:', {
+                    projectId,
+                    error: error.message,
+                })
+            }
+        }
+
+        console.log('Found assistants in active user projects:', {
             projectsWithAssistants: projectAssistants.size,
+            totalAssistants: Array.from(projectAssistants.values()).reduce((sum, arr) => sum + arr.length, 0),
         })
 
         // Step 2b: For each project with assistants, fetch their tasks
