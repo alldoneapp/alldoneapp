@@ -2241,12 +2241,6 @@ export const setNewUserNeedToJoinToProject = newUserNeedToJoinToProject => {
 }
 
 export const setAssistantEnabled = assistantEnabled => {
-    console.log(
-        '🤖 ACTION: setAssistantEnabled called with:',
-        assistantEnabled,
-        'Stack:',
-        new Error().stack.split('\n').slice(1, 4).join('\n')
-    )
     const action = {
         type: 'Set assistant enabled',
         assistantEnabled,

@@ -53,10 +53,6 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     const [showingEarlier, setShowingEarlier] = useState(false)
     const [serverTime, setServerTime] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
-
-    useEffect(() => {
-        console.log('🎯 ChatBoard: waitingForBotAnswer changed to:', waitingForBotAnswer)
-    }, [waitingForBotAnswer])
     const scrollViewRef = useRef()
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
@@ -118,18 +114,11 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     }, [chatNotificationsAmount])
 
     useEffect(() => {
-        console.log('🔍 ChatBoard: Checking bot response', { waitingForBotAnswer, messagesLength: messages.length })
         if (!waitingForBotAnswer || messages.length === 0) return
 
         const lastMessage = messages[messages.length - 1]
         const messageCreator = lastMessage?.creatorId
         const isAssistantMessage = !!getAssistant(messageCreator)
-
-        console.log('🔍 ChatBoard: Last message check', {
-            creatorId: messageCreator,
-            isAssistant: isAssistantMessage,
-            text: lastMessage?.commentText?.substring(0, 50),
-        })
 
         if (!isAssistantMessage) return
 
@@ -137,16 +126,8 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
         const isStatusMessage = ASSISTANT_STATUS_MESSAGES.includes(trimmedText)
         const isEmpty = trimmedText === ''
 
-        console.log('🔍 ChatBoard: Assistant message status', {
-            trimmedText,
-            isStatusMessage,
-            isEmpty,
-            isLoading: lastMessage?.isLoading,
-        })
-
         if (isStatusMessage || lastMessage?.isLoading || isEmpty) return
 
-        console.log('✅ ChatBoard: Bot responded, setting waitingForBotAnswer to FALSE')
         setWaitingForBotAnswer(false)
     }, [messages])
 
@@ -230,12 +211,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                             />
                         )
                     })}
-                    {waitingForBotAnswer && (
-                        <>
-                            {console.log('🔄 ChatBoard: Rendering BotMessagePlaceholder')}
-                            <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
-                        </>
-                    )}
+                    {waitingForBotAnswer && <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />}
                 </View>
             </CustomScrollView>
             {!isAnonymous && (
