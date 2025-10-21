@@ -61,6 +61,16 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
             return (a?.id || '').localeCompare(b?.id || '')
         })
 
+        console.log(
+            '📨 useGetMessages: Sorted messages',
+            sortedMessages.map(m => ({
+                id: m.id?.substring(0, 8),
+                created: new Date(toMillis(m.created)).toISOString(),
+                text: m.commentText?.substring(0, 30),
+                isLoading: m.isLoading,
+            }))
+        )
+
         if (checkAssistant && firstFetch) {
             const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
             setFirstFetch(false)

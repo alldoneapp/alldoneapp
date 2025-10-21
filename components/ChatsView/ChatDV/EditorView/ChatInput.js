@@ -98,6 +98,11 @@ export default function ChatInput({
 
     const onSubmit = event => {
         event?.preventDefault?.()
+        console.log('💬 ChatInput onSubmit:', {
+            assistantEnabled,
+            gold,
+            hasWaitingForBotAnswerSetter: !!setWaitingForBotAnswer,
+        })
         if (assistantEnabled && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
@@ -105,7 +110,12 @@ export default function ChatInput({
             if (!checkIsLimitedByXp(projectId)) {
                 inputRef.current.clear()
 
-                if (assistantEnabled) setWaitingForBotAnswer(true)
+                if (assistantEnabled) {
+                    console.log('✅ ChatInput: Setting waitingForBotAnswer to TRUE')
+                    setWaitingForBotAnswer(true)
+                } else {
+                    console.log('❌ ChatInput: assistantEnabled is FALSE, NOT setting waitingForBotAnswer')
+                }
 
                 updateNewAttachmentsData(projectId, inputText).then(commentWithAttachments => {
                     createObjectMessage(
