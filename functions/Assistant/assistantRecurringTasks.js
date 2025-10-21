@@ -978,6 +978,23 @@ async function checkAndExecuteRecurringTasks() {
                     .get()
 
                 userProjectsSnapshot.docs.forEach(doc => {
+                    const projectData = doc.data()
+
+                    // Skip archived projects (active: false)
+                    if (projectData.active === false) {
+                        return
+                    }
+
+                    // Skip template projects
+                    if (projectData.isTemplate === true) {
+                        return
+                    }
+
+                    // Skip template-derived/community projects
+                    if (projectData.parentTemplateId) {
+                        return
+                    }
+
                     activeUserProjects.add(doc.id)
                 })
             } catch (error) {
@@ -988,7 +1005,7 @@ async function checkAndExecuteRecurringTasks() {
             }
         }
 
-        console.log('Active user projects identified:', {
+        console.log('Active user projects identified (excluding archived, templates, community):', {
             activeUsers: activeUsersMap.size,
             projectsWithActiveUsers: activeUserProjects.size,
         })
