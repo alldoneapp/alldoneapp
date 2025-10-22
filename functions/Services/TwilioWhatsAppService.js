@@ -67,6 +67,8 @@ class TwilioWhatsAppService {
         this.twilioAccountSid = envFunctions.TWILIO_ACCOUNT_SID
         this.twilioAuthToken = envFunctions.TWILIO_AUTH_TOKEN
         this.twilioWhatsAppFrom = envFunctions.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886'
+        this.twilioContentSid = envFunctions.TWILIO_CONTENT_SID || 'HX72475b9de0709639b01c1fd77b347949'
+        this.twilioContentVarCount = parseInt(envFunctions.TWILIO_CONTENT_VAR_COUNT || '1', 10)
 
         // Initialize Twilio client lazily
         this.client = null
@@ -355,30 +357,37 @@ class TwilioWhatsAppService {
                 preview: previewSingleLine,
             })
 
-            // Content variables for the template - only task result is needed
-            // Replace newlines with %0a to preserve line breaks without raw newlines
-            const templateValue = preparedContent.value
-                .replace(/\n/g, '%0a')
-                .replace(/\s{2,}/g, ' ')
-                .trim()
+            // Content variables must match the template's variable count/order
+            // Ref: Twilio 21656 troubleshooting guidelines [Twilio Help Center](https://help.twilio.com/articles/223181468)
+            const templateValue = preparedContent.value.trim()
+            const variablesPayload = {}
+            const expectedCount =
+                Number.isFinite(this.twilioContentVarCount) && this.twilioContentVarCount > 0
+                    ? this.twilioContentVarCount
+                    : 1
+            for (let i = 1; i <= expectedCount; i++) {
+                // Prefix with $ to ensure literal interpretation per Twilio guidance
+                variablesPayload[i] = i === 1 ? `$${templateValue}` : ''
+            }
+            const contentVariables = JSON.stringify(variablesPayload)
             console.log('WhatsApp template value metrics:', {
                 originalLength: preparedContent.value.length,
                 templateLength: templateValue.length,
-            })
-            const contentVariables = JSON.stringify({
-                1: templateValue,
+                expectedVars: expectedCount,
+                keys: Object.keys(variablesPayload),
+                appliedDollarEscape: true,
             })
 
             console.log('Sending WhatsApp message with Content Template:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                contentSid: 'HX72475b9de0709639b01c1fd77b347949',
+                contentSid: this.twilioContentSid,
                 contentVariables,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
-                contentSid: 'HX72475b9de0709639b01c1fd77b347949',
+                contentSid: this.twilioContentSid,
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
