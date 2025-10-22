@@ -150,9 +150,9 @@ class TwilioWhatsAppService {
             adjustments.push('Collapsed blank lines (including whitespace-only lines) to a single newline.')
         }
 
-        if (value.length > 750) {
-            value = value.slice(0, 750) + '...'
-            adjustments.push('Truncated task result to 750 characters to satisfy WhatsApp template limits.')
+        if (value.length > 300) {
+            value = value.slice(0, 300) + '...'
+            adjustments.push('Truncated task result to 300 characters to satisfy WhatsApp template limits.')
         }
 
         if (/[ \t]{5,}/.test(value)) {
@@ -347,6 +347,13 @@ class TwilioWhatsAppService {
                     taskName: taskData?.name,
                 })
             }
+
+            // Human-friendly, single-line preview for logs (shows literal \n)
+            const previewSingleLine = preparedContent.value.replace(/\n/g, '\\n')
+            console.log('WhatsApp content preview (single line):', {
+                length: preparedContent.value.length,
+                preview: previewSingleLine,
+            })
 
             // Content variables for the template - only task result is needed
             const contentVariables = JSON.stringify({
