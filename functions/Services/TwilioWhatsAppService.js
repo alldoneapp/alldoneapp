@@ -150,9 +150,9 @@ class TwilioWhatsAppService {
             adjustments.push('Collapsed blank lines (including whitespace-only lines) to a single newline.')
         }
 
-        if (value.length > 1000) {
-            value = value.slice(0, 1000) + '...'
-            adjustments.push('Truncated task result to 1000 characters to satisfy WhatsApp template limits.')
+        if (value.length > 750) {
+            value = value.slice(0, 750) + '...'
+            adjustments.push('Truncated task result to 750 characters to satisfy WhatsApp template limits.')
         }
 
         if (/[ \t]{5,}/.test(value)) {
@@ -176,6 +176,33 @@ class TwilioWhatsAppService {
 
         value = normalisedLines.join('\n').trim()
 
+        // Replace common Unicode punctuation with ASCII-safe equivalents
+        // This reduces chances of Content Variables rejection due to unsupported punctuation
+        const PUNCTUATION_MAP = {
+            '\u2018': "'", // left single quotation mark
+            '\u2019': "'", // right single quotation mark / apostrophe
+            '\u201A': ',', // single low-9 quotation mark
+            '\u201B': "'", // single high-reversed-9 quotation mark
+            '\u201C': '"', // left double quotation mark
+            '\u201D': '"', // right double quotation mark
+            '\u201E': '"', // double low-9 quotation mark
+            '\u2013': '-', // en dash
+            '\u2014': '-', // em dash
+            '\u2015': '-', // horizontal bar
+            '\u2026': '...', // ellipsis
+            '\u2212': '-', // minus sign
+            '\u00A0': ' ', // no-break space
+            '\u202F': ' ', // narrow no-break space
+            '\u2009': ' ', // thin space
+            '\u200A': ' ', // hair space
+            '\u200B': '', // zero-width space
+            '\u2060': '', // word joiner
+        }
+        value = value.replace(
+            /[\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u2013\u2014\u2015\u2026\u2212\u00A0\u202F\u2009\u200A\u200B\u2060]/g,
+            ch => PUNCTUATION_MAP[ch] || ''
+        )
+
         if (!value.trim()) {
             blockingIssues.push('Prepared WhatsApp content is empty after sanitisation.')
         }
@@ -197,6 +224,12 @@ class TwilioWhatsAppService {
             blockingIssues.push(
                 `WhatsApp content contains more than 10 emoji characters, exceeding safe limits (found ${emojiCount}).`
             )
+        }
+
+        // Convert newline characters to literal \n sequences to avoid raw newlines in JSON
+        if (/\n/.test(value)) {
+            value = value.replace(/\n/g, '\\n')
+            adjustments.push('Converted newline characters to literal \\n sequences for JSON compatibility.')
         }
 
         return {
