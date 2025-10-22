@@ -226,6 +226,11 @@ async function generatePreConfigTaskResult(
         }
 
         // Send WhatsApp notification if enabled in task metadata
+        console.log('WhatsApp notification config:', {
+            enabled: !!(taskMetadata && taskMetadata.sendWhatsApp),
+            taskName: taskMetadata?.name,
+            userId,
+        })
         if (taskMetadata?.sendWhatsApp) {
             console.log('Sending WhatsApp notification for task completion')
             try {

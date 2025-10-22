@@ -226,11 +226,7 @@ class TwilioWhatsAppService {
             )
         }
 
-        // Convert newline characters to literal \n sequences to avoid raw newlines in JSON
-        if (/\n/.test(value)) {
-            value = value.replace(/\n/g, '\\n')
-            adjustments.push('Converted newline characters to literal \\n sequences for JSON compatibility.')
-        }
+        // Do not pre-escape newlines here; JSON.stringify will escape them once.
 
         return {
             value,
