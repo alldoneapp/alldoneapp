@@ -356,8 +356,17 @@ class TwilioWhatsAppService {
             })
 
             // Content variables for the template - only task result is needed
+            // Flatten newlines to spaces to satisfy stricter template constraints
+            const templateValue = preparedContent.value
+                .replace(/\n/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim()
+            console.log('WhatsApp template value metrics:', {
+                originalLength: preparedContent.value.length,
+                templateLength: templateValue.length,
+            })
             const contentVariables = JSON.stringify({
-                1: preparedContent.value,
+                1: templateValue,
             })
 
             console.log('Sending WhatsApp message with Content Template:', {
