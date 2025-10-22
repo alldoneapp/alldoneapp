@@ -150,9 +150,9 @@ class TwilioWhatsAppService {
             adjustments.push('Collapsed blank lines (including whitespace-only lines) to a single newline.')
         }
 
-        if (value.length > 300) {
-            value = value.slice(0, 300) + '...'
-            adjustments.push('Truncated task result to 300 characters to satisfy WhatsApp template limits.')
+        if (value.length > 750) {
+            value = value.slice(0, 750) + '...'
+            adjustments.push('Truncated task result to 750 characters to satisfy WhatsApp template limits.')
         }
 
         if (/[ \t]{5,}/.test(value)) {
@@ -356,9 +356,9 @@ class TwilioWhatsAppService {
             })
 
             // Content variables for the template - only task result is needed
-            // Flatten newlines to spaces to satisfy stricter template constraints
+            // Replace newlines with %0a to preserve line breaks without raw newlines
             const templateValue = preparedContent.value
-                .replace(/\n/g, ' ')
+                .replace(/\n/g, '%0a')
                 .replace(/\s{2,}/g, ' ')
                 .trim()
             console.log('WhatsApp template value metrics:', {
