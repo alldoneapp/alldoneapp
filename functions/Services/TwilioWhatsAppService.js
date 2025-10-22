@@ -327,13 +327,13 @@ class TwilioWhatsAppService {
             console.log('Sending WhatsApp message with Content Template:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                contentSid: 'HXc38ef95cc1d0b10aad7186d7ec0a8961',
+                contentSid: 'HX72475b9de0709639b01c1fd77b347949',
                 contentVariables,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
-                contentSid: 'HXc38ef95cc1d0b10aad7186d7ec0a8961',
+                contentSid: 'HX72475b9de0709639b01c1fd77b347949',
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
