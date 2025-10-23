@@ -134,10 +134,16 @@ export const setProjectAssistant = async (projectId, assistantId, needGenerateUp
         })
 
         if (isProjectAssistant) {
-            // For project assistants, set isDefault: true in the document
-            console.log('✨ Auto-setting project assistant as default')
-            const { setAssistantLikeDefault } = require('../Assistants/assistantsFirestore')
-            setAssistantLikeDefault(projectId, assistantId)
+            // Check if it's already set as default to avoid redundant updates
+            const assistant = projectAssistants[projectId]?.find(a => a.uid === assistantId)
+            if (!assistant?.isDefault) {
+                // For project assistants, set isDefault: true in the document
+                console.log('✨ Auto-setting project assistant as default')
+                const { setAssistantLikeDefault } = require('../Assistants/assistantsFirestore')
+                setAssistantLikeDefault(projectId, assistantId)
+            } else {
+                console.log('ℹ️  Assistant is already set as default, skipping redundant update')
+            }
         } else if (isGlobalAssistant) {
             // For global assistants, just setting project.assistantId is enough
             // The getDefaultAssistant function will pick it up from there

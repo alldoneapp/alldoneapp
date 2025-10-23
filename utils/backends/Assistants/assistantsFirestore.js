@@ -342,6 +342,17 @@ export function setAssistantLikeDefault(projectId, assistantId) {
         }
     }
 
+    // Also set this assistant as the project assistant
+    if (projectId !== GLOBAL_PROJECT_ID) {
+        const project = ProjectHelper.getProjectById(projectId)
+        if (project?.assistantId !== assistantId) {
+            console.log('🔗 Also setting as project assistant:', { projectId, assistantId })
+            batch.update(getDb().doc(`projects/${projectId}`), { assistantId })
+        } else {
+            console.log('ℹ️  Assistant is already the project assistant, skipping redundant update')
+        }
+    }
+
     batch.commit()
 
     // Immediately update the Redux store to reflect the change
