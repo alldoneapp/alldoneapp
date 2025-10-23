@@ -901,6 +901,9 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
             const userData = userDoc.data()
 
+            // Normalize user's timezone for proper calendar time conversion
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
+
             // Get projects with database interface
             const projectService = new ProjectService({
                 database: admin.firestore(),
@@ -934,6 +937,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                         date: toolArgs.date || null,
                         limit: 100,
                         selectMinimalFields: true,
+                        timezoneOffset,
                     },
                     projectIds,
                     projectsData.reduce((acc, p) => {
@@ -951,6 +955,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     date: toolArgs.date || null,
                     limit: 100,
                     selectMinimalFields: true,
+                    timezoneOffset,
                 })
                 tasks = result.tasks || []
             }
