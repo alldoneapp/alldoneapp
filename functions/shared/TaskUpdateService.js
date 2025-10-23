@@ -23,7 +23,10 @@ async function loadDependencies() {
         try {
             // CommonJS imports (Node.js/Cloud Functions)
             if (typeof require !== 'undefined') {
-                TaskService = require('./TaskService')
+                // TaskService is exported as { TaskService }, need to destructure
+                const taskServiceModule = require('./TaskService')
+                TaskService = taskServiceModule.TaskService
+                // TaskSearchService is exported directly
                 TaskSearchService = require('./TaskSearchService')
                 try {
                     admin = require('firebase-admin')
