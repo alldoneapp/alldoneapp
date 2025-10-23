@@ -1066,20 +1066,96 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'update_task': {
-            const { TaskService } = require('../shared/TaskService')
-            const moment = require('moment-timezone')
-            const db = admin.firestore()
-            const taskService = new TaskService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: true,
-                isCloudFunction: true,
-                taskBatchSize: 100,
-                maxBatchesPerProject: 20,
+            console.log('📝 UPDATE_TASK TOOL: Starting task update', {
+                creatorId,
+                projectId,
+                toolArgs,
             })
-            await taskService.initialize()
+
+            const db = admin.firestore()
+
+            // Step 1: Task Discovery - find the task using TaskSearchService (same as MCP)
+            console.log('📝 UPDATE_TASK TOOL: Finding target task using TaskSearchService')
+            const TaskSearchService = require('../shared/TaskSearchService')
+            const taskSearchService = new TaskSearchService({
+                database: db,
+                isCloudFunction: true,
+            })
+            await taskSearchService.initialize()
+
+            const searchResult = await taskSearchService.findTaskForUpdate(creatorId, toolArgs, {
+                autoSelectOnHighConfidence: true,
+                highConfidenceThreshold: 800,
+                dominanceMargin: 300,
+                maxOptionsToShow: 5,
+            })
+
+            console.log('📝 UPDATE_TASK TOOL: Task search result', {
+                decision: searchResult.decision,
+                confidence: searchResult.confidence,
+                reasoning: searchResult.reasoning,
+            })
+
+            // Handle different decision outcomes
+            if (searchResult.decision === 'no_matches') {
+                console.error('📝 UPDATE_TASK TOOL: No tasks found')
+                throw new Error(searchResult.error || 'No tasks found matching the search criteria')
+            }
+
+            if (searchResult.decision === 'present_options') {
+                console.log('📝 UPDATE_TASK TOOL: Multiple matches found, returning options to user')
+                const { allMatches, reasoning, totalMatches } = searchResult
+
+                let message = `${reasoning}\n\nFound ${totalMatches || allMatches.length} tasks:\n\n`
+                allMatches.slice(0, 5).forEach((match, index) => {
+                    message += `${index + 1}. "${match.task.name}"`
+                    if (match.task.humanReadableId) {
+                        message += ` (ID: ${match.task.humanReadableId})`
+                    }
+                    message += ` (Project: ${match.projectName})`
+                    const matchConfidence = taskSearchService.assessConfidence(match.matchScore)
+                    message += ` [${matchConfidence} confidence: ${match.matchScore}]\n`
+                    if (match.task.description) {
+                        message += `   Description: ${match.task.description.substring(0, 100)}${
+                            match.task.description.length > 100 ? '...' : ''
+                        }\n`
+                    }
+                    message += `   Task ID: ${match.task.id}\n\n`
+                })
+
+                if (allMatches.length > 5) {
+                    message += `... and ${allMatches.length - 5} more matches.\n\n`
+                }
+
+                message +=
+                    'Please be more specific in your search criteria, or use the exact task ID to update a specific task.'
+
+                return {
+                    success: false,
+                    message,
+                    matches: allMatches.map(m => ({
+                        taskId: m.task.id,
+                        taskName: m.task.name,
+                        projectId: m.projectId,
+                        projectName: m.projectName,
+                        matchScore: m.matchScore,
+                    })),
+                }
+            }
+
+            // Step 2: Task Update - proceed with auto-selected or single match
+            const {
+                task: currentTask,
+                projectId: currentProjectId,
+                projectName: currentProjectName,
+            } = searchResult.selectedMatch
+
+            console.log('📝 UPDATE_TASK TOOL: Task found, proceeding with update', {
+                taskId: currentTask.id,
+                taskName: currentTask.name,
+                projectId: currentProjectId,
+                projectName: currentProjectName,
+            })
 
             // Get user data for feed
             let feedUser
@@ -1106,13 +1182,68 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 }
             }
 
-            const result = await taskService.updateTask(toolArgs, {
-                userId: creatorId,
-                projectId: projectId,
-                feedUser: feedUser,
+            // Use TaskService for the actual update (consistent with MCP)
+            const { TaskService } = require('../shared/TaskService')
+            const moment = require('moment-timezone')
+            const taskService = new TaskService({
+                database: db,
+                moment: moment,
+                isCloudFunction: true,
+                enableFeeds: true,
+                enableValidation: false, // Skip validation since we already validated
             })
+            await taskService.initialize()
 
-            return result
+            try {
+                console.log('📝 UPDATE_TASK TOOL: Using TaskService for task update')
+                const result = await taskService.updateAndPersistTask({
+                    taskId: currentTask.id,
+                    projectId: currentProjectId,
+                    currentTask: currentTask,
+                    name: toolArgs.name,
+                    description: toolArgs.description,
+                    dueDate: toolArgs.dueDate,
+                    completed: toolArgs.completed,
+                    userId: toolArgs.userId,
+                    parentId: toolArgs.parentId,
+                    feedUser: feedUser,
+                    focus: toolArgs.focus,
+                    focusUserId: creatorId,
+                })
+
+                console.log('📝 UPDATE_TASK TOOL: Task updated successfully', {
+                    taskId: currentTask.id,
+                    changes: result.changes,
+                })
+
+                // Build success message
+                const changes = result.changes || []
+                let message = `Task "${currentTask.name}" updated successfully`
+                if (changes.length > 0) {
+                    message += ` (${changes.join(', ')})`
+                }
+                message += ` in project "${currentProjectName}"`
+
+                // Add search reasoning for transparency
+                if (searchResult.decision === 'auto_select') {
+                    message += ` (${searchResult.reasoning})`
+                }
+
+                return {
+                    success: true,
+                    taskId: currentTask.id,
+                    message,
+                    task: result.updatedTask || { id: currentTask.id, ...currentTask },
+                    project: { id: currentProjectId, name: currentProjectName },
+                    changes: changes,
+                }
+            } catch (error) {
+                console.error('📝 UPDATE_TASK TOOL: Task update failed', {
+                    error: error.message,
+                    stack: error.stack,
+                })
+                throw new Error(`Failed to update task: ${error.message}`)
+            }
         }
 
         case 'update_note': {
