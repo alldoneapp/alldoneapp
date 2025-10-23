@@ -632,7 +632,7 @@ class AlldoneSimpleMCPServer {
 
         // Initialize TaskUpdateService if not already done
         if (!this.taskUpdateService) {
-            const { TaskUpdateService } = require('../shared/TaskUpdateService')
+            const TaskUpdateService = require('../shared/TaskUpdateService')
             this.taskUpdateService = new TaskUpdateService({
                 database: db,
                 moment: moment,
