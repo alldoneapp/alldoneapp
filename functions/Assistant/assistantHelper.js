@@ -1398,201 +1398,258 @@ async function storeChunks(
                     continue
                 }
 
-                // Process first tool call (OpenAI typically sends one at a time)
-                const toolCall = chunk.additional_kwargs.tool_calls[0]
-                const toolName = toolCall.function.name
-                const toolCallId = toolCall.id
+                // Execute tool calls in a loop to support multi-step tool calling
+                let currentConversation = conversationHistory
+                let currentToolCalls = chunk.additional_kwargs.tool_calls
+                let toolCallIteration = 0
+                const MAX_TOOL_ITERATIONS = 10 // Prevent infinite loops
 
-                // Parse arguments
-                let toolArgs = {}
-                try {
-                    toolArgs = JSON.parse(toolCall.function.arguments)
-                    console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
-                } catch (e) {
-                    console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
-                    commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
-                    await commentRef.update({ commentText })
-                    toolAlreadyExecuted = true
-                    continue
-                }
-
-                // Check permissions
-                const assistant = await getAssistantForChat(projectId, assistantId)
-                const allowed = Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes(toolName)
-
-                if (!allowed) {
-                    console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
-                    commentText += `\n\nTool not permitted: ${toolName}`
-                    await commentRef.update({ commentText })
-                    toolAlreadyExecuted = true
-                    continue
-                }
-
-                // Show loading indicator
-                const loadingMessage = `⏳ Executing ${toolName}...`
-                commentText += `\n\n${loadingMessage}`
-                await commentRef.update({ commentText })
-
-                console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
-
-                // Execute tool and get result
-                let toolResult
-                try {
-                    console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
-                    toolResult = await executeToolNatively(
-                        toolName,
-                        toolArgs,
-                        projectId,
-                        assistantId,
-                        requestUserId,
-                        userContext
-                    )
-                    const toolResultString = JSON.stringify(toolResult, null, 2)
-                    console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
-                        toolName,
-                        resultLength: toolResultString.length,
-                        resultPreview: toolResultString.substring(0, 500),
-                        fullResult: toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
+                while (currentToolCalls && currentToolCalls.length > 0 && toolCallIteration < MAX_TOOL_ITERATIONS) {
+                    toolCallIteration++
+                    console.log('🔧 NATIVE TOOL CALL: Starting tool call iteration #' + toolCallIteration, {
+                        toolCallsCount: currentToolCalls.length,
+                        maxIterations: MAX_TOOL_ITERATIONS,
                     })
-                } catch (error) {
-                    console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
-                        toolName,
-                        error: error.message,
-                        stack: error.stack,
-                    })
-                    const errorMsg = `Error executing ${toolName}: ${error.message}`
-                    commentText = commentText.replace(loadingMessage, errorMsg)
-                    await commentRef.update({ commentText })
-                    toolAlreadyExecuted = true
-                    continue
-                }
 
-                // Build new conversation history with tool result
-                // Need to add: assistant's message with tool call, then tool result message
+                    // Process first tool call (OpenAI typically sends one at a time)
+                    const toolCall = currentToolCalls[0]
+                    const toolName = toolCall.function.name
+                    const toolCallId = toolCall.id
 
-                // Collect all assistant content before tool call
-                const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
-                console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
-                    assistantMessageContentLength: assistantMessageContent.length,
-                    assistantMessageContent: assistantMessageContent.substring(0, 200),
-                })
-
-                // Build updated conversation with plain objects
-                const updatedConversation = [
-                    ...conversationHistory,
-                    {
-                        role: 'assistant',
-                        content: assistantMessageContent,
-                        tool_calls: [
-                            {
-                                id: toolCallId,
-                                type: 'function',
-                                function: {
-                                    name: toolName,
-                                    arguments: JSON.stringify(toolArgs),
-                                },
-                            },
-                        ],
-                    },
-                    {
-                        role: 'tool',
-                        content: JSON.stringify(toolResult),
-                        tool_call_id: toolCallId,
-                    },
-                    {
-                        role: 'user',
-                        content:
-                            'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
-                    },
-                ]
-
-                console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
-                    conversationLength: updatedConversation.length,
-                    originalHistoryLength: conversationHistory.length,
-                    toolResultLength: JSON.stringify(toolResult).length,
-                    toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
-                    lastThreeMessages: updatedConversation.slice(-3).map(m => ({
-                        role: m.role,
-                        hasContent: !!m.content,
-                        contentLength: m.content?.length,
-                        contentPreview: m.content?.substring(0, 150),
-                        hasToolCalls: !!m.tool_calls,
-                        toolCallsCount: m.tool_calls?.length,
-                        hasToolCallId: !!m.tool_call_id,
-                    })),
-                })
-
-                // Resume stream with updated conversation
-                console.log('🔧 NATIVE TOOL CALL: Calling interactWithChatStream with updated conversation', {
-                    modelKey,
-                    temperatureKey,
-                    allowedToolsCount: allowedTools?.length,
-                    allowedTools,
-                })
-                const newStream = await interactWithChatStream(
-                    updatedConversation,
-                    modelKey,
-                    temperatureKey,
-                    allowedTools
-                )
-                console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
-
-                // Remove loading indicator
-                commentText = commentText.replace(loadingMessage, '')
-                await commentRef.update({ commentText })
-
-                // Process the new stream - replace the current stream
-                console.log('🔧 NATIVE TOOL CALL: Starting to process resumed stream chunks')
-
-                // Process all chunks from the new stream
-                let resumedChunkCount = 0
-                let totalContentReceived = 0
-                for await (const newChunk of newStream) {
-                    resumedChunkCount++
-
-                    const logData = {
-                        chunkNumber: resumedChunkCount,
-                        hasContent: !!newChunk.content,
-                        contentLength: newChunk.content?.length || 0,
-                        content: newChunk.content || '',
-                        hasAdditionalKwargs: !!newChunk.additional_kwargs,
-                        additionalKwargs: newChunk.additional_kwargs,
-                    }
-
-                    // Check if this chunk contains new tool calls
-                    if (newChunk.additional_kwargs?.tool_calls) {
-                        console.log('🔧 NATIVE TOOL CALL: RESUMED STREAM CONTAINS ADDITIONAL TOOL CALLS!', {
-                            ...logData,
-                            toolCallsCount: newChunk.additional_kwargs.tool_calls.length,
-                            toolCalls: newChunk.additional_kwargs.tool_calls.map(tc => ({
-                                id: tc.id,
-                                name: tc.function?.name,
-                                args: tc.function?.arguments,
-                            })),
-                        })
-                    } else {
-                        console.log('🔧 NATIVE TOOL CALL: Resumed stream chunk #' + resumedChunkCount, logData)
-                    }
-
-                    if (newChunk.content) {
-                        totalContentReceived += newChunk.content.length
-                        commentText += newChunk.content
+                    // Parse arguments
+                    let toolArgs = {}
+                    try {
+                        toolArgs = JSON.parse(toolCall.function.arguments)
+                        console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
+                    } catch (e) {
+                        console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
+                        commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
                         await commentRef.update({ commentText })
-                        console.log('🔧 NATIVE TOOL CALL: Updated comment with new content', {
-                            chunkNumber: resumedChunkCount,
-                            addedContentLength: newChunk.content.length,
-                            totalContentReceived,
-                            currentCommentLength: commentText.length,
-                        })
+                        toolAlreadyExecuted = true
+                        break // Exit the while loop
                     }
+
+                    // Check permissions
+                    const assistant = await getAssistantForChat(projectId, assistantId)
+                    const allowed = Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes(toolName)
+
+                    if (!allowed) {
+                        console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
+                        commentText += `\n\nTool not permitted: ${toolName}`
+                        await commentRef.update({ commentText })
+                        toolAlreadyExecuted = true
+                        break // Exit the while loop
+                    }
+
+                    // Show loading indicator
+                    const loadingMessage = `⏳ Executing ${toolName}...`
+                    commentText += `\n\n${loadingMessage}`
+                    await commentRef.update({ commentText })
+
+                    console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
+
+                    // Execute tool and get result
+                    let toolResult
+                    try {
+                        console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
+                        toolResult = await executeToolNatively(
+                            toolName,
+                            toolArgs,
+                            projectId,
+                            assistantId,
+                            requestUserId,
+                            userContext
+                        )
+                        const toolResultString = JSON.stringify(toolResult, null, 2)
+                        console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
+                            toolName,
+                            resultLength: toolResultString.length,
+                            resultPreview: toolResultString.substring(0, 500),
+                            fullResult:
+                                toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
+                        })
+                    } catch (error) {
+                        console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
+                            toolName,
+                            error: error.message,
+                            stack: error.stack,
+                        })
+                        const errorMsg = `Error executing ${toolName}: ${error.message}`
+                        commentText = commentText.replace(loadingMessage, errorMsg)
+                        await commentRef.update({ commentText })
+                        toolAlreadyExecuted = true
+                        break // Exit the while loop
+                    }
+
+                    // Build new conversation history with tool result
+                    // Need to add: assistant's message with tool call, then tool result message
+
+                    // Collect all assistant content before tool call
+                    const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
+                    console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
+                        assistantMessageContentLength: assistantMessageContent.length,
+                        assistantMessageContent: assistantMessageContent.substring(0, 200),
+                    })
+
+                    // Build updated conversation with plain objects
+                    const updatedConversation = [
+                        ...currentConversation,
+                        {
+                            role: 'assistant',
+                            content: assistantMessageContent,
+                            tool_calls: [
+                                {
+                                    id: toolCallId,
+                                    type: 'function',
+                                    function: {
+                                        name: toolName,
+                                        arguments: JSON.stringify(toolArgs),
+                                    },
+                                },
+                            ],
+                        },
+                        {
+                            role: 'tool',
+                            content: JSON.stringify(toolResult),
+                            tool_call_id: toolCallId,
+                        },
+                        {
+                            role: 'user',
+                            content:
+                                'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
+                        },
+                    ]
+
+                    console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
+                        conversationLength: updatedConversation.length,
+                        originalHistoryLength: currentConversation.length,
+                        toolResultLength: JSON.stringify(toolResult).length,
+                        toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
+                        iteration: toolCallIteration,
+                        lastThreeMessages: updatedConversation.slice(-3).map(m => ({
+                            role: m.role,
+                            hasContent: !!m.content,
+                            contentLength: m.content?.length,
+                            contentPreview: m.content?.substring(0, 150),
+                            hasToolCalls: !!m.tool_calls,
+                            toolCallsCount: m.tool_calls?.length,
+                            hasToolCallId: !!m.tool_call_id,
+                        })),
+                    })
+
+                    // Update currentConversation for next iteration
+                    currentConversation = updatedConversation
+
+                    // Resume stream with updated conversation
+                    console.log('🔧 NATIVE TOOL CALL: Calling interactWithChatStream with updated conversation', {
+                        modelKey,
+                        temperatureKey,
+                        allowedToolsCount: allowedTools?.length,
+                        allowedTools,
+                        iteration: toolCallIteration,
+                    })
+                    const newStream = await interactWithChatStream(
+                        updatedConversation,
+                        modelKey,
+                        temperatureKey,
+                        allowedTools
+                    )
+                    console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
+
+                    // Remove loading indicator
+                    commentText = commentText.replace(loadingMessage, '')
+                    await commentRef.update({ commentText })
+
+                    // Process the new stream - replace the current stream
+                    console.log('🔧 NATIVE TOOL CALL: Starting to process resumed stream chunks')
+
+                    // Process all chunks from the new stream
+                    let resumedChunkCount = 0
+                    let totalContentReceived = 0
+                    let nextToolCalls = null
+
+                    for await (const newChunk of newStream) {
+                        resumedChunkCount++
+
+                        const logData = {
+                            iteration: toolCallIteration,
+                            chunkNumber: resumedChunkCount,
+                            hasContent: !!newChunk.content,
+                            contentLength: newChunk.content?.length || 0,
+                            content: newChunk.content || '',
+                            hasAdditionalKwargs: !!newChunk.additional_kwargs,
+                            additionalKwargs: newChunk.additional_kwargs,
+                        }
+
+                        // Check if this chunk contains new tool calls (multi-step reasoning)
+                        if (newChunk.additional_kwargs?.tool_calls) {
+                            console.log('🔧 NATIVE TOOL CALL: RESUMED STREAM CONTAINS ADDITIONAL TOOL CALLS!', {
+                                ...logData,
+                                toolCallsCount: newChunk.additional_kwargs.tool_calls.length,
+                                toolCalls: newChunk.additional_kwargs.tool_calls.map(tc => ({
+                                    id: tc.id,
+                                    name: tc.function?.name,
+                                    args: tc.function?.arguments,
+                                })),
+                            })
+                            // Store the tool calls to execute in next iteration
+                            nextToolCalls = newChunk.additional_kwargs.tool_calls
+                            // Don't break yet - let the stream finish
+                        } else {
+                            console.log('🔧 NATIVE TOOL CALL: Resumed stream chunk #' + resumedChunkCount, logData)
+                        }
+
+                        if (newChunk.content) {
+                            totalContentReceived += newChunk.content.length
+                            commentText += newChunk.content
+                            await commentRef.update({ commentText })
+                            console.log('🔧 NATIVE TOOL CALL: Updated comment with new content', {
+                                iteration: toolCallIteration,
+                                chunkNumber: resumedChunkCount,
+                                addedContentLength: newChunk.content.length,
+                                totalContentReceived,
+                                currentCommentLength: commentText.length,
+                            })
+                        }
+                    }
+
+                    console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
+                        iteration: toolCallIteration,
+                        totalResumedChunks: resumedChunkCount,
+                        totalContentReceived,
+                        finalCommentLength: commentText.length,
+                        finalCommentPreview: commentText.substring(0, 500),
+                        hasNextToolCalls: !!nextToolCalls,
+                        nextToolCallsCount: nextToolCalls?.length || 0,
+                    })
+
+                    // Check if we need to execute more tool calls
+                    if (nextToolCalls && nextToolCalls.length > 0) {
+                        console.log('🔧 NATIVE TOOL CALL: Continuing to next iteration with new tool calls', {
+                            nextIteration: toolCallIteration + 1,
+                            toolCallsCount: nextToolCalls.length,
+                        })
+                        currentToolCalls = nextToolCalls
+                        // Continue the while loop
+                    } else {
+                        // No more tool calls, we're done
+                        console.log('🔧 NATIVE TOOL CALL: No more tool calls, exiting loop', {
+                            totalIterations: toolCallIteration,
+                        })
+                        currentToolCalls = null
+                        // Exit the while loop
+                    }
+                } // End of while loop
+
+                // Check if we hit max iterations
+                if (toolCallIteration >= MAX_TOOL_ITERATIONS) {
+                    console.warn('🔧 NATIVE TOOL CALL: Hit max tool call iterations!', {
+                        maxIterations: MAX_TOOL_ITERATIONS,
+                    })
+                    commentText += '\n\n⚠️ Maximum tool call iterations reached'
+                    await commentRef.update({ commentText })
                 }
 
-                console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
-                    totalResumedChunks: resumedChunkCount,
-                    totalContentReceived,
-                    finalCommentLength: commentText.length,
-                    finalCommentPreview: commentText.substring(0, 500),
-                })
                 toolAlreadyExecuted = true // Mark as done
                 break // Exit the main loop since we've processed everything
             }
