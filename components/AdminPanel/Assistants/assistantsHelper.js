@@ -41,7 +41,7 @@ export function getNewDefaultAssistant() {
         thirdPartLink: '',
         type: TYPE_PROMPT_BASED,
         instructions: '',
-        model: MODEL_GPT4O,
+        model: MODEL_GPT5,
         temperature: TEMPERATURE_NORMAL,
         lastVisitBoard: {},
         fromTemplate: false,
