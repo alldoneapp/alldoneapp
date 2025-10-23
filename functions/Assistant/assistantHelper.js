@@ -1011,31 +1011,24 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'get_focus_task': {
-            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
-            if (!userDoc.exists) {
-                return { focusTask: null }
-            }
+            const { FocusTaskService } = require('../shared/FocusTaskService')
 
-            const userData = userDoc.data()
-            const focusTaskId = userData.focusTask
+            const focusTaskService = new FocusTaskService({
+                database: admin.firestore(),
+                moment: require('moment'),
+                isCloudFunction: true,
+            })
+            await focusTaskService.initialize()
 
-            if (!focusTaskId) {
-                return { focusTask: null }
-            }
+            const result = await focusTaskService.getFocusTask(creatorId, projectId, {
+                selectMinimalFields: true,
+            })
 
-            const taskDoc = await admin.firestore().doc(`tasks/${projectId}/tasks/${focusTaskId}`).get()
-            if (!taskDoc.exists) {
-                return { focusTask: null }
-            }
-
-            const taskData = taskDoc.data()
             return {
-                focusTask: {
-                    id: taskDoc.id,
-                    name: taskData.name,
-                    description: taskData.description,
-                    completed: taskData.completed,
-                },
+                success: result.success,
+                focusTask: result.focusTask,
+                wasNewTaskSet: result.wasNewTaskSet,
+                message: result.message,
             }
         }
 
