@@ -372,16 +372,30 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
             messageCount: messages.length,
             hasTools: !!requestParams.tools,
             toolCount: requestParams.tools?.length,
-            messagesPreview: messages.map(m => ({
+            toolNames: requestParams.tools?.map(t => t.function.name),
+            messagesPreview: messages.map((m, idx) => ({
+                index: idx,
                 role: m.role,
                 contentLength: m.content?.length,
-                contentPreview: m.content?.substring(0, 100),
+                contentPreview: m.content?.substring(0, 200),
                 hasToolCalls: !!m.tool_calls,
+                toolCallsCount: m.tool_calls?.length,
                 hasToolCallId: !!m.tool_call_id,
+                toolCallId: m.tool_call_id,
             })),
+            lastMessage: messages[messages.length - 1]
+                ? {
+                      role: messages[messages.length - 1].role,
+                      content: messages[messages.length - 1].content?.substring(0, 300),
+                      hasToolCalls: !!messages[messages.length - 1].tool_calls,
+                      hasToolCallId: !!messages[messages.length - 1].tool_call_id,
+                  }
+                : null,
         })
 
+        console.log('Calling OpenAI API...')
         const stream = await openai.chat.completions.create(requestParams)
+        console.log('OpenAI API call successful, got stream')
 
         // Convert OpenAI stream to our expected format
         return convertOpenAIStream(stream)
@@ -395,19 +409,33 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 async function* convertOpenAIStream(stream) {
     let accumulatedToolCalls = {}
     let chunkCount = 0
+    let totalContentLength = 0
+
+    console.log('🔧 STREAM CONVERTER: Starting to process OpenAI stream')
 
     for await (const chunk of stream) {
         chunkCount++
         const delta = chunk.choices[0]?.delta
         const finishReason = chunk.choices[0]?.finish_reason
 
-        console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, {
+        const logData = {
+            chunkNumber: chunkCount,
             hasDelta: !!delta,
             hasContent: !!delta?.content,
-            contentLength: delta?.content?.length,
+            contentLength: delta?.content?.length || 0,
+            content: delta?.content || '',
             hasToolCalls: !!delta?.tool_calls,
+            toolCallsCount: delta?.tool_calls?.length || 0,
             finishReason: finishReason,
-        })
+            hasRole: !!delta?.role,
+            role: delta?.role,
+        }
+
+        if (delta?.content) {
+            totalContentLength += delta.content.length
+        }
+
+        console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, logData)
 
         if (!delta && !finishReason) continue
 
@@ -481,7 +509,12 @@ async function* convertOpenAIStream(stream) {
         }
     }
 
-    console.log(`🔧 STREAM CONVERTER: Finished processing ${chunkCount} chunks`)
+    console.log(`🔧 STREAM CONVERTER: Finished processing stream`, {
+        totalChunks: chunkCount,
+        totalContentLength,
+        hadToolCalls: Object.keys(accumulatedToolCalls).length > 0,
+        toolCallsCount: Object.keys(accumulatedToolCalls).length,
+    })
 }
 
 function formatMessage(objectType, message, assistantId) {
@@ -1105,6 +1138,14 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'search': {
+            console.log('🔍 SEARCH TOOL: Starting search execution', {
+                creatorId,
+                query: toolArgs.query,
+                type: toolArgs.type || 'all',
+                projectId: toolArgs.projectId || projectId,
+                dateRange: toolArgs.dateRange || null,
+            })
+
             const { SearchService } = require('../shared/SearchService')
             const moment = require('moment')
 
@@ -1118,6 +1159,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 isCloudFunction: true,
             })
             await searchService.initialize()
+            console.log('🔍 SEARCH TOOL: SearchService initialized')
 
             // Execute search
             const result = await searchService.search(creatorId, {
@@ -1125,6 +1167,14 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 type: toolArgs.type || 'all',
                 projectId: toolArgs.projectId || projectId,
                 dateRange: toolArgs.dateRange || null,
+            })
+            console.log('🔍 SEARCH TOOL: Search completed', {
+                tasksCount: result.results.tasks?.length || 0,
+                notesCount: result.results.notes?.length || 0,
+                goalsCount: result.results.goals?.length || 0,
+                contactsCount: result.results.contacts?.length || 0,
+                chatsCount: result.results.chats?.length || 0,
+                assistantsCount: result.results.assistants?.length || 0,
             })
 
             // Format results for assistant
@@ -1156,7 +1206,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 totalResults += result.results.assistants.length
             }
 
-            return {
+            const searchResult = {
                 success: true,
                 query: result.query,
                 results: result.results,
@@ -1164,9 +1214,24 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 summary: totalResults > 0 ? `Found ${summary.join(', ')}` : 'No results found',
                 searchedProjects: result.searchedProjects || [],
             }
+
+            console.log('🔍 SEARCH TOOL: Returning result', {
+                success: searchResult.success,
+                totalResults: searchResult.totalResults,
+                summary: searchResult.summary,
+                resultLength: JSON.stringify(searchResult).length,
+            })
+
+            return searchResult
         }
 
         case 'get_note': {
+            console.log('📝 GET_NOTE TOOL: Starting note retrieval', {
+                creatorId,
+                noteId: toolArgs.noteId,
+                projectId: toolArgs.projectId,
+            })
+
             const { SearchService } = require('../shared/SearchService')
             const moment = require('moment')
 
@@ -1180,11 +1245,21 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 isCloudFunction: true,
             })
             await searchService.initialize()
+            console.log('📝 GET_NOTE TOOL: SearchService initialized')
 
             // Retrieve full note content
             const note = await searchService.getNote(creatorId, toolArgs.noteId, toolArgs.projectId)
+            console.log('📝 GET_NOTE TOOL: Note retrieved', {
+                noteId: note.id,
+                title: note.title,
+                contentLength: note.content?.length || 0,
+                contentPreview: note.content?.substring(0, 200),
+                projectId: note.projectId,
+                projectName: note.projectName,
+                wordCount: note.metadata?.wordCount || 0,
+            })
 
-            return {
+            const result = {
                 success: true,
                 note: {
                     id: note.id,
@@ -1197,6 +1272,13 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     wordCount: note.metadata?.wordCount || 0,
                 },
             }
+
+            console.log('📝 GET_NOTE TOOL: Returning result', {
+                success: result.success,
+                resultLength: JSON.stringify(result).length,
+            })
+
+            return result
         }
 
         default:
@@ -1356,6 +1438,7 @@ async function storeChunks(
                 // Execute tool and get result
                 let toolResult
                 try {
+                    console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
                     toolResult = await executeToolNatively(
                         toolName,
                         toolArgs,
@@ -1364,12 +1447,19 @@ async function storeChunks(
                         requestUserId,
                         userContext
                     )
+                    const toolResultString = JSON.stringify(toolResult, null, 2)
                     console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
                         toolName,
-                        resultLength: JSON.stringify(toolResult).length,
+                        resultLength: toolResultString.length,
+                        resultPreview: toolResultString.substring(0, 500),
+                        fullResult: toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
                     })
                 } catch (error) {
-                    console.error('🔧 NATIVE TOOL CALL: Tool execution failed', error)
+                    console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
+                        toolName,
+                        error: error.message,
+                        stack: error.stack,
+                    })
                     const errorMsg = `Error executing ${toolName}: ${error.message}`
                     commentText = commentText.replace(loadingMessage, errorMsg)
                     await commentRef.update({ commentText })
@@ -1382,6 +1472,10 @@ async function storeChunks(
 
                 // Collect all assistant content before tool call
                 const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
+                console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
+                    assistantMessageContentLength: assistantMessageContent.length,
+                    assistantMessageContent: assistantMessageContent.substring(0, 200),
+                })
 
                 // Build updated conversation with plain objects
                 const updatedConversation = [
@@ -1405,57 +1499,99 @@ async function storeChunks(
                         content: JSON.stringify(toolResult),
                         tool_call_id: toolCallId,
                     },
+                    {
+                        role: 'user',
+                        content:
+                            'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
+                    },
                 ]
 
-                console.log('🔧 NATIVE TOOL CALL: Resuming stream with tool result', {
+                console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
                     conversationLength: updatedConversation.length,
+                    originalHistoryLength: conversationHistory.length,
                     toolResultLength: JSON.stringify(toolResult).length,
-                    toolResultPreview: JSON.stringify(toolResult).substring(0, 200),
-                    conversationMessages: updatedConversation.map(m => ({
+                    toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
+                    lastThreeMessages: updatedConversation.slice(-3).map(m => ({
                         role: m.role,
                         hasContent: !!m.content,
                         contentLength: m.content?.length,
-                        contentPreview: m.content?.substring(0, 100),
+                        contentPreview: m.content?.substring(0, 150),
                         hasToolCalls: !!m.tool_calls,
+                        toolCallsCount: m.tool_calls?.length,
                         hasToolCallId: !!m.tool_call_id,
                     })),
                 })
 
                 // Resume stream with updated conversation
+                console.log('🔧 NATIVE TOOL CALL: Calling interactWithChatStream with updated conversation', {
+                    modelKey,
+                    temperatureKey,
+                    allowedToolsCount: allowedTools?.length,
+                    allowedTools,
+                })
                 const newStream = await interactWithChatStream(
                     updatedConversation,
                     modelKey,
                     temperatureKey,
                     allowedTools
                 )
+                console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
 
                 // Remove loading indicator
                 commentText = commentText.replace(loadingMessage, '')
                 await commentRef.update({ commentText })
 
                 // Process the new stream - replace the current stream
-                console.log('🔧 NATIVE TOOL CALL: Processing resumed stream')
+                console.log('🔧 NATIVE TOOL CALL: Starting to process resumed stream chunks')
 
                 // Process all chunks from the new stream
                 let resumedChunkCount = 0
+                let totalContentReceived = 0
                 for await (const newChunk of newStream) {
                     resumedChunkCount++
-                    console.log('🔧 NATIVE TOOL CALL: Processing resumed stream chunk #' + resumedChunkCount + ':', {
+
+                    const logData = {
+                        chunkNumber: resumedChunkCount,
                         hasContent: !!newChunk.content,
-                        contentLength: newChunk.content?.length,
-                        content: newChunk.content?.substring(0, 100),
+                        contentLength: newChunk.content?.length || 0,
+                        content: newChunk.content || '',
                         hasAdditionalKwargs: !!newChunk.additional_kwargs,
-                    })
+                        additionalKwargs: newChunk.additional_kwargs,
+                    }
+
+                    // Check if this chunk contains new tool calls
+                    if (newChunk.additional_kwargs?.tool_calls) {
+                        console.log('🔧 NATIVE TOOL CALL: RESUMED STREAM CONTAINS ADDITIONAL TOOL CALLS!', {
+                            ...logData,
+                            toolCallsCount: newChunk.additional_kwargs.tool_calls.length,
+                            toolCalls: newChunk.additional_kwargs.tool_calls.map(tc => ({
+                                id: tc.id,
+                                name: tc.function?.name,
+                                args: tc.function?.arguments,
+                            })),
+                        })
+                    } else {
+                        console.log('🔧 NATIVE TOOL CALL: Resumed stream chunk #' + resumedChunkCount, logData)
+                    }
 
                     if (newChunk.content) {
+                        totalContentReceived += newChunk.content.length
                         commentText += newChunk.content
                         await commentRef.update({ commentText })
+                        console.log('🔧 NATIVE TOOL CALL: Updated comment with new content', {
+                            chunkNumber: resumedChunkCount,
+                            addedContentLength: newChunk.content.length,
+                            totalContentReceived,
+                            currentCommentLength: commentText.length,
+                        })
                     }
                 }
 
                 console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
                     totalResumedChunks: resumedChunkCount,
+                    totalContentReceived,
                     finalCommentLength: commentText.length,
+                    finalCommentPreview: commentText.substring(0, 500),
                 })
                 toolAlreadyExecuted = true // Mark as done
                 break // Exit the main loop since we've processed everything
