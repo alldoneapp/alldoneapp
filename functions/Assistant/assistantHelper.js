@@ -952,7 +952,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     limit: 100,
                     selectMinimalFields: true,
                 })
-                tasks = result || []
+                tasks = result.tasks || []
             }
 
             return {
