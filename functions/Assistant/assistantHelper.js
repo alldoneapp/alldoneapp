@@ -906,20 +906,73 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'create_note': {
-            const notesRef = admin.firestore().collection(`notes/${projectId}/notes`)
-            const noteData = {
-                title: toolArgs.title,
-                content: toolArgs.content,
-                creatorId: creatorId,
-                lastChangeDate: Date.now(),
-                createDate: Date.now(),
+            const { NoteService } = require('../shared/NoteService')
+            const db = admin.firestore()
+
+            // Get user data for feed creation
+            let feedUser
+            try {
+                const userDoc = await db.collection('users').doc(creatorId).get()
+                if (userDoc.exists) {
+                    const userData = userDoc.data()
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: userData.name || userData.displayName || 'User',
+                        email: userData.email || '',
+                    }
+                } else {
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: 'Unknown User',
+                        email: '',
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not get user data for feed, using defaults')
+                feedUser = {
+                    uid: creatorId,
+                    id: creatorId,
+                    creatorId: creatorId,
+                    name: 'Unknown User',
+                    email: '',
+                }
             }
 
-            const noteRef = await notesRef.add(noteData)
+            // Initialize NoteService
+            const noteService = new NoteService({
+                database: db,
+                moment: moment,
+                idGenerator: () => db.collection('_').doc().id,
+                enableFeeds: true,
+                enableValidation: true,
+                isCloudFunction: true,
+            })
+            await noteService.initialize()
+
+            // Create note using unified service
+            const result = await noteService.createAndPersistNote(
+                {
+                    title: toolArgs.title,
+                    content: toolArgs.content,
+                    userId: creatorId,
+                    projectId: projectId,
+                    isPrivate: false,
+                    feedUser,
+                },
+                {
+                    userId: creatorId,
+                    projectId: projectId,
+                }
+            )
+
             return {
-                success: true,
+                success: result.success,
                 noteTitle: toolArgs.title,
-                noteId: noteRef.id,
+                noteId: result.noteId,
             }
         }
 
@@ -1116,24 +1169,79 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'update_note': {
-            // Search for note by title
-            const notesRef = admin.firestore().collection(`notes/${projectId}/notes`)
-            const querySnapshot = await notesRef.where('title', '==', toolArgs.noteTitle).limit(1).get()
+            const { NoteService } = require('../shared/NoteService')
+            const db = admin.firestore()
+
+            // Search for note by title in correct collection
+            const notesRef = db.collection(`noteItems/${projectId}/notes`)
+            const querySnapshot = await notesRef.where('title', '==', toolArgs.noteTitle.toLowerCase()).limit(1).get()
 
             if (querySnapshot.empty) {
                 throw new Error(`Note with title "${toolArgs.noteTitle}" not found`)
             }
 
             const noteDoc = querySnapshot.docs[0]
-            await noteDoc.ref.update({
+            const currentNote = { id: noteDoc.id, ...noteDoc.data() }
+
+            // Get user data for feed creation
+            let feedUser
+            try {
+                const userDoc = await db.collection('users').doc(creatorId).get()
+                if (userDoc.exists) {
+                    const userData = userDoc.data()
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: userData.name || userData.displayName || 'User',
+                        email: userData.email || '',
+                    }
+                } else {
+                    feedUser = {
+                        uid: creatorId,
+                        id: creatorId,
+                        creatorId: creatorId,
+                        name: 'Unknown User',
+                        email: '',
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not get user data for feed, using defaults')
+                feedUser = {
+                    uid: creatorId,
+                    id: creatorId,
+                    creatorId: creatorId,
+                    name: 'Unknown User',
+                    email: '',
+                }
+            }
+
+            // Initialize NoteService
+            const noteService = new NoteService({
+                database: db,
+                moment: moment,
+                idGenerator: () => db.collection('_').doc().id,
+                enableFeeds: true,
+                enableValidation: false,
+                isCloudFunction: true,
+            })
+            await noteService.initialize()
+
+            // Update note using unified service
+            const result = await noteService.updateAndPersistNote({
+                noteId: currentNote.id,
+                projectId: projectId,
+                currentNote: currentNote,
                 content: toolArgs.content,
-                lastChangeDate: Date.now(),
+                title: toolArgs.newTitle,
+                feedUser: feedUser,
             })
 
             return {
-                success: true,
+                success: result.success,
                 noteTitle: toolArgs.noteTitle,
-                noteId: noteDoc.id,
+                noteId: currentNote.id,
+                message: result.message,
             }
         }
 
