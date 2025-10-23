@@ -191,6 +191,61 @@ const toolSchemas = {
             },
         },
     },
+
+    search: {
+        type: 'function',
+        function: {
+            name: 'search',
+            description:
+                'Search across tasks, notes, goals, contacts, chats, and assistants. Use this to find information, answer questions about existing content, or locate specific items.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description: 'The search query text',
+                    },
+                    type: {
+                        type: 'string',
+                        enum: ['all', 'tasks', 'notes', 'goals', 'contacts', 'chats', 'assistants'],
+                        description: 'Type of content to search. Use "all" to search across all types.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'Optional: limit search to a specific project ID',
+                    },
+                    dateRange: {
+                        type: 'string',
+                        description: 'Optional: filter by date range in format "YYYY-MM-DD to YYYY-MM-DD"',
+                    },
+                },
+                required: ['query'],
+            },
+        },
+    },
+
+    get_note: {
+        type: 'function',
+        function: {
+            name: 'get_note',
+            description:
+                'Retrieve the full content of a specific note by its ID. Use this when you need to read or analyze the complete contents of a note.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    noteId: {
+                        type: 'string',
+                        description: 'The ID of the note to retrieve',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'The project ID where the note is located',
+                    },
+                },
+                required: ['noteId', 'projectId'],
+            },
+        },
+    },
 }
 
 /**

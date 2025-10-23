@@ -1111,6 +1111,101 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
         }
 
+        case 'search': {
+            const { SearchService } = require('../shared/SearchService')
+            const moment = require('moment')
+
+            // Initialize SearchService with full capabilities
+            const searchService = new SearchService({
+                database: admin.firestore(),
+                moment: moment,
+                enableAlgolia: true,
+                enableNoteContent: true,
+                enableDateParsing: true,
+                isCloudFunction: true,
+            })
+            await searchService.initialize()
+
+            // Execute search
+            const result = await searchService.search(creatorId, {
+                query: toolArgs.query,
+                type: toolArgs.type || 'all',
+                projectId: toolArgs.projectId || projectId,
+                dateRange: toolArgs.dateRange || null,
+            })
+
+            // Format results for assistant
+            const summary = []
+            let totalResults = 0
+
+            if (result.results.tasks && result.results.tasks.length > 0) {
+                summary.push(`${result.results.tasks.length} tasks`)
+                totalResults += result.results.tasks.length
+            }
+            if (result.results.notes && result.results.notes.length > 0) {
+                summary.push(`${result.results.notes.length} notes`)
+                totalResults += result.results.notes.length
+            }
+            if (result.results.goals && result.results.goals.length > 0) {
+                summary.push(`${result.results.goals.length} goals`)
+                totalResults += result.results.goals.length
+            }
+            if (result.results.contacts && result.results.contacts.length > 0) {
+                summary.push(`${result.results.contacts.length} contacts`)
+                totalResults += result.results.contacts.length
+            }
+            if (result.results.chats && result.results.chats.length > 0) {
+                summary.push(`${result.results.chats.length} chats`)
+                totalResults += result.results.chats.length
+            }
+            if (result.results.assistants && result.results.assistants.length > 0) {
+                summary.push(`${result.results.assistants.length} assistants`)
+                totalResults += result.results.assistants.length
+            }
+
+            return {
+                success: true,
+                query: result.query,
+                results: result.results,
+                totalResults: totalResults,
+                summary: totalResults > 0 ? `Found ${summary.join(', ')}` : 'No results found',
+                searchedProjects: result.searchedProjects || [],
+            }
+        }
+
+        case 'get_note': {
+            const { SearchService } = require('../shared/SearchService')
+            const moment = require('moment')
+
+            // Initialize SearchService for note retrieval
+            const searchService = new SearchService({
+                database: admin.firestore(),
+                moment: moment,
+                enableAlgolia: true,
+                enableNoteContent: true,
+                enableDateParsing: true,
+                isCloudFunction: true,
+            })
+            await searchService.initialize()
+
+            // Retrieve full note content
+            const note = await searchService.getNote(creatorId, toolArgs.noteId, toolArgs.projectId)
+
+            return {
+                success: true,
+                note: {
+                    id: note.id,
+                    title: note.title,
+                    content: note.content,
+                    projectId: note.projectId,
+                    projectName: note.projectName,
+                    createdAt: note.createdAt,
+                    updatedAt: note.updatedAt,
+                    wordCount: note.metadata?.wordCount || 0,
+                },
+            }
+        }
+
         default:
             throw new Error(`Unknown tool: ${toolName}`)
     }
