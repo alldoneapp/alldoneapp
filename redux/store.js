@@ -305,7 +305,7 @@ export const initialState = {
     assistantEnabled: false,
     notEnabledAssistantWhenLoadComments: false,
     triggerBotSpinner: false,
-    preConfigTaskExecuting: false,
+    preConfigTaskExecuting: null,
     disableAutoFocusInChat: false,
     mainChatEditor: null,
     goalOpenTasksData: [],
@@ -1979,7 +1979,7 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set pre-config task executing': {
-            return { ...state, preConfigTaskExecuting: action.isExecuting }
+            return { ...state, preConfigTaskExecuting: action.taskName }
         }
 
         case 'Set disable auto focus in chat': {

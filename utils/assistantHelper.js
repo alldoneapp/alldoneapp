@@ -321,7 +321,7 @@ const createTopicForPreConfigTask = async (
         }
 
         // Clear the executing state after topic and message are created
-        store.dispatch(setPreConfigTaskExecuting(false))
+        store.dispatch(setPreConfigTaskExecuting(null))
 
         const functionParams = {
             userId: loggedUser.uid,
@@ -362,7 +362,7 @@ const createTopicForPreConfigTask = async (
             assistantId,
         })
         // Clear the executing state on error
-        store.dispatch(setPreConfigTaskExecuting(false))
+        store.dispatch(setPreConfigTaskExecuting(null))
         throw error
     }
 }

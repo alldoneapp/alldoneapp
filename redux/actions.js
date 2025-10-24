@@ -2264,10 +2264,10 @@ export const setTriggerBotSpinner = triggerBotSpinner => {
     return action
 }
 
-export const setPreConfigTaskExecuting = isExecuting => {
+export const setPreConfigTaskExecuting = taskName => {
     const action = {
         type: 'Set pre-config task executing',
-        isExecuting,
+        taskName,
     }
     return action
 }

@@ -22,7 +22,7 @@ const getOptions = (project, assistantId, tasks) => {
                 if (task.type !== TASK_TYPE_PROMPT) {
                     window.open(task.link, '_blank')
                 } else if (task.variables.length === 0) {
-                    store.dispatch(setPreConfigTaskExecuting(true))
+                    store.dispatch(setPreConfigTaskExecuting(task.name))
                     // Build aiSettings from task configuration
                     const aiSettings =
                         task.aiModel || task.aiTemperature || task.aiSystemMessage

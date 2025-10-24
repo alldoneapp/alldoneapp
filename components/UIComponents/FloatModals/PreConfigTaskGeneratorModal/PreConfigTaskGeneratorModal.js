@@ -37,7 +37,7 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
         if (processPromp) {
             processPromp(generatedPrompt)
         } else {
-            store.dispatch(setPreConfigTaskExecuting(true))
+            store.dispatch(setPreConfigTaskExecuting(name))
             // Build aiSettings from task configuration
             const aiSettings =
                 task.aiModel || task.aiTemperature || task.aiSystemMessage

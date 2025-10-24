@@ -33,7 +33,7 @@ export default function OptionButtons({ projectId, options, assistant }) {
                         icon={icon}
                         containerStyle={{ marginHorizontal: 8, marginBottom: 8 }}
                         onPress={action}
-                        disabled={isExecuting}
+                        disabled={isExecuting === task?.name}
                     />
                 )
             })}

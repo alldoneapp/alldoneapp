@@ -64,7 +64,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
                         icon={icon}
                         containerStyle={containerStyle}
                         onPress={openModal}
-                        disabled={isExecuting}
+                        disabled={isExecuting === task?.name}
                     />
                 </Popover>
             ) : (
@@ -73,7 +73,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
                     icon={icon}
                     containerStyle={containerStyle}
                     onPress={openModal}
-                    disabled={isExecuting}
+                    disabled={isExecuting === task?.name}
                 />
             )}
         </>
