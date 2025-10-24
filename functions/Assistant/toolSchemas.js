@@ -174,20 +174,26 @@ const toolSchemas = {
         type: 'function',
         function: {
             name: 'update_note',
-            description: 'Updates an existing note by searching for it by title. Supports markdown formatting.',
+            description:
+                'Updates an existing note by searching for it by title. Can prepend new content with date stamp and/or update the note title. Supports markdown formatting.',
             parameters: {
                 type: 'object',
                 properties: {
                     noteTitle: {
                         type: 'string',
-                        description: 'The title of the note to update',
+                        description: 'The title of the note to update (used for searching)',
                     },
                     content: {
                         type: 'string',
-                        description: 'The new content for the note in markdown format',
+                        description:
+                            'New content to prepend to the note with date stamp (optional, markdown supported)',
+                    },
+                    title: {
+                        type: 'string',
+                        description: 'New title for the note (optional, for renaming)',
                     },
                 },
-                required: ['noteTitle', 'content'],
+                required: ['noteTitle'],
             },
         },
     },

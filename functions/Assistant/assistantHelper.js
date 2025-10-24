@@ -60,6 +60,12 @@ const COMPLETION_MAX_TOKENS_GPT5 = 2000 // GPT-5 needs more tokens due to strict
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
 
+// Service instance caches for reuse across tool executions (performance optimization)
+// Similar pattern to MCP server for consistency
+let cachedNoteService = null
+let cachedSearchService = null
+let cachedTaskService = null
+
 /**
  * Check if a model supports native OpenAI tool/function calling
  * @param {string} modelKey - The model key (e.g., MODEL_GPT4O)
@@ -836,54 +842,29 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
     switch (toolName) {
         case 'create_task': {
             const { TaskService } = require('../shared/TaskService')
+            const { UserHelper } = require('../shared/UserHelper')
             const moment = require('moment-timezone')
             const db = admin.firestore()
-            const taskService = new TaskService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: true,
-                isCloudFunction: true,
-                taskBatchSize: 100,
-                maxBatchesPerProject: 20,
-            })
-            await taskService.initialize()
 
-            // Get user data for feed
-            let feedUser
-            try {
-                const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
-                if (userDoc.exists) {
-                    const userData = userDoc.data()
-                    feedUser = {
-                        uid: creatorId,
-                        id: creatorId,
-                        creatorId: creatorId,
-                        name: userData.name || userData.displayName || 'User',
-                        email: userData.email || '',
-                    }
-                } else {
-                    feedUser = {
-                        uid: creatorId,
-                        id: creatorId,
-                        creatorId: creatorId,
-                        name: 'Unknown User',
-                        email: '',
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not get user data, using defaults:', error)
-                feedUser = {
-                    uid: creatorId,
-                    id: creatorId,
-                    creatorId: creatorId,
-                    name: 'Unknown User',
-                    email: '',
-                }
+            // Get user data for feed creation using shared helper
+            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+
+            // Initialize or reuse TaskService instance (performance optimization)
+            if (!cachedTaskService) {
+                cachedTaskService = new TaskService({
+                    database: db,
+                    moment: moment,
+                    idGenerator: () => db.collection('_').doc().id,
+                    enableFeeds: true,
+                    enableValidation: true,
+                    isCloudFunction: true,
+                    taskBatchSize: 100,
+                    maxBatchesPerProject: 20,
+                })
+                await cachedTaskService.initialize()
             }
 
-            const result = await taskService.createAndPersistTask(
+            const result = await cachedTaskService.createAndPersistTask(
                 {
                     name: toolArgs.name,
                     description: toolArgs.description || '',
@@ -907,72 +888,51 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
         case 'create_note': {
             const { NoteService } = require('../shared/NoteService')
+            const { UserHelper } = require('../shared/UserHelper')
             const db = admin.firestore()
 
-            // Get user data for feed creation
-            let feedUser
-            try {
-                const userDoc = await db.collection('users').doc(creatorId).get()
-                if (userDoc.exists) {
-                    const userData = userDoc.data()
-                    feedUser = {
-                        uid: creatorId,
-                        id: creatorId,
-                        creatorId: creatorId,
-                        name: userData.name || userData.displayName || 'User',
-                        email: userData.email || '',
-                    }
-                } else {
-                    feedUser = {
-                        uid: creatorId,
-                        id: creatorId,
-                        creatorId: creatorId,
-                        name: 'Unknown User',
-                        email: '',
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not get user data for feed, using defaults')
-                feedUser = {
-                    uid: creatorId,
-                    id: creatorId,
-                    creatorId: creatorId,
-                    name: 'Unknown User',
-                    email: '',
-                }
+            // Get user data for feed creation using shared helper
+            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+
+            // Initialize or reuse NoteService instance (performance optimization)
+            if (!cachedNoteService) {
+                cachedNoteService = new NoteService({
+                    database: db,
+                    moment: moment,
+                    idGenerator: () => db.collection('_').doc().id,
+                    enableFeeds: true,
+                    enableValidation: true,
+                    isCloudFunction: true,
+                })
+                await cachedNoteService.initialize()
             }
 
-            // Initialize NoteService
-            const noteService = new NoteService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: true,
-                isCloudFunction: true,
-            })
-            await noteService.initialize()
+            try {
+                // Create note using unified service
+                const result = await cachedNoteService.createAndPersistNote(
+                    {
+                        title: toolArgs.title,
+                        content: toolArgs.content,
+                        userId: creatorId,
+                        projectId: projectId,
+                        isPrivate: false,
+                        feedUser,
+                    },
+                    {
+                        userId: creatorId,
+                        projectId: projectId,
+                    }
+                )
 
-            // Create note using unified service
-            const result = await noteService.createAndPersistNote(
-                {
-                    title: toolArgs.title,
-                    content: toolArgs.content,
-                    userId: creatorId,
-                    projectId: projectId,
-                    isPrivate: false,
-                    feedUser,
-                },
-                {
-                    userId: creatorId,
-                    projectId: projectId,
+                return {
+                    success: result.success,
+                    noteId: result.noteId,
+                    message: result.message,
+                    note: result.note,
                 }
-            )
-
-            return {
-                success: result.success,
-                noteTitle: toolArgs.title,
-                noteId: result.noteId,
+            } catch (error) {
+                console.error('Error creating note:', error)
+                throw new Error(`Failed to create note: ${error.message}`)
             }
         }
 
@@ -1171,108 +1131,116 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         case 'update_note': {
             const { NoteService } = require('../shared/NoteService')
             const { SearchService } = require('../shared/SearchService')
+            const { UserHelper } = require('../shared/UserHelper')
             const db = admin.firestore()
 
-            // Use SearchService for better note finding (fuzzy matching, confidence scoring)
-            const searchService = new SearchService({
-                database: db,
-                moment: moment,
-                enableAlgolia: true,
-                enableNoteContent: true,
-                enableDateParsing: true,
-                isCloudFunction: true,
-            })
-            await searchService.initialize()
+            // Initialize or reuse SearchService instance (performance optimization)
+            if (!cachedSearchService) {
+                cachedSearchService = new SearchService({
+                    database: db,
+                    moment: moment,
+                    enableAlgolia: true,
+                    enableNoteContent: true,
+                    enableDateParsing: true,
+                    isCloudFunction: true,
+                })
+                await cachedSearchService.initialize()
+            }
 
-            // Find note using SearchService (same as MCP implementation)
-            const searchResult = await searchService.findNoteForUpdateWithResults(creatorId, {
+            // Step 1: Note Discovery - get final result from SearchService
+            // Pass all available search criteria for best matching
+            const searchResult = await cachedSearchService.findNoteForUpdateWithResults(creatorId, {
                 noteTitle: toolArgs.noteTitle,
-                projectId: projectId, // Use current context project
+                noteId: toolArgs.noteId, // Optional direct lookup
+                projectName: toolArgs.projectName, // Optional project filter
+                projectId: projectId, // Use current context project as default
             })
 
-            // Handle search failure
+            // Handle search failure - match MCP behavior
             if (!searchResult.success) {
                 if (searchResult.error === 'NO_MATCHES') {
-                    throw new Error(searchResult.message || `Note with title "${toolArgs.noteTitle}" not found`)
+                    throw new Error(searchResult.message)
                 } else if (searchResult.error === 'MULTIPLE_MATCHES') {
-                    throw new Error(
-                        searchResult.message ||
-                            `Multiple notes found with title "${toolArgs.noteTitle}". Please be more specific.`
-                    )
+                    // Return match info to LLM instead of throwing (MCP pattern)
+                    return {
+                        success: false,
+                        message: searchResult.message,
+                        confidence: searchResult.confidence,
+                        reasoning: searchResult.reasoning,
+                        matches: searchResult.matches,
+                        totalMatches: searchResult.totalMatches,
+                    }
                 } else {
-                    throw new Error(searchResult.message || 'Failed to find note')
+                    throw new Error(searchResult.message)
                 }
             }
 
+            // Step 2: Note Update - proceed with selected note
             const currentNote = searchResult.selectedNote
             const currentProjectId = searchResult.projectId
+            const currentProjectName = searchResult.projectName
 
-            // Get user data for feed creation
-            let feedUser
+            // Get user data for feed creation using shared helper
+            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+
+            // Initialize or reuse NoteService instance (performance optimization)
+            if (!cachedNoteService) {
+                cachedNoteService = new NoteService({
+                    database: db,
+                    moment: moment,
+                    idGenerator: () => db.collection('_').doc().id,
+                    enableFeeds: true,
+                    enableValidation: false, // Skip validation since we already validated
+                    isCloudFunction: true,
+                })
+                await cachedNoteService.initialize()
+            }
+
             try {
-                const userDoc = await db.collection('users').doc(creatorId).get()
-                if (userDoc.exists) {
-                    const userData = userDoc.data()
-                    feedUser = {
-                        uid: creatorId,
-                        id: creatorId,
-                        creatorId: creatorId,
-                        name: userData.name || userData.displayName || 'User',
-                        email: userData.email || '',
-                    }
-                } else {
-                    feedUser = {
-                        uid: creatorId,
-                        id: creatorId,
-                        creatorId: creatorId,
-                        name: 'Unknown User',
-                        email: '',
-                    }
+                console.log('Internal Assistant: Using NoteService for note update with feed generation')
+
+                // Update note using unified service (NoteService automatically adds timestamp)
+                const result = await cachedNoteService.updateAndPersistNote({
+                    noteId: currentNote.id,
+                    projectId: currentProjectId,
+                    currentNote: currentNote,
+                    content: toolArgs.content,
+                    title: toolArgs.title, // Optional: for renaming the note
+                    feedUser: feedUser,
+                })
+
+                console.log('Note updated via NoteService:', {
+                    noteId: currentNote.id,
+                    projectId: currentProjectId,
+                    changes: result.changes,
+                    feedGenerated: !!result.feedData,
+                    persisted: result.persisted,
+                })
+
+                // Build success message showing what changed (match MCP format)
+                const changes = result.changes || []
+                let message = `Note "${currentNote.title || 'Untitled'}" updated successfully`
+                if (changes.length > 0) {
+                    message += ` (${changes.join(', ')})`
+                }
+                message += ` in project "${currentProjectName}"`
+
+                // Add search reasoning to the update result for transparency (MCP pattern)
+                if (searchResult.isAutoSelected) {
+                    message += ` (${searchResult.reasoning})`
+                }
+
+                return {
+                    success: true,
+                    noteId: currentNote.id,
+                    message,
+                    note: result.updatedNote || { id: currentNote.id, ...currentNote },
+                    project: { id: currentProjectId, name: currentProjectName },
+                    changes: changes,
                 }
             } catch (error) {
-                console.warn('Could not get user data for feed, using defaults')
-                feedUser = {
-                    uid: creatorId,
-                    id: creatorId,
-                    creatorId: creatorId,
-                    name: 'Unknown User',
-                    email: '',
-                }
-            }
-
-            // Initialize NoteService
-            const noteService = new NoteService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: false,
-                isCloudFunction: true,
-            })
-            await noteService.initialize()
-
-            // Update note using unified service (NoteService automatically adds timestamp)
-            const result = await noteService.updateAndPersistNote({
-                noteId: currentNote.id,
-                projectId: currentProjectId,
-                currentNote: currentNote,
-                content: toolArgs.content,
-                feedUser: feedUser,
-            })
-
-            // Build enhanced message with search info
-            let message = result.message
-            if (searchResult.isAutoSelected && searchResult.reasoning) {
-                message += ` (${searchResult.reasoning})`
-            }
-
-            return {
-                success: result.success,
-                noteTitle: currentNote.title,
-                noteId: currentNote.id,
-                projectName: searchResult.projectName,
-                message: message,
-                changes: result.changes,
+                console.error('NoteService update failed:', error)
+                throw new Error(`Failed to update note: ${error.message}`)
             }
         }
 

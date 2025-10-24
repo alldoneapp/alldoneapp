@@ -559,26 +559,9 @@ class AlldoneSimpleMCPServer {
 
         const db = admin.firestore()
 
-        // Get user data for feed creation
-        let feedUser
-        try {
-            const userDoc = await db.collection('users').doc(userId).get()
-            if (userDoc.exists) {
-                const userData = userDoc.data()
-                feedUser = {
-                    uid: userId, // generateFeedModel expects 'uid' not 'id'
-                    id: userId,
-                    creatorId: userId,
-                    name: userData.name || userData.displayName || 'User',
-                    email: userData.email || '',
-                }
-            } else {
-                feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
-            }
-        } catch (error) {
-            console.warn('Could not get user data for feed, using defaults')
-            feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
-        }
+        // Get user data for feed creation using shared helper
+        const { UserHelper } = require('../shared/UserHelper')
+        const feedUser = await UserHelper.getFeedUserData(db, userId)
 
         // Initialize TaskService if not already done
         if (!this.taskService) {
@@ -1099,26 +1082,9 @@ class AlldoneSimpleMCPServer {
 
         const db = admin.firestore()
 
-        // Get user data for feed creation
-        let feedUser
-        try {
-            const userDoc = await db.collection('users').doc(userId).get()
-            if (userDoc.exists) {
-                const userData = userDoc.data()
-                feedUser = {
-                    uid: userId, // generateFeedModel expects 'uid' not 'id'
-                    id: userId,
-                    creatorId: userId,
-                    name: userData.name || userData.displayName || 'User',
-                    email: userData.email || '',
-                }
-            } else {
-                feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
-            }
-        } catch (error) {
-            console.warn('Could not get user data for feed, using defaults')
-            feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
-        }
+        // Get user data for feed creation using shared helper
+        const { UserHelper } = require('../shared/UserHelper')
+        const feedUser = await UserHelper.getFeedUserData(db, userId)
 
         // Initialize NoteService if not already done
         if (!this.noteService) {
@@ -1345,26 +1311,9 @@ class AlldoneSimpleMCPServer {
             await this.noteService.initialize()
         }
 
-        // Get user data for feed creation
-        let feedUser
-        try {
-            const userDoc = await db.collection('users').doc(userId).get()
-            if (userDoc.exists) {
-                const userData = userDoc.data()
-                feedUser = {
-                    uid: userId, // generateFeedModel expects 'uid' not 'id'
-                    id: userId,
-                    creatorId: userId,
-                    name: userData.name || userData.displayName || 'User',
-                    email: userData.email || '',
-                }
-            } else {
-                feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
-            }
-        } catch (error) {
-            console.warn('Could not get user data for feed, using defaults')
-            feedUser = { uid: userId, id: userId, creatorId: userId, name: 'User', email: '' }
-        }
+        // Get user data for feed creation using shared helper
+        const { UserHelper } = require('../shared/UserHelper')
+        const feedUser = await UserHelper.getFeedUserData(db, userId)
 
         try {
             console.log('MCP: Using NoteService for note update with feed generation')
