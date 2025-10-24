@@ -176,7 +176,7 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
     store.dispatch(startLoadingData())
     const { loggedUser, selectedProjectIndex } = store.getState()
 
-    const { enableAssistant = true } = options
+    const { enableAssistant = true, skipNavigation = false } = options
 
     try {
         const projectId = checkIfSelectedProject(selectedProjectIndex)
@@ -229,8 +229,10 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         }
         store.dispatch(postCreateActions)
 
-        const url = `/projects/${projectId}/chats/${chatId}/chat`
-        URLTrigger.processUrl(NavigationService, url)
+        if (!skipNavigation) {
+            const url = `/projects/${projectId}/chats/${chatId}/chat`
+            URLTrigger.processUrl(NavigationService, url)
+        }
 
         return {
             projectId,

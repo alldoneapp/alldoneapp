@@ -30,7 +30,7 @@ export default function LastCommentArea() {
         }
     }, [aModalIsOpen, projectChatLastNotification, lastAssistantCommentData])
 
-    const { commentCreator, commentProject, isAssistant, hasUnread } = getCommentData(
+    const { commentCreator, commentProject, isAssistant } = getCommentData(
         project,
         currentProjectChatLastNotification,
         currentLastAssistantCommentData,
@@ -39,10 +39,6 @@ export default function LastCommentArea() {
     )
 
     if (!commentProject || !commentCreator) {
-        return null
-    }
-
-    if (!hasUnread) {
         return null
     }
 
