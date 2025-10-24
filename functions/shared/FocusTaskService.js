@@ -158,6 +158,13 @@ class FocusTaskService {
             }
             const userProjectIds = activeProjects.map(p => p.id)
 
+            // Fetch user document to get default project
+            const userDoc = await this.options.database.collection('users').doc(userId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
             // If no current project specified, use user's default or first project
             const searchProjectId = currentProjectId || userData.defaultProjectId || userProjectIds[0]
 
