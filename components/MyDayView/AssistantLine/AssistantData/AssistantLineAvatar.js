@@ -91,8 +91,8 @@ export default function AssistantLineAvatar({ creator, project, isAssistant }) {
             <AssistantAvatar
                 photoURL={creator.photoURL300 || creator.photoURL}
                 assistantId={creator.uid}
-                size={100}
-                imageStyle={{ borderRadius: 8 }}
+                size={140}
+                imageStyle={{ borderRadius: 12 }}
             />
         </TouchableOpacity>
     )

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import AssistantDataContainer from './AssistantData/AssistantDataContainer'
 import { getCommentData } from './AssistantOptions/helper'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 import LastComment from './LastComment/LastComment'
@@ -49,15 +48,12 @@ export default function LastCommentArea() {
 
     return (
         <View style={localStyles.container}>
-            <AssistantDataContainer project={commentProject} isAssistant={isAssistant} creator={commentCreator} />
-            <View style={localStyles.cardColumn}>
-                <LastComment
-                    project={commentProject}
-                    setAModalIsOpen={setAModalIsOpen}
-                    currentProjectChatLastNotification={currentProjectChatLastNotification}
-                    currentLastAssistantCommentData={currentLastAssistantCommentData}
-                />
-            </View>
+            <LastComment
+                project={commentProject}
+                setAModalIsOpen={setAModalIsOpen}
+                currentProjectChatLastNotification={currentProjectChatLastNotification}
+                currentLastAssistantCommentData={currentLastAssistantCommentData}
+            />
         </View>
     )
 }
@@ -65,13 +61,6 @@ export default function LastCommentArea() {
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'stretch',
-        minHeight: 100,
         marginTop: 32,
-    },
-    cardColumn: {
-        flex: 1,
     },
 })

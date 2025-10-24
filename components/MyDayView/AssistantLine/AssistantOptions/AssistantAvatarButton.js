@@ -55,7 +55,12 @@ export default function AssistantAvatarButton({ assistant, projectIndex, size = 
 
     return (
         <TouchableOpacity onPress={navigateToAssistantBoard}>
-            <AssistantAvatar photoURL={assistant.photoURL300} assistantId={assistant.uid} size={size} />
+            <AssistantAvatar
+                photoURL={assistant.photoURL300}
+                assistantId={assistant.uid}
+                size={size}
+                imageStyle={{ borderRadius: 12 }}
+            />
         </TouchableOpacity>
     )
 }

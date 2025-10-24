@@ -125,7 +125,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             </View>
             <View style={localStyles.firstRow}>
                 <View style={localStyles.avatarWrapper}>
-                    <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={32} />
+                    <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
                 </View>
                 <TextInput
                     style={localStyles.messageInput}
@@ -139,16 +139,18 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     onSubmitEditing={handleSendMessage}
                     returnKeyType={'send'}
                 />
-                <Button
-                    title={sendButtonTitle}
-                    icon={'send'}
-                    onPress={handleSendMessage}
-                    disabled={!canSend}
-                    buttonStyle={sendButtonStyle}
-                    titleStyle={localStyles.sendButtonTitle}
-                    accessibilityLabel={sendLabel}
-                    accessible={true}
-                />
+                <View style={localStyles.sendButtonWrapper}>
+                    <Button
+                        title={sendButtonTitle}
+                        icon={'send'}
+                        onPress={handleSendMessage}
+                        disabled={!canSend}
+                        buttonStyle={sendButtonStyle}
+                        titleStyle={localStyles.sendButtonTitle}
+                        accessibilityLabel={sendLabel}
+                        accessible={true}
+                    />
+                </View>
             </View>
             {hasQuickActions && (
                 <View style={localStyles.quickActions}>
@@ -177,6 +179,7 @@ const localStyles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: colors.Text01,
+        textAlign: 'center',
     },
     firstRow: {
         flexDirection: 'row',
@@ -199,12 +202,16 @@ const localStyles = StyleSheet.create({
         color: colors.Text01,
     },
     avatarWrapper: {
-        width: 40,
-        height: 40,
-        borderRadius: 8,
+        width: 56,
+        height: 56,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
+    },
+    sendButtonWrapper: {
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     sendButtonDesktop: {
         paddingHorizontal: 16,
