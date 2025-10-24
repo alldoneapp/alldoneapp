@@ -408,7 +408,7 @@ export const watchSidebarTasksAmount = (
                     const { dueDateByObserversIds, observersIds } = task
                     const observersIdsCounted = []
                     for (let observerId of observersIds) {
-                        const needToCountInObserver = dueDateByObserversIds[observerId] < dateEndToday
+                        const needToCountInObserver = dueDateByObserversIds[observerId] <= dateEndToday
                         if (needToCountInObserver) {
                             increaseUserCount(projectId, observerId)
                             observersIdsCounted.push(observerId)
