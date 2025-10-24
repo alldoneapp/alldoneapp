@@ -453,17 +453,16 @@ export const generateTaskFromPreConfig = async (
             })
         }, delay)
 
+        // Always trigger the bot spinner to show assistant is working
+        store.dispatch(setTriggerBotSpinner(true))
+
         if (!skipNavigation) {
             NavigationService.navigate('TaskDetailedView', {
                 task: taskWithPublicFor,
                 projectId: projectId,
             })
 
-            store.dispatch([
-                setSelectedNavItem(DV_TAB_TASK_CHAT),
-                setTriggerBotSpinner(true),
-                setDisableAutoFocusInChat(true),
-            ])
+            store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
         }
 
         moveTasksFromOpen(projectId, taskWithPublicFor, DONE_STEP, null, null, taskWithPublicFor.estimations, null)
