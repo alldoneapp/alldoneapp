@@ -12,6 +12,7 @@
 
 const moment = require('moment')
 const { generateSortIndex } = require('../Utils/HelperFunctionsCloud')
+const { ProjectService } = require('./ProjectService')
 
 class FocusTaskService {
     constructor(options = {}) {
@@ -147,17 +148,15 @@ class FocusTaskService {
 
         try {
             // Get user's projects to search across
-            const userDoc = await this.options.database.collection('users').doc(userId).get()
-            if (!userDoc.exists) {
-                throw new Error('User not found')
-            }
+            // Get user's active projects to search across
+            const projectService = new ProjectService({ database: this.options.database })
+            await projectService.initialize()
+            const activeProjects = await projectService.getUserProjects(userId, { activeOnly: true })
 
-            const userData = userDoc.data()
-            const userProjectIds = userData.projectIds || []
-
-            if (userProjectIds.length === 0) {
-                return null // User has no projects
+            if (activeProjects.length === 0) {
+                return null // User has no active projects
             }
+            const userProjectIds = activeProjects.map(p => p.id)
 
             // If no current project specified, use user's default or first project
             const searchProjectId = currentProjectId || userData.defaultProjectId || userProjectIds[0]
