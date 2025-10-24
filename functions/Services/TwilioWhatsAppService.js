@@ -1,6 +1,39 @@
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 
+/**
+ * Get the correct base URL based on environment
+ * @returns {string} Base URL for the current environment
+ */
+function getBaseUrl() {
+    if (process.env.FUNCTIONS_EMULATOR) {
+        return 'http://localhost:5000'
+    }
+
+    // Determine project ID from environment
+    let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    if (!projectId) {
+        try {
+            const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+            if (cfg && cfg.projectId) projectId = cfg.projectId
+        } catch (_) {}
+    }
+    if (!projectId) {
+        try {
+            projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+        } catch (_) {}
+    }
+
+    if (projectId === 'alldonealeph') {
+        return 'https://my.alldone.app'
+    }
+    if (projectId === 'alldonestaging') {
+        return 'https://mystaging.alldone.app'
+    }
+
+    return 'https://my.alldone.app'
+}
+
 // Emoji detection helpers to keep WhatsApp content within safe limits
 const EMOJI_CODEPOINT_RANGES = [
     [0x1f300, 0x1f5ff],
@@ -441,7 +474,8 @@ class TwilioWhatsAppService {
             })
 
             // {{2}}: Link to the conversation on Alldone
-            const conversationUrl = `https://alldonealeph.web.app/projects/${projectId}/tasks/${taskId}/chat`
+            const baseUrl = getBaseUrl()
+            const conversationUrl = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
 
             // {{3}}: Total open tasks count across all projects
             const openTasksCount = await this._countUserOpenTasks(userId)
