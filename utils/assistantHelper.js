@@ -312,6 +312,12 @@ const createTopicForPreConfigTask = async (
             console.log('Chat already exists for task:', taskId)
         }
 
+        // Create user message with the prompt in the frontend so it appears immediately
+        if (prompt && prompt.trim()) {
+            console.log('Creating user message with prompt for task:', taskId)
+            await createObjectMessage(projectId, taskId, prompt.trim(), 'tasks', STAYWARD_COMMENT, null, null)
+        }
+
         const functionParams = {
             userId: loggedUser.uid,
             projectId,
