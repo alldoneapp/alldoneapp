@@ -95,7 +95,7 @@ const getAllProjectsChatLastNotification = notifications => {
 export const watchComments = (projectId, chatType, chatId, watcherKey, amountCommentsToGet, callback) => {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`chatComments/${projectId}/${chatType}/${chatId}/comments`)
-        .orderBy('lastChangeDate', 'desc')
+        .orderBy('created', 'desc')
         .limit(amountCommentsToGet)
         .onSnapshot(snapshot => {
             const comments = []
