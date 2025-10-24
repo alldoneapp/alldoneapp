@@ -59,7 +59,10 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
 
         setIsSending(true)
         try {
-            const topicData = await createBotQuickTopic(assistant, trimmedMessage, { skipNavigation: true })
+            const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
+                skipNavigation: true,
+                enableAssistant: true,
+            })
 
             if (!topicData) {
                 return
