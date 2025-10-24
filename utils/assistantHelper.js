@@ -11,6 +11,7 @@ import {
     setDisableAutoFocusInChat,
     setSelectedNavItem,
     setTriggerBotSpinner,
+    setPreConfigTaskExecuting,
     startLoadingData,
     stopLoadingData,
 } from '../redux/actions'
@@ -319,6 +320,9 @@ const createTopicForPreConfigTask = async (
             await createObjectMessage(projectId, taskId, prompt.trim(), 'tasks', STAYWARD_COMMENT, null, null, true)
         }
 
+        // Clear the executing state after topic and message are created
+        store.dispatch(setPreConfigTaskExecuting(false))
+
         const functionParams = {
             userId: loggedUser.uid,
             projectId,
@@ -357,6 +361,8 @@ const createTopicForPreConfigTask = async (
             taskId,
             assistantId,
         })
+        // Clear the executing state on error
+        store.dispatch(setPreConfigTaskExecuting(false))
         throw error
     }
 }

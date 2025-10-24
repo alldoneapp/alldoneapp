@@ -4,13 +4,19 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 
-export default function OptionButton({ containerStyle, text, icon, onPress }) {
+export default function OptionButton({ containerStyle, text, icon, onPress, disabled = false }) {
     return (
-        <TouchableOpacity style={[localStyles.tag, containerStyle]} onPress={onPress}>
+        <TouchableOpacity
+            style={[localStyles.tag, containerStyle, disabled && localStyles.disabled]}
+            onPress={disabled ? undefined : onPress}
+            disabled={disabled}
+        >
             <View style={localStyles.icon}>
-                <Icon name={icon} size={16} color={colors.Text03} />
+                <Icon name={icon} size={16} color={disabled ? colors.Text05 : colors.Text03} />
             </View>
-            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{text}</Text>
+            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle(), disabled && localStyles.disabledText]}>
+                {text}
+            </Text>
         </TouchableOpacity>
     )
 }
@@ -35,5 +41,12 @@ const localStyles = StyleSheet.create({
     icon: {
         flexDirection: 'row',
         alignSelf: 'center',
+    },
+    disabled: {
+        borderColor: colors.Text05,
+        opacity: 0.5,
+    },
+    disabledText: {
+        color: colors.Text05,
     },
 })

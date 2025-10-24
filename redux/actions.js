@@ -2264,6 +2264,14 @@ export const setTriggerBotSpinner = triggerBotSpinner => {
     return action
 }
 
+export const setPreConfigTaskExecuting = isExecuting => {
+    const action = {
+        type: 'Set pre-config task executing',
+        isExecuting,
+    }
+    return action
+}
+
 export const setDisableAutoFocusInChat = disableAutoFocusInChat => {
     const action = {
         type: 'Set disable auto focus in chat',

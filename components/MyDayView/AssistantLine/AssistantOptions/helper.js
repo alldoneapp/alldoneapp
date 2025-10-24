@@ -5,6 +5,8 @@ import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { getAssistant, getAssistantInProject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
+import store from '../../../../redux/store'
+import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
@@ -20,6 +22,7 @@ const getOptions = (project, assistantId, tasks) => {
                 if (task.type !== TASK_TYPE_PROMPT) {
                     window.open(task.link, '_blank')
                 } else if (task.variables.length === 0) {
+                    store.dispatch(setPreConfigTaskExecuting(true))
                     generateTaskFromPreConfig(project.id, task.name, assistantId, task.prompt, null, null, {
                         skipNavigation: true,
                     })

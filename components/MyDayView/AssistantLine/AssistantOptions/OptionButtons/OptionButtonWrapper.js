@@ -10,6 +10,7 @@ import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 export default function OptionButtonWrapper({ projectId, containerStyle, text, icon, task, assistant }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
+    const isExecuting = useSelector(state => state.preConfigTaskExecuting)
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
 
@@ -58,10 +59,22 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
                     contentLocation={null}
                     disableReposition
                 >
-                    <OptionButton text={text} icon={icon} containerStyle={containerStyle} onPress={openModal} />
+                    <OptionButton
+                        text={text}
+                        icon={icon}
+                        containerStyle={containerStyle}
+                        onPress={openModal}
+                        disabled={isExecuting}
+                    />
                 </Popover>
             ) : (
-                <OptionButton text={text} icon={icon} containerStyle={containerStyle} onPress={openModal} />
+                <OptionButton
+                    text={text}
+                    icon={icon}
+                    containerStyle={containerStyle}
+                    onPress={openModal}
+                    disabled={isExecuting}
+                />
             )}
         </>
     )

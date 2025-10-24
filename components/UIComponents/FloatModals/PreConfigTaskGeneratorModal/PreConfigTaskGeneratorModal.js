@@ -14,6 +14,8 @@ import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import CloseButton from '../../../FollowUp/CloseButton'
 import Line from '../GoalMilestoneModal/Line'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
+import store from '../../../../redux/store'
+import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 
 export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
     const [values, setValues] = useState({})
@@ -32,9 +34,12 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
 
     const addTask = async () => {
         closeModal()
-        processPromp
-            ? processPromp(generatedPrompt)
-            : generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt)
+        if (processPromp) {
+            processPromp(generatedPrompt)
+        } else {
+            store.dispatch(setPreConfigTaskExecuting(true))
+            generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt)
+        }
     }
 
     const onPressKey = event => {
