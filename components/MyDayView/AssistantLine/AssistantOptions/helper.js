@@ -23,9 +23,31 @@ const getOptions = (project, assistantId, tasks) => {
                     window.open(task.link, '_blank')
                 } else if (task.variables.length === 0) {
                     store.dispatch(setPreConfigTaskExecuting(true))
-                    generateTaskFromPreConfig(project.id, task.name, assistantId, task.prompt, null, null, {
-                        skipNavigation: true,
-                    })
+                    // Build aiSettings from task configuration
+                    const aiSettings =
+                        task.aiModel || task.aiTemperature || task.aiSystemMessage
+                            ? {
+                                  model: task.aiModel,
+                                  temperature: task.aiTemperature,
+                                  systemMessage: task.aiSystemMessage,
+                              }
+                            : null
+                    // Build taskMetadata including sendWhatsApp
+                    const taskMetadata = {
+                        ...(task.taskMetadata || {}),
+                        sendWhatsApp: !!task.sendWhatsApp,
+                    }
+                    generateTaskFromPreConfig(
+                        project.id,
+                        task.name,
+                        assistantId,
+                        task.prompt,
+                        aiSettings,
+                        taskMetadata,
+                        {
+                            skipNavigation: true,
+                        }
+                    )
                 }
             },
         }

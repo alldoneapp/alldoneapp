@@ -38,7 +38,21 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
             processPromp(generatedPrompt)
         } else {
             store.dispatch(setPreConfigTaskExecuting(true))
-            generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt)
+            // Build aiSettings from task configuration
+            const aiSettings =
+                task.aiModel || task.aiTemperature || task.aiSystemMessage
+                    ? {
+                          model: task.aiModel,
+                          temperature: task.aiTemperature,
+                          systemMessage: task.aiSystemMessage,
+                      }
+                    : null
+            // Build taskMetadata including sendWhatsApp
+            const taskMetadata = {
+                ...(task.taskMetadata || {}),
+                sendWhatsApp: !!task.sendWhatsApp,
+            }
+            generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt, aiSettings, taskMetadata)
         }
     }
 

@@ -22,7 +22,18 @@ export default function PreConfigTaskOption({
     assistantId,
 }) {
     const dispatch = useDispatch()
-    const { name, prompt, variables, type, link, aiModel, aiTemperature, aiSystemMessage, taskMetadata } = task
+    const {
+        name,
+        prompt,
+        variables,
+        type,
+        link,
+        aiModel,
+        aiTemperature,
+        aiSystemMessage,
+        taskMetadata,
+        sendWhatsApp,
+    } = task
 
     console.log('PreConfigTaskOption selected:', {
         taskName: name,
@@ -70,7 +81,12 @@ export default function PreConfigTaskOption({
                 temperature: aiTemperature,
                 systemMessage: aiSystemMessage,
             }
-            generateTaskFromPreConfig(projectId, name, assistantId, prompt, aiSettings, taskMetadata)
+            // Build taskMetadata including sendWhatsApp
+            const mergedTaskMetadata = {
+                ...(taskMetadata || {}),
+                sendWhatsApp: !!sendWhatsApp,
+            }
+            generateTaskFromPreConfig(projectId, name, assistantId, prompt, aiSettings, mergedTaskMetadata)
         } else {
             closeModal()
             window.open(link, '_blank')
