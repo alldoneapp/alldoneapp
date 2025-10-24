@@ -66,13 +66,13 @@ function getBaseUrl() {
 
     // Decide by detected projectId; default to production if unknown
     if (projectId === 'alldonealeph') {
-        return 'https://alldonealeph.web.app'
+        return 'https://my.alldone.app'
     }
     if (projectId === 'alldonestaging') {
-        return 'https://alldonestaging.web.app'
+        return 'https://mystaging.alldone.app'
     }
 
-    return 'https://alldonealeph.web.app'
+    return 'https://my.alldone.app'
 }
 
 // Note: Firebase admin is already initialized by main functions/index.js

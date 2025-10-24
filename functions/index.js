@@ -29,13 +29,13 @@ function getBaseUrl() {
     }
 
     if (projectId === 'alldonealeph') {
-        return 'https://alldonealeph.web.app'
+        return 'https://my.alldone.app'
     }
     if (projectId === 'alldonestaging') {
-        return 'https://alldonestaging.web.app'
+        return 'https://mystaging.alldone.app'
     }
 
-    return 'https://alldonealeph.web.app'
+    return 'https://my.alldone.app'
 }
 
 // Guard against duplicate initialization during Firebase CLI code analysis
