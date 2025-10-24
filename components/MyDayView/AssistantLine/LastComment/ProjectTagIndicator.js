@@ -28,7 +28,7 @@ const localStyles = StyleSheet.create({
     container: {
         borderRadius: 100,
         position: 'absolute',
-        right: 3,
-        top: 3,
+        right: 10,
+        top: 10,
     },
 })

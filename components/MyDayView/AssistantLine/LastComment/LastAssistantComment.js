@@ -36,7 +36,7 @@ export default function LastAssistantComment({ projectId, commentText, onPress, 
 
 const localStyles = StyleSheet.create({
     container: {
-        minHeight: 100,
+        minHeight: 80,
         backgroundColor: colors.Grey300,
         borderRadius: 12,
         flexDirection: 'row',
@@ -46,7 +46,7 @@ const localStyles = StyleSheet.create({
     textContainer: {
         width: '100%',
         paddingRight: 20,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
     },
     title: {
         ...styles.subtitle2,
