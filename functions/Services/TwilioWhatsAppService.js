@@ -463,7 +463,18 @@ class TwilioWhatsAppService {
             })
 
             // Content variables for the template
-            // {{1}}: Task result - flatten newlines to spaces to satisfy stricter template constraints
+            // {{1}}: Project Name
+            let projectName = 'Project'
+            try {
+                const projectDoc = await admin.firestore().collection('projects').doc(projectId).get()
+                if (projectDoc.exists) {
+                    projectName = projectDoc.data().name || 'Project'
+                }
+            } catch (error) {
+                console.error('Error fetching project name:', error.message)
+            }
+
+            // {{2}}: Task result - flatten newlines to spaces to satisfy stricter template constraints
             const templateValue = preparedContent.value
                 .replace(/\n/g, ' ')
                 .replace(/\s{2,}/g, ' ')
@@ -473,31 +484,33 @@ class TwilioWhatsAppService {
                 templateLength: templateValue.length,
             })
 
-            // {{2}}: Link to the conversation on Alldone
+            // {{3}}: Link to the conversation on Alldone
             const baseUrl = getBaseUrl()
             const conversationUrl = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
 
-            // {{3}}: Total open tasks count across all projects
+            // {{4}}: Total open tasks count across all projects
             const openTasksCount = await this._countUserOpenTasks(userId)
 
             const contentVariables = JSON.stringify({
-                1: templateValue,
-                2: conversationUrl,
-                3: openTasksCount.toString(),
+                1: projectName,
+                2: templateValue,
+                3: conversationUrl,
+                4: openTasksCount.toString(),
             })
 
             console.log('Sending WhatsApp message with Content Template:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                contentSid: 'HX81a7e267fa725db5ea4b62326e8a2c90',
+                contentSid: 'HX1a900f0e0477f0070cd52c99d81a6aa1',
                 contentVariables,
+                projectName,
                 openTasksCount,
                 conversationUrl,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
-                contentSid: 'HX81a7e267fa725db5ea4b62326e8a2c90',
+                contentSid: 'HX1a900f0e0477f0070cd52c99d81a6aa1',
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
