@@ -50,8 +50,15 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             aiSettings,
             taskMetadata,
             sendWhatsApp,
+            sendWhatsAppType: typeof sendWhatsApp,
+            sendWhatsAppRawValue: sendWhatsApp,
         })
         const mergedTaskMetadata = { ...(taskMetadata || {}), sendWhatsApp: !!sendWhatsApp }
+        console.log('PreConfigTaskGeneratorWrapper merged taskMetadata:', {
+            mergedTaskMetadata,
+            originalSendWhatsApp: sendWhatsApp,
+            convertedSendWhatsApp: !!sendWhatsApp,
+        })
         generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata)
     }
 

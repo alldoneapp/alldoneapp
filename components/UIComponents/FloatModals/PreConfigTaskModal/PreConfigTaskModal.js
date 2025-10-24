@@ -199,6 +199,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             fullDateTime: moment(startDate).format('YYYY-MM-DD HH:mm:ss'),
             startDateType: typeof startDate,
             userTimezone: moment().format('Z'),
+            sendWhatsApp,
+            sendWhatsAppType: typeof sendWhatsApp,
         })
 
         // Convert startDate to UTC by removing the local timezone offset
@@ -253,6 +255,13 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       recurrence: recurrence ?? null,
                       sendWhatsApp,
                   }
+        console.log('PreConfigTaskModal - updatedTask to save:', {
+            taskId: updatedTask.id,
+            taskName: updatedTask.name,
+            sendWhatsApp: updatedTask.sendWhatsApp,
+            sendWhatsAppType: typeof updatedTask.sendWhatsApp,
+            taskMetadata: updatedTask.taskMetadata,
+        })
         updatePreConfigTask(projectId, assistantId, updatedTask)
         closeModal()
     }

@@ -443,6 +443,8 @@ export const generateTaskFromPreConfig = async (
             assistantId: taskWithPublicFor.assistantId,
             aiSettings,
             taskMetadata,
+            taskWithPublicForSendWhatsApp: taskWithPublicFor.sendWhatsApp,
+            taskWithPublicForTaskMetadata: taskWithPublicFor.taskMetadata,
         })
 
         // Merge provided taskMetadata with task-specific metadata
@@ -452,6 +454,14 @@ export const generateTaskFromPreConfig = async (
             name: taskWithPublicFor.name,
             recurrence: taskWithPublicFor.recurrence,
         }
+
+        console.log('Merged metadata for backend:', {
+            mergedMetadata,
+            taskMetadataInput: taskMetadata,
+            taskSendWhatsApp: taskWithPublicFor.sendWhatsApp,
+            taskMetadataSendWhatsApp: taskMetadata?.sendWhatsApp,
+            taskTaskMetadataSendWhatsApp: taskWithPublicFor.taskMetadata?.sendWhatsApp,
+        })
 
         // Add a small delay for webhook tasks to avoid race condition with frontend updates
         const isWebhookTask = taskMetadata?.isWebhookTask
