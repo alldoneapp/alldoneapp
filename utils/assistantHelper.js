@@ -430,10 +430,10 @@ export const generateTaskFromPreConfig = async (
 
         // Merge provided taskMetadata with task-specific metadata
         const mergedMetadata = {
-            sendWhatsApp: taskWithPublicFor.sendWhatsApp,
+            ...(taskMetadata || {}),
+            sendWhatsApp: taskWithPublicFor.sendWhatsApp ?? taskMetadata?.sendWhatsApp,
             name: taskWithPublicFor.name,
             recurrence: taskWithPublicFor.recurrence,
-            ...(taskMetadata || {}),
         }
 
         // Add a small delay for webhook tasks to avoid race condition with frontend updates
