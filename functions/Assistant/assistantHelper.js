@@ -1501,7 +1501,7 @@ async function storeChunks(
                         '🔧 NATIVE TOOL CALL: Missing conversation history or model info - tools disabled for this model'
                     )
                     commentText += '\n\n[Tools are only available for GPT models]'
-                    await commentRef.update({ commentText })
+                    await commentRef.update({ commentText, isLoading: false })
                     toolAlreadyExecuted = true
                     continue
                 }
@@ -1532,7 +1532,7 @@ async function storeChunks(
                     } catch (e) {
                         console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
                         commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
-                        await commentRef.update({ commentText })
+                        await commentRef.update({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -1544,7 +1544,7 @@ async function storeChunks(
                     if (!allowed) {
                         console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
                         commentText += `\n\nTool not permitted: ${toolName}`
-                        await commentRef.update({ commentText })
+                        await commentRef.update({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -1552,7 +1552,7 @@ async function storeChunks(
                     // Show loading indicator
                     const loadingMessage = `⏳ Executing ${toolName}...`
                     commentText += `\n\n${loadingMessage}`
-                    await commentRef.update({ commentText })
+                    await commentRef.update({ commentText, isLoading: true })
 
                     console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
 
@@ -1584,7 +1584,7 @@ async function storeChunks(
                         })
                         const errorMsg = `Error executing ${toolName}: ${error.message}`
                         commentText = commentText.replace(loadingMessage, errorMsg)
-                        await commentRef.update({ commentText })
+                        await commentRef.update({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -1666,7 +1666,7 @@ async function storeChunks(
 
                     // Remove loading indicator
                     commentText = commentText.replace(loadingMessage, '')
-                    await commentRef.update({ commentText })
+                    await commentRef.update({ commentText, isLoading: false })
 
                     // Process the new stream - replace the current stream
                     console.log('🔧 NATIVE TOOL CALL: Starting to process resumed stream chunks')
@@ -1755,7 +1755,7 @@ async function storeChunks(
                         maxIterations: MAX_TOOL_ITERATIONS,
                     })
                     commentText += '\n\n⚠️ Maximum tool call iterations reached'
-                    await commentRef.update({ commentText })
+                    await commentRef.update({ commentText, isLoading: false })
                 }
 
                 toolAlreadyExecuted = true // Mark as done
