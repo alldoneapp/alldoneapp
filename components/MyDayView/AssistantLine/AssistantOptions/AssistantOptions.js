@@ -131,7 +131,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     style={localStyles.messageInput}
                     value={message}
                     onChangeText={setMessage}
-                    placeholder={translate('Type a message for the assistant')}
+                    placeholder={translate('Start a new chat with the assistant')}
                     placeholderTextColor={colors.Text03}
                     editable={!isSending}
                     autoCorrect={true}
