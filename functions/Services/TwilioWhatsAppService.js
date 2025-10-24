@@ -280,6 +280,7 @@ class TwilioWhatsAppService {
             const admin = require('firebase-admin')
             const moment = require('moment')
             const { ProjectService } = require('../shared/ProjectService')
+            const { FEED_PUBLIC_FOR_ALL } = require('../Feeds/Utils/FeedsConstants')
 
             const projectService = new ProjectService({
                 database: admin.firestore(),
@@ -296,6 +297,11 @@ class TwilioWhatsAppService {
                 return 0
             }
 
+            // Get user data to check if anonymous and build visibility filter
+            const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+            const isAnonymous = userDoc.exists ? userDoc.data().isAnonymous : false
+            const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, userId]
+
             const dateEndToday = moment().endOf('day').valueOf()
             let totalCount = 0
 
@@ -307,10 +313,11 @@ class TwilioWhatsAppService {
                 const reviewerTasksSnapshot = await admin
                     .firestore()
                     .collection(`items/${projectId}/tasks`)
-                    .where('done', '==', false)
+                    .where('inDone', '==', false)
                     .where('parentId', '==', null)
                     .where('currentReviewerId', '==', userId)
                     .where('dueDate', '<=', dateEndToday)
+                    .where('isPublicFor', 'array-contains-any', allowUserIds)
                     .get()
 
                 totalCount += reviewerTasksSnapshot.docs.length
@@ -319,9 +326,10 @@ class TwilioWhatsAppService {
                 const observedTasksSnapshot = await admin
                     .firestore()
                     .collection(`items/${projectId}/tasks`)
-                    .where('done', '==', false)
+                    .where('inDone', '==', false)
                     .where('parentId', '==', null)
                     .where('observersIds', 'array-contains', userId)
+                    .where('isPublicFor', 'array-contains-any', allowUserIds)
                     .get()
 
                 // Filter observed tasks by dueDateByObserversIds

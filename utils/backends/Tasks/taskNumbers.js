@@ -357,8 +357,8 @@ export const watchSidebarTasksAmount = (
                 changes.forEach(change => {
                     const taskId = change.doc.id
                     const task = mapTaskData(taskId, change.doc.data())
-                    const { userIds, userId } = task
-                    const lastUid = userIds[userIds.length - 1]
+                    const { userId, currentReviewerId } = task
+                    const lastUid = currentReviewerId
 
                     if (change.type === 'added') {
                         taskHistory[projectId][taskId] = { previousUid: lastUid, /*wsIds: [],*/ wsUsersIds: [] }
