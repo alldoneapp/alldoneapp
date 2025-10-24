@@ -360,14 +360,18 @@ export const generateTaskFromPreConfig = async (
     assistantId,
     generatedPrompt,
     aiSettings,
-    taskMetadata = null
+    taskMetadata = null,
+    options = {}
 ) => {
+    const { skipNavigation = false } = options
+
     console.log('generateTaskFromPreConfig called:', {
         projectId,
         name,
         assistantId,
         aiSettings,
         taskMetadata,
+        skipNavigation,
     })
 
     const generatedTask = TasksHelper.getNewDefaultTask()
@@ -443,16 +447,18 @@ export const generateTaskFromPreConfig = async (
             })
         }, delay)
 
-        NavigationService.navigate('TaskDetailedView', {
-            task: taskWithPublicFor,
-            projectId: projectId,
-        })
+        if (!skipNavigation) {
+            NavigationService.navigate('TaskDetailedView', {
+                task: taskWithPublicFor,
+                projectId: projectId,
+            })
 
-        store.dispatch([
-            setSelectedNavItem(DV_TAB_TASK_CHAT),
-            setTriggerBotSpinner(true),
-            setDisableAutoFocusInChat(true),
-        ])
+            store.dispatch([
+                setSelectedNavItem(DV_TAB_TASK_CHAT),
+                setTriggerBotSpinner(true),
+                setDisableAutoFocusInChat(true),
+            ])
+        }
 
         moveTasksFromOpen(projectId, taskWithPublicFor, DONE_STEP, null, null, taskWithPublicFor.estimations, null)
     })

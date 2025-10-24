@@ -20,7 +20,9 @@ const getOptions = (project, assistantId, tasks) => {
                 if (task.type !== TASK_TYPE_PROMPT) {
                     window.open(task.link, '_blank')
                 } else if (task.variables.length === 0) {
-                    generateTaskFromPreConfig(project.id, task.name, assistantId, task.prompt)
+                    generateTaskFromPreConfig(project.id, task.name, assistantId, task.prompt, null, null, {
+                        skipNavigation: true,
+                    })
                 }
             },
         }
