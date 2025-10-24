@@ -305,6 +305,15 @@ class TwilioWhatsAppService {
             const dateEndToday = moment().endOf('day').valueOf()
             let totalCount = 0
 
+            console.log('WhatsApp: Counting open tasks for user:', {
+                userId,
+                projectsCount: projects.length,
+                dateEndToday,
+                dateEndTodayFormatted: moment(dateEndToday).format('YYYY-MM-DD HH:mm:ss'),
+                allowUserIds,
+                isAnonymous,
+            })
+
             // Query tasks across all projects
             for (const project of projects) {
                 const projectId = project.id
@@ -320,27 +329,53 @@ class TwilioWhatsAppService {
                     .where('isPublicFor', 'array-contains-any', allowUserIds)
                     .get()
 
-                totalCount += reviewerTasksSnapshot.docs.length
+                const reviewerCount = reviewerTasksSnapshot.docs.length
+                console.log('WhatsApp: Reviewer tasks in project:', {
+                    projectId,
+                    projectName: project.name,
+                    count: reviewerCount,
+                })
+
+                totalCount += reviewerCount
 
                 // Count tasks where user is in observersIds
+                // Note: Cannot add isPublicFor filter here because Firestore only allows one array operation per query
                 const observedTasksSnapshot = await admin
                     .firestore()
                     .collection(`items/${projectId}/tasks`)
                     .where('inDone', '==', false)
                     .where('parentId', '==', null)
                     .where('observersIds', 'array-contains', userId)
-                    .where('isPublicFor', 'array-contains-any', allowUserIds)
                     .get()
 
-                // Filter observed tasks by dueDateByObserversIds
+                // Filter observed tasks by dueDateByObserversIds and isPublicFor
+                let observedCount = 0
                 observedTasksSnapshot.docs.forEach(doc => {
                     const data = doc.data()
                     const dueDateByObserversIds = data.dueDateByObserversIds || {}
-                    if (dueDateByObserversIds[userId] && dueDateByObserversIds[userId] <= dateEndToday) {
+                    const isPublicFor = data.isPublicFor || []
+
+                    // Check visibility permissions
+                    const isVisible = allowUserIds.some(allowedId => isPublicFor.includes(allowedId))
+
+                    if (isVisible && dueDateByObserversIds[userId] && dueDateByObserversIds[userId] <= dateEndToday) {
                         totalCount++
+                        observedCount++
                     }
                 })
+
+                console.log('WhatsApp: Observed tasks in project:', {
+                    projectId,
+                    projectName: project.name,
+                    totalDocs: observedTasksSnapshot.docs.length,
+                    countedAfterFilter: observedCount,
+                })
             }
+
+            console.log('WhatsApp: Final open tasks count:', {
+                userId,
+                totalCount,
+            })
 
             return totalCount
         } catch (error) {
