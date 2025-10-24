@@ -86,7 +86,7 @@ export default function RichCommentModal({
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
 
-    const comments = sortBy(messages, [item => -item.lastChangeDate])
+    const comments = sortBy(messages, [item => -item.created])
     const lastMessageid = comments.length > 0 ? comments[0].id : ''
 
     const toggleShowFileSelector = () => {
