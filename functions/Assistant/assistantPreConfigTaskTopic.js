@@ -211,13 +211,15 @@ async function generatePreConfigTaskResult(
 
                     const whatsappResult = await whatsappService.sendTaskCompletionNotification(
                         userPhone,
+                        userId,
+                        projectId,
+                        objectId,
                         {
                             name: taskMetadata.name || 'Task',
                             recurrence: taskMetadata.recurrence || 'never',
                             type: 'one-time',
                         },
-                        aiCommentText || 'Task completed successfully by Alldone Assistant.',
-                        'https://alldonealeph.web.app'
+                        aiCommentText || 'Task completed successfully by Alldone Assistant.'
                     )
 
                     console.log('WhatsApp notification sent:', {

@@ -76,6 +76,11 @@ async function testTaskCompletionNotification() {
     const whatsappService = new TwilioWhatsAppService()
     const testPhoneNumber = process.env.TEST_WHATSAPP_NUMBER || '+1234567890'
 
+    // Mock test data
+    const mockUserId = process.env.TEST_USER_ID || 'test-user-123'
+    const mockProjectId = process.env.TEST_PROJECT_ID || 'test-project-456'
+    const mockTaskId = process.env.TEST_TASK_ID || 'test-task-789'
+
     const mockTaskData = {
         name: 'Test Assistant Task',
         recurrence: 'daily',
@@ -88,9 +93,11 @@ async function testTaskCompletionNotification() {
     try {
         const result = await whatsappService.sendTaskCompletionNotification(
             testPhoneNumber,
+            mockUserId,
+            mockProjectId,
+            mockTaskId,
             mockTaskData,
-            mockResult,
-            'https://alldonealeph.web.app'
+            mockResult
         )
 
         if (result.success) {

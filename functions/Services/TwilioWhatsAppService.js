@@ -150,9 +150,9 @@ class TwilioWhatsAppService {
             adjustments.push('Collapsed blank lines (including whitespace-only lines) to a single newline.')
         }
 
-        if (value.length > 750) {
-            value = value.slice(0, 750) + '...'
-            adjustments.push('Truncated task result to 750 characters to satisfy WhatsApp template limits.')
+        if (value.length > 300) {
+            value = value.slice(0, 300) + '...'
+            adjustments.push('Truncated task result to 300 characters to satisfy WhatsApp template limits.')
         }
 
         if (/[ \t]{5,}/.test(value)) {
@@ -237,6 +237,83 @@ class TwilioWhatsAppService {
     }
 
     /**
+     * Count total open tasks across all user's projects
+     * @param {string} userId - User ID
+     * @returns {Promise<number>} - Total count of open tasks
+     * @private
+     */
+    async _countUserOpenTasks(userId) {
+        try {
+            const admin = require('firebase-admin')
+            const moment = require('moment')
+            const { ProjectService } = require('../shared/ProjectService')
+
+            const projectService = new ProjectService({
+                database: admin.firestore(),
+            })
+
+            // Get user's active projects (excluding archived/template/guide)
+            const projects = await projectService.getUserProjects(userId, {
+                includeArchived: false,
+                includeCommunity: false,
+                activeOnly: true,
+            })
+
+            if (projects.length === 0) {
+                return 0
+            }
+
+            const dateEndToday = moment().endOf('day').valueOf()
+            let totalCount = 0
+
+            // Query tasks across all projects
+            for (const project of projects) {
+                const projectId = project.id
+
+                // Count tasks where user is currentReviewerId
+                const reviewerTasksSnapshot = await admin
+                    .firestore()
+                    .collection(`items/${projectId}/tasks`)
+                    .where('done', '==', false)
+                    .where('parentId', '==', null)
+                    .where('currentReviewerId', '==', userId)
+                    .where('dueDate', '<=', dateEndToday)
+                    .get()
+
+                totalCount += reviewerTasksSnapshot.docs.length
+
+                // Count tasks where user is in observersIds
+                const observedTasksSnapshot = await admin
+                    .firestore()
+                    .collection(`items/${projectId}/tasks`)
+                    .where('done', '==', false)
+                    .where('parentId', '==', null)
+                    .where('observersIds', 'array-contains', userId)
+                    .get()
+
+                // Filter observed tasks by dueDateByObserversIds
+                observedTasksSnapshot.docs.forEach(doc => {
+                    const data = doc.data()
+                    const dueDateByObserversIds = data.dueDateByObserversIds || {}
+                    if (dueDateByObserversIds[userId] && dueDateByObserversIds[userId] <= dateEndToday) {
+                        totalCount++
+                    }
+                })
+            }
+
+            return totalCount
+        } catch (error) {
+            console.error('Error counting user open tasks:', {
+                error: error.message,
+                userId,
+                stack: error.stack,
+            })
+            // Return 0 on error to avoid blocking the notification
+            return 0
+        }
+    }
+
+    /**
      * Send WhatsApp message
      * @param {string} to - Recipient phone number
      * @param {string} message - Message content
@@ -298,17 +375,14 @@ class TwilioWhatsAppService {
     /**
      * Send task completion notification via WhatsApp using Content Template
      * @param {string} userPhone - User's phone number
+     * @param {string} userId - User ID (for counting open tasks)
+     * @param {string} projectId - Project ID
+     * @param {string} taskId - Task ID
      * @param {Object} taskData - Task information
      * @param {string} taskResult - AI-generated task result
-     * @param {string} appUrl - URL back to the app
      * @returns {Promise<Object>} - Send result
      */
-    async sendTaskCompletionNotification(
-        userPhone,
-        taskData,
-        taskResult = '',
-        appUrl = 'https://alldonealeph.web.app'
-    ) {
+    async sendTaskCompletionNotification(userPhone, userId, projectId, taskId, taskData, taskResult = '') {
         if (!userPhone) {
             console.warn('No phone number provided for WhatsApp notification')
             return {
@@ -355,8 +429,8 @@ class TwilioWhatsAppService {
                 preview: previewSingleLine,
             })
 
-            // Content variables for the template - only task result is needed
-            // Flatten newlines to spaces to satisfy stricter template constraints
+            // Content variables for the template
+            // {{1}}: Task result - flatten newlines to spaces to satisfy stricter template constraints
             const templateValue = preparedContent.value
                 .replace(/\n/g, ' ')
                 .replace(/\s{2,}/g, ' ')
@@ -365,20 +439,31 @@ class TwilioWhatsAppService {
                 originalLength: preparedContent.value.length,
                 templateLength: templateValue.length,
             })
+
+            // {{2}}: Link to the conversation on Alldone
+            const conversationUrl = `https://alldonealeph.web.app/projects/${projectId}/tasks/${taskId}/chat`
+
+            // {{3}}: Total open tasks count across all projects
+            const openTasksCount = await this._countUserOpenTasks(userId)
+
             const contentVariables = JSON.stringify({
                 1: templateValue,
+                2: conversationUrl,
+                3: openTasksCount.toString(),
             })
 
             console.log('Sending WhatsApp message with Content Template:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                contentSid: 'HX72475b9de0709639b01c1fd77b347949',
+                contentSid: 'HX81a7e267fa725db5ea4b62326e8a2c90',
                 contentVariables,
+                openTasksCount,
+                conversationUrl,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
-                contentSid: 'HX72475b9de0709639b01c1fd77b347949',
+                contentSid: 'HX81a7e267fa725db5ea4b62326e8a2c90',
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
