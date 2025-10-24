@@ -37,7 +37,15 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
         if (processPromp) {
             processPromp(generatedPrompt)
         } else {
+            console.log('[PreConfig] PreConfigTaskGeneratorModal: Setting preConfigTaskExecuting to TRUE', {
+                taskName: name,
+                timestamp: new Date().toISOString(),
+            })
             store.dispatch(setPreConfigTaskExecuting(true))
+            console.log(
+                '[PreConfig] PreConfigTaskGeneratorModal: State after dispatch:',
+                store.getState().preConfigTaskExecuting
+            )
             generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt)
         }
     }

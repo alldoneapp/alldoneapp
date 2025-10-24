@@ -5,6 +5,12 @@ import styles, { colors, windowTagStyle } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 
 export default function OptionButton({ containerStyle, text, icon, onPress, disabled = false }) {
+    console.log('[PreConfig] OptionButton: Render', {
+        text,
+        disabled,
+        timestamp: new Date().toISOString(),
+    })
+
     return (
         <TouchableOpacity
             style={[localStyles.tag, containerStyle, disabled && localStyles.disabled]}
