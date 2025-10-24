@@ -432,7 +432,8 @@ export async function createObjectMessage(
     objectType,
     commentType,
     editingCommentId,
-    oldComment
+    oldComment,
+    skipAssistantTrigger = false
 ) {
     const promises = []
     promises.push(getParentObjectData(projectId, objectId, objectType))
@@ -570,8 +571,8 @@ export async function createObjectMessage(
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
         await Promise.all(promises).then(() => {
-            // Only trigger regular AI assistant if not a webhook task
-            if (!editingCommentId && assistantEnabled && !isWebhookTask) {
+            // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
+            if (!editingCommentId && assistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
                 runHttpsCallableFunction('askToBotSecondGen', {
                     userId: creatorId,
                     messageId: commentId,
