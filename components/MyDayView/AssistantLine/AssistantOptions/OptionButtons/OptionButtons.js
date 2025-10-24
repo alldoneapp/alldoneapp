@@ -13,9 +13,22 @@ export default function OptionButtons({ projectId, options, assistant }) {
         return type === TASK_OPTION && task.type === TASK_TYPE_PROMPT && task.variables.length > 0
     }
 
+    console.log('[ButtonDebug] OptionButtons render:', {
+        isExecuting,
+        taskNames: options.map(o => o.task?.name),
+    })
+
     return (
         <>
             {options.map(({ id, type, text, icon, action, task }) => {
+                const isDisabled = isExecuting === task?.name
+                console.log('[ButtonDebug] Rendering button:', {
+                    text,
+                    taskName: task?.name,
+                    isExecuting,
+                    isDisabled,
+                    match: isExecuting === task?.name,
+                })
                 return isTaskWithPromptAndVariables(type, task) ? (
                     <OptionButtonWrapper
                         key={id}
@@ -33,7 +46,7 @@ export default function OptionButtons({ projectId, options, assistant }) {
                         icon={icon}
                         containerStyle={{ marginHorizontal: 8, marginBottom: 8 }}
                         onPress={action}
-                        disabled={isExecuting === task?.name}
+                        disabled={isDisabled}
                     />
                 )
             })}
