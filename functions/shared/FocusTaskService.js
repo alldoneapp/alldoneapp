@@ -165,8 +165,50 @@ class FocusTaskService {
             }
             const userData = userDoc.data()
 
-            // If no current project specified, use user's default or first project
-            const searchProjectId = currentProjectId || userData.defaultProjectId || userProjectIds[0]
+            // Choose initial project to search:
+            // - If a projectId was provided, honor it
+            // - Else prefer the user's top-sorted project (by sortIndexByUser desc)
+            // - Fallbacks: user's default project, then first user project
+            let searchProjectId
+            if (currentProjectId) {
+                searchProjectId = currentProjectId
+            } else {
+                try {
+                    const projectDocs = await Promise.all(
+                        userProjectIds.map(pid => this.options.database.collection('projects').doc(pid).get())
+                    )
+
+                    const projectsWithSortIndex = projectDocs
+                        .map((doc, index) => {
+                            if (doc.exists) {
+                                const data = doc.data()
+                                const sortIndexByUser = data.sortIndexByUser?.[userId] || 0
+                                return { id: userProjectIds[index], sortIndexByUser }
+                            }
+                            return { id: userProjectIds[index], sortIndexByUser: 0 }
+                        })
+                        .sort((a, b) => b.sortIndexByUser - a.sortIndexByUser)
+
+                    const topProjectId = projectsWithSortIndex.length > 0 ? projectsWithSortIndex[0].id : null
+                    searchProjectId = topProjectId || userData.defaultProjectId || userProjectIds[0]
+
+                    console.log('FocusTaskService: Selected initial project for focus search', {
+                        searchProjectId,
+                        method: topProjectId
+                            ? 'top_sorted'
+                            : userData.defaultProjectId
+                            ? 'default_project'
+                            : 'first_user_project',
+                        totalProjects: userProjectIds.length,
+                    })
+                } catch (projectSortError) {
+                    console.warn(
+                        'FocusTaskService: Failed to compute top-sorted project, using fallback:',
+                        projectSortError.message
+                    )
+                    searchProjectId = userData.defaultProjectId || userProjectIds[0]
+                }
+            }
 
             const currentTime = this.options.moment()
             const fifteenMinutesFromNow = this.options.moment().add(15, 'minutes')
