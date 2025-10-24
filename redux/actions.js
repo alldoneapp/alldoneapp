@@ -2265,10 +2265,6 @@ export const setTriggerBotSpinner = triggerBotSpinner => {
 }
 
 export const setPreConfigTaskExecuting = isExecuting => {
-    console.log('[PreConfig] Redux Action: setPreConfigTaskExecuting called', {
-        isExecuting,
-        timestamp: new Date().toISOString(),
-    })
     const action = {
         type: 'Set pre-config task executing',
         isExecuting,

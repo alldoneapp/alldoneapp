@@ -9,12 +9,6 @@ import { TASK_TYPE_PROMPT } from '../../../../UIComponents/FloatModals/PreConfig
 export default function OptionButtons({ projectId, options, assistant }) {
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
 
-    console.log('[PreConfig] OptionButtons: Render', {
-        isExecuting,
-        optionsCount: options.length,
-        timestamp: new Date().toISOString(),
-    })
-
     const isTaskWithPromptAndVariables = (type, task) => {
         return type === TASK_OPTION && task.type === TASK_TYPE_PROMPT && task.variables.length > 0
     }

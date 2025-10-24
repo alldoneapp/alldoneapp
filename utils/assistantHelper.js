@@ -321,12 +321,7 @@ const createTopicForPreConfigTask = async (
         }
 
         // Clear the executing state after topic and message are created
-        console.log('[PreConfig] assistantHelper: Setting preConfigTaskExecuting to FALSE (success)', {
-            taskId,
-            timestamp: new Date().toISOString(),
-        })
         store.dispatch(setPreConfigTaskExecuting(false))
-        console.log('[PreConfig] assistantHelper: State after dispatch:', store.getState().preConfigTaskExecuting)
 
         const functionParams = {
             userId: loggedUser.uid,
@@ -367,13 +362,7 @@ const createTopicForPreConfigTask = async (
             assistantId,
         })
         // Clear the executing state on error
-        console.log('[PreConfig] assistantHelper: Setting preConfigTaskExecuting to FALSE (error)', {
-            taskId,
-            error: error.message,
-            timestamp: new Date().toISOString(),
-        })
         store.dispatch(setPreConfigTaskExecuting(false))
-        console.log('[PreConfig] assistantHelper: State after dispatch:', store.getState().preConfigTaskExecuting)
         throw error
     }
 }

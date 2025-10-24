@@ -1979,11 +1979,6 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set pre-config task executing': {
-            console.log('[PreConfig] Redux Reducer: Setting preConfigTaskExecuting', {
-                oldValue: state.preConfigTaskExecuting,
-                newValue: action.isExecuting,
-                timestamp: new Date().toISOString(),
-            })
             return { ...state, preConfigTaskExecuting: action.isExecuting }
         }
 

@@ -5,12 +5,6 @@ import styles, { colors, windowTagStyle } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 
 export default function OptionButton({ containerStyle, text, icon, onPress, disabled = false }) {
-    console.log('[PreConfig] OptionButton: Render', {
-        text,
-        disabled,
-        timestamp: new Date().toISOString(),
-    })
-
     return (
         <TouchableOpacity
             style={[localStyles.tag, containerStyle, disabled && localStyles.disabled]}
@@ -18,11 +12,9 @@ export default function OptionButton({ containerStyle, text, icon, onPress, disa
             disabled={disabled}
         >
             <View style={localStyles.icon}>
-                <Icon name={icon} size={16} color={disabled ? colors.Text05 : colors.Text03} />
+                <Icon name={icon} size={16} color={colors.Text03} />
             </View>
-            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle(), disabled && localStyles.disabledText]}>
-                {text}
-            </Text>
+            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{text}</Text>
         </TouchableOpacity>
     )
 }
@@ -49,10 +41,6 @@ const localStyles = StyleSheet.create({
         alignSelf: 'center',
     },
     disabled: {
-        borderColor: colors.Text05,
-        opacity: 0.5,
-    },
-    disabledText: {
-        color: colors.Text05,
+        opacity: 0.3,
     },
 })

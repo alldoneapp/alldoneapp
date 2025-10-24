@@ -14,12 +14,6 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
 
-    console.log('[PreConfig] OptionButtonWrapper: Render', {
-        taskName: task?.name,
-        isExecuting,
-        timestamp: new Date().toISOString(),
-    })
-
     useEffect(() => {
         return () => {
             isUnmountedRef.current = true
