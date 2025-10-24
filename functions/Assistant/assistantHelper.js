@@ -1170,18 +1170,42 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
         case 'update_note': {
             const { NoteService } = require('../shared/NoteService')
+            const { SearchService } = require('../shared/SearchService')
             const db = admin.firestore()
 
-            // Search for note by title in correct collection
-            const notesRef = db.collection(`noteItems/${projectId}/notes`)
-            const querySnapshot = await notesRef.where('title', '==', toolArgs.noteTitle.toLowerCase()).limit(1).get()
+            // Use SearchService for better note finding (fuzzy matching, confidence scoring)
+            const searchService = new SearchService({
+                database: db,
+                moment: moment,
+                enableAlgolia: true,
+                enableNoteContent: true,
+                enableDateParsing: true,
+                isCloudFunction: true,
+            })
+            await searchService.initialize()
 
-            if (querySnapshot.empty) {
-                throw new Error(`Note with title "${toolArgs.noteTitle}" not found`)
+            // Find note using SearchService (same as MCP implementation)
+            const searchResult = await searchService.findNoteForUpdateWithResults(creatorId, {
+                noteTitle: toolArgs.noteTitle,
+                projectId: projectId, // Use current context project
+            })
+
+            // Handle search failure
+            if (!searchResult.success) {
+                if (searchResult.error === 'NO_MATCHES') {
+                    throw new Error(searchResult.message || `Note with title "${toolArgs.noteTitle}" not found`)
+                } else if (searchResult.error === 'MULTIPLE_MATCHES') {
+                    throw new Error(
+                        searchResult.message ||
+                            `Multiple notes found with title "${toolArgs.noteTitle}". Please be more specific.`
+                    )
+                } else {
+                    throw new Error(searchResult.message || 'Failed to find note')
+                }
             }
 
-            const noteDoc = querySnapshot.docs[0]
-            const currentNote = { id: noteDoc.id, ...noteDoc.data() }
+            const currentNote = searchResult.selectedNote
+            const currentProjectId = searchResult.projectId
 
             // Get user data for feed creation
             let feedUser
@@ -1227,21 +1251,28 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             })
             await noteService.initialize()
 
-            // Update note using unified service
+            // Update note using unified service (NoteService automatically adds timestamp)
             const result = await noteService.updateAndPersistNote({
                 noteId: currentNote.id,
-                projectId: projectId,
+                projectId: currentProjectId,
                 currentNote: currentNote,
                 content: toolArgs.content,
-                title: toolArgs.newTitle,
                 feedUser: feedUser,
             })
 
+            // Build enhanced message with search info
+            let message = result.message
+            if (searchResult.isAutoSelected && searchResult.reasoning) {
+                message += ` (${searchResult.reasoning})`
+            }
+
             return {
                 success: result.success,
-                noteTitle: toolArgs.noteTitle,
+                noteTitle: currentNote.title,
                 noteId: currentNote.id,
-                message: result.message,
+                projectName: searchResult.projectName,
+                message: message,
+                changes: result.changes,
             }
         }
 
