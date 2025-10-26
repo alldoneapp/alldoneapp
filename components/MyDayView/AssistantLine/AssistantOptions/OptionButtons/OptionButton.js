@@ -5,8 +5,6 @@ import styles, { colors, windowTagStyle } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 
 export default function OptionButton({ containerStyle, text, icon, onPress, disabled = false }) {
-    console.log('[ButtonDebug] OptionButton render:', { text, disabled, willApplyDisabledStyle: !!disabled })
-
     return (
         <TouchableOpacity
             style={[localStyles.tag, containerStyle, disabled && { opacity: 0.3, pointerEvents: 'none' }]}
@@ -42,12 +40,5 @@ const localStyles = StyleSheet.create({
     icon: {
         flexDirection: 'row',
         alignSelf: 'center',
-    },
-    disabled: {
-        opacity: 0.3,
-        pointerEvents: 'none',
-    },
-    disabledContent: {
-        opacity: 1,
     },
 })
