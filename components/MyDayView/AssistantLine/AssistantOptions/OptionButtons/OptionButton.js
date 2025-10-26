@@ -9,19 +9,15 @@ export default function OptionButton({ containerStyle, text, icon, onPress, disa
 
     return (
         <TouchableOpacity
-            style={[localStyles.tag, disabled && localStyles.disabled, containerStyle]}
+            style={[localStyles.tag, containerStyle, disabled && { opacity: 0.3, pointerEvents: 'none' }]}
             onPress={disabled ? undefined : onPress}
             disabled={disabled}
             activeOpacity={disabled ? 1 : 0.2}
         >
-            <View style={[localStyles.icon, disabled && localStyles.disabledContent]}>
+            <View style={localStyles.icon}>
                 <Icon name={icon} size={16} color={colors.Text03} />
             </View>
-            <Text
-                style={[styles.subtitle2, localStyles.text, windowTagStyle(), disabled && localStyles.disabledContent]}
-            >
-                {text}
-            </Text>
+            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{text}</Text>
         </TouchableOpacity>
     )
 }
