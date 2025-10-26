@@ -280,7 +280,7 @@ class TwilioWhatsAppService {
             const admin = require('firebase-admin')
             const moment = require('moment')
             const { ProjectService } = require('../shared/ProjectService')
-            const { FEED_PUBLIC_FOR_ALL } = require('../Feeds/Utils/FeedsConstants')
+            const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 
             const projectService = new ProjectService({
                 database: admin.firestore(),
