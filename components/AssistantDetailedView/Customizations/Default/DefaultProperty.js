@@ -22,7 +22,7 @@ export default function DefaultProperty({ disabled, assistant, projectId }) {
     return (
         <View style={localStyles.container}>
             <Icon name="hexagon" size={24} color={colors.Text03} style={localStyles.icon} />
-            <Text style={localStyles.text}>{translate('Default for all projects')}</Text>
+            <Text style={localStyles.text}>{translate('Default for this project')}</Text>
             <View style={{ marginLeft: 'auto' }}>
                 <Hotkeys
                     keyName={'alt+A'}
@@ -37,7 +37,7 @@ export default function DefaultProperty({ disabled, assistant, projectId }) {
                         onPress={setLikeDefault}
                         disabled={disabled || isDefault}
                         shortcutText={'A'}
-                        title={isDefault ? 'Default for all projects' : 'Set as default for all projects'}
+                        title={isDefault ? 'Default for this project' : 'Set as default for this project'}
                     />
                 </Hotkeys>
             </View>
