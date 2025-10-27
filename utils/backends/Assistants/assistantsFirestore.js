@@ -328,15 +328,18 @@ export function setAssistantLikeDefault(projectId, assistantId) {
     )
 
     if (assistantsInProject) {
-        const currentDefault = assistantsInProject.find(
+        const currentDefaults = assistantsInProject.filter(
             assistant => assistant.isDefault && assistant.uid !== assistantId
         )
-        if (currentDefault) {
-            console.log('📌 Found current default assistant to unmark:', {
-                uid: currentDefault.uid,
-                name: currentDefault.displayName,
+        if (currentDefaults.length > 0) {
+            console.log(`📌 Found ${currentDefaults.length} current default assistant(s) to unmark`)
+            currentDefaults.forEach(currentDefault => {
+                console.log('  Unmarking:', {
+                    uid: currentDefault.uid,
+                    name: currentDefault.displayName,
+                })
+                updateAssistantData(projectId, currentDefault.uid, { isDefault: false }, batch)
             })
-            updateAssistantData(projectId, currentDefault.uid, { isDefault: false }, batch)
         } else {
             console.log('ℹ️  No existing default assistant found in project')
         }
