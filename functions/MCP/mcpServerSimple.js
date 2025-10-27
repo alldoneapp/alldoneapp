@@ -1224,7 +1224,16 @@ class AlldoneSimpleMCPServer {
         const db = admin.firestore()
 
         // Step 1: Note Discovery - get final result from SearchService
-        const searchResult = await this.findTargetNoteForUpdate(args, userId, db)
+        const searchResult = await this.findTargetNoteForUpdate(
+            {
+                noteTitle: args.title,
+                noteId: args.noteId,
+                projectName: args.projectName,
+                projectId: args.projectId,
+            },
+            userId,
+            db
+        )
 
         // Handle search failure
         if (!searchResult.success) {
