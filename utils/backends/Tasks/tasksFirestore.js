@@ -732,7 +732,7 @@ const updateLastAssistantCommentData = (projectId, newTaskId, creatorId, batch) 
     }
 
     batch.update(getDb().doc(`users/${loggedUser.uid}`), {
-        [`lastAssistantCommentData.${projectId}`]: { updateDate },
+        [`lastAssistantCommentData.${projectId}`]: updateDate,
         [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
             ...updateDate,
             projectId,

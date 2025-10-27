@@ -9,6 +9,18 @@ export default function LastComment({
     currentProjectChatLastNotification,
     currentLastAssistantCommentData,
 }) {
+    const hasNotification = !!currentProjectChatLastNotification
+    const hasValidLastCommentData =
+        !!currentLastAssistantCommentData &&
+        !!currentLastAssistantCommentData.objectId &&
+        !!currentLastAssistantCommentData.objectType
+
+    if (!hasNotification && !hasValidLastCommentData) {
+        console.warn('LastComment: missing or invalid lastAssistantCommentData; skipping render', {
+            currentLastAssistantCommentData,
+        })
+        return null
+    }
     return (
         <View style={localStyles.container}>
             {currentProjectChatLastNotification ? (
