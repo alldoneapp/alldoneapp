@@ -454,11 +454,20 @@ class TwilioWhatsAppService {
      * @param {string} userId - User ID (for counting open tasks)
      * @param {string} projectId - Project ID
      * @param {string} taskId - Task ID
+     * @param {string} assistantName - Assistant display name
      * @param {Object} taskData - Task information
      * @param {string} taskResult - AI-generated task result
      * @returns {Promise<Object>} - Send result
      */
-    async sendTaskCompletionNotification(userPhone, userId, projectId, taskId, taskData, taskResult = '') {
+    async sendTaskCompletionNotification(
+        userPhone,
+        userId,
+        projectId,
+        taskId,
+        assistantName,
+        taskData,
+        taskResult = ''
+    ) {
         if (!userPhone) {
             console.warn('No phone number provided for WhatsApp notification')
             return {
@@ -506,7 +515,10 @@ class TwilioWhatsAppService {
             })
 
             // Content variables for the template
-            // {{1}}: Project Name
+            // {{1}}: Assistant Name
+            const assistantDisplayName = assistantName || 'Assistant'
+
+            // {{2}}: Project Name
             let projectName = 'Project'
             try {
                 const projectDoc = await admin.firestore().collection('projects').doc(projectId).get()
@@ -517,7 +529,24 @@ class TwilioWhatsAppService {
                 console.error('Error fetching project name:', error.message)
             }
 
-            // {{2}}: Task result - flatten newlines to spaces to satisfy stricter template constraints
+            // {{3}}: Topic/Task Name
+            let topicName = 'Task'
+            try {
+                // First try to get from taskData
+                if (taskData && taskData.name) {
+                    topicName = taskData.name
+                } else {
+                    // Fetch from Firestore if not in taskData
+                    const taskDoc = await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).get()
+                    if (taskDoc.exists) {
+                        topicName = taskDoc.data().name || 'Task'
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching task name:', error.message)
+            }
+
+            // {{4}}: AI Task result - flatten newlines to spaces to satisfy stricter template constraints
             const templateValue = preparedContent.value
                 .replace(/\n/g, ' ')
                 .replace(/\s{2,}/g, ' ')
@@ -527,33 +556,37 @@ class TwilioWhatsAppService {
                 templateLength: templateValue.length,
             })
 
-            // {{3}}: Link to the conversation on Alldone
+            // {{5}}: Conversation Link
             const baseUrl = getBaseUrl()
             const conversationUrl = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
 
-            // {{4}}: Total open tasks count across all projects
+            // {{6}}: Total open tasks count across all projects
             const openTasksCount = await this._countUserOpenTasks(userId)
 
             const contentVariables = JSON.stringify({
-                1: projectName,
-                2: templateValue,
-                3: conversationUrl,
-                4: openTasksCount.toString(),
+                1: assistantDisplayName,
+                2: projectName,
+                3: topicName,
+                4: templateValue,
+                5: conversationUrl,
+                6: openTasksCount.toString(),
             })
 
             console.log('Sending WhatsApp message with Content Template:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                contentSid: 'HX1a900f0e0477f0070cd52c99d81a6aa1',
+                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
                 contentVariables,
+                assistantName: assistantDisplayName,
                 projectName,
+                topicName,
                 openTasksCount,
                 conversationUrl,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
-                contentSid: 'HX1a900f0e0477f0070cd52c99d81a6aa1',
+                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,

@@ -80,6 +80,7 @@ async function testTaskCompletionNotification() {
     const mockUserId = process.env.TEST_USER_ID || 'test-user-123'
     const mockProjectId = process.env.TEST_PROJECT_ID || 'test-project-456'
     const mockTaskId = process.env.TEST_TASK_ID || 'test-task-789'
+    const mockAssistantName = process.env.TEST_ASSISTANT_NAME || 'Test Assistant'
 
     const mockTaskData = {
         name: 'Test Assistant Task',
@@ -96,6 +97,7 @@ async function testTaskCompletionNotification() {
             mockUserId,
             mockProjectId,
             mockTaskId,
+            mockAssistantName,
             mockTaskData,
             mockResult
         )

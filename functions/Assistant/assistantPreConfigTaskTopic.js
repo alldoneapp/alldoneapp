@@ -214,6 +214,7 @@ async function generatePreConfigTaskResult(
                         userId,
                         projectId,
                         objectId,
+                        displayName,
                         {
                             name: taskMetadata.name || 'Task',
                             recurrence: taskMetadata.recurrence || 'never',
