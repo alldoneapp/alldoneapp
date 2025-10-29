@@ -17,6 +17,7 @@ import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 
 export default function CalendarSection({ projectId, calendarEvents, dateIndex, isActiveOrganizeMode, instanceKey }) {
+    const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
@@ -81,8 +82,35 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
         .add(ALL_DAY_EVENT_DURATION_IN_HOURS, 'hours')
         .valueOf()
 
-    // Get the calendar-connected project ID from the first calendar task
-    const calendarConnectedProjectId = calendarEvents?.[0]?.[1]?.[0]?.calendarData?.pinnedToProjectId || projectId
+    // Get the calendar-connected project ID from the calendar task data
+    const getCalendarConnectedProjectId = () => {
+        const firstTask = calendarEvents?.[0]?.[1]?.[0]
+        if (!firstTask?.calendarData) return projectId
+
+        // Use pinnedToProjectId if explicitly pinned
+        if (firstTask.calendarData.pinnedToProjectId) {
+            return firstTask.calendarData.pinnedToProjectId
+        }
+
+        // Use originalProjectId if available (the project where calendar was first connected)
+        if (firstTask.calendarData.originalProjectId) {
+            return firstTask.calendarData.originalProjectId
+        }
+
+        // Fallback: find which project is connected to this calendar email
+        const calendarEmail = firstTask.calendarData.email
+        if (apisConnected && calendarEmail) {
+            for (const [projId, apis] of Object.entries(apisConnected)) {
+                if (apis.calendar && apis.calendarEmail === calendarEmail) {
+                    return projId
+                }
+            }
+        }
+
+        return projectId
+    }
+
+    const calendarConnectedProjectId = getCalendarConnectedProjectId()
 
     return (
         <View style={localStyles.container}>

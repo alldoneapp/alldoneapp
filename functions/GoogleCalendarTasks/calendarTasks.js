@@ -85,7 +85,7 @@ const checkIfNeedToUpdateTask = (oldTask, dataToUpdate) => {
     return !isEqual(oldData, dataToUpdate)
 }
 
-const generateDataToUpdate = (event, email) => {
+const generateDataToUpdate = (event, email, projectId = null) => {
     const { start, end, summary, htmlLink, description } = event
 
     const name = summary.toString()
@@ -95,8 +95,15 @@ const generateDataToUpdate = (event, email) => {
 
     const MINUTES_IN_8_HOURS = 480
 
+    const calendarData = { link: htmlLink, start, end, email }
+
+    // Store the original project ID if this is a new task
+    if (projectId) {
+        calendarData.originalProjectId = projectId
+    }
+
     const dataToUpdate = {
-        calendarData: { link: htmlLink, start, end, email },
+        calendarData,
         name,
         extendedName: name,
         description: description || '',
@@ -111,13 +118,17 @@ const generateDataToUpdate = (event, email) => {
 const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) => {
     const { start, id: taskId } = event
 
-    const dataToUpdate = generateDataToUpdate(event, email)
+    // Pass projectId only for new tasks, otherwise preserve existing originalProjectId
+    const isNewTask = !task
+    const dataToUpdate = generateDataToUpdate(event, email, isNewTask ? projectId : null)
 
-    // Preserve manual pinning info so later updates don't drop it
-    if (task && task.calendarData && task.calendarData.pinnedToProjectId) {
-        dataToUpdate.calendarData = {
-            ...dataToUpdate.calendarData,
-            pinnedToProjectId: task.calendarData.pinnedToProjectId,
+    // Preserve manual pinning info and originalProjectId from existing task
+    if (task && task.calendarData) {
+        if (task.calendarData.pinnedToProjectId) {
+            dataToUpdate.calendarData.pinnedToProjectId = task.calendarData.pinnedToProjectId
+        }
+        if (task.calendarData.originalProjectId) {
+            dataToUpdate.calendarData.originalProjectId = task.calendarData.originalProjectId
         }
     }
 

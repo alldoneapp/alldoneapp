@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../styles/global'
 import GoogleCalendar from '../../../assets/svg/GoogleCalendar'
@@ -10,6 +11,7 @@ import GooleApi from '../../../apis/google/GooleApi'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 
 export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks, dateIndex, isActiveOrganizeMode }) {
+    const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const [showReload, setShowReload] = useState(false)
 
     useEffect(() => {
@@ -25,8 +27,35 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
         )
     }
 
-    // Get the calendar-connected project ID from the first calendar task
-    const calendarConnectedProjectId = calendarTasks?.[0]?.calendarData?.pinnedToProjectId || projectId
+    // Get the calendar-connected project ID from the calendar task data
+    const getCalendarConnectedProjectId = () => {
+        const firstTask = calendarTasks?.[0]
+        if (!firstTask?.calendarData) return projectId
+
+        // Use pinnedToProjectId if explicitly pinned
+        if (firstTask.calendarData.pinnedToProjectId) {
+            return firstTask.calendarData.pinnedToProjectId
+        }
+
+        // Use originalProjectId if available (the project where calendar was first connected)
+        if (firstTask.calendarData.originalProjectId) {
+            return firstTask.calendarData.originalProjectId
+        }
+
+        // Fallback: find which project is connected to this calendar email
+        const calendarEmail = firstTask.calendarData.email
+        if (apisConnected && calendarEmail) {
+            for (const [projId, apis] of Object.entries(apisConnected)) {
+                if (apis.calendar && apis.calendarEmail === calendarEmail) {
+                    return projId
+                }
+            }
+        }
+
+        return projectId
+    }
+
+    const calendarConnectedProjectId = getCalendarConnectedProjectId()
 
     return (
         <View style={localStyles.container}>
