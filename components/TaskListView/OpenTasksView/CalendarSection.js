@@ -17,15 +17,12 @@ import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 
 export default function CalendarSection({ projectId, calendarEvents, dateIndex, isActiveOrganizeMode, instanceKey }) {
-    const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [showReload, setShowReload] = useState(false)
     const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
-
-    const isProjectCalendarConnected = apisConnected?.[projectId]?.calendar
 
     useEffect(() => {
         GooleApi.onLoad(() => {
@@ -92,7 +89,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         <GoogleCalendar />
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    {showReload && !!isProjectCalendarConnected && (
+                    {showReload && calendarEvents && calendarEvents.length > 0 && (
                         <ReloadCalendar projectId={projectId} Promise={checkIfCalendarConnected} />
                     )}
                 </View>
