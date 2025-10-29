@@ -17,12 +17,16 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
             setShowReload(GooleApi.checkAccessGranted())
         })
     }, [])
+
     const openLink = () => {
         return window.open(
             'https://calendar.google.com/calendar/u/?' + `authuser=${calendarTasks[0].calendarData.email}`,
             '_blank'
         )
     }
+
+    // Get the calendar-connected project ID from the first calendar task
+    const calendarConnectedProjectId = calendarTasks?.[0]?.calendarData?.pinnedToProjectId || projectId
 
     return (
         <View style={localStyles.container}>
@@ -33,7 +37,7 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
                     {showReload && calendarTasks && calendarTasks.length > 0 && (
-                        <ReloadCalendar projectId={projectId} Promise={checkIfCalendarConnected} />
+                        <ReloadCalendar projectId={calendarConnectedProjectId} Promise={checkIfCalendarConnected} />
                     )}
                 </View>
             </View>

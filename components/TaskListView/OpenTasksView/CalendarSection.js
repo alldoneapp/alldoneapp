@@ -81,6 +81,9 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
         .add(ALL_DAY_EVENT_DURATION_IN_HOURS, 'hours')
         .valueOf()
 
+    // Get the calendar-connected project ID from the first calendar task
+    const calendarConnectedProjectId = calendarEvents?.[0]?.[1]?.[0]?.calendarData?.pinnedToProjectId || projectId
+
     return (
         <View style={localStyles.container}>
             <View style={localStyles.subContainer}>
@@ -90,7 +93,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
                     {showReload && calendarEvents && calendarEvents.length > 0 && (
-                        <ReloadCalendar projectId={projectId} Promise={checkIfCalendarConnected} />
+                        <ReloadCalendar projectId={calendarConnectedProjectId} Promise={checkIfCalendarConnected} />
                     )}
                 </View>
             </View>
