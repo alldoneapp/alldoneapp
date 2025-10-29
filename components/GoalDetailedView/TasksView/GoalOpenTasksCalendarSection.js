@@ -28,6 +28,7 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
     }
 
     // Get the calendar-connected project ID from the calendar task data
+    // For syncing, we need the project with calendar API connection, not where task currently lives
     const getCalendarConnectedProjectId = () => {
         const firstTask = calendarTasks?.[0]
         if (!firstTask?.calendarData) {
@@ -37,13 +38,8 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
 
         console.log('[GoalCalendarSection] First calendar task data:', firstTask.calendarData)
 
-        // Use pinnedToProjectId if explicitly pinned
-        if (firstTask.calendarData.pinnedToProjectId) {
-            console.log('[GoalCalendarSection] Using pinnedToProjectId:', firstTask.calendarData.pinnedToProjectId)
-            return firstTask.calendarData.pinnedToProjectId
-        }
-
         // Use originalProjectId if available (the project where calendar was first connected)
+        // This is the project with the API connection, which we need for syncing
         if (firstTask.calendarData.originalProjectId) {
             console.log('[GoalCalendarSection] Using originalProjectId:', firstTask.calendarData.originalProjectId)
             return firstTask.calendarData.originalProjectId
