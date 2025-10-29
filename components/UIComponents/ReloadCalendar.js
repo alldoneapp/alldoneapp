@@ -8,10 +8,17 @@ const ReloadCalendar = ({ projectId, Promise }) => {
     const animateValue = useState(new Animated.Value(0))[0]
 
     const loadEvents = () => {
+        console.log('[ReloadCalendar] Button clicked, projectId:', projectId)
         startSpinning()
         Promise(projectId)
-            .then(() => stopSpinning())
-            .catch(() => stopSpinning())
+            .then(result => {
+                console.log('[ReloadCalendar] Sync completed successfully', result)
+                stopSpinning()
+            })
+            .catch(error => {
+                console.error('[ReloadCalendar] Sync failed with error:', error)
+                stopSpinning()
+            })
     }
 
     const startSpinning = () => {

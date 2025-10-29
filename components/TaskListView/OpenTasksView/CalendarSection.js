@@ -85,32 +85,48 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     // Get the calendar-connected project ID from the calendar task data
     const getCalendarConnectedProjectId = () => {
         const firstTask = calendarEvents?.[0]?.[1]?.[0]
-        if (!firstTask?.calendarData) return projectId
+        if (!firstTask?.calendarData) {
+            console.log('[CalendarSection] No calendar task data, using current projectId:', projectId)
+            return projectId
+        }
+
+        console.log('[CalendarSection] First calendar task data:', firstTask.calendarData)
 
         // Use pinnedToProjectId if explicitly pinned
         if (firstTask.calendarData.pinnedToProjectId) {
+            console.log('[CalendarSection] Using pinnedToProjectId:', firstTask.calendarData.pinnedToProjectId)
             return firstTask.calendarData.pinnedToProjectId
         }
 
         // Use originalProjectId if available (the project where calendar was first connected)
         if (firstTask.calendarData.originalProjectId) {
+            console.log('[CalendarSection] Using originalProjectId:', firstTask.calendarData.originalProjectId)
             return firstTask.calendarData.originalProjectId
         }
 
         // Fallback: find which project is connected to this calendar email
         const calendarEmail = firstTask.calendarData.email
+        console.log('[CalendarSection] Looking for project with calendar email:', calendarEmail)
         if (apisConnected && calendarEmail) {
             for (const [projId, apis] of Object.entries(apisConnected)) {
                 if (apis.calendar && apis.calendarEmail === calendarEmail) {
+                    console.log('[CalendarSection] Found matching project:', projId)
                     return projId
                 }
             }
         }
 
+        console.log('[CalendarSection] No matching project found, using current projectId:', projectId)
         return projectId
     }
 
     const calendarConnectedProjectId = getCalendarConnectedProjectId()
+    console.log(
+        '[CalendarSection] Final calendarConnectedProjectId:',
+        calendarConnectedProjectId,
+        'Current projectId:',
+        projectId
+    )
 
     return (
         <View style={localStyles.container}>

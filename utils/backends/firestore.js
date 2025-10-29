@@ -6734,53 +6734,87 @@ export async function createNoteInObject(
 // Calendar Functions
 
 export async function checkIfCalendarConnected(projectId) {
+    console.log('[Calendar Sync] Called with projectId:', projectId)
     const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
-    if (apisConnected && apisConnected[projectId]?.calendar && GooleApi.checkAccessGranted()) {
-        const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
-        // Avoid prompting for auth on view load. If the active account
-        // does not match the project's account, skip silent sync.
-        const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
-        if (currentEmail && currentEmail !== emailToUse) {
-            return
-        }
-        await Promise.resolve(GooleApi.listTodayEvents(30)).then(async ({ result }) => {
-            if (result) {
-                store.dispatch(startLoadingData())
-                const promises = []
-                if (result.items.length > 0) {
-                    promises.push(
-                        runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
-                            events: result.items,
-                            projectId,
-                            uid,
-                            email: emailToUse,
-                        })
-                    )
-                }
+    console.log('[Calendar Sync] apisConnected:', apisConnected)
+    console.log('[Calendar Sync] userEmail:', userEmail)
+
+    if (!apisConnected) {
+        console.log('[Calendar Sync] FAILED: No apisConnected')
+        return
+    }
+
+    if (!apisConnected[projectId]) {
+        console.log('[Calendar Sync] FAILED: No config for projectId', projectId)
+        console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
+        return
+    }
+
+    if (!apisConnected[projectId]?.calendar) {
+        console.log('[Calendar Sync] FAILED: Calendar not connected for project', projectId)
+        console.log('[Calendar Sync] Project config:', apisConnected[projectId])
+        return
+    }
+
+    if (!GooleApi.checkAccessGranted()) {
+        console.log('[Calendar Sync] FAILED: No Google API access granted')
+        return
+    }
+
+    const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
+    const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+    console.log('[Calendar Sync] Email check - current:', currentEmail, 'expected:', emailToUse)
+
+    // Avoid prompting for auth on view load. If the active account
+    // does not match the project's account, skip silent sync.
+    if (currentEmail && currentEmail !== emailToUse) {
+        console.log('[Calendar Sync] FAILED: Email mismatch - current account is', currentEmail, 'but need', emailToUse)
+        return
+    }
+
+    console.log('[Calendar Sync] All checks passed, fetching calendar events...')
+    await Promise.resolve(GooleApi.listTodayEvents(30)).then(async ({ result }) => {
+        if (result) {
+            store.dispatch(startLoadingData())
+            const promises = []
+            if (result.items.length > 0) {
                 promises.push(
-                    runHttpsCallableFunction('removeOldCalendarTasksSecondGen', {
+                    runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
+                        events: result.items,
+                        projectId,
                         uid,
-                        dateFormated: moment().format('DDMMYYYY'),
-                        events: result?.items.map(event => {
-                            const userAttendee = event.attendees?.find(item => item.email === emailToUse)
-                            const userResponseStatus = userAttendee?.responseStatus
-                            return {
-                                id: event.id,
-                                responseStatus: userResponseStatus,
-                            }
-                        }),
-                        removeFromAllDates: false,
+                        email: emailToUse,
                     })
                 )
-                await Promise.all(promises)
-                    .then(() => store.dispatch(stopLoadingData()))
-                    .catch(e => {
-                        console.error(e)
-                        store.dispatch(stopLoadingData())
-                    })
             }
-        })
-    }
+            promises.push(
+                runHttpsCallableFunction('removeOldCalendarTasksSecondGen', {
+                    uid,
+                    dateFormated: moment().format('DDMMYYYY'),
+                    events: result?.items.map(event => {
+                        const userAttendee = event.attendees?.find(item => item.email === emailToUse)
+                        const userResponseStatus = userAttendee?.responseStatus
+                        return {
+                            id: event.id,
+                            responseStatus: userResponseStatus,
+                        }
+                    }),
+                    removeFromAllDates: false,
+                })
+            )
+            await Promise.all(promises)
+                .then(() => {
+                    console.log('[Calendar Sync] Successfully synced calendar events')
+                    store.dispatch(stopLoadingData())
+                })
+                .catch(e => {
+                    console.error('[Calendar Sync] Error syncing:', e)
+                    store.dispatch(stopLoadingData())
+                })
+        } else {
+            console.log('[Calendar Sync] No calendar events returned from Google API')
+        }
+    })
 }
 
 export async function checkIfGmailIsConnected(projectId) {
