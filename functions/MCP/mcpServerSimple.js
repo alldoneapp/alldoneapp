@@ -1033,7 +1033,7 @@ class AlldoneSimpleMCPServer {
     }
 
     async getFocusTask(args, request) {
-        const { projectId } = args
+        const { projectId, forceNew = false } = args
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -1051,8 +1051,11 @@ class AlldoneSimpleMCPServer {
         }
 
         try {
-            // Get focus task (current or new)
-            const result = await this.focusTaskService.getFocusTask(userId, projectId, { selectMinimalFields: true })
+            // Get focus task (current or new, with optional forceNew)
+            const result = await this.focusTaskService.getFocusTask(userId, projectId, {
+                selectMinimalFields: true,
+                forceNew: forceNew,
+            })
 
             return {
                 success: result.success,
@@ -2503,13 +2506,19 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'get_focus_task',
                             description:
-                                'Get the current focus task for the user, or find and set a new one if none exists (requires OAuth 2.0 Bearer token authentication)',
+                                'Get the current focus task for the user, or find and set a new one if none exists. Can optionally force finding a different task. (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
                                     projectId: {
                                         type: 'string',
-                                        description: 'Project context for finding new focus task (optional)',
+                                        description:
+                                            'Project context for finding new focus task (optional, omit to search across all projects)',
+                                    },
+                                    forceNew: {
+                                        type: 'boolean',
+                                        description:
+                                            'Force finding a new/different focus task, skipping the currently set focus task. Useful for "what should I work on next?" If no alternative task exists, returns current focus task with a message.',
                                     },
                                 },
                                 required: [],

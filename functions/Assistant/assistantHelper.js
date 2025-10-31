@@ -1070,8 +1070,12 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             // This matches the MCP implementation and enables intelligent cross-project prioritization
             const targetProjectId = toolArgs.projectId || null
 
+            // Support forceNew parameter for "what should I work on next?" queries
+            const forceNew = toolArgs.forceNew || false
+
             const result = await focusTaskService.getFocusTask(creatorId, targetProjectId, {
                 selectMinimalFields: true,
+                forceNew: forceNew,
             })
 
             return {

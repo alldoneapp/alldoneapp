@@ -115,7 +115,7 @@ const toolSchemas = {
         function: {
             name: 'get_focus_task',
             description:
-                'Retrieves the current focus task for the user. By default, searches across all projects to find the highest priority focus task. Can optionally filter to a specific project.',
+                'Retrieves the current focus task for the user. By default, searches across all projects to find the highest priority focus task. Can optionally filter to a specific project or force finding a different task.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -128,6 +128,11 @@ const toolSchemas = {
                         type: 'boolean',
                         description:
                             'Explicitly search across all projects (default behavior when projectId is not specified)',
+                    },
+                    forceNew: {
+                        type: 'boolean',
+                        description:
+                            'Force finding a new/different focus task, skipping the currently set focus task. Useful for "what should I work on next?" If no alternative task exists, returns current focus task with a message.',
                     },
                 },
                 required: [],

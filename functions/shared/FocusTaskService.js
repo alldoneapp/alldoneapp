@@ -137,9 +137,15 @@ class FocusTaskService {
      * @param {string} userId - User ID
      * @param {string} currentProjectId - Current project context (optional)
      * @param {string} previousTaskParentGoalId - Previous task's parent goal for prioritization (optional)
+     * @param {string} excludeTaskId - Task ID to exclude from selection (optional, used for "force new" feature)
      * @returns {Object|null} New focus task or null if none found
      */
-    async findAndSetNewFocusTask(userId, currentProjectId = null, previousTaskParentGoalId = null) {
+    async findAndSetNewFocusTask(
+        userId,
+        currentProjectId = null,
+        previousTaskParentGoalId = null,
+        excludeTaskId = null
+    ) {
         await this.ensureInitialized()
 
         if (!userId || typeof userId !== 'string') {
@@ -235,6 +241,10 @@ class FocusTaskService {
 
                     for (const doc of snapshot.docs) {
                         const task = { id: doc.id, ...doc.data() }
+                        // Skip excluded task (for "force new" feature)
+                        if (excludeTaskId && task.id === excludeTaskId) {
+                            continue
+                        }
                         if (task.calendarData && task.calendarData.start) {
                             const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
                             const taskStartTime = this.options.moment(taskStartTimeString)
@@ -277,7 +287,12 @@ class FocusTaskService {
             if (!openTasksSnapshot.empty) {
                 const allFetchedTasks = openTasksSnapshot.docs
                     .map(doc => ({ id: doc.id, ...doc.data() }))
-                    .filter(task => task.dueDate <= endOfToday && !task.calendarData)
+                    .filter(
+                        task =>
+                            task.dueDate <= endOfToday &&
+                            !task.calendarData &&
+                            (!excludeTaskId || task.id !== excludeTaskId)
+                    )
 
                 // Prioritize tasks in same goal group as previous task
                 if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
@@ -373,7 +388,12 @@ class FocusTaskService {
                         if (!otherProjectSnapshot.empty) {
                             const tasksFromOtherProject = otherProjectSnapshot.docs
                                 .map(doc => ({ id: doc.id, ...doc.data() }))
-                                .filter(task => task.dueDate <= endOfToday && !task.calendarData)
+                                .filter(
+                                    task =>
+                                        task.dueDate <= endOfToday &&
+                                        !task.calendarData &&
+                                        (!excludeTaskId || task.id !== excludeTaskId)
+                                )
 
                             if (tasksFromOtherProject.length > 0) {
                                 // Prioritize non-workflow tasks first (matching main app logic)
@@ -588,18 +608,77 @@ class FocusTaskService {
      * Get focus task for user - returns current focus task or finds/sets new one
      * @param {string} userId - User ID
      * @param {string} projectId - Current project context (optional)
+     * @param {Object} options - Options object
+     * @param {boolean} options.selectMinimalFields - Return minimal task fields only
+     * @param {boolean} options.forceNew - Force finding a new/different focus task, skipping current one
      * @returns {Object} Focus task result
      */
     async getFocusTask(userId, projectId = null, options = {}) {
         await this.ensureInitialized()
 
         const selectMinimalFields = !!options.selectMinimalFields
+        const forceNew = !!options.forceNew
 
         let currentFocusTask = await this.getCurrentFocusTask(userId)
         let wasNewTaskSet = false
 
-        if (!currentFocusTask) {
-            // No current focus task, find and set a new one
+        // Handle forceNew option - find different task, skipping current one
+        if (forceNew) {
+            const excludeTaskId = currentFocusTask?.id || null
+
+            // Try to find alternative task
+            const newTask = await this.findAndSetNewFocusTask(userId, projectId, null, excludeTaskId)
+
+            // OPTION 1: If no alternative found, return current task with message
+            if (!newTask && currentFocusTask) {
+                // Get project name for current task
+                let projectName = currentFocusTask.projectId
+                try {
+                    const projectDoc = await this.options.database.doc(`projects/${currentFocusTask.projectId}`).get()
+                    if (projectDoc.exists) {
+                        projectName = projectDoc.data().name || projectName
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch project name for focus task:', error.message)
+                }
+
+                const fullFocusTask = { ...currentFocusTask, projectName }
+                const minimalFocusTask = selectMinimalFields
+                    ? {
+                          documentId: fullFocusTask.id,
+                          projectId: fullFocusTask.projectId,
+                          projectName: fullFocusTask.projectName,
+                          name: fullFocusTask.name,
+                          humanReadableId: fullFocusTask.humanReadableId || fullFocusTask.human_readable_id || null,
+                          dueDate: fullFocusTask.dueDate || null,
+                          sortIndex: fullFocusTask.sortIndex || 0,
+                          parentGoal: fullFocusTask.parentId || fullFocusTask.parentGoalId || null,
+                      }
+                    : fullFocusTask
+
+                return {
+                    success: true,
+                    focusTask: minimalFocusTask,
+                    wasNewTaskSet: false,
+                    message: 'No other suitable focus task found. Current focus task remains unchanged.',
+                }
+            }
+
+            // New task found, update currentFocusTask and proceed
+            if (newTask) {
+                currentFocusTask = newTask
+                wasNewTaskSet = true
+            } else {
+                // No current task and no alternative found
+                return {
+                    success: false,
+                    focusTask: null,
+                    wasNewTaskSet: false,
+                    message: 'No suitable focus task found',
+                }
+            }
+        } else if (!currentFocusTask) {
+            // Normal flow: No current focus task, find and set a new one
             currentFocusTask = await this.findAndSetNewFocusTask(userId, projectId)
             wasNewTaskSet = !!currentFocusTask
         }
