@@ -410,6 +410,7 @@ const sendFeedNotifications = async admin => {
     const db = admin.firestore()
 
     const userList = (await db.collection('notifications').get()).docs
+    console.log(`INFO: Found ${userList.length} users in notifications collection`)
 
     for (let userData of userList) {
         try {
@@ -433,6 +434,7 @@ const sendFeedNotifications = async admin => {
                 const userTZFactor = user.timezone ? user.timezone : 0
 
                 const objectList = (await db.collection(`notifications/${userId}/objects`).get()).docs
+                console.log(`INFO: Found ${objectList.length} objects for user ${user.email}`)
                 let htmlToSend = ''
                 let placedHeader = false
 
@@ -523,6 +525,7 @@ const sendFeedNotifications = async admin => {
                 }
 
                 if (user.email !== 'alldoneapp@exdream.com') {
+                    console.log(`INFO: Sending email to ${user.email} with ${countFeeds} feeds`)
                     SIB_API_TRANSACT.sendTransacEmail(sendSmtpEmail).then(
                         function (data) {
                             console.log('API called successfully. Returned data:\n')
@@ -534,6 +537,8 @@ const sendFeedNotifications = async admin => {
                             console.log(error)
                         }
                     )
+                } else {
+                    console.log('INFO: Skipping email to test account: alldoneapp@exdream.com')
                 }
             }
         } catch (error) {
