@@ -10,7 +10,7 @@
         "setup_functions": "./service_accounts/setup_functions.sh"
     },
     "engines": {
-        "node": "18"
+        "node": "20"
     },
     "dependencies": {
         "@dqbd/tiktoken": "^1.0.7",
