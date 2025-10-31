@@ -424,10 +424,13 @@ const sendFeedNotifications = async admin => {
 
             const userId = userData.id
             const user = userData.data()
+            console.log(`INFO: Processing user ${userId}, initial email:`, user.email || 'NOT SET')
 
             if (user.email == null || typeof user.email != 'string') {
+                console.log(`INFO: User ${userId} has no email in notification doc, fetching from users collection`)
                 const userDB = await getUserData(userId)
                 user.email = userDB && userDB.email ? userDB.email : null
+                console.log(`INFO: User ${userId} email after fetch:`, user.email || 'STILL NOT SET')
             }
 
             if (user && user.email) {
@@ -436,6 +439,11 @@ const sendFeedNotifications = async admin => {
 
                 const objectList = (await db.collection(`notifications/${userId}/objects`).get()).docs
                 console.log(`INFO: Found ${objectList.length} objects for user ${user.email}`)
+
+                if (objectList.length === 0) {
+                    console.log(`INFO: No notification objects for user ${user.email}, skipping email`)
+                }
+
                 let htmlToSend = ''
                 let placedHeader = false
 
@@ -443,11 +451,15 @@ const sendFeedNotifications = async admin => {
                     countObjects++
                     const objectId = objectData.id
                     const object = objectData.data()
+                    console.log(
+                        `INFO: Processing object ${objectId} (type: ${object.feedObjectType}) for user ${user.email}`
+                    )
                     const fileName = getFileNameByFeedType(object.feedObjectType)
                     object.feedDate = moment(object.feedDate).add(userTZFactor, 'hours').format('DD.MM.YYYY HH:mm')
 
                     const feedList = (await db.collection(`notifications/${userId}/objects/${objectId}/feeds`).get())
                         .docs
+                    console.log(`INFO: Found ${feedList.length} feeds in object ${objectId}`)
 
                     const cssFile = readFileSync(`./EmailTemplates/styles/${fileName}.css`)
                     replacements.feedBodyStyles += cssFile
@@ -525,8 +537,14 @@ const sendFeedNotifications = async admin => {
                     headers: { Connection: 'keep-alive' },
                 }
 
-                if (user.email !== 'alldoneapp@exdream.com') {
-                    console.log(`INFO: Sending email to ${user.email} with ${countFeeds} feeds`)
+                if (countFeeds === 0) {
+                    console.log(
+                        `INFO: User ${user.email} has ${countObjects} objects but 0 feeds total, skipping email`
+                    )
+                } else if (user.email !== 'alldoneapp@exdream.com') {
+                    console.log(
+                        `INFO: Sending email to ${user.email} with ${countFeeds} feeds from ${countObjects} objects`
+                    )
                     SIB_API_TRANSACT.sendTransacEmail(sendSmtpEmail).then(
                         function (data) {
                             console.log('API called successfully. Returned data:\n')
@@ -534,20 +552,29 @@ const sendFeedNotifications = async admin => {
                             Promise.all(deletePromises)
                         },
                         function (error) {
-                            console.log('ERROR:\n')
+                            console.log('ERROR: SendInBlue API error:\n')
                             console.log(error)
                         }
                     )
                 } else {
                     console.log('INFO: Skipping email to test account: alldoneapp@exdream.com')
                 }
+            } else {
+                console.log(
+                    `INFO: Skipping user ${userId} - no valid email (user exists:`,
+                    !!user,
+                    'email:',
+                    user ? user.email : 'N/A',
+                    ')'
+                )
             }
         } catch (error) {
-            console.log('ERROR:\n')
+            console.log('ERROR processing user in sendFeedNotifications:\n')
             console.log(error)
             continue
         }
     }
+    console.log('INFO: Finished processing all users in notifications collection')
 }
 
 const sendChatNotificationToUsers = async (
