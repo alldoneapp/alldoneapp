@@ -20,6 +20,7 @@ import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
 import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayStatisticsModal'
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
+import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
@@ -27,6 +28,7 @@ export default function AppContent() {
     const loadingStep = useSelector(state => state.loadingStep)
     const loadingMessage = useSelector(state => state.loadingMessage)
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
+    const [connectingMessage] = useState(() => getConnectingMessage())
 
     const logoutUser = async () => {
         store.dispatch(LogOut())
@@ -97,7 +99,7 @@ export default function AppContent() {
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
                 ) : (
-                    <LoadingScreen text="Connecting to server..." />
+                    <LoadingScreen text={connectingMessage} />
                 )
             ) : (
                 <>

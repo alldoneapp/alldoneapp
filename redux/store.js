@@ -44,11 +44,12 @@ import {
 } from '../components/MyDayView/MyDayTasks/MyDayDoneTasks/myDayDoneTasksHelper'
 import { addProjectDataToOpenTasksShowMoreData } from '../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
 import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsComments'
+import { getRandomLoadingMessage } from '../utils/FunnyLoadingMessages'
 
 export const initialState = {
     loggedIn: null,
     loadingStep: 0,
-    loadingMessage: 'Initializing...',
+    loadingMessage: getRandomLoadingMessage(),
     loggedUser: {},
     currentUser: {},
     loggedUserProjects: [],

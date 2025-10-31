@@ -13,6 +13,7 @@ import {
     watchForceReload,
 } from '../backends/firestore'
 import { initLogInForLoggedUser, setProjectsInitialData, updateLoadingStep } from '../../redux/actions'
+import { getProgressLoadingMessage } from '../FunnyLoadingMessages'
 import { getDateFormatFromCurrentLocation } from '../Geolocation/GeolocationHelper'
 import { getDeviceLanguage } from '../../i18n/TranslationService'
 import {
@@ -108,7 +109,7 @@ async function loadProjectsDataFromFirebase(projectIds) {
 
 async function loadInitialData() {
     const { loggedUser } = store.getState()
-    store.dispatch(updateLoadingStep(3, 'Loading projects...'))
+    store.dispatch(updateLoadingStep(3, getProgressLoadingMessage()))
     const projectsInitialData = await getInitialProjectsData(loggedUser.projectIds)
 
     // Process the raw project data into organized structures
@@ -142,7 +143,7 @@ async function loadInitialData() {
 
     unwatchProjectsData(loggedUser.projectIds)
 
-    store.dispatch(updateLoadingStep(4, 'Setting up workspace...'))
+    store.dispatch(updateLoadingStep(4, getProgressLoadingMessage()))
     store.dispatch(
         setProjectsInitialData(
             projects,
@@ -162,7 +163,7 @@ async function loadInitialData() {
         watchProjectsChatNotifications()
     }, 200)
 
-    store.dispatch(updateLoadingStep(5, 'Finalizing...'))
+    store.dispatch(updateLoadingStep(5, getProgressLoadingMessage()))
 }
 
 const getDataForUpdateUser = async loggedUser => {
@@ -195,7 +196,7 @@ const getDataForUpdateUser = async loggedUser => {
 export async function loadInitialDataForLoggedUser(loggedUser) {
     unwatch('loggedUser')
 
-    store.dispatch(updateLoadingStep(1, 'Loading user data...'))
+    store.dispatch(updateLoadingStep(1, getProgressLoadingMessage()))
 
     initGoogleTagManager(loggedUser.uid)
     watchForceReload(loggedUser.uid, true)
@@ -218,7 +219,7 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     updateUserData(loggedUser.uid, userData, null)
 
-    store.dispatch(updateLoadingStep(2, 'Loading project data...'))
+    store.dispatch(updateLoadingStep(2, getProgressLoadingMessage()))
     await loadInitialData()
 
     initFCMonLoad()
