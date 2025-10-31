@@ -1066,7 +1066,11 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             })
             await focusTaskService.initialize()
 
-            const result = await focusTaskService.getFocusTask(creatorId, projectId, {
+            // Use projectId from tool args if provided, otherwise null for cross-project search
+            // This matches the MCP implementation and enables intelligent cross-project prioritization
+            const targetProjectId = toolArgs.projectId || null
+
+            const result = await focusTaskService.getFocusTask(creatorId, targetProjectId, {
                 selectMinimalFields: true,
             })
 

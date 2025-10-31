@@ -114,10 +114,22 @@ const toolSchemas = {
         type: 'function',
         function: {
             name: 'get_focus_task',
-            description: 'Retrieves the current focus task for the user',
+            description:
+                'Retrieves the current focus task for the user. By default, searches across all projects to find the highest priority focus task. Can optionally filter to a specific project.',
             parameters: {
                 type: 'object',
-                properties: {},
+                properties: {
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit search to a specific project ID. If omitted, searches across all projects.',
+                    },
+                    allProjects: {
+                        type: 'boolean',
+                        description:
+                            'Explicitly search across all projects (default behavior when projectId is not specified)',
+                    },
+                },
                 required: [],
             },
         },
