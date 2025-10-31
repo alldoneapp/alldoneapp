@@ -44,6 +44,7 @@ const getEnvFunctions = () => {
             TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
             ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
             ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
+            SIB_API_KEY: process.env.SIB_API_KEY || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -62,6 +63,7 @@ const getEnvFunctions = () => {
                     TWILIO_WHATSAPP_FROM: envJson.TWILIO_WHATSAPP_FROM || '',
                     ALGOLIA_APP_ID: envJson.ALGOLIA_APP_ID || '',
                     ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
+                    SIB_API_KEY: envJson.SIB_API_KEY || '',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -84,6 +86,7 @@ const getEnvFunctions = () => {
                         TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
                         ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                         ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
+                        SIB_API_KEY: process.env.SIB_API_KEY || '',
                         GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -103,6 +106,7 @@ const getEnvFunctions = () => {
                     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
                     ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                     ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
+                    SIB_API_KEY: process.env.SIB_API_KEY || '',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -122,6 +126,7 @@ const getEnvFunctions = () => {
                 TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
                 ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                 ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
+                SIB_API_KEY: process.env.SIB_API_KEY || '',
                 GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -146,6 +151,9 @@ const getEnvFunctions = () => {
     }
     if (!envFunctions.ALGOLIA_ADMIN_API_KEY || isPlaceholderValue(envFunctions.ALGOLIA_ADMIN_API_KEY)) {
         console.warn('Warning: ALGOLIA_ADMIN_API_KEY is not set or is a placeholder')
+    }
+    if (!envFunctions.SIB_API_KEY || isPlaceholderValue(envFunctions.SIB_API_KEY)) {
+        console.warn('Warning: SIB_API_KEY is not set or is a placeholder')
     }
 
     return envFunctions
