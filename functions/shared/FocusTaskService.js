@@ -137,7 +137,8 @@ class FocusTaskService {
      * @param {string} userId - User ID
      * @param {string} currentProjectId - Current project context (optional)
      * @param {string} previousTaskParentGoalId - Previous task's parent goal for prioritization (optional)
-     * @param {string} excludeTaskId - Task ID to exclude from selection (optional, used for "force new" feature)
+     * @param {string} excludeTaskId - Task ID to exclude from selection (optional, used for "force new" feature).
+     *                                 When provided, selects randomly from top 10 candidates for variety.
      * @returns {Object|null} New focus task or null if none found
      */
     async findAndSetNewFocusTask(
@@ -221,6 +222,7 @@ class FocusTaskService {
             const endOfToday = this.options.moment().endOf('day').valueOf()
 
             // Phase 1: Check for upcoming calendar tasks across all user projects
+            // Note: Calendar tasks are NOT randomized - we always select the earliest upcoming task
             let earliestUpcomingCalendarTask = null
             let earliestUpcomingCalendarTaskProject = null
             let earliestStartTime = this.options.moment().add(16, 'minutes')
@@ -273,6 +275,7 @@ class FocusTaskService {
             }
 
             // Phase 2: Search in specified project with prioritization
+            // Note: When excludeTaskId is provided (force new), selects random from top 10 candidates for variety
             let newFocusedTask = null
             const tasksRef = this.options.database.collection(`items/${searchProjectId}/tasks`)
             let query = tasksRef
@@ -301,9 +304,21 @@ class FocusTaskService {
                     )
                     const nonWorkflowTasksInGroup = tasksInSameGroup.filter(task => task.userIds.length === 1)
                     if (nonWorkflowTasksInGroup.length > 0) {
-                        newFocusedTask = nonWorkflowTasksInGroup[0]
+                        // If excludeTaskId is provided (force new), select random from top 10
+                        if (excludeTaskId) {
+                            const candidates = nonWorkflowTasksInGroup.slice(0, 10)
+                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                        } else {
+                            newFocusedTask = nonWorkflowTasksInGroup[0]
+                        }
                     } else if (tasksInSameGroup.length > 0) {
-                        newFocusedTask = tasksInSameGroup[0]
+                        // If excludeTaskId is provided (force new), select random from top 10
+                        if (excludeTaskId) {
+                            const candidates = tasksInSameGroup.slice(0, 10)
+                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                        } else {
+                            newFocusedTask = tasksInSameGroup[0]
+                        }
                     }
                 }
 
@@ -311,9 +326,21 @@ class FocusTaskService {
                 if (!newFocusedTask) {
                     const nonWorkflowTasks = allFetchedTasks.filter(task => task.userIds.length === 1)
                     if (nonWorkflowTasks.length > 0) {
-                        newFocusedTask = nonWorkflowTasks[0]
+                        // If excludeTaskId is provided (force new), select random from top 10
+                        if (excludeTaskId) {
+                            const candidates = nonWorkflowTasks.slice(0, 10)
+                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                        } else {
+                            newFocusedTask = nonWorkflowTasks[0]
+                        }
                     } else if (allFetchedTasks.length > 0) {
-                        newFocusedTask = allFetchedTasks[0]
+                        // If excludeTaskId is provided (force new), select random from top 10
+                        if (excludeTaskId) {
+                            const candidates = allFetchedTasks.slice(0, 10)
+                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                        } else {
+                            newFocusedTask = allFetchedTasks[0]
+                        }
                     }
                 }
             }
@@ -328,6 +355,7 @@ class FocusTaskService {
             }
 
             // Phase 3: Search across other user projects (sorted by user preference)
+            // Note: When excludeTaskId is provided (force new), selects random from top 10 candidates for variety
             const otherUserProjectIds = userProjectIds.filter(projectId => projectId !== searchProjectId)
 
             if (otherUserProjectIds.length > 0) {
@@ -398,8 +426,19 @@ class FocusTaskService {
                             if (tasksFromOtherProject.length > 0) {
                                 // Prioritize non-workflow tasks first (matching main app logic)
                                 const nonWorkflowTasks = tasksFromOtherProject.filter(task => task.userIds.length === 1)
-                                const selectedTask =
-                                    nonWorkflowTasks.length > 0 ? nonWorkflowTasks[0] : tasksFromOtherProject[0]
+
+                                let selectedTask
+                                if (excludeTaskId) {
+                                    // Force new: select random from top 10 candidates
+                                    const candidates =
+                                        nonWorkflowTasks.length > 0 ? nonWorkflowTasks : tasksFromOtherProject
+                                    const topCandidates = candidates.slice(0, 10)
+                                    selectedTask = topCandidates[Math.floor(Math.random() * topCandidates.length)]
+                                } else {
+                                    // Normal: select first task
+                                    selectedTask =
+                                        nonWorkflowTasks.length > 0 ? nonWorkflowTasks[0] : tasksFromOtherProject[0]
+                                }
 
                                 await this.setNewFocusTask(userId, projectId, selectedTask)
                                 return {
