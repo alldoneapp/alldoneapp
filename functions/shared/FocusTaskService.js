@@ -727,7 +727,8 @@ class FocusTaskService {
                 success: true,
                 focusTask: null,
                 wasNewTaskSet: false,
-                message: 'No focus task available - no open tasks found',
+                message:
+                    'No focus task available for today. Congrats - you have reached empty inbox across all your projects.',
             }
         }
 
