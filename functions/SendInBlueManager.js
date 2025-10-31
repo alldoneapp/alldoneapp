@@ -22,6 +22,7 @@ const defaultClient = SibApiV3Sdk.ApiClient.instance
 // Configure API key authorization: api-key
 const apiKey = defaultClient.authentications['api-key']
 const { SIB_API_KEY } = getEnvFunctions()
+console.log('INFO: SIB_API_KEY loaded:', SIB_API_KEY ? `${SIB_API_KEY.substring(0, 10)}...` : 'UNDEFINED OR EMPTY')
 apiKey.apiKey = SIB_API_KEY
 
 // const SIB_API = new SibApiV3Sdk.AccountApi()
