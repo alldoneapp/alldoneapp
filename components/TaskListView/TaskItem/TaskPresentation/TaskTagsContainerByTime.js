@@ -29,6 +29,7 @@ export default function TaskTagsContainerByTime({
     setTagsExpandedHeight,
     toggleModal,
     blockOpen,
+    onAlertTagPress,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
     const [widthInFullArea, setWidthInFullArea] = useState(0)
@@ -76,7 +77,11 @@ export default function TaskTagsContainerByTime({
                     nativeID={`social_tags_${projectId}_${task.id}`}
                 >
                     <View onLayout={onLayoutInLeftArea}>
-                        {task && task.alertEnabled && <AlertTag task={task} containerStyle={{ marginRight: 8 }} />}
+                        {task &&
+                            console.log('[TaskTagsContainerByTime] Task:', task.id, 'alertEnabled:', task.alertEnabled)}
+                        {task && task.alertEnabled && (
+                            <AlertTag task={task} containerStyle={{ marginRight: 8 }} onPress={onAlertTagPress} />
+                        )}
                         {task && task.time && !task.calendarData && (
                             <TimeTagWrapper projectId={projectId} task={task} />
                         )}

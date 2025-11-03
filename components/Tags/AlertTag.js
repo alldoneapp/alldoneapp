@@ -16,7 +16,7 @@ export default function AlertTag({ task, containerStyle, onPress, disabled }) {
 
     return (
         <TouchableOpacity disabled={disabled} onPress={onPress} style={[localStyles.container, containerStyle]}>
-            <Icon name={'bell'} size={16} color={colors.Secondary400} style={localStyles.icon} />
+            <Icon name={'bell'} size={16} color={colors.Gray300} style={localStyles.icon} />
             <Text style={[localStyles.text, windowTagStyle()]}>{alertTime}</Text>
         </TouchableOpacity>
     )
@@ -25,7 +25,7 @@ export default function AlertTag({ task, containerStyle, onPress, disabled }) {
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
-        backgroundColor: colors.Warning500, // Distinct color for alerts (orange/amber)
+        backgroundColor: colors.Text03,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
@@ -36,10 +36,9 @@ const localStyles = StyleSheet.create({
     },
     text: {
         ...styles.subtitle2,
-        color: colors.Secondary400, // Dark text on light/warning background
+        color: colors.Gray300,
         marginVertical: 1,
         marginRight: 10,
         marginLeft: 2,
-        fontWeight: '600',
     },
 })

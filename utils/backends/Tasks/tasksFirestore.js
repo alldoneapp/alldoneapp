@@ -1915,11 +1915,11 @@ export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, t
         alertEnabled: alertEnabled,
     }
 
-    // If alert is enabled and we have a valid time, update the dueDate's time component
-    if (alertEnabled && alertTime && task.dueDate) {
-        // Preserve the date part of the existing dueDate, but update hours/minutes from alertTime
-        const existingDueDate = moment(task.dueDate)
-        const newDueDate = existingDueDate
+    // If alert is enabled and we have a valid time, ensure dueDate reflects that time
+    if (alertEnabled && alertTime) {
+        // Use existing dueDate if present; otherwise base it on 'today'
+        const baseDate = task.dueDate ? moment(task.dueDate) : moment()
+        const newDueDate = baseDate
             .clone()
             .hour(alertTime.hour())
             .minute(alertTime.minute())
@@ -1929,6 +1929,14 @@ export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, t
 
         updateData.dueDate = newDueDate
     }
+
+    console.log('[setTaskAlert] Updating task due to alert change:', {
+        projectId,
+        taskId,
+        alertEnabled,
+        alertTime: alertTime && alertTime.format ? alertTime.format('HH:mm') : null,
+        resultingDueDate: updateData.dueDate || null,
+    })
 
     updateTaskData(projectId, taskId, updateData, batch)
 

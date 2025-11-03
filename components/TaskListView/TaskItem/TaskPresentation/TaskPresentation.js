@@ -27,6 +27,7 @@ import useLastAddedTaskColor from '../../useLastAddedTaskColor'
 import useGetTaskWorkflow from '../../../../utils/useGetTaskWorkflow'
 import CheckBoxWrapper from './CheckBoxContainer/CheckBoxWrapper'
 import TitleContainer from './TitleContainer/TitleContainer'
+import AlertTag from '../../../Tags/AlertTag'
 import TaskTagsContainerByTime from './TaskTagsContainerByTime'
 import TaskTagsContainer from './TaskTagsContainer'
 
@@ -283,6 +284,13 @@ function TaskPresentation(
                                         propStyles={{ marginTop: 8, marginLeft: 12 }}
                                     />
                                 )}
+                                {!inMyDayAndNotSubtask && task?.alertEnabled && (
+                                    <AlertTag
+                                        task={task}
+                                        containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                        onPress={onLeftSwipe}
+                                    />
+                                )}
                                 <TitleContainer
                                     task={task}
                                     projectId={projectId}
@@ -317,6 +325,7 @@ function TaskPresentation(
                                     setTagsExpandedHeight={setTagsExpandedHeight}
                                     toggleModal={toggleModal}
                                     blockOpen={blockOpen}
+                                    onAlertTagPress={onLeftSwipe}
                                 />
                             )}
                             {!inMyDayAndNotSubtask && (
