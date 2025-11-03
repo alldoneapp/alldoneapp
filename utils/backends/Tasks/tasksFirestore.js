@@ -31,6 +31,7 @@ import {
     processFollowersWhenEditTexts,
     registerTaskObservedFeeds,
     setTaskDueDateFeedsChain,
+    setTaskAlertFeedsChain,
     setTaskParentGoalFeedsChain,
     setTaskProjectFeedsChain,
     setTaskToBacklogFeedsChain,
@@ -1905,6 +1906,36 @@ export async function setTaskDueDate(
     }
 
     setTaskDueDateFeedsChain(projectId, taskId, dueDate, task, isObservedTask)
+}
+
+export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, task, externalBatch) {
+    const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+
+    let updateData = {
+        alertEnabled: alertEnabled,
+    }
+
+    // If alert is enabled and we have a valid time, update the dueDate's time component
+    if (alertEnabled && alertTime && task.dueDate) {
+        // Preserve the date part of the existing dueDate, but update hours/minutes from alertTime
+        const existingDueDate = moment(task.dueDate)
+        const newDueDate = existingDueDate
+            .clone()
+            .hour(alertTime.hour())
+            .minute(alertTime.minute())
+            .second(0)
+            .millisecond(0)
+            .valueOf()
+
+        updateData.dueDate = newDueDate
+    }
+
+    updateTaskData(projectId, taskId, updateData, batch)
+
+    if (!externalBatch) await batch.commit()
+
+    // Generate feed for alert change
+    setTaskAlertFeedsChain(projectId, taskId, alertEnabled, alertTime, task)
 }
 
 export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, externalBatch) {

@@ -10,6 +10,7 @@ import {
     FEED_TASK_DELETED,
     FEED_TASK_DESCRIPTION,
     FEED_TASK_DUE_DATE_CHANGED,
+    FEED_TASK_ALERT_CHANGED,
     FEED_TASK_FOCUS_CHANGED,
     FEED_TASK_ASSISTANT_CHANGED,
     FEED_TASK_FOLLOWED,
@@ -51,7 +52,7 @@ import {
     updateTasksFeedsAmountOfSubtasks,
 } from '../firestore'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
-import { getDateFormat } from '../../../components/UIComponents/FloatModals/DateFormatPickerModal'
+import { getDateFormat, getTimeFormat } from '../../../components/UIComponents/FloatModals/DateFormatPickerModal'
 import {
     ESTIMATION_TYPE_POINTS,
     ESTIMATION_TYPE_TIME,
@@ -455,6 +456,62 @@ export async function createTaskDueDateChangedFeed(
     if (isSubtask) {
         await updateTasksFeedsAmountOfSubtasks(projectId, task.parentId, taskId, currentDateFormated, -1, batch)
     }
+
+    if (!externalBatch) {
+        batch.commit()
+    }
+}
+
+export async function createTaskAlertChangedFeed(
+    projectId,
+    task,
+    alertEnabled,
+    alertTime,
+    taskId,
+    externalBatch,
+    creator
+) {
+    const feedCreator = creator ? creator : store.getState().loggedUser
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+
+    const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+
+    const taskFeedObject = await loadFeedObject(
+        projectId,
+        taskId,
+        'tasks',
+        currentDateFormated,
+        currentMilliseconds,
+        batch
+    )
+
+    const timeFormat = getTimeFormat()
+    const alertTimeFormated = alertTime ? moment(alertTime).format(timeFormat) : ''
+
+    let entryText = ''
+    if (alertEnabled) {
+        entryText = `enabled alert at ${alertTimeFormated}`
+    } else {
+        entryText = 'disabled alert'
+    }
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_TASK_ALERT_CHANGED,
+        lastChangeDate: currentMilliseconds,
+        entryText,
+        feedCreator,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    updateTaskFeedObject(projectId, currentDateFormated, taskId, taskFeedObject, feed, feedId, null, batch)
+
+    await increaseFeedCount(currentDateFormated, [], projectId, 'tasks', taskId, batch, feedId, feed, taskFeedObject, {
+        creatorName: HelperFunctions.getFirstName(feedCreator.displayName),
+        creatorPhotoURL: feedCreator.photoURL,
+    })
+
+    globalInnerFeedsGenerator(projectId, 'tasks', taskId, feed, feedId, feedCreator.uid, batch)
 
     if (!externalBatch) {
         batch.commit()

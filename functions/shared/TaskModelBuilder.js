@@ -124,6 +124,7 @@ function buildTaskObject({
         startDate: now,
         startTime: moment ? moment(now).format('HH:mm') : new Date(now).toTimeString().substring(0, 5),
         dueDate: finalDueDate,
+        alertEnabled: false,
         completed: null,
         completedTime: null,
         lastEditionDate: now,

@@ -233,6 +233,7 @@ import {
     createTaskDeletedFeed,
     createTaskDescriptionChangedFeed,
     createTaskDueDateChangedFeed,
+    createTaskAlertChangedFeed,
     createTaskFollowedFeed,
     createTaskHighlightedChangedFeed,
     createTaskMovedInWorkflowFeed,
@@ -1739,6 +1740,19 @@ export const setTaskDueDateFeedsChain = async (projectId, taskId, dueDate, task,
     batch.commit()
 }
 
+export const setTaskAlertFeedsChain = async (projectId, taskId, alertEnabled, alertTime, task) => {
+    const batch = new BatchWrapper(db)
+    await createTaskAlertChangedFeed(projectId, task, alertEnabled, alertTime, taskId, batch, null)
+    const followTaskData = {
+        followObjectsType: FOLLOWER_TASKS_TYPE,
+        followObjectId: taskId,
+        followObject: task,
+        feedCreator: store.getState().loggedUser,
+    }
+    await tryAddFollower(projectId, followTaskData, batch)
+    batch.commit()
+}
+
 export async function setTaskDueDateMultiple(tasks, dueDate) {
     const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
     const batch = new BatchWrapper(db)
@@ -3192,6 +3206,7 @@ export function mapTaskData(taskId, task) {
         created: task.created ? task.created : Date.now(),
         creatorId: task.creatorId ? task.creatorId : '',
         dueDate: task.dueDate ? task.dueDate : Date.now(),
+        alertEnabled: task.alertEnabled === true || task.alertEnabled === false ? task.alertEnabled : false,
         completed: task.completed ? task.completed : null,
         isPrivate: task.isPrivate ? task.isPrivate : false,
         isPublicFor: task.isPublicFor ? task.isPublicFor : [FEED_PUBLIC_FOR_ALL, task.userId],

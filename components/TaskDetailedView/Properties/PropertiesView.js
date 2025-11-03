@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import AssignedTo from './AssignedTo'
 import DueDate from './DueDate'
+import AlertTime from './AlertTime'
 import Project from './Project'
 import Recurring from './Recurring'
 import Privacy from './Privacy'
@@ -100,6 +101,11 @@ export default function PropertiesView({ project, task, loggedUser }) {
                     <View style={smallScreen ? localStyles.leftContainerMobile : localStyles.leftContainer}>
                         <AssignedTo projectId={projectId} task={task} disabled={!accessGranted} />
                         <DueDate
+                            projectId={projectId}
+                            task={task}
+                            disabled={!accessGranted || task.gmailData || !loggedUserCanUpdateObject}
+                        />
+                        <AlertTime
                             projectId={projectId}
                             task={task}
                             disabled={!accessGranted || task.gmailData || !loggedUserCanUpdateObject}
