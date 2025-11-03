@@ -32,6 +32,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { setTaskDescription, setTaskDueDate, setTaskToBacklog } from '../../../utils/backends/Tasks/tasksFirestore'
 import GoalTag from '../../Tags/GoalTag'
 import { checkIfInMyDay, checkIfInMyDayOpenTab } from '../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
+import AlertTag from '../../Tags/AlertTag'
 
 export default function Tags({
     task,
@@ -219,6 +220,9 @@ export default function Tags({
                     objectName={task.name}
                     assistantId={task.assistantId}
                 />
+            )}
+            {inMyDayAndNotSubtask && task.alertEnabled && (
+                <AlertTag task={task} containerStyle={[tagAlignment, tagsStyle]} onPress={navigateToDv} />
             )}
             {subtaskList && subtaskList.length > 0 && (
                 <TaskSubTasks

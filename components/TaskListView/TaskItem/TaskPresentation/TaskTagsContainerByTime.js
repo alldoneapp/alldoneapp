@@ -6,7 +6,6 @@ import TaskItemTags from '../../TaskItemTags'
 import TimeTagWrapper from '../../../Tags/TimeTagWrapper'
 import CompletedTimeTag from '../../../Tags/CompletedTimeTag'
 import CalendarTag from '../../../Tags/CalendarTag'
-import AlertTag from '../../../Tags/AlertTag'
 import Tags from '../../TagsArea/Tags'
 import { shouldOnPressInput } from '../../Utils/TasksHelper'
 
@@ -29,7 +28,6 @@ export default function TaskTagsContainerByTime({
     setTagsExpandedHeight,
     toggleModal,
     blockOpen,
-    onAlertTagPress,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
     const [widthInFullArea, setWidthInFullArea] = useState(0)
@@ -77,11 +75,6 @@ export default function TaskTagsContainerByTime({
                     nativeID={`social_tags_${projectId}_${task.id}`}
                 >
                     <View onLayout={onLayoutInLeftArea}>
-                        {task &&
-                            console.log('[TaskTagsContainerByTime] Task:', task.id, 'alertEnabled:', task.alertEnabled)}
-                        {task && task.alertEnabled && (
-                            <AlertTag task={task} containerStyle={{ marginRight: 8 }} onPress={onAlertTagPress} />
-                        )}
                         {task && task.time && !task.calendarData && (
                             <TimeTagWrapper projectId={projectId} task={task} />
                         )}
