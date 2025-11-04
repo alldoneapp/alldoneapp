@@ -180,10 +180,20 @@ class TaskUpdateService {
         console.log('🔄 TaskUpdateService: Executing task update via TaskService')
 
         try {
-            // Get user's timezone for date parsing
+            // Get user's timezone for date parsing (normalize across possible fields)
             const userDoc = await this.options.database.collection('users').doc(userId).get()
             const userData = userDoc.data()
-            const timezoneOffset = userData?.timezone || 0 // Minutes from UTC
+            let timezoneOffset = 0
+            try {
+                const { TaskRetrievalService } = require('./TaskRetrievalService')
+                const rawTz =
+                    (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                    (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                    (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                    (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+                const normalized = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+                timezoneOffset = typeof normalized === 'number' ? normalized : timezoneOffset
+            } catch (_) {}
 
             console.log('🔄 TaskUpdateService: User timezone info', {
                 userId,
@@ -199,8 +209,22 @@ class TaskUpdateService {
                     timezoneOffset,
                 })
 
-                // Parse ISO string in user's local timezone, convert to UTC timestamp
-                processedDueDate = this.options.moment(updateFields.dueDate).utcOffset(timezoneOffset).valueOf()
+                // Respect embedded timezone if present; otherwise interpret as user's local time
+                const parsed = this.options.moment.parseZone(updateFields.dueDate)
+                if (
+                    parsed &&
+                    parsed.isValid() &&
+                    parsed.utcOffset() !== 0 &&
+                    /[zZ]|[+-]\d{2}:?\d{2}$/.test(updateFields.dueDate)
+                ) {
+                    processedDueDate = parsed.valueOf()
+                } else {
+                    // Interpret provided local clock time in user's timezone and convert to UTC ms
+                    processedDueDate = this.options
+                        .moment(updateFields.dueDate)
+                        .utcOffset(timezoneOffset, true)
+                        .valueOf()
+                }
 
                 console.log('🔄 TaskUpdateService: Converted dueDate', {
                     from: updateFields.dueDate,
