@@ -145,7 +145,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task. Use this when the user wants to mark a task as done/complete, change focus, rename, or update a task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, and description.',
+                'Updates an existing task. Use this when the user wants to mark a task as done/complete, change focus, rename, update, or set reminders/alerts for a task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, and enable/disable alerts.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -180,6 +180,16 @@ const toolSchemas = {
                     description: {
                         type: 'string',
                         description: 'New description for the task',
+                    },
+                    dueDate: {
+                        type: 'string',
+                        description:
+                            'Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC. This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests.',
+                    },
+                    alertEnabled: {
+                        type: 'boolean',
+                        description:
+                            'Enable (true) or disable (false) the alert notification for this task. When enabled, the user will receive an alert at the time specified in dueDate. Requires dueDate to be set on the task. Use this for "remind me" or "alert me" requests.',
                     },
                 },
                 required: [],

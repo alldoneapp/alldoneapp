@@ -180,13 +180,42 @@ class TaskUpdateService {
         console.log('🔄 TaskUpdateService: Executing task update via TaskService')
 
         try {
+            // Get user's timezone for date parsing
+            const userDoc = await this.options.database.collection('users').doc(userId).get()
+            const userData = userDoc.data()
+            const timezoneOffset = userData?.timezone || 0 // Minutes from UTC
+
+            console.log('🔄 TaskUpdateService: User timezone info', {
+                userId,
+                timezoneOffset,
+                hasTimezone: !!userData?.timezone,
+            })
+
+            // Handle dueDate with timezone conversion if it's a string
+            let processedDueDate = updateFields.dueDate
+            if (updateFields.dueDate && typeof updateFields.dueDate === 'string') {
+                console.log('🔄 TaskUpdateService: Processing dueDate ISO string with timezone', {
+                    originalDueDate: updateFields.dueDate,
+                    timezoneOffset,
+                })
+
+                // Parse ISO string in user's local timezone, convert to UTC timestamp
+                processedDueDate = this.options.moment(updateFields.dueDate).utcOffset(timezoneOffset).valueOf()
+
+                console.log('🔄 TaskUpdateService: Converted dueDate', {
+                    from: updateFields.dueDate,
+                    to: processedDueDate,
+                    asDate: new Date(processedDueDate).toISOString(),
+                })
+            }
+
             const result = await this.taskService.updateAndPersistTask({
                 taskId: currentTask.id,
                 projectId: projectId,
                 currentTask: currentTask,
                 name: updateFields.name,
                 description: updateFields.description,
-                dueDate: updateFields.dueDate,
+                dueDate: processedDueDate,
                 completed: updateFields.completed,
                 userId: updateFields.userId || updateFields.targetUserId,
                 parentId: updateFields.parentId,
@@ -200,6 +229,46 @@ class TaskUpdateService {
                 changes: result.changes,
                 feedGenerated: !!result.feedData,
             })
+
+            // Handle alert if alertEnabled parameter is provided
+            if (updateFields.alertEnabled !== undefined) {
+                console.log('🔄 TaskUpdateService: Processing alertEnabled', {
+                    alertEnabled: updateFields.alertEnabled,
+                    taskId: currentTask.id,
+                })
+
+                // Get the final dueDate (either newly set or existing)
+                const finalDueDate = processedDueDate !== undefined ? processedDueDate : currentTask.dueDate
+
+                // Validate: can't enable alert without dueDate
+                if (updateFields.alertEnabled && !finalDueDate) {
+                    throw new Error('Cannot enable alert without setting a due date/reminder time')
+                }
+
+                if (finalDueDate) {
+                    // Import setTaskAlert function
+                    const { setTaskAlert } = require('../../utils/backends/Tasks/tasksFirestore')
+
+                    // Convert UTC timestamp to moment with user's timezone for setTaskAlert
+                    const alertMoment = this.options.moment(finalDueDate).utcOffset(timezoneOffset)
+
+                    console.log('🔄 TaskUpdateService: Calling setTaskAlert', {
+                        taskId: currentTask.id,
+                        projectId,
+                        alertEnabled: updateFields.alertEnabled,
+                        alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
+                        dueDate: finalDueDate,
+                    })
+
+                    // Call existing setTaskAlert function (handles feed generation)
+                    await setTaskAlert(projectId, currentTask.id, updateFields.alertEnabled, alertMoment, {
+                        ...currentTask,
+                        dueDate: finalDueDate,
+                    })
+
+                    console.log('🔄 TaskUpdateService: Alert updated successfully')
+                }
+            }
 
             // Build success message
             const changes = result.changes || []
