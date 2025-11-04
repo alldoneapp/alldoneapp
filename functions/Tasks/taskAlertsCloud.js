@@ -5,6 +5,30 @@ const { FEED_TASK_ALERT_CHANGED } = require('../Feeds/FeedsConstants')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
 
+// Robust environment URL resolver (aligns with TwilioWhatsAppService)
+function getBaseUrl() {
+    if (process.env.FUNCTIONS_EMULATOR) {
+        return 'http://localhost:5000'
+    }
+
+    let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    if (!projectId) {
+        try {
+            const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+            if (cfg && cfg.projectId) projectId = cfg.projectId
+        } catch (_) {}
+    }
+    if (!projectId) {
+        try {
+            projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+        } catch (_) {}
+    }
+
+    if (projectId === 'alldonealeph') return 'https://my.alldone.app'
+    if (projectId === 'alldonestaging') return 'https://mystaging.alldone.app'
+    return 'https://my.alldone.app'
+}
+
 /**
  * Gets users who have logged in within the last 30 days
  * Returns a Map of userId -> userData for efficient lookups
@@ -289,9 +313,7 @@ async function checkAndTriggerTaskAlerts() {
                         const user = userSnap.exists ? { uid: userSnap.id, ...userSnap.data() } : null
 
                         const nowTs = Date.now()
-                        const baseUrl = inProductionEnvironment()
-                            ? 'https://my.alldone.app'
-                            : 'https://mystaging.alldone.app'
+                        const baseUrl = getBaseUrl()
                         const taskLink = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
 
                         let projectName = 'Project'
