@@ -2043,6 +2043,19 @@ exports.sendChatPushNotificationsSecondGen = onSchedule(
     }
 )
 
+exports.checkTaskAlertsSecondGen = onSchedule(
+    {
+        schedule: 'every 5 minutes',
+        region: 'europe-west1',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+    },
+    async context => {
+        const { checkAndTriggerTaskAlerts } = require('./Tasks/taskAlertsCloud')
+        return await checkAndTriggerTaskAlerts()
+    }
+)
+
 // "Every Year at 1 of january."
 exports.resetInvoiceNumbersSecondGen = onSchedule(
     {

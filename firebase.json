@@ -90,5 +90,8 @@
         "source": "functions",
         "runtime": "nodejs20",
         "region": "europe-west1"
+    },
+    "firestore": {
+        "indexes": "firestore.indexes.json"
     }
 }

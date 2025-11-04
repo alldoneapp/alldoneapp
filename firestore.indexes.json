@@ -1,0 +1,23 @@
+{
+    "indexes": [
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {
+                    "fieldPath": "alertEnabled",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                }
+            ]
+        }
+    ],
+    "fieldOverrides": []
+}
