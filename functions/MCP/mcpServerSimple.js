@@ -2336,8 +2336,21 @@ class AlldoneSimpleMCPServer {
                                         description: 'Task description (optional)',
                                     },
                                     dueDate: {
-                                        type: 'number',
-                                        description: 'Due date as timestamp (optional)',
+                                        oneOf: [
+                                            {
+                                                type: 'number',
+                                                description: 'Due date as timestamp (optional)',
+                                            },
+                                            {
+                                                type: 'string',
+                                                description:
+                                                    'Natural language or ISO date/time (e.g., "today 4pm", "tomorrow 16:00", "2025-01-01T16:00")',
+                                            },
+                                        ],
+                                    },
+                                    alertEnabled: {
+                                        type: 'boolean',
+                                        description: 'Enable reminder/alert at the due date (optional)',
                                     },
                                     projectId: {
                                         type: 'string',
@@ -2379,8 +2392,17 @@ class AlldoneSimpleMCPServer {
                                         description: 'New task description (optional)',
                                     },
                                     dueDate: {
-                                        type: 'number',
-                                        description: 'New due date as timestamp (optional)',
+                                        oneOf: [
+                                            {
+                                                type: 'number',
+                                                description: 'New due date as timestamp (optional)',
+                                            },
+                                            {
+                                                type: 'string',
+                                                description:
+                                                    'Natural language or ISO date/time (e.g., "today 4pm", "tomorrow 16:00", "2025-01-01T16:00")',
+                                            },
+                                        ],
                                     },
                                     completed: {
                                         type: 'boolean',
@@ -2399,6 +2421,10 @@ class AlldoneSimpleMCPServer {
                                         type: 'boolean',
                                         description:
                                             'Set to true to mark this task as your focus task, or false to clear it (optional)',
+                                    },
+                                    alertEnabled: {
+                                        type: 'boolean',
+                                        description: 'Enable or disable reminder/alert at the due date (optional)',
                                     },
                                 },
                                 required: [],
