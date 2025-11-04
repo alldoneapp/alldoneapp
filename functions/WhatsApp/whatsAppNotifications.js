@@ -34,16 +34,7 @@ async function processWhatsAppNotifications() {
 
     for (const doc of docs) {
         const notif = doc.data()
-        const {
-            userId,
-            userPhone,
-            projectId,
-            projectName,
-            objectId,
-            objectName,
-            updateText,
-            link,
-        } = notif
+        const { userId, userPhone, projectId, projectName, objectId, objectName, updateText, link } = notif
 
         try {
             let finalProjectName = projectName || 'Project'
@@ -86,5 +77,3 @@ async function processWhatsAppNotifications() {
 }
 
 module.exports = { processWhatsAppNotifications }
-
-
