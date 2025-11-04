@@ -41,6 +41,8 @@ async function setTaskAlertCloud(projectId, taskId, alertEnabled, alertMoment, t
                 .valueOf()
 
             updateData.dueDate = newDueDate
+            // Reset alert trigger so a new notification can be generated at the new time
+            updateData.alertTriggered = false
         }
 
         await taskRef.update(updateData)
