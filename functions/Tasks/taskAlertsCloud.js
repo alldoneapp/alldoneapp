@@ -249,7 +249,14 @@ async function checkAndTriggerTaskAlerts() {
 
                 // Use a neutral creator so owners are not excluded from notifications
                 const systemFeedCreator = { uid: 'system', id: 'system' }
-                loadFeedsGlobalState(admin, admin, systemFeedCreator, { id: projectId, userIds: projectUsers }, [], null)
+                loadFeedsGlobalState(
+                    admin,
+                    admin,
+                    systemFeedCreator,
+                    { id: projectId, userIds: projectUsers },
+                    [],
+                    null
+                )
 
                 // Feed appears as coming from "Alert Notification" but creator filtering uses system
                 const feedUser = { uid: 'system', displayName: 'Alert Notification' }
@@ -261,20 +268,12 @@ async function checkAndTriggerTaskAlerts() {
                     feedCreatorUid: systemFeedCreator.uid,
                 })
 
-                await createTaskUpdatedFeed(
-                    projectId,
-                    task,
-                    taskId,
-                    batch,
-                    feedUser,
-                    true,
-                    {
-                        feedType: FEED_TASK_ALERT_CHANGED,
-                        entryText: 'alert time reached',
-                        feedCreator: systemFeedCreator,
-                        project: { id: projectId, userIds: projectUsers },
-                    }
-                )
+                await createTaskUpdatedFeed(projectId, task, taskId, batch, feedUser, true, {
+                    feedType: FEED_TASK_ALERT_CHANGED,
+                    entryText: 'alert time reached',
+                    feedCreator: systemFeedCreator,
+                    project: { id: projectId, userIds: projectUsers },
+                })
 
                 // Mark task as alertTriggered to prevent duplicate notifications
                 batch.update(taskDoc.ref, {
