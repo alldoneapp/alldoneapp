@@ -544,7 +544,7 @@ class AlldoneSimpleMCPServer {
     }
 
     async createTask(args, request) {
-        const { name, description, dueDate, projectId: specifiedProjectId } = args
+        const { name, description, dueDate, alertEnabled, projectId: specifiedProjectId } = args
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -559,9 +559,43 @@ class AlldoneSimpleMCPServer {
 
         const db = admin.firestore()
 
-        // Get user data for feed creation using shared helper
+        // Get user data for feed creation and timezone
         const { UserHelper } = require('../shared/UserHelper')
         const feedUser = await UserHelper.getFeedUserData(db, userId)
+
+        // Get user's timezone for date parsing
+        const userDoc = await db.collection('users').doc(userId).get()
+        const userData = userDoc.data()
+        const timezoneOffset = userData?.timezone || 0 // Minutes from UTC
+
+        console.log('📝 CREATE_TASK: User timezone info', {
+            userId,
+            timezoneOffset,
+            hasTimezone: !!userData?.timezone,
+        })
+
+        // Handle dueDate with timezone conversion if it's a string
+        let processedDueDate = dueDate
+        if (dueDate && typeof dueDate === 'string') {
+            console.log('📝 CREATE_TASK: Processing dueDate ISO string with timezone', {
+                originalDueDate: dueDate,
+                timezoneOffset,
+            })
+
+            // Parse ISO string in user's local timezone, convert to UTC timestamp
+            processedDueDate = moment(dueDate).utcOffset(timezoneOffset).valueOf()
+
+            console.log('📝 CREATE_TASK: Converted dueDate', {
+                from: dueDate,
+                to: processedDueDate,
+                asDate: new Date(processedDueDate).toISOString(),
+            })
+        }
+
+        // Validate alert requirements
+        if (alertEnabled && !processedDueDate) {
+            throw new Error('Cannot enable alert without setting a due date/reminder time')
+        }
 
         // Initialize TaskService if not already done
         if (!this.taskService) {
@@ -583,7 +617,7 @@ class AlldoneSimpleMCPServer {
                 {
                     name,
                     description,
-                    dueDate,
+                    dueDate: processedDueDate,
                     userId,
                     projectId,
                     isPrivate: false, // Default to public for MCP-created tasks
@@ -595,6 +629,33 @@ class AlldoneSimpleMCPServer {
                     // We could add project permission validation here
                 }
             )
+
+            // Handle alert if alertEnabled is true
+            if (alertEnabled && processedDueDate) {
+                console.log('📝 CREATE_TASK: Enabling alert', {
+                    taskId: result.taskId,
+                    dueDate: processedDueDate,
+                })
+
+                const { setTaskAlert } = require('../utils/backends/Tasks/tasksFirestore')
+
+                // Convert UTC timestamp to moment with user's timezone for setTaskAlert
+                const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
+
+                console.log('📝 CREATE_TASK: Calling setTaskAlert', {
+                    taskId: result.taskId,
+                    projectId,
+                    alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
+                })
+
+                // Call existing setTaskAlert function (handles feed generation)
+                await setTaskAlert(projectId, result.taskId, true, alertMoment, {
+                    ...result.task,
+                    dueDate: processedDueDate,
+                })
+
+                console.log('📝 CREATE_TASK: Alert enabled successfully')
+            }
 
             return {
                 success: result.success,

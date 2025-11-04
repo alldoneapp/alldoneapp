@@ -846,8 +846,42 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const moment = require('moment-timezone')
             const db = admin.firestore()
 
-            // Get user data for feed creation using shared helper
+            // Get user data for feed creation and timezone
             const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+
+            // Get user's timezone for date parsing
+            const userDoc = await db.collection('users').doc(creatorId).get()
+            const userData = userDoc.data()
+            const timezoneOffset = userData?.timezone || 0 // Minutes from UTC
+
+            console.log('📝 CREATE_TASK TOOL: User timezone info', {
+                userId: creatorId,
+                timezoneOffset,
+                hasTimezone: !!userData?.timezone,
+            })
+
+            // Handle dueDate with timezone conversion if it's a string
+            let processedDueDate = toolArgs.dueDate
+            if (toolArgs.dueDate && typeof toolArgs.dueDate === 'string') {
+                console.log('📝 CREATE_TASK TOOL: Processing dueDate ISO string with timezone', {
+                    originalDueDate: toolArgs.dueDate,
+                    timezoneOffset,
+                })
+
+                // Parse ISO string in user's local timezone, convert to UTC timestamp
+                processedDueDate = moment(toolArgs.dueDate).utcOffset(timezoneOffset).valueOf()
+
+                console.log('📝 CREATE_TASK TOOL: Converted dueDate', {
+                    from: toolArgs.dueDate,
+                    to: processedDueDate,
+                    asDate: new Date(processedDueDate).toISOString(),
+                })
+            }
+
+            // Validate alert requirements
+            if (toolArgs.alertEnabled && !processedDueDate) {
+                throw new Error('Cannot enable alert without setting a due date/reminder time')
+            }
 
             // Initialize or reuse TaskService instance (performance optimization)
             if (!cachedTaskService) {
@@ -868,6 +902,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 {
                     name: toolArgs.name,
                     description: toolArgs.description || '',
+                    dueDate: processedDueDate,
                     userId: creatorId,
                     projectId: projectId,
                     isPrivate: false,
@@ -878,6 +913,33 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     projectId: projectId,
                 }
             )
+
+            // Handle alert if alertEnabled is true
+            if (toolArgs.alertEnabled && processedDueDate) {
+                console.log('📝 CREATE_TASK TOOL: Enabling alert', {
+                    taskId: result.taskId,
+                    dueDate: processedDueDate,
+                })
+
+                const { setTaskAlert } = require('../../utils/backends/Tasks/tasksFirestore')
+
+                // Convert UTC timestamp to moment with user's timezone for setTaskAlert
+                const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
+
+                console.log('📝 CREATE_TASK TOOL: Calling setTaskAlert', {
+                    taskId: result.taskId,
+                    projectId,
+                    alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
+                })
+
+                // Call existing setTaskAlert function (handles feed generation)
+                await setTaskAlert(projectId, result.taskId, true, alertMoment, {
+                    ...result.task,
+                    dueDate: processedDueDate,
+                })
+
+                console.log('📝 CREATE_TASK TOOL: Alert enabled successfully')
+            }
 
             return {
                 success: true,
