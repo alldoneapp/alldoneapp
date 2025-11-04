@@ -869,7 +869,8 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 })
 
                 // Parse ISO string in user's local timezone, convert to UTC timestamp
-                processedDueDate = moment(toolArgs.dueDate).utcOffset(timezoneOffset).valueOf()
+                // Use keepLocalTime=true to interpret the provided local time in the user's timezone
+                processedDueDate = moment(toolArgs.dueDate).utcOffset(timezoneOffset, true).valueOf()
 
                 console.log('📝 CREATE_TASK TOOL: Converted dueDate', {
                     from: toolArgs.dueDate,

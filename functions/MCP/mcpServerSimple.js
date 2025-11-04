@@ -583,7 +583,8 @@ class AlldoneSimpleMCPServer {
             })
 
             // Parse ISO string in user's local timezone, convert to UTC timestamp
-            processedDueDate = moment(dueDate).utcOffset(timezoneOffset).valueOf()
+            // Use keepLocalTime=true to interpret the provided local time in the user's timezone
+            processedDueDate = moment(dueDate).utcOffset(timezoneOffset, true).valueOf()
 
             console.log('📝 CREATE_TASK: Converted dueDate', {
                 from: dueDate,
