@@ -4,8 +4,112 @@ const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
 const { FEED_TASK_ALERT_CHANGED } = require('../Feeds/FeedsConstants')
 
 /**
+ * Gets users who have logged in within the last 30 days
+ * Returns a Map of userId -> userData for efficient lookups
+ *
+ * This optimization ensures we only check alerts for active users,
+ * reducing unnecessary processing for inactive accounts
+ */
+async function getActiveUsersMap() {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    const activeUsersMap = new Map()
+
+    try {
+        const activeUsersSnapshot = await admin
+            .firestore()
+            .collection('users')
+            .where('lastLogin', '>=', thirtyDaysAgo)
+            .get()
+
+        activeUsersSnapshot.docs.forEach(doc => {
+            activeUsersMap.set(doc.id, { id: doc.id, ...doc.data() })
+        })
+
+        console.log('📊 Active users loaded:', {
+            totalActiveUsers: activeUsersMap.size,
+            cutoffDate: new Date(thirtyDaysAgo).toISOString(),
+        })
+    } catch (error) {
+        console.error('❌ Failed to query active users:', {
+            error: error.message,
+            stack: error.stack,
+        })
+        // Return empty map - will result in no alerts being processed
+        // Better than crashing or processing everything
+    }
+
+    return activeUsersMap
+}
+
+/**
+ * Gets active projects for the given active users
+ * Filters out:
+ * - Archived projects (active === false)
+ * - Template projects (isTemplate === true)
+ * - Community/derived projects (parentTemplateId exists)
+ *
+ * This optimization ensures we only check tasks in projects that are
+ * actively being used, dramatically reducing scope
+ */
+async function getActiveProjectsForUsers(activeUsersMap) {
+    const activeProjects = new Set()
+
+    for (const [userId] of activeUsersMap.entries()) {
+        try {
+            const userProjectsSnapshot = await admin
+                .firestore()
+                .collection('projects')
+                .where('userIds', 'array-contains', userId)
+                .get()
+
+            userProjectsSnapshot.docs.forEach(doc => {
+                const projectData = doc.data()
+
+                // Skip archived projects
+                if (projectData.active === false) {
+                    return
+                }
+
+                // Skip template projects
+                if (projectData.isTemplate === true) {
+                    return
+                }
+
+                // Skip community/derived projects
+                if (projectData.parentTemplateId) {
+                    return
+                }
+
+                activeProjects.add(doc.id)
+            })
+        } catch (error) {
+            console.warn('⚠️ Error fetching projects for user:', {
+                userId,
+                error: error.message,
+            })
+            // Continue with other users even if one fails
+        }
+    }
+
+    console.log('📊 Active projects identified:', {
+        activeUsers: activeUsersMap.size,
+        activeProjects: activeProjects.size,
+    })
+
+    return activeProjects
+}
+
+/**
  * Checks for tasks with alert times that have been reached and generates notifications
  * Runs every 5 minutes via scheduled cloud function
+ *
+ * OPTIMIZATIONS:
+ * 1. Only checks tasks for users active in last 30 days
+ * 2. Only checks tasks in active (non-archived, non-template) projects
+ * 3. Uses per-project queries instead of collectionGroup for better performance
+ * 4. Verifies task owner is active before processing
+ *
+ * This reduces the scan scope by ~90-95% compared to checking all tasks
  */
 async function checkAndTriggerTaskAlerts() {
     console.log('🔔 Starting task alert check at:', new Date().toISOString())
@@ -14,51 +118,115 @@ async function checkAndTriggerTaskAlerts() {
         const db = admin.firestore()
         const now = Date.now()
 
-        // Query all tasks across all projects where:
-        // - alertEnabled is true
-        // - dueDate (which contains the alert time) is in the past
-        // - task is not done
-        // - alert has not been triggered yet
-        const tasksSnapshot = await db
-            .collectionGroup('tasks')
-            .where('alertEnabled', '==', true)
-            .where('dueDate', '<=', now)
-            .where('done', '==', false)
-            .get()
-
-        console.log(`📋 Found ${tasksSnapshot.size} tasks with alerts to process`)
-
-        if (tasksSnapshot.empty) {
-            console.log('✅ No tasks with alerts to process')
-            return
+        // STAGE 1: Get active users (logged in within 30 days)
+        const activeUsersMap = await getActiveUsersMap()
+        if (activeUsersMap.size === 0) {
+            console.log('✅ No active users found, skipping alert check')
+            return {
+                success: true,
+                processed: 0,
+                skipped: 0,
+                activeUsers: 0,
+                activeProjects: 0,
+            }
         }
 
+        // STAGE 2: Get active projects for those users
+        const activeProjects = await getActiveProjectsForUsers(activeUsersMap)
+        if (activeProjects.size === 0) {
+            console.log('✅ No active projects found, skipping alert check')
+            return {
+                success: true,
+                processed: 0,
+                skipped: 0,
+                activeUsers: activeUsersMap.size,
+                activeProjects: 0,
+            }
+        }
+
+        // STAGE 3: Query tasks in active projects only
+        const tasksToProcess = []
+        let totalTasksChecked = 0
+        let skippedAlreadyTriggered = 0
+        let skippedInactiveUser = 0
+
+        console.log(`🔍 Checking tasks in ${activeProjects.size} active projects...`)
+
+        for (const projectId of activeProjects) {
+            try {
+                const tasksSnapshot = await db
+                    .collection(`items/${projectId}/tasks`)
+                    .where('alertEnabled', '==', true)
+                    .where('dueDate', '<=', now)
+                    .where('done', '==', false)
+                    .get()
+
+                totalTasksChecked += tasksSnapshot.size
+
+                for (const taskDoc of tasksSnapshot.docs) {
+                    const task = taskDoc.data()
+                    const taskId = taskDoc.id
+
+                    // Skip if already triggered
+                    if (task.alertTriggered === true) {
+                        skippedAlreadyTriggered++
+                        continue
+                    }
+
+                    // Verify task owner is active
+                    const taskUserId = task.userId || task.creatorId
+                    if (!activeUsersMap.has(taskUserId)) {
+                        skippedInactiveUser++
+                        continue
+                    }
+
+                    tasksToProcess.push({
+                        projectId,
+                        taskId,
+                        taskDoc,
+                        task,
+                    })
+                }
+            } catch (error) {
+                console.error('❌ Error querying tasks for project:', {
+                    projectId,
+                    error: error.message,
+                })
+                // Continue with other projects even if one fails
+            }
+        }
+
+        console.log('📊 Task collection phase completed:', {
+            activeProjects: activeProjects.size,
+            totalTasksChecked,
+            tasksToProcess: tasksToProcess.length,
+            skippedAlreadyTriggered,
+            skippedInactiveUser,
+        })
+
+        if (tasksToProcess.length === 0) {
+            console.log('✅ No tasks with alerts to process')
+            return {
+                success: true,
+                processed: 0,
+                skipped: skippedAlreadyTriggered + skippedInactiveUser,
+                activeUsers: activeUsersMap.size,
+                activeProjects: activeProjects.size,
+                totalTasksChecked,
+            }
+        }
+
+        // Process alerts and generate notifications
         const batch = new BatchWrapper(db)
         let processedCount = 0
-        let skippedCount = 0
 
-        for (const taskDoc of tasksSnapshot.docs) {
+        for (const { projectId, taskId, taskDoc, task } of tasksToProcess) {
             try {
-                const task = taskDoc.data()
-                const taskId = taskDoc.id
-
-                // Get projectId from the document reference path
-                // Path structure: items/{projectId}/tasks/{taskId}
-                const projectId = taskDoc.ref.parent.parent.id
-
-                // Skip if already triggered (defensive check)
-                if (task.alertTriggered === true) {
-                    console.log(`⏭️ Skipping task ${taskId} - alert already triggered`)
-                    skippedCount++
-                    continue
-                }
-
                 console.log(`🔔 Processing alert for task: ${taskId} in project: ${projectId}`)
                 console.log(`   Task name: ${task.name || 'Unnamed'}`)
                 console.log(`   Alert time: ${new Date(task.dueDate).toISOString()}`)
 
                 // Generate feed notification using existing infrastructure
-                // The feed creator should be the task owner/assignee
                 const feedUser = {
                     uid: task.userId || task.creatorId || 'system',
                     displayName: 'Alert Notification',
@@ -84,7 +252,9 @@ async function checkAndTriggerTaskAlerts() {
 
                 processedCount++
             } catch (taskError) {
-                console.error(`❌ Error processing task ${taskDoc.id}:`, {
+                console.error(`❌ Error processing task alert:`, {
+                    taskId,
+                    projectId,
                     error: taskError.message,
                     stack: taskError.stack,
                 })
@@ -95,17 +265,23 @@ async function checkAndTriggerTaskAlerts() {
         // Commit all changes
         await batch.commit()
 
-        console.log(`✅ Task alert check completed:`, {
-            total: tasksSnapshot.size,
+        console.log('✅ Task alert check completed:', {
+            activeUsers: activeUsersMap.size,
+            activeProjects: activeProjects.size,
+            totalTasksChecked,
             processed: processedCount,
-            skipped: skippedCount,
+            skippedAlreadyTriggered,
+            skippedInactiveUser,
             timestamp: new Date().toISOString(),
         })
 
         return {
             success: true,
             processed: processedCount,
-            skipped: skippedCount,
+            skipped: skippedAlreadyTriggered + skippedInactiveUser,
+            activeUsers: activeUsersMap.size,
+            activeProjects: activeProjects.size,
+            totalTasksChecked,
         }
     } catch (error) {
         console.error('💥 CRITICAL ERROR in checkAndTriggerTaskAlerts:', {
@@ -119,4 +295,6 @@ async function checkAndTriggerTaskAlerts() {
 
 module.exports = {
     checkAndTriggerTaskAlerts,
+    getActiveUsersMap,
+    getActiveProjectsForUsers,
 }

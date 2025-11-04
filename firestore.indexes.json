@@ -17,6 +17,16 @@
                     "order": "ASCENDING"
                 }
             ]
+        },
+        {
+            "collectionId": "users",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastLogin",
+                    "order": "ASCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": []

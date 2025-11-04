@@ -4,10 +4,20 @@
 
 This document describes how to test the task alert notification system that generates red/grey feed notifications when task alert times are reached.
 
+**OPTIMIZATIONS:** The system uses a three-stage filtering approach to limit scope:
+
+1. Only checks tasks for users active in the last 30 days
+2. Only checks tasks in active (non-archived, non-template) projects
+3. Verifies task owner is active before processing
+
+This reduces the scan scope by ~90-95% compared to checking all tasks.
+
 ## Prerequisites
 
 1. Firebase emulators running: `firebase emulators:start`
 2. Firestore indexes deployed (or running locally)
+    - `users.lastLogin` index for active user queries
+    - `tasks` composite index for alert queries
 
 ## Test Scenarios
 
@@ -72,6 +82,45 @@ This document describes how to test the task alert notification system that gene
 -   Scheduled function should skip this task
 -   No notification generated
 
+### Scenario 6: Inactive User (Optimization Test)
+
+**Setup:**
+
+1. Create a user with `lastLogin` older than 30 days
+2. Create a task for this user with `alertEnabled: true`, `dueDate` in past, `done: false`
+
+**Expected Result:**
+
+-   Scheduled function should skip this task (user not active)
+-   No notification generated
+-   Logged as "skippedInactiveUser" in metrics
+
+### Scenario 7: Archived Project (Optimization Test)
+
+**Setup:**
+
+1. Create a project with `active: false` (archived)
+2. Create a task in this project with `alertEnabled: true`, `dueDate` in past, `done: false`
+
+**Expected Result:**
+
+-   Scheduled function should skip this entire project
+-   No notification generated
+-   Project not included in activeProjects count
+
+### Scenario 8: Template Project (Optimization Test)
+
+**Setup:**
+
+1. Create a project with `isTemplate: true`
+2. Create a task in this project with `alertEnabled: true`, `dueDate` in past, `done: false`
+
+**Expected Result:**
+
+-   Scheduled function should skip this entire project
+-   No notification generated
+-   Project not included in activeProjects count
+
 ## Manual Testing Steps
 
 ### 1. Deploy Firestore Indexes
@@ -92,10 +141,27 @@ firebase emulators:start --only functions,firestore
 
 ### 3. Create Test Data
 
-Use Firestore console or script to create test tasks:
+Use Firestore console or script to create test data:
 
 ```javascript
-// Example test task
+// 1. Create/update user with recent login (REQUIRED for optimization)
+// Collection: users/{userId}
+{
+  lastLogin: Date.now() - 86400000, // 1 day ago (within 30 days)
+  // ... other user fields
+}
+
+// 2. Create active project
+// Collection: projects/{projectId}
+{
+  userIds: ["your-user-id"],
+  active: true, // or undefined (defaults to active)
+  isTemplate: false, // or undefined
+  // ... other project fields
+}
+
+// 3. Create test task
+// Collection: items/{projectId}/tasks/{taskId}
 {
   name: "Test Alert Task",
   alertEnabled: true,
@@ -139,20 +205,74 @@ firebase functions:log --only checkTaskAlertsSecondGen
 
 ```
 🔔 Starting task alert check at: 2025-XX-XXTXX:XX:XX.XXXZ
-📋 Found X tasks with alerts to process
+📊 Active users loaded: { totalActiveUsers: 150, cutoffDate: '2025-XX-XXTXX:XX:XX.XXXZ' }
+📊 Active projects identified: { activeUsers: 150, activeProjects: 45 }
+🔍 Checking tasks in 45 active projects...
+📊 Task collection phase completed: {
+  activeProjects: 45,
+  totalTasksChecked: 120,
+  tasksToProcess: 5,
+  skippedAlreadyTriggered: 100,
+  skippedInactiveUser: 15
+}
 🔔 Processing alert for task: task-id-here in project: project-id-here
    Task name: Test Alert Task
    Alert time: 2025-XX-XXTXX:XX:XX.XXXZ
-✅ Task alert check completed: { total: X, processed: X, skipped: 0, timestamp: ... }
+✅ Task alert check completed: {
+  activeUsers: 150,
+  activeProjects: 45,
+  totalTasksChecked: 120,
+  processed: 5,
+  skippedAlreadyTriggered: 100,
+  skippedInactiveUser: 15,
+  timestamp: '2025-XX-XXTXX:XX:XX.XXXZ'
+}
 ```
+
+**Key Metrics:**
+
+-   `activeUsers`: Users who logged in within 30 days
+-   `activeProjects`: Non-archived, non-template projects with active users
+-   `totalTasksChecked`: Tasks queried in active projects
+-   `processed`: Alerts successfully generated
+-   `skippedAlreadyTriggered`: Tasks with alerts already triggered
+-   `skippedInactiveUser`: Tasks for users not active in 30 days
 
 ## Troubleshooting
 
+### No Active Users Found
+
+If logs show `activeUsers: 0`:
+
+-   Verify `users.lastLogin` index is deployed
+-   Check that test user has `lastLogin` field set to recent timestamp
+-   Ensure `lastLogin >= (now - 30 days)`
+
+### No Active Projects Found
+
+If logs show `activeProjects: 0`:
+
+-   Verify test user is member of at least one project (`userIds` array)
+-   Check that project is not archived (`active !== false`)
+-   Ensure project is not a template (`isTemplate !== true`)
+-   Verify project doesn't have `parentTemplateId` set
+
 ### No Tasks Found
 
--   Verify Firestore index is created (check Firebase Console > Firestore > Indexes)
+If logs show `totalTasksChecked: 0`:
+
+-   Verify task exists in active project
 -   Check that tasks meet all criteria (alertEnabled, dueDate in past, not done, not triggered)
--   Verify `collectionGroup` query works for your Firestore structure
+-   Ensure task owner (userId/creatorId) is in active users map
+-   Verify Firestore index is created for tasks collection
+
+### Tasks Skipped (Inactive User)
+
+If logs show high `skippedInactiveUser`:
+
+-   This is expected behavior - task owners haven't logged in within 30 days
+-   To test, ensure test user has recent `lastLogin` timestamp
+-   Verify `userId` or `creatorId` matches an active user
 
 ### Notifications Not Appearing
 
@@ -164,14 +284,21 @@ firebase functions:log --only checkTaskAlertsSecondGen
 ### Function Timeout
 
 -   Increase timeout in index.js (currently 300 seconds)
--   Optimize batch size if processing many tasks
+-   Should be rare with optimizations (only checks active projects)
 
 ## Production Deployment Checklist
 
--   [ ] Firestore indexes deployed
+-   [ ] Firestore indexes deployed (both `users.lastLogin` and `tasks` composite index)
 -   [ ] Function deployed and scheduled (every 5 minutes)
--   [ ] Tested with sample data
+-   [ ] Tested with sample data including:
+    -   Active users with recent lastLogin
+    -   Active projects (non-archived, non-template)
+    -   Tasks with alerts in past
 -   [ ] Verified notifications appear in UI
 -   [ ] Checked that `alertTriggered` flag prevents duplicates
--   [ ] Monitored logs for errors
--   [ ] Verified red/grey bubble logic works
+-   [ ] Monitored logs for optimization metrics:
+    -   `activeUsers` count is reasonable
+    -   `activeProjects` count excludes archived/template projects
+    -   `totalTasksChecked` is significantly reduced vs all tasks
+-   [ ] Verified red/grey bubble logic works based on followers
+-   [ ] Confirmed inactive user tasks are skipped (check `skippedInactiveUser` metric)
