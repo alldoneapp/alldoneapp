@@ -1937,6 +1937,8 @@ export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, t
             .valueOf()
 
         updateData.dueDate = newDueDate
+        // Reset alert trigger so a new notification can be generated at the new time
+        updateData.alertTriggered = false
     }
 
     console.log('[setTaskAlert] Updating task due to alert change:', {
