@@ -258,8 +258,8 @@ async function checkAndTriggerTaskAlerts() {
                     null
                 )
 
-                // Feed appears as coming from "Alert Notification" but creator filtering uses system
-                const feedUser = { uid: 'system', displayName: 'Alert Notification' }
+                // Author feed as the task owner while creator filtering uses system
+                const feedUser = { uid: task.userId || task.creatorId || 'system' }
 
                 console.log('🔔 Alert feed context', {
                     projectId,
