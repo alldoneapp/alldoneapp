@@ -3,6 +3,7 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
 const { FEED_TASK_ALERT_CHANGED } = require('../Feeds/FeedsConstants')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
+const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
 
 /**
  * Gets users who have logged in within the last 30 days
@@ -292,7 +293,14 @@ async function checkAndTriggerTaskAlerts() {
                             ? 'https://my.alldone.app'
                             : 'https://mystaging.alldone.app'
                         const taskLink = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
-                        const body = `${project.name}\n  ✔ ${task.name}\n alert time reached`
+
+                        let projectName = 'Project'
+                        try {
+                            const projSnap = await db.doc(`projects/${projectId}`).get()
+                            if (projSnap.exists) projectName = projSnap.data().name || 'Project'
+                        } catch (_) {}
+
+                        const body = `${projectName}\n  ✔ ${task.name}\n alert time reached`
 
                         if (user) {
                             // Push
