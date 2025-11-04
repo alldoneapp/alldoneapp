@@ -629,6 +629,119 @@ class TwilioWhatsAppService {
     }
 
     /**
+     * Send a generic notification via WhatsApp using Content Template
+     * Maps to template variables as:
+     * 1: Alldone.app
+     * 2: Project name
+     * 3: Object name
+     * 4: Update text (sanitized)
+     * 5: Object link (absolute URL)
+     * 6: Number of open/overdue tasks
+     * @param {string} userPhone
+     * @param {string} userId
+     * @param {string} projectName
+     * @param {string} objectName
+     * @param {string} updateText
+     * @param {string} objectUrl
+     * @returns {Promise<Object>}
+     */
+    async sendNotificationWithTemplate(userPhone, userId, projectName, objectName, updateText, objectUrl) {
+        if (!userPhone) {
+            console.warn('No phone number provided for WhatsApp notification')
+            return { success: false, error: 'No phone number provided', to: userPhone }
+        }
+
+        try {
+            const client = this._initializeTwilioClient()
+            const formattedTo = this._formatWhatsAppNumber(userPhone)
+
+            const preparedContent = this._prepareTaskResultForTemplate(updateText)
+            if (!preparedContent.isValid) {
+                console.warn('WhatsApp content validation failed; aborting send (generic).', {
+                    issues: preparedContent.blockingIssues,
+                    userPhone: formattedTo,
+                    objectName,
+                })
+                return {
+                    success: false,
+                    error: 'WhatsApp content did not pass validation',
+                    issues: preparedContent.blockingIssues,
+                    to: formattedTo,
+                }
+            }
+
+            if (preparedContent.adjustments.length) {
+                console.log('Applied WhatsApp content normalisation prior to send (generic).', {
+                    adjustments: preparedContent.adjustments,
+                    userPhone: formattedTo,
+                    objectName,
+                })
+            }
+
+            // Flatten newlines for stricter template constraints
+            const templateValue = preparedContent.value
+                .replace(/\n/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim()
+
+            // Count open/overdue tasks across all projects for this user
+            const openTasksCount = await this._countUserOpenTasks(userId)
+
+            const contentVariables = JSON.stringify({
+                1: 'Alldone.app',
+                2: projectName || 'Project',
+                3: objectName || 'Item',
+                4: templateValue,
+                5: objectUrl || getBaseUrl(),
+                6: openTasksCount.toString(),
+            })
+
+            console.log('Sending WhatsApp generic template:', {
+                to: formattedTo,
+                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
+                contentVariables,
+            })
+
+            const response = await client.messages.create({
+                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
+                contentVariables,
+                from: this.twilioWhatsAppFrom,
+                to: formattedTo,
+            })
+
+            console.log('WhatsApp message sent successfully (generic):', {
+                sid: response.sid,
+                status: response.status,
+                to: formattedTo,
+            })
+
+            return {
+                success: true,
+                sid: response.sid,
+                status: response.status,
+                to: formattedTo,
+                message: 'WhatsApp message sent successfully using content template',
+            }
+        } catch (error) {
+            console.error('Failed to send WhatsApp message with template (generic):', {
+                error: error.message,
+                code: error.code,
+                status: error.status,
+                userPhone,
+                stack: error.stack,
+            })
+            return {
+                success: false,
+                error: error.message,
+                code: error.code,
+                status: error.status,
+                to: userPhone,
+                message: 'Failed to send WhatsApp message with content template',
+            }
+        }
+    }
+
+    /**
      * Test WhatsApp configuration
      * @param {string} testPhoneNumber - Phone number to send test message to
      * @returns {Promise<Object>} - Test result

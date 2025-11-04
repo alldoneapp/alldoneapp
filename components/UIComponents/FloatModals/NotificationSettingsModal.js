@@ -9,12 +9,17 @@ import Backend from '../../../utils/BackendBridge'
 import CloseButton from '../../FollowUp/CloseButton'
 import { getIsMessagingSupported, initFCM } from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
-import { setUserReceiveEmails, setUserReceivePushNotifications } from '../../../utils/backends/Users/usersFirestore'
+import {
+    setUserReceiveEmails,
+    setUserReceivePushNotifications,
+    setUserReceiveWhatsApp,
+} from '../../../utils/backends/Users/usersFirestore'
 
 const NotificationSettingsModal = ({ setIsOpen }) => {
-    const { uid, receiveEmails, pushNotificationsStatus } = useSelector(state => state.loggedUser)
+    const { uid, receiveEmails, pushNotificationsStatus, receiveWhatsApp } = useSelector(state => state.loggedUser)
     const [emailNotifications, setEmailNotifications] = useState(receiveEmails)
     const [pushNotifications, setPushNotifications] = useState(pushNotificationsStatus)
+    const [whatsAppEnabled, setWhatsAppEnabled] = useState(!!receiveWhatsApp)
     const isSupported = getIsMessagingSupported()
 
     const onSave = () => {
@@ -22,6 +27,7 @@ const NotificationSettingsModal = ({ setIsOpen }) => {
         if (pushNotifications) {
             initFCM(uid)
         } else setUserReceivePushNotifications(uid, pushNotifications)
+        setUserReceiveWhatsApp(uid, whatsAppEnabled)
         setIsOpen(false)
     }
 
@@ -59,6 +65,18 @@ const NotificationSettingsModal = ({ setIsOpen }) => {
                 <Text style={localStyles.info}>
                     <Icon name="info" size={18} color={colors.Text03} style={localStyles.infoIcon} />
                     <Text style={localStyles.subtitle}>{translate('Push notification description')}</Text>
+                </Text>
+                <TouchableOpacity
+                    onPress={() => setWhatsAppEnabled(!whatsAppEnabled)}
+                    style={[localStyles.options, { marginTop: 16 }]}
+                >
+                    <Icon name="whatsapp" size={23} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={[styles.subtitle1, { color: '#fff' }]}>{translate('WhatsApp notifications')}</Text>
+                    {whatsAppEnabled && <Icon name="check" size={18} color="#fff" style={{ marginLeft: 'auto' }} />}
+                </TouchableOpacity>
+                <Text style={localStyles.info}>
+                    <Icon name="info" size={18} color={colors.Text03} style={localStyles.infoIcon} />
+                    <Text style={localStyles.subtitle}>{translate('WhatsApp notification description')}</Text>
                 </Text>
                 {!isSupported && (
                     <Text style={[localStyles.subtitle, { color: colors.UtilityRed150 }]}>

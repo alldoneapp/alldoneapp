@@ -5,6 +5,7 @@ const { removeUserFcmTokens, getUserData } = require('../Users/usersFirestore')
 const { getChatPushNotifications, removeChatPushNotifications } = require('../Chats/chatsFirestoreCloud')
 const { divideArrayIntoSubgroups } = require('../Utils/HelperFunctionsCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 
 const getUsersMap = async userIds => {
     const promises = []
@@ -113,10 +114,82 @@ const sendAllNotifications = async (notifications, usersMap) => {
     await Promise.all(promises)
 }
 
+const parsePushBody = body => {
+    try {
+        const lines = String(body || '').split('\n')
+        const projectName = (lines[0] || '').trim()
+        const objectName = (lines[1] || '').replace(/^\s*[✔•\-]*\s*/, '').trim()
+        const third = (lines[2] || '').trim()
+        const updateText = third.includes(':') ? third.split(':').slice(1).join(':').trim() : third
+        return { projectName, objectName, updateText }
+    } catch (_) {
+        return { projectName: '', objectName: '', updateText: String(body || '') }
+    }
+}
+
+const getSafe = (val, fallback) => (val && typeof val === 'string' ? val : fallback)
+
+const sendWhatsAppForNotifications = async (notifications, usersMap) => {
+    const whatsappService = new TwilioWhatsAppService()
+
+    const tasks = []
+    notifications.forEach(notification => {
+        const { userIds, body, link, chatId, projectId } = notification
+        const { projectName: parsedProjectName, objectName: parsedObjectName, updateText } = parsePushBody(body)
+
+        userIds.forEach(userId => {
+            const user = usersMap[userId]
+            if (user && user.receiveWhatsApp && user.phone) {
+                tasks.push(
+                    (async () => {
+                        try {
+                            let projectName = getSafe(parsedProjectName, '')
+                            let objectName = getSafe(parsedObjectName, '')
+
+                            if (!projectName || !objectName) {
+                                try {
+                                    const projDoc = await admin.firestore().doc(`projects/${projectId}`).get()
+                                    if (!projectName) projectName = projDoc.data()?.name || 'Project'
+                                } catch (_) {}
+                                try {
+                                    const chatDoc = await admin
+                                        .firestore()
+                                        .doc(`chatObjects/${projectId}/chats/${chatId}`)
+                                        .get()
+                                    if (!objectName) objectName = chatDoc.data()?.title || 'Item'
+                                } catch (_) {}
+                            }
+
+                            await whatsappService.sendNotificationWithTemplate(
+                                user.phone,
+                                user.uid,
+                                projectName,
+                                objectName,
+                                updateText,
+                                link
+                            )
+                        } catch (e) {
+                            console.error('WhatsApp send failed for user', {
+                                userId,
+                                error: e.message,
+                            })
+                        }
+                    })()
+                )
+            }
+        })
+    })
+
+    await Promise.all(tasks)
+}
+
 const processPushNotifications = async notifications => {
     const notificationsToProcess = notifications.filter(notification => notification.userIds.length > 0)
     const usersMap = await getUsersMapToNotify(notificationsToProcess)
-    await sendAllNotifications(notificationsToProcess, usersMap)
+    await Promise.all([
+        sendAllNotifications(notificationsToProcess, usersMap),
+        sendWhatsAppForNotifications(notificationsToProcess, usersMap),
+    ])
 }
 
 const processChatPushNotifications = async () => {

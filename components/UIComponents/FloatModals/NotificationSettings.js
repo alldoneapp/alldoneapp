@@ -11,20 +11,17 @@ import { popoverToCenter } from '../../../utils/HelperFunctions'
 
 const NotificationSettings = () => {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const { receiveEmails, pushNotificationsStatus } = useSelector(state => state.loggedUser)
+    const { receiveEmails, pushNotificationsStatus, receiveWhatsApp } = useSelector(state => state.loggedUser)
     const [isOpen, setIsOpen] = useState(false)
 
     const getTitle = () => {
-        switch (true) {
-            case receiveEmails && pushNotificationsStatus:
-                return translate('Push and Email notifications')
-            case receiveEmails && !pushNotificationsStatus:
-                return translate('Email notifications')
-            case !receiveEmails && pushNotificationsStatus:
-                return translate('Push notifications')
-            case !receiveEmails && !pushNotificationsStatus:
-                return translate('Notifications disabled')
-        }
+        const enabled = []
+        if (pushNotificationsStatus) enabled.push(translate('Push'))
+        if (receiveEmails) enabled.push(translate('Email'))
+        if (receiveWhatsApp) enabled.push(translate('WhatsApp'))
+        return enabled.length > 0
+            ? `${enabled.join(' & ')} ${translate('notifications')}`
+            : translate('Notifications disabled')
     }
 
     return (

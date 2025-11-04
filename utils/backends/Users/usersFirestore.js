@@ -746,6 +746,10 @@ export async function setUserReceivePushNotifications(userId, pushNotificationsS
     getDb().doc(`users/${userId}`).update({ pushNotificationsStatus })
 }
 
+export async function setUserReceiveWhatsApp(userId, receiveWhatsApp) {
+    getDb().doc(`users/${userId}`).update({ receiveWhatsApp })
+}
+
 export async function setUserLastDayEmptyInbox(userId, date) {
     getDb().doc(`users/${userId}`).update({ lastDayEmptyInbox: date })
 }

@@ -3294,6 +3294,7 @@ export function mapUserData(userId, user) {
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],
         receiveEmails: user.receiveEmails ? user.receiveEmails : false,
+        receiveWhatsApp: user.receiveWhatsApp ? user.receiveWhatsApp : false,
         archivedProjectIds: user.archivedProjectIds || [],
         templateProjectIds: user.templateProjectIds || [],
         guideProjectIds: user.guideProjectIds || [],
