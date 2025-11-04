@@ -2043,6 +2043,17 @@ exports.sendChatPushNotificationsSecondGen = onSchedule(
     }
 )
 
+exports.sendWhatsAppNotificationsSecondGen = onSchedule(
+    {
+        schedule: 'every 1 minutes',
+        region: 'europe-west1',
+    },
+    async context => {
+        const { processWhatsAppNotifications } = require('./WhatsApp/whatsAppNotifications')
+        return await processWhatsAppNotifications()
+    }
+)
+
 exports.checkTaskAlertsSecondGen = onSchedule(
     {
         schedule: 'every 5 minutes',

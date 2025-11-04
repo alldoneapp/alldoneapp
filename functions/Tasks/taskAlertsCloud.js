@@ -280,6 +280,70 @@ async function checkAndTriggerTaskAlerts() {
                     alertTriggered: true,
                 })
 
+                // Enqueue notifications per user settings (Push / Email / WhatsApp)
+                try {
+                    const userIdToNotify = task.userId || task.creatorId
+                    if (userIdToNotify) {
+                        const userSnap = await db.doc(`users/${userIdToNotify}`).get()
+                        const user = userSnap.exists ? { uid: userSnap.id, ...userSnap.data() } : null
+
+                        const nowTs = Date.now()
+                        const baseUrl = inProductionEnvironment()
+                            ? 'https://my.alldone.app'
+                            : 'https://mystaging.alldone.app'
+                        const taskLink = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
+                        const body = `${project.name}\n  ✔ ${task.name}\n alert time reached`
+
+                        if (user) {
+                            // Push
+                            if (user.pushNotificationsStatus) {
+                                await db.collection('pushNotifications').add({
+                                    userIds: [user.uid],
+                                    body,
+                                    link: taskLink,
+                                    type: 'Alert Notification',
+                                    messageTimestamp: nowTs,
+                                    projectId,
+                                    chatId: taskId,
+                                })
+                            }
+
+                            // Email
+                            if (user.receiveEmails) {
+                                await db.doc(`emailNotifications/${projectId}__${taskId}__${nowTs}`).set({
+                                    userIds: [user.uid],
+                                    projectId,
+                                    objectType: 'tasks',
+                                    objectId: taskId,
+                                    objectName: task.name || 'Task',
+                                    messageTimestamp: nowTs,
+                                })
+                            }
+
+                            // WhatsApp (independent dispatch via queue)
+                            if (user.receiveWhatsApp && user.phone) {
+                                await db.collection('whatsAppNotifications').add({
+                                    userId: user.uid,
+                                    userPhone: user.phone,
+                                    projectId,
+                                    projectName: project.name || 'Project',
+                                    objectId: taskId,
+                                    objectName: task.name || 'Task',
+                                    updateText: 'alert time reached',
+                                    link: taskLink,
+                                    timestamp: nowTs,
+                                })
+                            }
+                        }
+                    }
+                } catch (notifyErr) {
+                    console.error('Alert notifications enqueue failed:', {
+                        projectId,
+                        taskId,
+                        error: notifyErr.message,
+                    })
+                }
+
                 processedCount++
             } catch (taskError) {
                 console.error(`❌ Error processing task alert:`, {
