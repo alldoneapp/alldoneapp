@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
 const { FEED_TASK_ALERT_CHANGED } = require('../Feeds/FeedsConstants')
+const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 
 /**
  * Gets users who have logged in within the last 30 days
@@ -220,17 +221,45 @@ async function checkAndTriggerTaskAlerts() {
         const batch = new BatchWrapper(db)
         let processedCount = 0
 
+        // Cache project users to avoid repeated reads
+        const projectUsersCache = new Map()
+
         for (const { projectId, taskId, taskDoc, task } of tasksToProcess) {
             try {
                 console.log(`🔔 Processing alert for task: ${taskId} in project: ${projectId}`)
                 console.log(`   Task name: ${task.name || 'Unnamed'}`)
                 console.log(`   Alert time: ${new Date(task.dueDate).toISOString()}`)
 
-                // Generate feed notification using existing infrastructure
-                const feedUser = {
-                    uid: task.userId || task.creatorId || 'system',
-                    displayName: 'Alert Notification',
+                // Prepare feeds context so counters (red/grey) are correctly generated
+                let projectUsers = projectUsersCache.get(projectId)
+                if (!projectUsers) {
+                    try {
+                        const projSnap = await db.doc(`projects/${projectId}`).get()
+                        const projData = projSnap.exists ? projSnap.data() : { userIds: [] }
+                        projectUsers = Array.isArray(projData.userIds) ? projData.userIds : []
+                        projectUsersCache.set(projectId, projectUsers)
+                    } catch (e) {
+                        console.warn('⚠️ Could not load project users for alerts', {
+                            projectId,
+                            error: e.message,
+                        })
+                        projectUsers = []
+                    }
                 }
+
+                // Use a neutral creator so owners are not excluded from notifications
+                const systemFeedCreator = { uid: 'system', id: 'system' }
+                loadFeedsGlobalState(admin, admin, systemFeedCreator, { id: projectId, userIds: projectUsers }, [], null)
+
+                // Feed appears as coming from "Alert Notification" but creator filtering uses system
+                const feedUser = { uid: 'system', displayName: 'Alert Notification' }
+
+                console.log('🔔 Alert feed context', {
+                    projectId,
+                    taskId,
+                    projectUsersCount: projectUsers.length,
+                    feedCreatorUid: systemFeedCreator.uid,
+                })
 
                 await createTaskUpdatedFeed(
                     projectId,
@@ -238,10 +267,12 @@ async function checkAndTriggerTaskAlerts() {
                     taskId,
                     batch,
                     feedUser,
-                    true, // needGenerateNotification = TRUE (this creates the red/grey bubbles)
+                    true,
                     {
                         feedType: FEED_TASK_ALERT_CHANGED,
                         entryText: 'alert time reached',
+                        feedCreator: systemFeedCreator,
+                        project: { id: projectId, userIds: projectUsers },
                     }
                 )
 
