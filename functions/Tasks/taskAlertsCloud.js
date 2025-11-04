@@ -334,7 +334,7 @@ async function checkAndTriggerTaskAlerts() {
                                     userId: user.uid,
                                     userPhone: user.phone,
                                     projectId,
-                                    projectName: project.name || 'Project',
+                                    projectName: projectName,
                                     objectId: taskId,
                                     objectName: task.name || 'Task',
                                     updateText: 'alert time reached',
