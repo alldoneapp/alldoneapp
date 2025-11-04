@@ -246,8 +246,8 @@ class TaskUpdateService {
                 }
 
                 if (finalDueDate) {
-                    // Import setTaskAlert function
-                    const { setTaskAlert } = require('../../utils/backends/Tasks/tasksFirestore')
+                    // Import server-side alert updater
+                    const { setTaskAlertCloud } = require('./AlertService')
 
                     // Convert UTC timestamp to moment with user's timezone for setTaskAlert
                     const alertMoment = this.options.moment(finalDueDate).utcOffset(timezoneOffset)
@@ -260,8 +260,8 @@ class TaskUpdateService {
                         dueDate: finalDueDate,
                     })
 
-                    // Call existing setTaskAlert function (handles feed generation)
-                    await setTaskAlert(projectId, currentTask.id, updateFields.alertEnabled, alertMoment, {
+                    // Update alert server-side (Cloud)
+                    await setTaskAlertCloud(projectId, currentTask.id, updateFields.alertEnabled, alertMoment, {
                         ...currentTask,
                         dueDate: finalDueDate,
                     })

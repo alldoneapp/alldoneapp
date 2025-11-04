@@ -921,7 +921,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     dueDate: processedDueDate,
                 })
 
-                const { setTaskAlert } = require('../../utils/backends/Tasks/tasksFirestore')
+                const { setTaskAlertCloud } = require('../shared/AlertService')
 
                 // Convert UTC timestamp to moment with user's timezone for setTaskAlert
                 const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
@@ -932,8 +932,8 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
                 })
 
-                // Call existing setTaskAlert function (handles feed generation)
-                await setTaskAlert(projectId, result.taskId, true, alertMoment, {
+                // Update alert server-side (Cloud)
+                await setTaskAlertCloud(projectId, result.taskId, true, alertMoment, {
                     ...result.task,
                     dueDate: processedDueDate,
                 })
