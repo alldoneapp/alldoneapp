@@ -12,6 +12,8 @@ This document describes how to test the task alert notification system that gene
 
 This reduces the scan scope by ~90-95% compared to checking all tasks.
 
+**TIMEZONE FIX:** The `setTaskAlert` function now correctly handles user timezones when setting alerts from cloud functions (Assistant, MCP). Previously, alerts set via cloud functions would fire in UTC instead of the user's local timezone, causing alerts to trigger at incorrect times (e.g., 2 hours late for GMT+2 users).
+
 ## Prerequisites
 
 1. Firebase emulators running: `firebase emulators:start`
@@ -302,3 +304,95 @@ If logs show high `skippedInactiveUser`:
     -   `totalTasksChecked` is significantly reduced vs all tasks
 -   [ ] Verified red/grey bubble logic works based on followers
 -   [ ] Confirmed inactive user tasks are skipped (check `skippedInactiveUser` metric)
+
+## Timezone Handling
+
+### The Timezone Bug (Fixed)
+
+**Problem:** Previously, when alerts were set via cloud functions (Assistant, MCP server), the `setTaskAlert` function would incorrectly store alert times in UTC instead of the user's local timezone.
+
+**Example of the Bug:**
+
+-   User in GMT+2 wants alert at 14:00 local time
+-   Should store: 12:00 UTC (fires at 14:00 GMT+2)
+-   **Actually stored:** 14:00 UTC (fires at 16:00 GMT+2) ❌
+-   **Result:** Alert fires 2 hours late
+
+**Root Cause:**
+
+```javascript
+// BEFORE FIX
+const baseDate = moment(task.dueDate) // In UTC on server
+const newDueDate = baseDate
+    .hour(alertTime.hour()) // Sets 14 in UTC, not user's timezone!
+    .valueOf()
+```
+
+The code extracted the hour from `alertTime` (which was in user's timezone) but applied it to `baseDate` (which was in UTC on the server).
+
+### The Fix
+
+**Solution:** Apply the user's timezone offset to `baseDate` before setting the time:
+
+```javascript
+// AFTER FIX
+let baseDate = moment(task.dueDate)
+
+// If alertTime has a timezone offset, apply it to baseDate
+if (alertTime._offset !== undefined || alertTime._isUTC !== undefined) {
+    baseDate = baseDate.utcOffset(alertTime.utcOffset())
+}
+
+const newDueDate = baseDate
+    .clone()
+    .hour(alertTime.hour()) // Now sets 14 in GMT+2, which = 12:00 UTC ✅
+    .valueOf()
+```
+
+**Location:** `/Users/karstenwysk/Local Code/alldone/utils/backends/Tasks/tasksFirestore.js:1923-1929`
+
+### Impact
+
+**✅ Fixed for:**
+
+-   Alerts set via Assistant (functions/Assistant/assistantHelper.js)
+-   Alerts set via MCP server (functions/MCP/mcpServerSimple.js)
+-   Alerts set via TaskUpdateService (functions/shared/TaskUpdateService.js)
+
+**✅ Backward Compatible:**
+
+-   Alerts set via UI (AlertTimeModal) continue to work as before
+-   No impact on existing alert data
+
+### Testing Timezone Handling
+
+To verify timezone handling works correctly:
+
+```javascript
+// Test case: User in GMT+2 sets alert for 14:00
+const userTimezoneOffset = 120 // minutes
+const alertMoment = moment(dueDate).utcOffset(userTimezoneOffset).hour(14).minute(0)
+const result = setTaskAlert(projectId, taskId, true, alertMoment, task)
+
+// Verify:
+// - Stored timestamp should be 12:00 UTC
+// - Alert should fire at 14:00 GMT+2
+```
+
+**Enhanced Logging:**
+The `setTaskAlert` function now logs timezone information:
+
+```javascript
+{
+  alertTime: "14:00 +02:00",      // Shows timezone offset
+  alertTimeOffset: 120,           // Offset in minutes
+  resultingDueDateISO: "2025-...", // UTC timestamp
+}
+```
+
+### Recommendations
+
+1. **Monitor logs** after deployment for timezone correctness
+2. **Test with users in different timezones** (GMT+X, GMT-X)
+3. **Verify existing alerts** continue to work (backward compatibility)
+4. **Consider migration** if many alerts were created with the bug

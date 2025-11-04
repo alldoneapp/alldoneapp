@@ -1918,7 +1918,16 @@ export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, t
     // If alert is enabled and we have a valid time, ensure dueDate reflects that time
     if (alertEnabled && alertTime) {
         // Use existing dueDate if present; otherwise base it on 'today'
-        const baseDate = task.dueDate ? moment(task.dueDate) : moment()
+        let baseDate = task.dueDate ? moment(task.dueDate) : moment()
+
+        // TIMEZONE FIX: If alertTime has a timezone offset (from cloud functions),
+        // we need to apply the same offset to baseDate before setting the time.
+        // This ensures we set the hour/minute in the user's timezone, not UTC.
+        if (alertTime._offset !== undefined || alertTime._isUTC !== undefined) {
+            // alertTime was created with .utcOffset() - apply same offset to baseDate
+            baseDate = baseDate.utcOffset(alertTime.utcOffset())
+        }
+
         const newDueDate = baseDate
             .clone()
             .hour(alertTime.hour())
@@ -1934,8 +1943,10 @@ export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, t
         projectId,
         taskId,
         alertEnabled,
-        alertTime: alertTime && alertTime.format ? alertTime.format('HH:mm') : null,
+        alertTime: alertTime && alertTime.format ? alertTime.format('HH:mm Z') : null,
+        alertTimeOffset: alertTime && alertTime.utcOffset ? alertTime.utcOffset() : null,
         resultingDueDate: updateData.dueDate || null,
+        resultingDueDateISO: updateData.dueDate ? new Date(updateData.dueDate).toISOString() : null,
     })
 
     updateTaskData(projectId, taskId, updateData, batch)
