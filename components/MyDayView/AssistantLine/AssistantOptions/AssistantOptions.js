@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 import { StyleSheet, View, TextInput, Text } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -28,6 +28,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const [tasks, setTasks] = useState(null)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
+    const isSendingRef = useRef(false)
 
     const { assistant, assistantProject, assistantProjectId } = getAssistantLineData(
         selectedProject,
@@ -55,8 +56,9 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
 
     const handleSendMessage = useCallback(async () => {
         const trimmedMessage = message.trim()
-        if (!trimmedMessage || isSending || !assistant || !assistant.uid) return
+        if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
 
+        isSendingRef.current = true
         setIsSending(true)
         try {
             const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
@@ -97,9 +99,10 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         } catch (error) {
             console.error('Error sending assistant quick message:', error)
         } finally {
+            isSendingRef.current = false
             setIsSending(false)
         }
-    }, [assistant, assistantProject, isSending, message])
+    }, [assistant, assistantProject, message])
 
     if (!tasks || !assistant || !assistant.uid) {
         return null
