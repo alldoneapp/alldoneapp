@@ -470,8 +470,8 @@ export const generateTaskFromPreConfig = async (
             })
         }, delay)
 
-        // Always enable assistant and trigger the bot spinner to show assistant is working
-        store.dispatch([setAssistantEnabled(true), setTriggerBotSpinner(true)])
+        // Trigger the bot spinner to show assistant is working (without toggling assistantEnabled)
+        store.dispatch(setTriggerBotSpinner(true))
 
         if (!skipNavigation) {
             NavigationService.navigate('TaskDetailedView', {
