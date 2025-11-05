@@ -137,9 +137,11 @@ const sendWhatsAppForNotifications = async (notifications, usersMap) => {
         const { userIds, body, link, chatId, projectId } = notification
         const { projectName: parsedProjectName, objectName: parsedObjectName, updateText } = parsePushBody(body)
 
+        const initiatorId = notification.initiatorId || null
+
         userIds.forEach(userId => {
             const user = usersMap[userId]
-            if (user && user.receiveWhatsApp && user.phone) {
+            if (user && user.receiveWhatsApp && user.phone && userId !== initiatorId) {
                 tasks.push(
                     (async () => {
                         try {

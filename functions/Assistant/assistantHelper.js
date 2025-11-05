@@ -646,6 +646,7 @@ const createChatPushNotification = (
     projectname,
     comment,
     chatLink,
+    initiatorId,
     batch
 ) => {
     // Check if followerIds array is not empty before creating notification
@@ -663,6 +664,7 @@ const createChatPushNotification = (
         type: 'Chat Notification',
         chatId: objectId,
         projectId,
+        initiatorId: initiatorId || null,
     })
 }
 
@@ -678,7 +680,8 @@ const generateNotifications = (
     commentId,
     lastComment,
     followerIds,
-    assistantId
+    assistantId,
+    initiatorId = null
 ) => {
     // Ensure followerIds is at least an empty array if not provided
     const safeFollowerIds = followerIds || []
@@ -732,6 +735,7 @@ const generateNotifications = (
             projectname,
             lastComment,
             chatLink,
+            initiatorId,
             batch
         )
     }
@@ -1543,13 +1547,6 @@ async function storeChunks(
             followerCount: currentFollowerIds?.length,
         })
 
-        const notificationFollowerIds = Array.isArray(currentFollowerIds)
-            ? currentFollowerIds.filter(uid => uid && uid !== requestUserId)
-            : []
-        const notificationUserIds = Array.isArray(userIdsToNotify)
-            ? userIdsToNotify.filter(uid => uid && uid !== requestUserId)
-            : []
-
         let commentText = ''
         let thinkingMode = false
         let thinkingContent = ''
@@ -1951,15 +1948,16 @@ async function storeChunks(
                 projectId,
                 objectType,
                 objectId,
-                notificationUserIds,
+                userIdsToNotify,
                 objectName,
                 assistantName,
                 projectname,
                 chatLink,
                 commentId,
                 lastComment,
-                notificationFollowerIds,
-                assistantId
+                currentFollowerIds,
+                assistantId,
+                requestUserId
             )
         )
 
