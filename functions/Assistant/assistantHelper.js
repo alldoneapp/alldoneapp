@@ -1543,6 +1543,13 @@ async function storeChunks(
             followerCount: currentFollowerIds?.length,
         })
 
+        const notificationFollowerIds = Array.isArray(currentFollowerIds)
+            ? currentFollowerIds.filter(uid => uid && uid !== requestUserId)
+            : []
+        const notificationUserIds = Array.isArray(userIdsToNotify)
+            ? userIdsToNotify.filter(uid => uid && uid !== requestUserId)
+            : []
+
         let commentText = ''
         let thinkingMode = false
         let thinkingContent = ''
@@ -1944,14 +1951,14 @@ async function storeChunks(
                 projectId,
                 objectType,
                 objectId,
-                userIdsToNotify,
+                notificationUserIds,
                 objectName,
                 assistantName,
                 projectname,
                 chatLink,
                 commentId,
                 lastComment,
-                currentFollowerIds,
+                notificationFollowerIds,
                 assistantId
             )
         )
