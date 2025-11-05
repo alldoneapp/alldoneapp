@@ -13,11 +13,12 @@ import {
 import TaskRecurrence from '../../../Tags/TaskRecurrence'
 import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 
-export default function PreConfigTaskButton({ task, onPress, projectId }) {
+export default function PreConfigTaskButton({ task, onPress, projectId, disabled = false }) {
     const loggedUser = useSelector(state => state.loggedUser)
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const { name, type, recurrence } = task
+    const isDisabled = !accessGranted || disabled
 
     // Get icon based on task type
     const getIconForTaskType = () => {
@@ -34,7 +35,12 @@ export default function PreConfigTaskButton({ task, onPress, projectId }) {
     }
 
     return (
-        <TouchableOpacity style={localStyles.container} onPress={onPress} disabled={!accessGranted}>
+        <TouchableOpacity
+            style={[localStyles.container, isDisabled && localStyles.disabledContainer]}
+            onPress={onPress}
+            disabled={isDisabled}
+            activeOpacity={isDisabled ? 1 : 0.2}
+        >
             <Icon name={getIconForTaskType()} size={24} color={colors.Text03} />
             <Text style={localStyles.name}>{name}</Text>
             {recurrence && recurrence !== RECURRENCE_NEVER && (
@@ -61,6 +67,9 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 4,
         alignItems: 'center',
+    },
+    disabledContainer: {
+        opacity: 0.5,
     },
     name: {
         ...styles.body1,

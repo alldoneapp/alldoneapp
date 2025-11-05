@@ -13,6 +13,7 @@ import { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from '../../../UIComponents/Float
 export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
+    const isExecuting = useSelector(state => state.preConfigTaskExecuting)
     const [isOpen, setIsOpen] = useState(false)
 
     const {
@@ -63,6 +64,11 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     }
 
     const pressButton = () => {
+        // Prevent execution if this task is already running
+        if (isExecuting === name) {
+            return
+        }
+
         if (gold <= 0) {
             openModal()
         } else {
@@ -95,7 +101,12 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             isOpen={isOpen}
             contentLocation={null}
         >
-            <PreConfigTaskButton projectId={projectId} task={task} onPress={pressButton} />
+            <PreConfigTaskButton
+                projectId={projectId}
+                task={task}
+                onPress={pressButton}
+                disabled={isExecuting === name}
+            />
         </Popover>
     )
 }
