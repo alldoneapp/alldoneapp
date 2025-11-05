@@ -356,6 +356,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     aiSystemMessage={aiSystemMessage}
                     setAiSystemMessage={setAiSystemMessage}
                     projectId={projectId}
+                    promptProjectId={currentProjectId}
                     assistantId={assistantId}
                     recurrence={recurrence}
                     setRecurrence={handleSetRecurrence}

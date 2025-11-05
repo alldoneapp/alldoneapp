@@ -6,7 +6,7 @@ import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function PromptArea({ disabled, promptInputRef, prompt, setPrompt }) {
+export default function PromptArea({ disabled, promptInputRef, prompt, setPrompt, projectId, setMentionsModalActive }) {
     return (
         <View style={localStyles.section}>
             <Text style={localStyles.text}>{translate('Prompt')}</Text>
@@ -20,8 +20,9 @@ export default function PromptArea({ disabled, promptInputRef, prompt, setPrompt
                 onChangeText={setPrompt}
                 styleTheme={NEW_TOPIC_MODAL_THEME}
                 disabledTabKey={true}
-                disabledTags={true}
                 disabledEdition={disabled}
+                projectId={projectId}
+                setMentionsModalActive={setMentionsModalActive}
             />
         </View>
     )

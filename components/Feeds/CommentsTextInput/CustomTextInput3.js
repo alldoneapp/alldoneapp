@@ -388,10 +388,9 @@ function CustomTextInput3(
 
         setTimeout(() => {
             closeMentionPopup()
+            setFlag(prev => !prev)
             quillRef.current.focus()
         })
-
-        setFlag(!flag)
     }
 
     const closeMentionPopup = () => {

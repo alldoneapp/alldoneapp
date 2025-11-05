@@ -83,6 +83,8 @@ const MemoizedModalContent = memo(
         recurrence,
         setRecurrence,
         projectId,
+        promptProjectId,
+        setPromptMentionsActive,
         startDate,
         setStartDate,
         showDatePicker,
@@ -185,6 +187,8 @@ const MemoizedModalContent = memo(
                                 promptInputRef={promptInputRef}
                                 prompt={prompt}
                                 setPrompt={setPrompt}
+                                projectId={promptProjectId || projectId}
+                                setMentionsModalActive={setPromptMentionsActive}
                             />
                         </div>
                         <VariablesArea
@@ -399,6 +403,7 @@ const MemoizedModalContent = memo(
             prevProps.taskType === nextProps.taskType &&
             prevProps.prompt === nextProps.prompt &&
             prevProps.recurrence === nextProps.recurrence &&
+            prevProps.promptProjectId === nextProps.promptProjectId &&
             prevProps.disabled === nextProps.disabled &&
             prevProps.showDatePicker === nextProps.showDatePicker &&
             prevProps.showTimePicker === nextProps.showTimePicker &&
@@ -444,6 +449,7 @@ export default function TaskModal({
     aiSystemMessage,
     setAiSystemMessage,
     projectId,
+    promptProjectId,
     assistantId,
     recurrence = RECURRENCE_NEVER,
     setRecurrence,
@@ -465,6 +471,7 @@ export default function TaskModal({
     const [showDatePicker, setShowDatePicker] = useState(false)
     const [showTimePicker, setShowTimePicker] = useState(false)
     const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
+    const [promptMentionsActive, setPromptMentionsActive] = useState(false)
     const timeFormat = getTimeFormat()
 
     console.log('TaskModal render:', {
@@ -543,7 +550,7 @@ export default function TaskModal({
     }
 
     const onPressKey = event => {
-        if (disabled) return
+        if (disabled || event.defaultPrevented || promptMentionsActive) return
         if (event.key === 'Enter') {
             if (!disableButton && !event.shiftKey) {
                 event.preventDefault()
@@ -743,6 +750,8 @@ export default function TaskModal({
                         recurrence={recurrence}
                         setRecurrence={handleRecurrenceClick}
                         projectId={projectId}
+                        promptProjectId={promptProjectId}
+                        setPromptMentionsActive={setPromptMentionsActive}
                         startDate={startDate}
                         setStartDate={memoizedSetStartDate}
                         showDatePicker={showDatePicker}
