@@ -13,6 +13,7 @@ const {
     reduceGoldWhenChatWithAI,
 } = require('./assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
+const { fetchMentionedNotesContext } = require('./noteContextHelper')
 
 const TOTAL_MAX_TOKENS_IN_MODEL = 4096
 const ENCODE_INITIAL_GAP = 3
@@ -72,10 +73,11 @@ async function getContextMessages(
     assistantName,
     instructions,
     allowedTools = [],
-    userTimezoneOffset = null
+    userTimezoneOffset = null,
+    userId = null
 ) {
     const commentDocs = await getMessageDocs(projectId, objectType, objectId)
-    return filterMessages(
+    const messages = filterMessages(
         messageId,
         commentDocs,
         language,
@@ -84,6 +86,34 @@ async function getContextMessages(
         allowedTools,
         userTimezoneOffset
     )
+
+    // Extract and add mentioned notes context if userId is provided
+    if (userId && messageId) {
+        try {
+            // Find the current message (the one that triggered the assistant)
+            const currentMessageDoc = commentDocs.find(doc => doc.id === messageId)
+
+            if (currentMessageDoc) {
+                const currentMessage = currentMessageDoc.data()
+                const commentText = currentMessage.commentText
+
+                // Fetch mentioned notes context
+                const notesContext = await fetchMentionedNotesContext(commentText, userId, projectId)
+
+                if (notesContext) {
+                    console.log('Adding note context to assistant messages')
+                    // Add notes as system message before the last user message
+                    // Insert it right before the last message (which is the current user message)
+                    messages.splice(messages.length - 1, 0, ['system', notesContext])
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching mentioned notes context:', error)
+            // Continue without note context if there's an error
+        }
+    }
+
+    return messages
 }
 
 function generateContext(messages) {
@@ -162,7 +192,8 @@ async function askToOpenAIBot(
             displayName,
             instructions,
             Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
-            userTimezoneOffset
+            userTimezoneOffset,
+            userId
         )
 
         console.log('Generated context messages:', {
