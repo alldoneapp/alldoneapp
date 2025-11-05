@@ -101,10 +101,12 @@ async function getContextMessages(
                 const notesContext = await fetchMentionedNotesContext(commentText, userId, projectId)
 
                 if (notesContext) {
-                    console.log('Adding note context to assistant messages')
-                    // Add notes as system message before the last user message
-                    // Insert it right before the last message (which is the current user message)
-                    messages.splice(messages.length - 1, 0, ['system', notesContext])
+                    console.log('Adding note context to user message')
+                    // Append notes to the last user message (which is the current user message)
+                    const lastMessageIndex = messages.length - 1
+                    if (lastMessageIndex >= 0 && messages[lastMessageIndex][0] === 'user') {
+                        messages[lastMessageIndex][1] += notesContext
+                    }
                 }
             }
         } catch (error) {

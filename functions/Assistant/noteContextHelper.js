@@ -104,9 +104,10 @@ function checkNoteAccess(note, userId) {
  * @param {string} projectId - Project ID
  * @param {string} noteId - Note ID
  * @param {string} userId - User ID (for privacy checks)
- * @returns {Promise<Object|null>} Object with title and markdown content, or null if not accessible
+ * @param {string} url - Optional URL of the note mention
+ * @returns {Promise<Object|null>} Object with title, url, and markdown content, or null if not accessible
  */
-async function fetchNoteContentAsMarkdown(projectId, noteId, userId) {
+async function fetchNoteContentAsMarkdown(projectId, noteId, userId, url = null) {
     try {
         // Step 1: Fetch note metadata from Firestore
         const noteDoc = await admin.firestore().doc(`noteItems/${projectId}/notes/${noteId}`).get()
@@ -186,6 +187,7 @@ async function fetchNoteContentAsMarkdown(projectId, noteId, userId) {
             title: noteTitle,
             content: formattedContent,
             markdown: formattedContent,
+            url: url || `https://app.alldone.app/projects/${projectId}/notes/${noteId}/editor`,
         }
     } catch (error) {
         console.error(`Error fetching note ${noteId}:`, error)
@@ -210,13 +212,13 @@ async function fetchMentionedNotesContext(commentText, userId, fallbackProjectId
     console.log(`Found ${mentionedNotes.length} mentioned notes in comment`)
 
     // Fetch all notes in parallel
-    const notePromises = mentionedNotes.map(({ noteId, projectId }) => {
+    const notePromises = mentionedNotes.map(({ noteId, projectId, url }) => {
         const proj = projectId || fallbackProjectId
         if (!proj) {
             console.warn(`No project ID available for note ${noteId}, skipping`)
             return Promise.resolve(null)
         }
-        return fetchNoteContentAsMarkdown(proj, noteId, userId)
+        return fetchNoteContentAsMarkdown(proj, noteId, userId, url)
     })
 
     const noteContents = await Promise.all(notePromises)
@@ -231,10 +233,10 @@ async function fetchMentionedNotesContext(commentText, userId, fallbackProjectId
 
     console.log(`Fetched ${accessibleNotes.length} accessible notes`)
 
-    // Combine all note contents with separators
-    const combinedContent = accessibleNotes.map(note => note.content).join('\n\n---\n\n')
+    // Format each note with URL first, then title + content
+    const formattedNotes = accessibleNotes.map(note => `${note.url}\n${note.content}`).join('\n\n')
 
-    return `Referenced notes:\n\n${combinedContent}`
+    return `\n\nHere are the mentioned notes:\n${formattedNotes}`
 }
 
 module.exports = {
