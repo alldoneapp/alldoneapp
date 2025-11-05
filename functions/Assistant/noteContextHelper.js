@@ -236,7 +236,7 @@ async function fetchMentionedNotesContext(commentText, userId, fallbackProjectId
     // Format each note with URL first, then title + content
     const formattedNotes = accessibleNotes.map(note => `${note.url}\n${note.content}`).join('\n\n')
 
-    return `\n\nHere are the mentioned notes:\n${formattedNotes}`
+    return `\n\nHere are the mentioned notes in full - no need to use a tool to get the menioned notes:\n${formattedNotes}`
 }
 
 module.exports = {
