@@ -603,11 +603,33 @@ class SearchService {
 
         // Get full note content if available
         let content = ''
-        if (this.options.enableNoteContent && getNoteContent) {
+        if (this.options.enableNoteContent) {
             try {
-                content = await getNoteContent(projectId, noteId)
+                // Try using NoteService first (more robust bucket name resolution)
+                let noteContentLoaded = false
+                try {
+                    const { NoteService } = require('./NoteService')
+                    const noteService = new NoteService({
+                        database: this.options.database,
+                        moment: this.options.moment,
+                        isCloudFunction: this.options.isCloudFunction,
+                    })
+                    await noteService.initialize()
+                    content = await noteService.getStorageContent(projectId, noteId)
+                    noteContentLoaded = true
+                    console.log(`SearchService: Loaded note content via NoteService (${content.length} chars)`)
+                } catch (noteServiceError) {
+                    console.log('SearchService: NoteService method failed, trying fallback:', noteServiceError.message)
+                }
+
+                // Fallback to searchHelper.getNoteContent if NoteService failed
+                if (!noteContentLoaded && getNoteContent) {
+                    content = await getNoteContent(projectId, noteId)
+                    console.log(`SearchService: Loaded note content via searchHelper (${content.length} chars)`)
+                }
             } catch (error) {
-                console.warn('Failed to load note content:', error.message)
+                console.error('SearchService: Failed to load note content:', error.message)
+                console.error('SearchService: Error stack:', error.stack)
                 content = '[Content could not be loaded]'
             }
         }
