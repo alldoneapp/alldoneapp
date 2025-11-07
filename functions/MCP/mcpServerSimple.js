@@ -1211,7 +1211,55 @@ class AlldoneSimpleMCPServer {
     }
 
     async search(args, request) {
-        const { query, type = 'all', projectId, dateRange } = args
+        // Validate and normalize arguments
+        // Handle case where query might be nested incorrectly (e.g., {query: {query: "...", type: "notes"}})
+        let query, type, projectId, dateRange
+
+        if (args && typeof args === 'object') {
+            // Check if query is nested incorrectly
+            if (args.query && typeof args.query === 'object' && args.query.query) {
+                console.warn('⚠️ Detected nested query structure, extracting:', {
+                    received: args,
+                    extracting: args.query,
+                })
+                // Extract from nested structure
+                query = args.query.query
+                type = args.query.type || args.type || 'all'
+                projectId = args.query.projectId || args.projectId
+                dateRange = args.query.dateRange || args.dateRange
+            } else {
+                // Normal structure
+                query = args.query
+                type = args.type || 'all'
+                projectId = args.projectId
+                dateRange = args.dateRange
+            }
+        } else {
+            throw new Error('Invalid arguments: args must be an object')
+        }
+
+        // Validate query is a string
+        if (!query || typeof query !== 'string') {
+            console.error('❌ Invalid query parameter:', {
+                query,
+                queryType: typeof query,
+                args,
+            })
+            throw new Error(
+                `Invalid query parameter: expected a string, got ${typeof query}. Query: ${JSON.stringify(query)}`
+            )
+        }
+
+        // Normalize type
+        type = type || 'all'
+
+        console.log('🔍 MCP Search request:', {
+            query: query.substring(0, 100),
+            type,
+            projectId,
+            dateRange,
+            queryLength: query.length,
+        })
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -1254,7 +1302,13 @@ class AlldoneSimpleMCPServer {
                         : 'No results found',
             }
         } catch (error) {
-            console.error('Error performing search:', error)
+            console.error('❌ Error performing search:', {
+                error: error.message,
+                stack: error.stack,
+                query,
+                type,
+                userId,
+            })
             throw new Error(`Failed to perform search: ${error.message}`)
         }
     }
@@ -2457,14 +2511,13 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'search',
                             description:
-                                'Search across all content types with natural language queries (requires OAuth 2.0 Bearer token authentication). Supports exact phrase matching with quotes, Unicode characters, and natural language queries.',
+                                'Search across all content types with keywords (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
                                     query: {
                                         type: 'string',
-                                        description:
-                                            'Search query in natural language. Supports: natural language questions (e.g., "What did I discuss last week with John about the project?"), exact phrase matching with quotes (e.g., \'Note titled "Individuelle Notiz"\'), keywords (e.g., "meeting notes project"), and Unicode characters. Quotes around phrases will be preserved for exact matching.',
+                                        description: 'Search query in keywords',
                                     },
                                     type: {
                                         type: 'string',
