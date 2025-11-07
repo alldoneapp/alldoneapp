@@ -303,61 +303,109 @@ class SearchService {
 
         const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
 
-        // Get user's accessible projects
-        const userProjects = await this.getUserProjects(userId)
-        if (userProjects.length === 0) {
+        // Validate query
+        if (!query || typeof query !== 'string' || query.trim().length === 0) {
+            return {
+                results: {},
+                query: query || '',
+                totalResults: 0,
+                message: 'Invalid or empty search query',
+            }
+        }
+
+        try {
+            // Get user's accessible projects
+            const userProjects = await this.getUserProjects(userId)
+            if (userProjects.length === 0) {
+                return {
+                    results: {},
+                    query,
+                    totalResults: 0,
+                    message: 'No accessible projects found for user',
+                }
+            }
+
+            // Parse the search query for enhanced search capabilities
+            let parsedQuery
+            try {
+                parsedQuery = await this.parseSearchQuery(query, dateRange)
+            } catch (parseError) {
+                console.error('Failed to parse search query:', parseError)
+                // Return empty results instead of crashing
+                return {
+                    results: {},
+                    query,
+                    totalResults: 0,
+                    message: `Query parsing failed: ${parseError.message}`,
+                }
+            }
+
+            // Ensure we have keywords after parsing
+            if (!parsedQuery.keywords || parsedQuery.keywords.length === 0) {
+                return {
+                    results: {},
+                    query,
+                    totalResults: 0,
+                    message: 'No searchable keywords found in query',
+                }
+            }
+
+            // Determine which entity types to search
+            const entityTypes =
+                type === ENTITY_TYPES.ALL
+                    ? [
+                          ENTITY_TYPES.TASKS,
+                          ENTITY_TYPES.NOTES,
+                          ENTITY_TYPES.GOALS,
+                          ENTITY_TYPES.CONTACTS,
+                          ENTITY_TYPES.CHATS,
+                          ENTITY_TYPES.ASSISTANTS,
+                      ]
+                    : [type]
+
+            // Execute searches across selected entity types
+            const searchPromises = entityTypes.map(entityType =>
+                this.searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId)
+            )
+
+            const searchResults = await Promise.all(searchPromises)
+
+            // Combine and structure results
+            const results = {}
+            let totalResults = 0
+
+            searchResults.forEach((result, index) => {
+                const entityType = entityTypes[index]
+                results[entityType] = result
+                totalResults += result.length
+            })
+
+            return {
+                results,
+                query: parsedQuery.originalQuery,
+                parsedQuery: {
+                    keywords: parsedQuery.keywords,
+                    dateFilter: parsedQuery.dateFilter,
+                    mentions: parsedQuery.mentions,
+                    projects: parsedQuery.projects,
+                },
+                totalResults,
+                searchedProjects: userProjects.map(p => ({ id: p.id, name: p.name })),
+            }
+        } catch (error) {
+            console.error('Search execution failed:', {
+                error: error.message,
+                stack: error.stack,
+                query,
+                userId,
+            })
+            // Return empty results instead of throwing to prevent 502 errors
             return {
                 results: {},
                 query,
                 totalResults: 0,
-                message: 'No accessible projects found for user',
+                message: `Search failed: ${error.message}`,
             }
-        }
-
-        // Parse the search query for enhanced search capabilities
-        const parsedQuery = await this.parseSearchQuery(query, dateRange)
-
-        // Determine which entity types to search
-        const entityTypes =
-            type === ENTITY_TYPES.ALL
-                ? [
-                      ENTITY_TYPES.TASKS,
-                      ENTITY_TYPES.NOTES,
-                      ENTITY_TYPES.GOALS,
-                      ENTITY_TYPES.CONTACTS,
-                      ENTITY_TYPES.CHATS,
-                      ENTITY_TYPES.ASSISTANTS,
-                  ]
-                : [type]
-
-        // Execute searches across selected entity types
-        const searchPromises = entityTypes.map(entityType =>
-            this.searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId)
-        )
-
-        const searchResults = await Promise.all(searchPromises)
-
-        // Combine and structure results
-        const results = {}
-        let totalResults = 0
-
-        searchResults.forEach((result, index) => {
-            const entityType = entityTypes[index]
-            results[entityType] = result
-            totalResults += result.length
-        })
-
-        return {
-            results,
-            query: parsedQuery.originalQuery,
-            parsedQuery: {
-                keywords: parsedQuery.keywords,
-                dateFilter: parsedQuery.dateFilter,
-                mentions: parsedQuery.mentions,
-                projects: parsedQuery.projects,
-            },
-            totalResults,
-            searchedProjects: userProjects.map(p => ({ id: p.id, name: p.name })),
         }
     }
 
@@ -667,20 +715,31 @@ class SearchService {
             dateFilter: null,
         }
 
+        // Validate and sanitize input
+        if (!query || typeof query !== 'string') {
+            throw new Error('Invalid query: query must be a non-empty string')
+        }
+
+        // Normalize query: handle escaped quotes and unicode
+        let normalizedQuery = query
+            .replace(/\\"/g, '"') // Unescape escaped quotes
+            .replace(/\\'/g, "'") // Unescape escaped single quotes
+            .trim()
+
         // Extract mentions (@username)
-        const mentionMatches = query.match(/@(\w+)/g)
+        const mentionMatches = normalizedQuery.match(/@(\w+)/g)
         if (mentionMatches) {
             parsedQuery.mentions = mentionMatches.map(m => m.substring(1))
             // Remove mentions from keywords
-            query = query.replace(/@\w+/g, '').trim()
+            normalizedQuery = normalizedQuery.replace(/@\w+/g, '').trim()
         }
 
         // Extract project references (#projectname)
-        const projectMatches = query.match(/#(\w+)/g)
+        const projectMatches = normalizedQuery.match(/#(\w+)/g)
         if (projectMatches) {
             parsedQuery.projects = projectMatches.map(m => m.substring(1))
             // Remove project refs from keywords
-            query = query.replace(/#\w+/g, '').trim()
+            normalizedQuery = normalizedQuery.replace(/#\w+/g, '').trim()
         }
 
         // Parse date range
@@ -688,10 +747,37 @@ class SearchService {
             parsedQuery.dateFilter = this.parseDateRange(dateRange)
         }
 
-        // Extract remaining keywords
-        const cleanQuery = query.replace(/[^\w\s]/g, ' ').trim()
+        // Extract quoted phrases first (preserve them)
+        const quotedPhrases = []
+        const quotePattern = /"([^"]+)"/g
+        let match
+        while ((match = quotePattern.exec(normalizedQuery)) !== null) {
+            quotedPhrases.push(match[1].trim())
+        }
+        // Remove quoted phrases from query for keyword extraction
+        normalizedQuery = normalizedQuery.replace(/"[^"]+"/g, '').trim()
+
+        // Extract remaining keywords (preserve unicode characters)
+        // Use a more permissive regex that keeps unicode word characters
+        const cleanQuery = normalizedQuery
+            .replace(/[^\p{L}\p{N}\s]/gu, ' ') // Remove punctuation but keep unicode letters/numbers
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim()
+
         if (cleanQuery) {
-            parsedQuery.keywords = cleanQuery.split(/\s+/).filter(word => word.length > 2)
+            parsedQuery.keywords = cleanQuery.split(/\s+/).filter(word => word.length > 0)
+        }
+
+        // Add quoted phrases as keywords (they're important for exact matching)
+        if (quotedPhrases.length > 0) {
+            // Add each quoted phrase as a single keyword
+            parsedQuery.keywords.push(...quotedPhrases)
+        }
+
+        // Ensure we have at least some keywords
+        if (parsedQuery.keywords.length === 0 && normalizedQuery.length > 0) {
+            // Fallback: use the original query as a single keyword
+            parsedQuery.keywords = [normalizedQuery.substring(0, 100)] // Limit length
         }
 
         return parsedQuery
@@ -756,8 +842,25 @@ class SearchService {
         try {
             const index = this.algoliaClient.initIndex(indexName)
 
-            // Build search parameters
-            const searchQuery = parsedQuery.keywords.join(' ')
+            // Build search parameters - ensure keywords are valid
+            const keywords = parsedQuery.keywords || []
+            if (keywords.length === 0) {
+                console.warn(`No keywords available for ${entityType} search`)
+                return []
+            }
+
+            // Join keywords safely - handle special characters
+            const searchQuery = keywords
+                .map(kw => kw.trim())
+                .filter(kw => kw.length > 0)
+                .join(' ')
+                .substring(0, 500) // Limit query length to prevent issues
+
+            if (!searchQuery || searchQuery.trim().length === 0) {
+                console.warn(`Empty search query for ${entityType} after processing`)
+                return []
+            }
+
             const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId)
 
             const searchOptions = {
@@ -765,6 +868,7 @@ class SearchService {
                 hitsPerPage: Math.min(limit, 50), // Limit per entity type
                 attributesToRetrieve: this.getAttributesToRetrieve(entityType),
                 attributesToHighlight: this.getAttributesToHighlight(entityType),
+                timeout: 5000, // 5 second timeout per search
             }
 
             const searchResponse = await index.search(searchQuery, searchOptions)
@@ -800,7 +904,13 @@ class SearchService {
                 }
             })
         } catch (error) {
-            console.error(`Search failed for ${entityType}:`, error)
+            console.error(`Search failed for ${entityType}:`, {
+                error: error.message,
+                stack: error.stack,
+                query: parsedQuery.keywords?.join(' '),
+                entityType,
+            })
+            // Return empty array instead of throwing to prevent cascading failures
             return []
         }
     }

@@ -2457,14 +2457,14 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'search',
                             description:
-                                'Search across all content types with natural language queries (requires OAuth 2.0 Bearer token authentication)',
+                                'Search across all content types with natural language queries (requires OAuth 2.0 Bearer token authentication). Supports exact phrase matching with quotes, Unicode characters, and natural language queries.',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
                                     query: {
                                         type: 'string',
                                         description:
-                                            'Search query (supports natural language, e.g., "What did I discuss last week with John about the project?")',
+                                            'Search query in natural language. Supports: natural language questions (e.g., "What did I discuss last week with John about the project?"), exact phrase matching with quotes (e.g., \'Note titled "Individuelle Notiz"\'), keywords (e.g., "meeting notes project"), and Unicode characters. Quotes around phrases will be preserved for exact matching.',
                                     },
                                     type: {
                                         type: 'string',
