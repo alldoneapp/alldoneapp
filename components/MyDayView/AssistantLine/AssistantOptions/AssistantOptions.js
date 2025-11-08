@@ -67,11 +67,18 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             })
 
             if (!topicData) {
+                isSendingRef.current = false
+                setIsSending(false)
                 return
             }
 
             setMessage('')
 
+            // Unblock the input now that the thread has been created
+            isSendingRef.current = false
+            setIsSending(false)
+
+            // Continue executing the task in the background without blocking the input
             if (topicData.projectId && !assistantProject?.isTemplate) {
                 try {
                     const userIdsToNotify = generateUserIdsToNotifyForNewComments(
@@ -98,7 +105,6 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             }
         } catch (error) {
             console.error('Error sending assistant quick message:', error)
-        } finally {
             isSendingRef.current = false
             setIsSending(false)
         }
