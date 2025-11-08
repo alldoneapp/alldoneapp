@@ -5,8 +5,10 @@ import { useDispatch, useSelector } from 'react-redux'
 import Icon from '../Icon'
 import {
     hideFloatPopup,
+    navigateToAllProjectsTasks,
     navigateToUpdates,
     setReloadGlobalFeeds,
+    setSelectedSidebarTab,
     showGlobalSearchPopup,
     switchProject,
 } from '../../redux/actions'
@@ -33,12 +35,12 @@ export default function NotificationArea() {
 
     const onPressHome = e => {
         e?.preventDefault()
-        dispatch(switchProject(ALL_PROJECTS_INDEX))
         dismissAllPopups()
-        dispatch({
-            type: 'Navigate to all projects tasks',
-            options: { taskViewToggleSection: 'Open', taskViewToggleIndex: 0 },
-        })
+        dispatch([
+            switchProject(ALL_PROJECTS_INDEX),
+            setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
+            navigateToAllProjectsTasks({ taskViewToggleSection: 'Open', taskViewToggleIndex: 0 }),
+        ])
         NavigationService.navigate('Root')
     }
 
