@@ -139,4 +139,5 @@ async function addFollowers(projectId, followerIds, followData, batch, needGener
 
 module.exports = {
     addFollowers,
+    tryAddFollower,
 }

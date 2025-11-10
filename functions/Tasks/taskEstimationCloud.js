@@ -5,9 +5,10 @@ const {
     createTaskAssigneeEstimationChangedFeed,
     createTaskReviewerEstimationChangedFeed,
 } = require('../Feeds/tasksFeeds')
-const { tryAddFollower } = require('../Feeds/tasksFeedsChains')
+const { tryAddFollower } = require('../Followers/followerHelper')
 const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 const { FOLLOWER_TASKS_TYPE } = require('../Followers/FollowerConstants')
+const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 
 /**
  * Set task estimation (Cloud Functions version)
@@ -28,6 +29,11 @@ const { FOLLOWER_TASKS_TYPE } = require('../Followers/FollowerConstants')
  */
 async function setTaskEstimationsCloud(projectId, taskId, task, stepId, estimation, feedCreator) {
     const db = admin.firestore()
+
+    // Initialize global state for follower functions that depend on it
+    // In cloud functions, admin and appAdmin are the same
+    loadFeedsGlobalState(admin, admin, feedCreator, null, null, null)
+
     const oldEstimation = task.estimations?.[stepId] || 0
 
     console.log('🔧 setTaskEstimationsCloud', {
@@ -110,7 +116,7 @@ async function setTaskEstimationsCloud(projectId, taskId, task, stepId, estimati
         followObjectsType: FOLLOWER_TASKS_TYPE,
         followObjectId: taskId,
         followObject: task,
-        feedCreator: feedCreator,
+        feedUser: feedCreator, // tryAddFollower expects feedUser, not feedCreator
     }
     await tryAddFollower(projectId, followTaskData, feedBatch, false)
 
