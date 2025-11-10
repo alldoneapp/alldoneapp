@@ -423,7 +423,7 @@ async function createTaskAssigneeEstimationChangedFeed(
     const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
     if (!taskFeedObject) return
 
-    const estimationType = getEstimationType(projectId)
+    const estimationType = await getEstimationType(projectId)
     let oldEstimationText = ''
     let newEstimationText = ''
 
@@ -493,7 +493,7 @@ async function createTaskReviewerEstimationChangedFeed(
         stepDescription = task.workflowSteps[stepId].name || task.workflowSteps[stepId].description || stepDescription
     }
 
-    const estimationType = getEstimationType(projectId)
+    const estimationType = await getEstimationType(projectId)
     let oldEstimationText = ''
     let newEstimationText = ''
 

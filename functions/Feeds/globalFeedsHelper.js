@@ -492,9 +492,27 @@ const getDateFormat = () => {
     return dateFormat.substr(0, 5)
 }
 
-const getEstimationType = () => {
-    const { project } = getGlobalState()
-    return project.estimationType || ESTIMATION_TYPE_TIME
+const getEstimationType = async (projectId = null) => {
+    // If projectId is provided, fetch project from Firestore
+    if (projectId) {
+        try {
+            const { getProject } = require('../Firestore/generalFirestoreCloud')
+            const project = await getProject(projectId, admin)
+            return project?.estimationType || ESTIMATION_TYPE_TIME
+        } catch (error) {
+            console.warn(`Failed to fetch project ${projectId} for estimationType:`, error.message)
+            return ESTIMATION_TYPE_TIME
+        }
+    }
+
+    // Fallback to global state (for backward compatibility)
+    try {
+        const { project } = getGlobalState()
+        return project?.estimationType || ESTIMATION_TYPE_TIME
+    } catch (error) {
+        console.warn('Failed to get estimationType from global state:', error.message)
+        return ESTIMATION_TYPE_TIME
+    }
 }
 
 const getDoneTimeValue = (estimation, template = TIME_TEXT_DEFAULT) => {
