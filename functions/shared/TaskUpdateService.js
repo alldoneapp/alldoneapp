@@ -94,13 +94,19 @@ class TaskUpdateService {
      * Find and update a task with intelligent search
      * @param {string} userId - User ID performing the update
      * @param {Object} searchCriteria - Search criteria (taskId, taskName, projectName, etc.)
-     * @param {Object} updateFields - Fields to update (name, description, completed, etc.)
-     * @param {Object} options - Search options (autoSelectOnHighConfidence, thresholds, etc.)
+     * @param {Object} updateFields - Fields to update (name, description, completed, estimation, etc.)
+     * @param {Object} options - Search options (autoSelectOnHighConfidence, thresholds, updateAll, etc.)
      * @returns {Promise<Object>} Update result with success, message, and task data
      */
     async findAndUpdateTask(userId, searchCriteria, updateFields, options = {}) {
         if (!this.initialized) {
             throw new Error('TaskUpdateService not initialized. Call initialize() first.')
+        }
+
+        // Check if this is a bulk update request
+        if (options.updateAll === true) {
+            console.log('🔄 TaskUpdateService: Bulk update requested')
+            return await this.bulkUpdateTasks(userId, searchCriteria, updateFields, options)
         }
 
         const searchOptions = {
@@ -174,6 +180,185 @@ class TaskUpdateService {
     }
 
     /**
+     * Bulk update tasks across all projects or a specific project
+     * Only updates today + overdue open tasks (safety measure)
+     * @param {string} userId - User ID performing the update
+     * @param {Object} searchCriteria - Search criteria (projectId optional for filtering)
+     * @param {Object} updateFields - Fields to update (same as single update)
+     * @param {Object} options - Additional options
+     * @returns {Promise<Object>} Bulk update result with summary
+     */
+    async bulkUpdateTasks(userId, searchCriteria, updateFields, options = {}) {
+        console.log('🔄🔄 TaskUpdateService: Starting bulk update', {
+            userId,
+            searchCriteria,
+            updateFields,
+        })
+
+        const { projectId } = searchCriteria || {}
+
+        // Determine scope: single project or all projects
+        let projectIds = []
+        let projectsData = {}
+
+        if (projectId) {
+            // Single project bulk update
+            console.log(`🔄🔄 TaskUpdateService: Bulk update limited to project: ${projectId}`)
+            projectIds = [projectId]
+
+            // Get project data
+            const projectDoc = await this.options.database.collection('projects').doc(projectId).get()
+            if (!projectDoc.exists) {
+                throw new Error(`Project not found: ${projectId}`)
+            }
+            const projectData = projectDoc.data()
+            projectsData[projectId] = { name: projectData.name, description: projectData.description }
+        } else {
+            // All projects bulk update
+            console.log('🔄🔄 TaskUpdateService: Bulk update across all user projects')
+            const { ProjectService } = require('./ProjectService')
+            const projectService = new ProjectService({ database: this.options.database })
+            await projectService.initialize()
+
+            const projects = await projectService.getUserProjects(userId, {
+                includeArchived: false,
+                includeCommunity: false,
+            })
+            projectIds = projects.map(p => p.id)
+            projectsData = projects.reduce((acc, p) => {
+                acc[p.id] = { name: p.name, description: p.description }
+                return acc
+            }, {})
+        }
+
+        // Query tasks (today + overdue only for safety)
+        const { TaskRetrievalService } = require('./TaskRetrievalService')
+        const retrievalService = new TaskRetrievalService({
+            database: this.options.database,
+            moment: this.options.moment,
+            isCloudFunction: this.options.isCloudFunction,
+        })
+        await retrievalService.initialize()
+
+        let result
+        if (projectIds.length === 1) {
+            // Single project query
+            console.log('🔄🔄 TaskUpdateService: Querying single project for tasks')
+            result = await retrievalService.getTasks({
+                projectId: projectIds[0],
+                userId,
+                status: 'open',
+                date: 'today', // Gets today + overdue
+                limit: 100,
+                selectMinimalFields: false, // Need full task for updates
+            })
+        } else {
+            // Multi-project query
+            console.log('🔄🔄 TaskUpdateService: Querying multiple projects for tasks')
+            result = await retrievalService.getTasksFromMultipleProjects(
+                {
+                    userId,
+                    status: 'open',
+                    date: 'today',
+                    perProjectLimit: 100,
+                    selectMinimalFields: false,
+                },
+                projectIds,
+                projectsData
+            )
+        }
+
+        const tasks = result.tasks || []
+
+        console.log('🔄🔄 TaskUpdateService: Tasks found for bulk update', {
+            count: tasks.length,
+            projectsQueried: projectIds.length,
+        })
+
+        // Safety check
+        if (tasks.length > 100) {
+            throw new Error(
+                `Too many tasks match (${tasks.length}). Max 100 allowed for bulk updates. ` +
+                    (projectId
+                        ? `Try being more specific or updating in smaller batches.`
+                        : `Try specifying a projectId to limit scope.`)
+            )
+        }
+
+        if (tasks.length === 0) {
+            return {
+                success: true,
+                updated: [],
+                failed: [],
+                total: 0,
+                projectsQueried: projectIds.length,
+                projectScope: projectId ? `Limited to project ${projectsData[projectId]?.name}` : 'All projects',
+                message: 'No today/overdue tasks found to update',
+            }
+        }
+
+        // Get feedUser once for all updates
+        const feedUser = await this.createFeedUserFromUserId(userId, this.options.database)
+
+        // Update each task
+        const updated = []
+        const failed = []
+
+        for (const task of tasks) {
+            try {
+                const taskProjectName = projectsData[task.projectId]?.name || 'Unknown'
+                const updateResult = await this.performTaskUpdate(
+                    task,
+                    task.projectId,
+                    taskProjectName,
+                    updateFields,
+                    userId,
+                    feedUser
+                )
+                updated.push({
+                    id: task.id,
+                    name: task.name,
+                    projectId: task.projectId,
+                    projectName: taskProjectName,
+                    changes: updateResult.changes,
+                })
+            } catch (error) {
+                console.error('🔄🔄 TaskUpdateService: Failed to update task', {
+                    taskId: task.id,
+                    taskName: task.name,
+                    error: error.message,
+                })
+                failed.push({
+                    id: task.id,
+                    name: task.name,
+                    projectId: task.projectId,
+                    error: error.message,
+                })
+            }
+        }
+
+        const successMessage =
+            `Updated ${updated.length} of ${tasks.length} tasks` +
+            (failed.length > 0 ? ` (${failed.length} failed)` : '')
+
+        console.log('🔄🔄 TaskUpdateService: Bulk update complete', {
+            total: tasks.length,
+            updated: updated.length,
+            failed: failed.length,
+        })
+
+        return {
+            success: true,
+            updated,
+            failed,
+            total: tasks.length,
+            projectsQueried: projectIds.length,
+            projectScope: projectId ? `Limited to project ${projectsData[projectId]?.name}` : 'All projects',
+            message: successMessage,
+        }
+    }
+
+    /**
      * Perform the actual task update
      */
     async performTaskUpdate(currentTask, projectId, projectName, updateFields, userId, feedUser) {
@@ -200,6 +385,11 @@ class TaskUpdateService {
                 timezoneOffset,
                 hasTimezone: !!userData?.timezone,
             })
+
+            // Handle estimation update if provided
+            if (updateFields.estimation !== undefined) {
+                await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
+            }
 
             // Handle dueDate with timezone conversion if it's a string
             let processedDueDate = updateFields.dueDate
@@ -248,9 +438,15 @@ class TaskUpdateService {
                 focusUserId: userId,
             })
 
+            // Add estimation to changes if it was updated
+            const changes = result.changes || []
+            if (updateFields.estimation !== undefined && !changes.includes('estimation')) {
+                changes.push('estimation')
+            }
+
             console.log('🔄 TaskUpdateService: Update successful', {
                 taskId: currentTask.id,
-                changes: result.changes,
+                changes: changes,
                 feedGenerated: !!result.feedData,
             })
 
@@ -295,7 +491,6 @@ class TaskUpdateService {
             }
 
             // Build success message
-            const changes = result.changes || []
             let message = `Task "${currentTask.name}" updated successfully`
             if (changes.length > 0) {
                 message += ` (${changes.join(', ')})`
@@ -317,6 +512,55 @@ class TaskUpdateService {
                 stack: error.stack,
             })
             throw new Error(`Failed to update task: ${error.message}`)
+        }
+    }
+
+    /**
+     * Update task estimation
+     * @param {string} projectId - Project ID
+     * @param {string} taskId - Task ID
+     * @param {Object} task - Current task object
+     * @param {number} estimationMinutes - Estimation value in minutes
+     * @returns {Promise<Object>} Update result
+     */
+    async performEstimationUpdate(projectId, taskId, task, estimationMinutes) {
+        console.log('🔄 TaskUpdateService: Updating task estimation', {
+            projectId,
+            taskId,
+            estimationMinutes,
+        })
+
+        try {
+            // Import the setTaskEstimations function from tasksFirestore
+            const { setTaskEstimations } = require('../backends/Tasks/tasksFirestore')
+            const { OPEN_STEP } = require('../../utils/TasksHelper')
+
+            // Validate estimation is a number
+            if (typeof estimationMinutes !== 'number' || estimationMinutes < 0) {
+                throw new Error('Estimation must be a non-negative number in minutes')
+            }
+
+            // Call the existing backend function to update estimation
+            await setTaskEstimations(
+                projectId,
+                taskId,
+                task,
+                OPEN_STEP, // Default workflow step (-1)
+                estimationMinutes
+            )
+
+            console.log('🔄 TaskUpdateService: Estimation updated successfully', {
+                taskId,
+                newEstimation: estimationMinutes,
+            })
+
+            return { success: true }
+        } catch (error) {
+            console.error('🔄 TaskUpdateService: Estimation update failed', {
+                error: error.message,
+                stack: error.stack,
+            })
+            throw new Error(`Failed to update estimation: ${error.message}`)
         }
     }
 

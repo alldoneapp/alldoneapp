@@ -1178,6 +1178,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 creatorId,
                 projectId,
                 toolArgs,
+                isBulkUpdate: toolArgs.updateAll || false,
             })
 
             const db = admin.firestore()
@@ -1195,22 +1196,26 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
 
             // Use shared service for find and update
+            // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
             try {
                 const result = await this.taskUpdateService.findAndUpdateTask(
                     creatorId,
-                    toolArgs, // searchCriteria
-                    toolArgs, // updateFields
+                    toolArgs, // searchCriteria (includes projectId for filtering)
+                    toolArgs, // updateFields (includes estimation, completed, focus, etc.)
                     {
                         autoSelectOnHighConfidence: true,
                         highConfidenceThreshold: 800,
                         dominanceMargin: 300,
                         maxOptionsToShow: 5,
+                        updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
                     }
                 )
 
                 console.log('📝 UPDATE_TASK TOOL: Result', {
                     success: result.success,
                     message: result.message,
+                    isBulkUpdate: !!result.updated,
+                    tasksUpdated: result.updated?.length || 1,
                 })
 
                 return result

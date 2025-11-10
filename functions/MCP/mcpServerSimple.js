@@ -702,15 +702,17 @@ class AlldoneSimpleMCPServer {
         }
 
         // Use shared service for find and update
+        // args contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
         return await this.taskUpdateService.findAndUpdateTask(
             userId,
-            args, // searchCriteria
-            args, // updateFields
+            args, // searchCriteria (includes projectId for filtering)
+            args, // updateFields (includes estimation, completed, focus, etc.)
             {
                 autoSelectOnHighConfidence: true,
                 highConfidenceThreshold: 800,
                 dominanceMargin: 300,
                 maxOptionsToShow: 5,
+                updateAll: args.updateAll || false, // Enable bulk update if requested
             }
         )
     }

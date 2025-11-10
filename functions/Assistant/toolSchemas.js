@@ -155,13 +155,13 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task. Use this when the user wants to mark a task as done/complete, change focus, rename, update, or set reminders/alerts for a task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, and enable/disable alerts.',
+                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, change focus, rename, update, set reminders/alerts, or set time estimations for a task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
             parameters: {
                 type: 'object',
                 properties: {
                     taskId: {
                         type: 'string',
-                        description: 'The ID of the task to update',
+                        description: 'The ID of the task to update (for single task updates)',
                     },
                     taskName: {
                         type: 'string',
@@ -173,7 +173,8 @@ const toolSchemas = {
                     },
                     projectId: {
                         type: 'string',
-                        description: 'Search for task within a specific project by project ID',
+                        description:
+                            'Search for task within a specific project by project ID. For bulk updates (updateAll=true), this limits updates to only tasks in this project.',
                     },
                     completed: {
                         type: 'boolean',
@@ -200,6 +201,16 @@ const toolSchemas = {
                         type: 'boolean',
                         description:
                             'Enable (true) or disable (false) the alert notification for this task. When enabled, the user will receive an alert at the time specified in dueDate. Requires dueDate to be set on the task. Use this for "remind me" or "alert me" requests.',
+                    },
+                    estimation: {
+                        type: 'number',
+                        description:
+                            'Task estimation in minutes (e.g., 30, 60, 120, 240). Common values: 15 (15min), 30 (30min), 60 (1 hour), 120 (2 hours), 240 (4 hours), 480 (8 hours), 960 (16 hours). Use this when the user wants to estimate how long a task will take.',
+                    },
+                    updateAll: {
+                        type: 'boolean',
+                        description:
+                            'Set to true to update all matching tasks (only today + overdue tasks, max 100). If projectId is provided, updates only tasks in that project. If no projectId, updates across all projects. Use for bulk operations like "mark all today tasks as done", "set estimation to 1h for all overdue tasks", or "complete all tasks in Project X".',
                     },
                 },
                 required: [],
