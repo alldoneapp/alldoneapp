@@ -159,9 +159,9 @@ const processObject = async (projectId, objectId, objectsType, baseObject, users
     let object = null
 
     if (objectsType === TASKS_OBJECTS_TYPE) {
-        object = mapTaskData(objectId, baseObject)
+        object = mapTaskData(objectId, algoliaObjectId, baseObject, projectId)
     } else if (objectsType === GOALS_OBJECTS_TYPE) {
-        object = mapGoalData(objectId, baseObject)
+        object = mapGoalData(objectId, algoliaObjectId, baseObject, projectId)
     } else if (objectsType === NOTES_OBJECTS_TYPE) {
         console.log(`Processing note ${objectId} for Algolia indexing`)
         object = mapNoteData(objectId, baseObject)
@@ -428,8 +428,8 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
     if (objectsType === TASKS_OBJECTS_TYPE) {
         await algoliaIndex.setSettings(
             {
-                searchableAttributes: ['name'],
-                typoTolerance: false,
+                searchableAttributes: ['name', 'humanReadableId'],
+                typoTolerance: true, // Enable typo tolerance for better partial matching
                 ignorePlurals: false,
                 customRanking: ['desc(created)'],
                 attributesForFaceting: [

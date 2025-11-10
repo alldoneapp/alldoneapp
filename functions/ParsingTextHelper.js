@@ -73,6 +73,7 @@ const mapTaskData = (taskId, algoliaObjectId, task, projectId) => {
         userId: task.userId ? task.userId : '',
         extendedName: extendedName,
         name: parseTextForSearch(extendedName, true),
+        humanReadableId: task.humanReadableId || '',
         created: task.created ? task.created : Date.now(),
         done: task.done || task.parentDone ? true : false,
         isPrivate: task.isPrivate ? task.isPrivate : false,

@@ -3,11 +3,37 @@
  *
  * This service provides flexible task searching capabilities that work across
  * all platforms and contexts, supporting partial matching on various criteria:
- * - Task ID (direct lookup)
- * - Task name (partial matching)
+ * - Task ID (direct lookup via Algolia)
+ * - Task name (partial matching via Algolia)
+ * - Human readable ID (via Algolia)
  * - Project name (partial matching)
  * - Project ID (direct lookup)
+ *
+ * Uses Algolia exclusively for all searches (text, ID, and humanReadableId searches).
  */
+
+// Import shared utilities (using dynamic imports for cross-platform compatibility)
+let algoliasearch, getAlgoliaClient
+
+// Dynamic imports for cross-platform compatibility
+async function loadDependencies() {
+    if (!algoliasearch) {
+        try {
+            // Try CommonJS first (Node.js/Cloud Functions)
+            if (typeof require !== 'undefined') {
+                algoliasearch = require('algoliasearch')
+                const searchHelper = require('../searchHelper')
+                getAlgoliaClient = searchHelper.getAlgoliaClient
+            }
+        } catch (error) {
+            console.warn('Failed to load Algolia dependencies for TaskSearchService:', error.message)
+            // Continue without Algolia - will fall back to Firestore
+        }
+    }
+}
+
+// Algolia index name for tasks
+const TASKS_INDEX_NAME = 'dev_tasks'
 
 class TaskSearchService {
     constructor(options = {}) {
@@ -26,6 +52,7 @@ class TaskSearchService {
 
         this.initialized = false
         this.projectService = null
+        this.algoliaClient = null
     }
 
     /**
@@ -36,6 +63,17 @@ class TaskSearchService {
 
         if (!this.options.database) {
             throw new Error('Database interface is required for TaskSearchService')
+        }
+
+        // Load Algolia dependencies (required)
+        await loadDependencies()
+        if (!getAlgoliaClient) {
+            throw new Error('Algolia client not available. TaskSearchService requires Algolia.')
+        }
+        try {
+            this.algoliaClient = getAlgoliaClient()
+        } catch (error) {
+            throw new Error(`Failed to initialize Algolia client: ${error.message}`)
         }
 
         // Initialize ProjectService for proper project filtering
@@ -97,7 +135,7 @@ class TaskSearchService {
 
         let matches = []
 
-        // If taskId is provided, try direct lookup first
+        // If taskId is provided, try direct lookup via Algolia first
         if (taskId) {
             const directMatch = await this.findTaskById(taskId, userProjects)
             if (directMatch) {
@@ -109,7 +147,7 @@ class TaskSearchService {
             }
         }
 
-        // If no direct match or additional criteria provided, do flexible search
+        // If no direct match or additional criteria provided, do Algolia search
         if (matches.length === 0 || taskName || projectName || projectId) {
             const flexibleMatches = await this.searchTasksFlexibly(userId, userProjects, searchCriteria)
             matches = matches.concat(flexibleMatches)
@@ -458,37 +496,80 @@ class TaskSearchService {
     }
 
     /**
-     * Find task by direct ID lookup
+     * Find task by direct ID lookup using Algolia
+     * Searches for tasks where objectID ends with taskId+projectId pattern
      */
     async findTaskById(taskId, userProjects) {
-        const db = this.options.database
-
-        for (const project of userProjects) {
-            try {
-                const taskDoc = await db.doc(`items/${project.id}/tasks/${taskId}`).get()
-                if (taskDoc.exists) {
-                    return {
-                        task: { id: taskId, ...taskDoc.data() },
-                        projectId: project.id,
-                        projectName: project.name,
-                    }
-                }
-            } catch (error) {
-                // Continue searching in other projects
-                continue
-            }
+        if (!this.algoliaClient) {
+            return null
         }
 
-        return null
+        try {
+            const index = this.algoliaClient.initIndex(TASKS_INDEX_NAME)
+            const FEED_PUBLIC_FOR_ALL = 0
+
+            // Build project filters
+            const projectFilters = userProjects.map(p => `projectId:"${p.id}"`).join(' OR ')
+            if (!projectFilters) {
+                return null
+            }
+
+            // Search for tasks where objectID contains the taskId
+            // Algolia objectID format is taskId + projectId, so we search for taskId
+            // and then verify the objectID matches the pattern
+            const filters = [`(${projectFilters})`]
+
+            const searchResponse = await index.search('', {
+                filters: filters.join(' AND '),
+                hitsPerPage: 100, // Search across multiple projects
+                attributesToRetrieve: ['objectID', 'projectId', 'name', 'humanReadableId'],
+            })
+
+            // Find exact match where objectID starts with taskId
+            for (const hit of searchResponse.hits) {
+                if (hit.objectID && hit.objectID.startsWith(taskId)) {
+                    const project = userProjects.find(p => p.id === hit.projectId)
+                    if (project && hit.objectID === taskId + hit.projectId) {
+                        // Fetch full task data - need userId for visibility filtering
+                        // For direct ID lookup, we'll fetch from database since we have the exact ID
+                        const db = this.options.database
+                        try {
+                            const taskDoc = await db.doc(`items/${hit.projectId}/tasks/${taskId}`).get()
+                            if (taskDoc.exists) {
+                                return {
+                                    task: { id: taskId, ...taskDoc.data() },
+                                    projectId: hit.projectId,
+                                    projectName: project.name,
+                                }
+                            }
+                        } catch (error) {
+                            console.error('TaskSearchService: Error fetching task by ID:', error.message)
+                        }
+                    }
+                }
+            }
+
+            return null
+        } catch (error) {
+            console.error('TaskSearchService: Error finding task by ID:', error.message)
+            return null
+        }
     }
 
     /**
      * Search tasks using flexible criteria across user's projects
+     * Uses Algolia exclusively for all searches (text and ID searches)
      */
     async searchTasksFlexibly(userId, userProjects, searchCriteria) {
         const { taskName, projectName, projectId } = searchCriteria
-        const db = this.options.database
-        const matches = []
+
+        if (!taskName) {
+            return []
+        }
+
+        if (!this.algoliaClient) {
+            throw new Error('Algolia client not available. TaskSearchService requires Algolia for searching.')
+        }
 
         // Filter projects based on search criteria
         let targetProjects = userProjects
@@ -502,26 +583,291 @@ class TaskSearchService {
             targetProjects = userProjects.filter(p => p.name && p.name.toLowerCase().includes(lowerProjectName))
         }
 
-        // Search tasks in filtered projects with optimized queries
-        for (const project of targetProjects) {
-            try {
-                // Use optimized search strategy to avoid full collection scans
-                const projectMatches = await this.searchTasksInProject(project, searchCriteria)
-                matches.push(...projectMatches)
-            } catch (error) {
-                console.warn(`Could not search tasks in project ${project.id}:`, error.message)
-                continue
-            }
-        }
-
-        return matches
+        // Use Algolia for all searches (text and ID searches)
+        return await this.searchTasksWithAlgolia(userId, taskName, targetProjects, projectId)
     }
 
     /**
-     * Optimized task search within a single project
-     * Searches both task name and humanReadableId with fuzzy matching
+     * Search tasks using Algolia (exclusive search method)
+     * Supports both text searches and humanReadableId searches
+     * @param {string} userId - User ID for visibility filtering
+     * @param {string} taskName - Task name or humanReadableId to search for
+     * @param {Array} targetProjects - Projects to search in
+     * @param {string} projectId - Optional specific project ID filter
+     * @returns {Array} Array of task matches with scores
      */
-    async searchTasksInProject(project, searchCriteria) {
+    async searchTasksWithAlgolia(userId, taskName, targetProjects, projectId) {
+        if (!this.algoliaClient) {
+            throw new Error('Algolia client not available')
+        }
+
+        try {
+            const index = this.algoliaClient.initIndex(TASKS_INDEX_NAME)
+
+            // Build filters for project access and visibility
+            const filters = []
+            const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
+
+            // Project filter
+            if (projectId) {
+                filters.push(`projectId:"${projectId}"`)
+            } else {
+                const projectFilters = targetProjects.map(p => `projectId:"${p.id}"`).join(' OR ')
+                if (projectFilters) {
+                    filters.push(`(${projectFilters})`)
+                }
+            }
+
+            // Visibility filter (tasks use isPrivate field)
+            filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+
+            const searchOptions = {
+                filters: filters.join(' AND '),
+                hitsPerPage: 50, // Limit results per search
+                attributesToRetrieve: [
+                    'objectID',
+                    'name',
+                    'description',
+                    'projectId',
+                    'userId',
+                    'humanReadableId',
+                    'done',
+                    'created',
+                    'lastEditionDate',
+                ],
+                attributesToHighlight: ['name', 'description', 'humanReadableId'],
+                timeout: 5000, // 5 second timeout
+            }
+
+            // Try initial search
+            let searchResponse = await index.search(taskName, searchOptions)
+            const projectsMap = new Map(targetProjects.map(p => [p.id, p]))
+            const matches = []
+            const seenTaskIds = new Set() // Track seen tasks to avoid duplicates
+
+            // Process initial results
+            for (const hit of searchResponse.hits) {
+                const project = projectsMap.get(hit.projectId)
+                if (!project) continue
+
+                // Extract task ID from Algolia objectID
+                let taskId = hit.objectID
+                if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
+                    taskId = hit.objectID.substring(0, hit.objectID.length - hit.projectId.length)
+                }
+
+                if (seenTaskIds.has(`${taskId}_${hit.projectId}`)) continue
+                seenTaskIds.add(`${taskId}_${hit.projectId}`)
+
+                const match = this.processAlgoliaHit(hit, taskName, project, taskId)
+                matches.push(match)
+            }
+
+            // If no results and search looks like an ID, try fuzzy variations
+            if (matches.length === 0 && this.looksLikeTaskId(taskName)) {
+                console.log(`No results for "${taskName}", trying fuzzy ID variations`)
+                const fuzzyVariations = this.generateFuzzyIdVariations(taskName)
+
+                for (const variation of fuzzyVariations) {
+                    if (variation === taskName) continue // Skip original, already tried
+
+                    try {
+                        const fuzzyResponse = await index.search(variation, searchOptions)
+                        for (const hit of fuzzyResponse.hits) {
+                            const project = projectsMap.get(hit.projectId)
+                            if (!project) continue
+
+                            let taskId = hit.objectID
+                            if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
+                                taskId = hit.objectID.substring(0, hit.objectID.length - hit.projectId.length)
+                            }
+
+                            const key = `${taskId}_${hit.projectId}`
+                            if (seenTaskIds.has(key)) continue
+                            seenTaskIds.add(key)
+
+                            const match = this.processAlgoliaHit(hit, taskName, project, taskId, true)
+                            match.matchScore -= 100 // Slight penalty for fuzzy match
+                            matches.push(match)
+                        }
+
+                        // If we found matches with this variation, stop trying others
+                        if (matches.length > 0) {
+                            console.log(`Found ${matches.length} matches using fuzzy variation "${variation}"`)
+                            break
+                        }
+                    } catch (error) {
+                        console.warn(`Fuzzy search failed for variation "${variation}":`, error.message)
+                    }
+                }
+            }
+
+            // If still no results for text searches, try partial word matching
+            if (matches.length === 0 && !this.looksLikeTaskId(taskName)) {
+                console.log(`No results for "${taskName}", trying partial word matching`)
+                const words = taskName
+                    .trim()
+                    .split(/\s+/)
+                    .filter(w => w.length > 2)
+
+                if (words.length > 1) {
+                    // Try searching with fewer words (remove common words first)
+                    const commonWords = [
+                        'the',
+                        'a',
+                        'an',
+                        'and',
+                        'or',
+                        'but',
+                        'in',
+                        'on',
+                        'at',
+                        'to',
+                        'for',
+                        'of',
+                        'with',
+                        'about',
+                    ]
+                    const importantWords = words.filter(w => !commonWords.includes(w.toLowerCase()))
+
+                    if (importantWords.length > 0 && importantWords.length < words.length) {
+                        const partialQuery = importantWords.join(' ')
+                        try {
+                            const partialResponse = await index.search(partialQuery, searchOptions)
+                            for (const hit of partialResponse.hits) {
+                                const project = projectsMap.get(hit.projectId)
+                                if (!project) continue
+
+                                let taskId = hit.objectID
+                                if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
+                                    taskId = hit.objectID.substring(0, hit.objectID.length - hit.projectId.length)
+                                }
+
+                                const key = `${taskId}_${hit.projectId}`
+                                if (seenTaskIds.has(key)) continue
+                                seenTaskIds.add(key)
+
+                                const match = this.processAlgoliaHit(hit, taskName, project, taskId, false, true)
+                                match.matchScore -= 50 // Penalty for partial word match
+                                matches.push(match)
+                            }
+                        } catch (error) {
+                            console.warn(`Partial word search failed:`, error.message)
+                        }
+                    }
+
+                    // If still no results, try individual important words
+                    if (matches.length === 0 && importantWords.length > 1) {
+                        for (const word of importantWords.slice(0, 3)) {
+                            // Try each important word individually
+                            try {
+                                const wordResponse = await index.search(word, searchOptions)
+                                for (const hit of wordResponse.hits) {
+                                    const project = projectsMap.get(hit.projectId)
+                                    if (!project) continue
+
+                                    let taskId = hit.objectID
+                                    if (hit.objectID && hit.projectId && hit.objectID.endsWith(hit.projectId)) {
+                                        taskId = hit.objectID.substring(0, hit.objectID.length - hit.projectId.length)
+                                    }
+
+                                    const key = `${taskId}_${hit.projectId}`
+                                    if (seenTaskIds.has(key)) continue
+                                    seenTaskIds.add(key)
+
+                                    const match = this.processAlgoliaHit(hit, taskName, project, taskId, false, true)
+                                    match.matchScore -= 100 // Larger penalty for single word match
+                                    matches.push(match)
+                                }
+
+                                if (matches.length > 0) break
+                            } catch (error) {
+                                console.warn(`Single word search failed for "${word}":`, error.message)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sort by match score (highest first)
+            matches.sort((a, b) => b.matchScore - a.matchScore)
+
+            return matches
+        } catch (error) {
+            console.error('TaskSearchService: Algolia search error:', {
+                error: error.message,
+                stack: error.stack,
+                taskName,
+            })
+            throw error // Re-throw instead of returning empty array
+        }
+    }
+
+    /**
+     * Process an Algolia search hit and create a match object with scoring
+     * @param {Object} hit - Algolia search hit
+     * @param {string} taskName - Original search query
+     * @param {Object} project - Project object
+     * @param {string} taskId - Extracted task ID
+     * @param {boolean} isFuzzyMatch - Whether this is a fuzzy ID variation match
+     * @param {boolean} isPartialMatch - Whether this is a partial word match
+     * @returns {Object} Match object with task data and scoring
+     */
+    processAlgoliaHit(hit, taskName, project, taskId, isFuzzyMatch = false, isPartialMatch = false) {
+        // Calculate match score based on Algolia relevance and our criteria
+        let matchScore = (hit._score || 0) * 10 // Scale Algolia score (typically 0-100) to our range
+
+        // Boost exact humanReadableId matches (highest priority)
+        if (hit.humanReadableId && hit.humanReadableId.toLowerCase() === taskName.toLowerCase()) {
+            matchScore += 1000 // Highest priority for exact ID match
+        } else if (hit.humanReadableId && hit.humanReadableId.toLowerCase().includes(taskName.toLowerCase())) {
+            matchScore += 800 // High priority for partial ID match
+        }
+
+        // Boost exact name matches
+        if (hit.name && hit.name.toLowerCase() === taskName.toLowerCase()) {
+            matchScore += 500
+        } else if (hit.name && hit.name.toLowerCase().includes(taskName.toLowerCase())) {
+            matchScore += 200
+        }
+
+        // Determine match type
+        let matchType = 'algolia_search'
+        if (hit.humanReadableId && hit.humanReadableId.toLowerCase() === taskName.toLowerCase()) {
+            matchType = 'exact_id'
+        } else if (hit.name && hit.name.toLowerCase() === taskName.toLowerCase()) {
+            matchType = 'exact_name'
+        } else if (isFuzzyMatch) {
+            matchType = 'fuzzy_id'
+        } else if (isPartialMatch) {
+            matchType = 'partial_match'
+        }
+
+        return {
+            task: {
+                id: taskId,
+                name: hit.name,
+                description: hit.description,
+                humanReadableId: hit.humanReadableId,
+                done: hit.done,
+                userId: hit.userId,
+                created: hit.created,
+                lastEditionDate: hit.lastEditionDate,
+            },
+            projectId: hit.projectId,
+            projectName: project.name,
+            matchScore,
+            matchType,
+            highlightResult: hit._highlightResult,
+        }
+    }
+
+    /**
+     * @deprecated Removed - TaskSearchService now uses Algolia exclusively
+     * This method is no longer used and kept only for reference.
+     * All searches are now handled by searchTasksWithAlgolia
+     */
+    async _deprecated_searchTasksInProject(project, searchCriteria) {
         const { taskName } = searchCriteria
         const db = this.options.database
         const matches = []
@@ -568,9 +914,9 @@ class TaskSearchService {
                     }
                 })
 
-                // Strategy 2: Try fuzzy ID matching if no exact matches
-                if (matches.length === 0) {
-                    console.log(`No exact matches, trying fuzzy search for "${taskName}"`)
+                // Strategy 2: Try fuzzy ID matching if no exact matches AND search term looks like an ID
+                if (matches.length === 0 && this.looksLikeTaskId(taskName)) {
+                    console.log(`No exact matches, trying fuzzy ID search for "${taskName}"`)
 
                     // Generate fuzzy variations of the search term
                     const fuzzyVariations = this.generateFuzzyIdVariations(taskName)
@@ -596,12 +942,30 @@ class TaskSearchService {
                     }
                 }
 
-                // Strategy 3: Limited scan for partial matches if still no results
+                // Strategy 3: Comprehensive scan for partial matches if still no results
+                // For longer text searches, scan more tasks with ordering for better coverage
                 if (matches.length === 0) {
-                    console.log(`No fuzzy matches, doing limited scan for "${taskName}"`)
+                    console.log(`No exact/fuzzy matches, doing comprehensive scan for "${taskName}"`)
 
-                    const limitedQuery = query.limit(MAX_RESULTS_PER_PROJECT)
-                    const limitedResults = await limitedQuery.get()
+                    // For text searches, use a larger limit and add ordering for better coverage
+                    // Order by sortIndex (most recent/active tasks first) to prioritize relevant results
+                    const scanLimit = this.looksLikeTaskId(taskName)
+                        ? MAX_RESULTS_PER_PROJECT
+                        : Math.min(MAX_RESULTS_PER_PROJECT * 3, 500)
+
+                    let limitedResults
+                    try {
+                        // Try with ordering first (better for finding recent/active tasks)
+                        let scanQuery = query.orderBy('sortIndex', 'desc').limit(scanLimit)
+                        limitedResults = await scanQuery.get()
+                    } catch (orderError) {
+                        // Fallback to query without ordering if sortIndex doesn't exist or index is missing
+                        console.warn(
+                            `Could not order by sortIndex, falling back to unordered query:`,
+                            orderError.message
+                        )
+                        limitedResults = await query.limit(scanLimit).get()
+                    }
 
                     limitedResults.forEach(taskDoc => {
                         const task = { id: taskDoc.id, ...taskDoc.data() }
