@@ -985,7 +985,17 @@ class SearchService {
 
         switch (entityType) {
             case ENTITY_TYPES.TASKS:
-                return [...common, 'name', 'description', 'done', 'userId', 'dueDate', 'created']
+                return [
+                    ...common,
+                    'name',
+                    'description',
+                    'done',
+                    'userId',
+                    'dueDate',
+                    'created',
+                    'humanReadableId',
+                    'humanReadableIdSearchable',
+                ]
             case ENTITY_TYPES.NOTES:
                 return [...common, 'title', 'content', 'userId', 'created', 'isPrivate']
             case ENTITY_TYPES.GOALS:
@@ -1009,7 +1019,7 @@ class SearchService {
     getAttributesToHighlight(entityType) {
         switch (entityType) {
             case ENTITY_TYPES.TASKS:
-                return ['name', 'description']
+                return ['name', 'description', 'humanReadableId', 'humanReadableIdSearchable']
             case ENTITY_TYPES.NOTES:
                 return ['title', 'content']
             case ENTITY_TYPES.GOALS:

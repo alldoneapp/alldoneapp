@@ -64,8 +64,48 @@ const getObjectNameWithoutMeta = (taskName, removeLineBreaks) => {
     return words.join(' ')
 }
 
+/**
+ * Generate searchable variations of a human-readable ID
+ * This helps Algolia match partial searches since it only supports prefix matching
+ * For "sm-75", generates: ["sm-75", "sm75", "sm 75", "sm", "75"]
+ * @param {string} humanReadableId - The human-readable ID (e.g., "sm-75")
+ * @returns {string} Space-separated string of all variations for Algolia indexing
+ */
+const generateHumanReadableIdVariations = humanReadableId => {
+    if (!humanReadableId || typeof humanReadableId !== 'string') {
+        return ''
+    }
+
+    const variations = [humanReadableId] // Original ID
+
+    // Add version without hyphens
+    const withoutHyphens = humanReadableId.replace(/-/g, '')
+    if (withoutHyphens !== humanReadableId) {
+        variations.push(withoutHyphens)
+    }
+
+    // Add version with spaces instead of hyphens
+    const withSpaces = humanReadableId.replace(/-/g, ' ')
+    if (withSpaces !== humanReadableId) {
+        variations.push(withSpaces)
+    }
+
+    // Add individual parts (split on hyphens)
+    const parts = humanReadableId.split('-').filter(part => part.length > 0)
+    if (parts.length > 1) {
+        variations.push(...parts)
+    }
+
+    // Remove duplicates and return as space-separated string for Algolia
+    const uniqueVariations = [...new Set(variations)]
+    return uniqueVariations.join(' ')
+}
+
 const mapTaskData = (taskId, algoliaObjectId, task, projectId) => {
     const extendedName = task.extendedName ? task.extendedName : task.name ? task.name : ''
+    const humanReadableId = task.humanReadableId || ''
+    const humanReadableIdSearchable = generateHumanReadableIdVariations(humanReadableId)
+
     return {
         objectID: algoliaObjectId,
         projectId: projectId,
@@ -73,7 +113,8 @@ const mapTaskData = (taskId, algoliaObjectId, task, projectId) => {
         userId: task.userId ? task.userId : '',
         extendedName: extendedName,
         name: parseTextForSearch(extendedName, true),
-        humanReadableId: task.humanReadableId || '',
+        humanReadableId: humanReadableId,
+        humanReadableIdSearchable: humanReadableIdSearchable,
         created: task.created ? task.created : Date.now(),
         done: task.done || task.parentDone ? true : false,
         isPrivate: task.isPrivate ? task.isPrivate : false,

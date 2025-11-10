@@ -428,7 +428,7 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
     if (objectsType === TASKS_OBJECTS_TYPE) {
         await algoliaIndex.setSettings(
             {
-                searchableAttributes: ['name', 'humanReadableId'],
+                searchableAttributes: ['humanReadableIdSearchable', 'humanReadableId', 'name'],
                 typoTolerance: true, // Enable typo tolerance for better partial matching
                 ignorePlurals: false,
                 customRanking: ['desc(created)'],

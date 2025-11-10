@@ -631,11 +631,12 @@ class TaskSearchService {
                     'projectId',
                     'userId',
                     'humanReadableId',
+                    'humanReadableIdSearchable',
                     'done',
                     'created',
                     'lastEditionDate',
                 ],
-                attributesToHighlight: ['name', 'description', 'humanReadableId'],
+                attributesToHighlight: ['name', 'description', 'humanReadableId', 'humanReadableIdSearchable'],
                 timeout: 5000, // 5 second timeout
             }
 
