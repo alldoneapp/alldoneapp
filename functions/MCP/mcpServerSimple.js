@@ -2431,7 +2431,7 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'update_task',
                             description:
-                                'Update an existing task using flexible search criteria (requires OAuth 2.0 Bearer token authentication)',
+                                'Update an existing task or multiple tasks at once using flexible search criteria. Supports bulk updates for today and overdue tasks (max 100). Requires OAuth 2.0 Bearer token authentication.',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
@@ -2449,7 +2449,8 @@ class AlldoneSimpleMCPServer {
                                     },
                                     projectId: {
                                         type: 'string',
-                                        description: 'Project ID to search within (optional)',
+                                        description:
+                                            'Project ID to search within (optional). For bulk updates (updateAll=true), this limits updates to only tasks in this project.',
                                     },
                                     name: {
                                         type: 'string',
@@ -2493,6 +2494,16 @@ class AlldoneSimpleMCPServer {
                                     alertEnabled: {
                                         type: 'boolean',
                                         description: 'Enable or disable reminder/alert at the due date (optional)',
+                                    },
+                                    estimation: {
+                                        type: 'number',
+                                        description:
+                                            'Task estimation in minutes (optional). Common values: 15 (15min), 30 (30min), 60 (1 hour), 120 (2 hours), 240 (4 hours), 480 (8 hours), 960 (16 hours). Use this when the user wants to estimate how long a task will take.',
+                                    },
+                                    updateAll: {
+                                        type: 'boolean',
+                                        description:
+                                            'Set to true to update all matching tasks (only today + overdue tasks, max 100). If projectId is provided, updates only tasks in that project. If no projectId, updates across all projects. Use for bulk operations like "mark all today tasks as done", "set estimation to 1h for all overdue tasks", or "complete all tasks in Project X".',
                                     },
                                 },
                                 required: [],
