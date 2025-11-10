@@ -229,8 +229,9 @@ const RATE_LIMITS = {
     CLIENT_TOKEN: { limit: 200, windowMs: 60 * 60 * 1000 }, // 200 token requests per hour
 
     // MCP operations
-    TOOL_CALLS: { limit: 1000, windowMs: 60 * 60 * 1000 }, // 1000 tool calls per hour
-    TOOL_CALLS_MINUTE: { limit: 60, windowMs: 60 * 1000 }, // 60 tool calls per minute
+    TOOL_CALLS: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 tool calls per hour
+    TOOL_CALLS_10MIN: { limit: 10, windowMs: 10 * 60 * 1000 }, // 10 tool calls per 10 minutes
+    TOOL_CALLS_MINUTE: { limit: 5, windowMs: 60 * 1000 }, // 5 tool calls per minute
 
     // User-specific limits (when authenticated)
     USER_OPERATIONS: { limit: 2000, windowMs: 60 * 60 * 1000 }, // 2000 operations per hour per user
@@ -418,12 +419,23 @@ class AlldoneSimpleMCPServer {
         // Tool-specific minute limiting for high-frequency operations
         if (operation === 'TOOL_CALLS') {
             const minuteConfig = RATE_LIMITS.TOOL_CALLS_MINUTE
+            const tenMinConfig = RATE_LIMITS.TOOL_CALLS_10MIN
+
             if (clientId) {
+                // 1-minute limit
                 checks.push({
                     key: `client:${clientId}:minute`,
                     limit: minuteConfig.limit,
                     windowMs: minuteConfig.windowMs,
                     operation: `${operation}:client:minute`,
+                })
+
+                // 10-minute limit
+                checks.push({
+                    key: `client:${clientId}:10min`,
+                    limit: tenMinConfig.limit,
+                    windowMs: tenMinConfig.windowMs,
+                    operation: `${operation}:client:10min`,
                 })
             }
         }
