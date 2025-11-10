@@ -25,6 +25,7 @@ class TaskSearchService {
         }
 
         this.initialized = false
+        this.projectService = null
     }
 
     /**
@@ -35,6 +36,15 @@ class TaskSearchService {
 
         if (!this.options.database) {
             throw new Error('Database interface is required for TaskSearchService')
+        }
+
+        // Initialize ProjectService for proper project filtering
+        if (typeof require !== 'undefined') {
+            const { ProjectService } = require('./ProjectService')
+            this.projectService = new ProjectService({
+                database: this.options.database,
+            })
+            await this.projectService.initialize()
         }
 
         this.initialized = true
@@ -403,8 +413,21 @@ class TaskSearchService {
 
     /**
      * Get all projects accessible to user
+     * Uses ProjectService to filter out archived, template, guide, and inactive projects
      */
     async getUserProjects(userId) {
+        await this.ensureInitialized()
+
+        // Use ProjectService for proper filtering (active, non-archived, non-community by default)
+        if (this.projectService) {
+            return await this.projectService.getUserProjects(userId, {
+                includeArchived: false,
+                includeCommunity: false,
+                activeOnly: true,
+            })
+        }
+
+        // Fallback to direct database access if ProjectService not available
         const db = this.options.database
         const userDoc = await db.collection('users').doc(userId).get()
 
