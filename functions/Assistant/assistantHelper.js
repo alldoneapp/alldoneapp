@@ -850,11 +850,45 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const moment = require('moment-timezone')
             const db = admin.firestore()
 
-            // Determine target project ID with three-level fallback (matching MCP behavior)
+            // Determine target project ID with four-level fallback (matching MCP behavior)
             // 1. Explicit projectId in toolArgs (highest priority)
-            // 2. Chat context projectId (assistant-specific fallback)
-            // 3. User's default project (matching MCP behavior)
-            let targetProjectId = toolArgs.projectId || projectId
+            // 2. Project name resolution (if projectName provided)
+            // 3. Chat context projectId (assistant-specific fallback)
+            // 4. User's default project (matching MCP behavior)
+            let targetProjectId = toolArgs.projectId
+
+            // Project name resolution (if name provided but no ID)
+            if (!targetProjectId && toolArgs.projectName) {
+                const { ProjectService } = require('../shared/ProjectService')
+                const projectService = new ProjectService({ database: db })
+                await projectService.initialize()
+
+                const projects = await projectService.getUserProjects(creatorId, {
+                    includeArchived: false,
+                    includeCommunity: false,
+                })
+
+                // Case-insensitive partial match
+                const matchingProject = projects.find(
+                    p => p.name && p.name.toLowerCase().includes(toolArgs.projectName.toLowerCase())
+                )
+
+                if (matchingProject) {
+                    targetProjectId = matchingProject.id
+                    console.log('📝 CREATE_TASK TOOL: Resolved project name to ID', {
+                        projectName: toolArgs.projectName,
+                        projectId: matchingProject.id,
+                        projectFullName: matchingProject.name,
+                    })
+                } else {
+                    throw new Error(`Project not found: "${toolArgs.projectName}"`)
+                }
+            }
+
+            // Fallback to chat context projectId
+            if (!targetProjectId) {
+                targetProjectId = projectId
+            }
 
             // If still no projectId, try user's default project (matching MCP)
             if (!targetProjectId) {
@@ -871,15 +905,22 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
             if (!targetProjectId) {
                 throw new Error(
-                    'No project specified and no default project found. Please specify a projectId or set a default project.'
+                    'No project specified and no default project found. Please specify a projectId, projectName, or set a default project.'
                 )
             }
 
             console.log('📝 CREATE_TASK TOOL: Project selection', {
                 toolArgsProjectId: toolArgs.projectId,
+                toolArgsProjectName: toolArgs.projectName,
                 contextProjectId: projectId,
                 selectedProjectId: targetProjectId,
-                source: toolArgs.projectId ? 'toolArgs' : projectId ? 'context' : 'defaultProject',
+                source: toolArgs.projectId
+                    ? 'toolArgs.projectId'
+                    : toolArgs.projectName
+                    ? 'toolArgs.projectName'
+                    : projectId
+                    ? 'context'
+                    : 'defaultProject',
             })
 
             // Get user data for feed creation and timezone

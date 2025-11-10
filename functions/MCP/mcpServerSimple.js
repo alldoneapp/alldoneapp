@@ -556,20 +556,57 @@ class AlldoneSimpleMCPServer {
     }
 
     async createTask(args, request) {
-        const { name, description, dueDate, alertEnabled, projectId: specifiedProjectId } = args
+        const { name, description, dueDate, alertEnabled, projectId: specifiedProjectId, projectName } = args
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
 
-        // Use specified project or fall back to user's default project
-        const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
-        if (!projectId) {
-            throw new Error(
-                'No project specified and no default project found. Please specify a projectId or set a default project.'
+        const db = admin.firestore()
+
+        // Determine projectId with three-level fallback:
+        // 1. Explicit projectId (highest priority)
+        // 2. Project name resolution (if name provided)
+        // 3. User's default project
+        let projectId = specifiedProjectId
+
+        // Project name resolution (if name provided but no ID)
+        if (!projectId && projectName) {
+            const { ProjectService } = require('../shared/ProjectService')
+            const projectService = new ProjectService({ database: db })
+            await projectService.initialize()
+
+            const projects = await projectService.getUserProjects(userId, {
+                includeArchived: false,
+                includeCommunity: false,
+            })
+
+            // Case-insensitive partial match
+            const matchingProject = projects.find(
+                p => p.name && p.name.toLowerCase().includes(projectName.toLowerCase())
             )
+
+            if (matchingProject) {
+                projectId = matchingProject.id
+                console.log('📝 CREATE_TASK: Resolved project name to ID', {
+                    projectName,
+                    projectId: matchingProject.id,
+                    projectFullName: matchingProject.name,
+                })
+            } else {
+                throw new Error(`Project not found: "${projectName}"`)
+            }
         }
 
-        const db = admin.firestore()
+        // Fallback to user's default project
+        if (!projectId) {
+            projectId = await this.getUserDefaultProject(userId)
+        }
+
+        if (!projectId) {
+            throw new Error(
+                'No project specified and no default project found. Please specify a projectId, projectName, or set a default project.'
+            )
+        }
 
         // Get user data for feed creation and timezone
         const { UserHelper } = require('../shared/UserHelper')

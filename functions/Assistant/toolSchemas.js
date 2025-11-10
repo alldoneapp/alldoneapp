@@ -36,6 +36,11 @@ const toolSchemas = {
                         description:
                             "Optional: the project ID where the task should be created. If not specified, uses the current chat context project or the user's default project.",
                     },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            "Optional: the project name where the task should be created. The system will search for projects matching this name (case-insensitive partial match). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the current chat context project or the user's default project.",
+                    },
                 },
                 required: ['name'],
             },
