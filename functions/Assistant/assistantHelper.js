@@ -850,6 +850,38 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const moment = require('moment-timezone')
             const db = admin.firestore()
 
+            // Determine target project ID with three-level fallback (matching MCP behavior)
+            // 1. Explicit projectId in toolArgs (highest priority)
+            // 2. Chat context projectId (assistant-specific fallback)
+            // 3. User's default project (matching MCP behavior)
+            let targetProjectId = toolArgs.projectId || projectId
+
+            // If still no projectId, try user's default project (matching MCP)
+            if (!targetProjectId) {
+                try {
+                    const db = admin.firestore()
+                    const userDoc = await db.collection('users').doc(creatorId).get()
+                    if (userDoc.exists) {
+                        targetProjectId = userDoc.data().defaultProjectId || null
+                    }
+                } catch (error) {
+                    console.error('Error getting user default project:', error)
+                }
+            }
+
+            if (!targetProjectId) {
+                throw new Error(
+                    'No project specified and no default project found. Please specify a projectId or set a default project.'
+                )
+            }
+
+            console.log('📝 CREATE_TASK TOOL: Project selection', {
+                toolArgsProjectId: toolArgs.projectId,
+                contextProjectId: projectId,
+                selectedProjectId: targetProjectId,
+                source: toolArgs.projectId ? 'toolArgs' : projectId ? 'context' : 'defaultProject',
+            })
+
             // Get user data for feed creation and timezone
             const feedUser = await UserHelper.getFeedUserData(db, creatorId)
 
@@ -923,53 +955,60 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 await cachedTaskService.initialize()
             }
 
-            const result = await cachedTaskService.createAndPersistTask(
-                {
-                    name: toolArgs.name,
-                    description: toolArgs.description || '',
-                    dueDate: processedDueDate,
-                    userId: creatorId,
-                    projectId: projectId,
-                    isPrivate: false,
-                    feedUser,
-                },
-                {
-                    userId: creatorId,
-                    projectId: projectId,
+            try {
+                // Create task using unified service
+                const result = await cachedTaskService.createAndPersistTask(
+                    {
+                        name: toolArgs.name,
+                        description: toolArgs.description || '',
+                        dueDate: processedDueDate,
+                        userId: creatorId,
+                        projectId: targetProjectId,
+                        isPrivate: false,
+                        feedUser,
+                    },
+                    {
+                        userId: creatorId,
+                        projectId: targetProjectId,
+                    }
+                )
+
+                // Handle alert if alertEnabled is true
+                if (toolArgs.alertEnabled && processedDueDate) {
+                    console.log('📝 CREATE_TASK TOOL: Enabling alert', {
+                        taskId: result.taskId,
+                        dueDate: processedDueDate,
+                    })
+
+                    const { setTaskAlertCloud } = require('../shared/AlertService')
+
+                    // Convert UTC timestamp to moment with user's timezone for setTaskAlert
+                    const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
+
+                    console.log('📝 CREATE_TASK TOOL: Calling setTaskAlert', {
+                        taskId: result.taskId,
+                        projectId: targetProjectId,
+                        alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
+                    })
+
+                    // Update alert server-side (Cloud)
+                    await setTaskAlertCloud(targetProjectId, result.taskId, true, alertMoment, {
+                        ...result.task,
+                        dueDate: processedDueDate,
+                    })
+
+                    console.log('📝 CREATE_TASK TOOL: Alert enabled successfully')
                 }
-            )
 
-            // Handle alert if alertEnabled is true
-            if (toolArgs.alertEnabled && processedDueDate) {
-                console.log('📝 CREATE_TASK TOOL: Enabling alert', {
+                return {
+                    success: result.success,
                     taskId: result.taskId,
-                    dueDate: processedDueDate,
-                })
-
-                const { setTaskAlertCloud } = require('../shared/AlertService')
-
-                // Convert UTC timestamp to moment with user's timezone for setTaskAlert
-                const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
-
-                console.log('📝 CREATE_TASK TOOL: Calling setTaskAlert', {
-                    taskId: result.taskId,
-                    projectId,
-                    alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
-                })
-
-                // Update alert server-side (Cloud)
-                await setTaskAlertCloud(projectId, result.taskId, true, alertMoment, {
-                    ...result.task,
-                    dueDate: processedDueDate,
-                })
-
-                console.log('📝 CREATE_TASK TOOL: Alert enabled successfully')
-            }
-
-            return {
-                success: true,
-                taskName: toolArgs.name,
-                taskId: result.taskId,
+                    message: result.message,
+                    task: result.task,
+                }
+            } catch (error) {
+                console.error('Error creating task:', error)
+                throw new Error(`Failed to create task: ${error.message}`)
             }
         }
 

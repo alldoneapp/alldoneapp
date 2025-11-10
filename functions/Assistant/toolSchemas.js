@@ -31,6 +31,11 @@ const toolSchemas = {
                         description:
                             'Enable alert notification for this task. When true, the user will receive an alert at the time specified in dueDate. Requires dueDate to be provided. Use this for "remind me" or "alert me" requests.',
                     },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            "Optional: the project ID where the task should be created. If not specified, uses the current chat context project or the user's default project.",
+                    },
                 },
                 required: ['name'],
             },
