@@ -553,7 +553,8 @@ class TaskUpdateService {
     }
 
     /**
-     * Update task estimation
+     * Update task estimation using cloud-compatible function
+     * Preserves all original logic: statistics, feeds, followers
      * @param {string} projectId - Project ID
      * @param {string} taskId - Task ID
      * @param {Object} task - Current task object
@@ -568,26 +569,52 @@ class TaskUpdateService {
         })
 
         try {
-            // Import the setTaskEstimations function from tasksFirestore
-            const { setTaskEstimations } = require('../backends/Tasks/tasksFirestore')
-            const { OPEN_STEP } = require('../../utils/TasksHelper')
-
-            // Validate estimation is a number
+            // Validate estimation
             if (typeof estimationMinutes !== 'number' || estimationMinutes < 0) {
                 throw new Error('Estimation must be a non-negative number in minutes')
             }
 
-            // Call the existing backend function to update estimation
-            await setTaskEstimations(
+            // Import cloud-compatible estimation updater
+            const { setTaskEstimationsCloud } = require('../Tasks/taskEstimationCloud')
+            const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
+
+            // Get feedCreator from current execution context
+            // In cloud functions, we need user context for feeds
+            // Fetch user data to create proper feedCreator object
+            const userDoc = await this.options.database.collection('users').doc(task.userId).get()
+            const userData = userDoc.exists ? userDoc.data() : {}
+
+            const feedCreator = {
+                uid: task.userId,
+                name: userData.name || userData.displayName || task.userName || 'User',
+                email: userData.email || task.userEmail || '',
+            }
+
+            console.log('🔄 TaskUpdateService: Calling setTaskEstimationsCloud', {
+                projectId,
+                taskId,
+                stepId: OPEN_STEP,
+                estimation: estimationMinutes,
+                feedCreatorUid: feedCreator.uid,
+            })
+
+            // Call cloud-compatible function that preserves all original logic:
+            // - Updates task estimation fields
+            // - Updates statistics if task is done
+            // - Creates appropriate feeds
+            // - Adds user as follower
+            await setTaskEstimationsCloud(
                 projectId,
                 taskId,
                 task,
-                OPEN_STEP, // Default workflow step (-1)
-                estimationMinutes
+                OPEN_STEP, // Default workflow step
+                estimationMinutes,
+                feedCreator
             )
 
             console.log('🔄 TaskUpdateService: Estimation updated successfully', {
                 taskId,
+                projectId,
                 newEstimation: estimationMinutes,
             })
 

@@ -21,6 +21,7 @@ const {
     FEED_TASK_HIGHLIGHTED_CHANGED,
     FEED_TASK_RECURRENCE_CHANGED,
     FEED_TASK_ASSIGNEE_ESTIMATION_CHANGED,
+    FEED_TASK_REVIEWER_ESTIMATION_CHANGED,
     FEED_TASK_UPDATED,
 } = require('./FeedsConstants')
 const { generateTaskObjectModel, updateTasksFeedsAmountOfSubtasks } = require('./tasksFeedsHelper')
@@ -471,6 +472,80 @@ async function createTaskAssigneeEstimationChangedFeed(
     )
 }
 
+async function createTaskReviewerEstimationChangedFeed(
+    projectId,
+    task,
+    taskId,
+    oldEstimation,
+    newEstimation,
+    stepId,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
+    if (!taskFeedObject) return
+
+    // Get step name from task workflow or use stepId as fallback
+    let stepDescription = `Step ${stepId}`
+    if (task.workflowSteps && task.workflowSteps[stepId]) {
+        stepDescription = task.workflowSteps[stepId].name || task.workflowSteps[stepId].description || stepDescription
+    }
+
+    const estimationType = getEstimationType(projectId)
+    let oldEstimationText = ''
+    let newEstimationText = ''
+
+    if (estimationType === ESTIMATION_TYPE_TIME) {
+        oldEstimationText = getDoneTimeValue(oldEstimation, TIME_TEXT_DEFAULT_MINI)
+        newEstimationText = getDoneTimeValue(newEstimation, TIME_TEXT_DEFAULT_MINI)
+    } else {
+        oldEstimationText = getEstimationResume(
+            projectId,
+            getEstimationRealValue(projectId, oldEstimation, ESTIMATION_TYPE_POINTS),
+            ESTIMATION_TYPE_POINTS
+        )
+        oldEstimationText = `${oldEstimationText.value} ${oldEstimationText.text}`
+
+        newEstimationText = getEstimationResume(
+            projectId,
+            getEstimationRealValue(projectId, newEstimation, ESTIMATION_TYPE_POINTS),
+            ESTIMATION_TYPE_POINTS
+        )
+        newEstimationText = `${newEstimationText.value} ${newEstimationText.text}`
+    }
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_TASK_REVIEWER_ESTIMATION_CHANGED,
+        lastChangeDate: currentMilliseconds,
+        entryText: `changed ${stepDescription} estimation • From ${oldEstimationText} to ${newEstimationText}`,
+        feedUser,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    // Store reviewer estimation in feed object
+    if (!taskFeedObject.reviewerEstimations) {
+        taskFeedObject.reviewerEstimations = {}
+    }
+    taskFeedObject.reviewerEstimations[stepId] = newEstimation
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        taskId,
+        'tasks',
+        taskFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
+}
+
 async function createTaskUpdatedFeed(
     projectId,
     task,
@@ -534,5 +609,6 @@ module.exports = {
     createTaskHighlightedChangedFeed,
     createTaskRecurrenceChangedFeed,
     createTaskAssigneeEstimationChangedFeed,
+    createTaskReviewerEstimationChangedFeed,
     createTaskUpdatedFeed,
 }
