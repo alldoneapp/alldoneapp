@@ -195,7 +195,36 @@ class TaskUpdateService {
             updateFields,
         })
 
-        const { projectId } = searchCriteria || {}
+        let { projectId, projectName } = searchCriteria || {}
+
+        // Resolve projectName to projectId if provided
+        if (!projectId && projectName) {
+            console.log('🔄🔄 TaskUpdateService: Resolving projectName to projectId', { projectName })
+            const { ProjectService } = require('./ProjectService')
+            const projectService = new ProjectService({ database: this.options.database })
+            await projectService.initialize()
+
+            const projects = await projectService.getUserProjects(userId, {
+                includeArchived: false,
+                includeCommunity: false,
+            })
+
+            // Find project by name (case-insensitive partial match)
+            const matchingProject = projects.find(
+                p => p.name && p.name.toLowerCase().includes(projectName.toLowerCase())
+            )
+
+            if (matchingProject) {
+                projectId = matchingProject.id
+                console.log('🔄🔄 TaskUpdateService: Resolved project', {
+                    projectName,
+                    projectId,
+                    exactName: matchingProject.name,
+                })
+            } else {
+                throw new Error(`Project not found: "${projectName}". Please check the project name and try again.`)
+            }
+        }
 
         // Determine scope: single project or all projects
         let projectIds = []
