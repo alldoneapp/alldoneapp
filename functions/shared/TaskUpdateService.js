@@ -306,10 +306,17 @@ class TaskUpdateService {
 
         for (const task of tasks) {
             try {
-                const taskProjectName = projectsData[task.projectId]?.name || 'Unknown'
+                // Ensure projectId is set on the task (single-project queries don't include it in the task object)
+                const taskProjectId = task.projectId || (projectIds.length === 1 ? projectIds[0] : null)
+
+                if (!taskProjectId) {
+                    throw new Error('Unable to determine project ID for task')
+                }
+
+                const taskProjectName = projectsData[taskProjectId]?.name || 'Unknown'
                 const updateResult = await this.performTaskUpdate(
                     task,
-                    task.projectId,
+                    taskProjectId,
                     taskProjectName,
                     updateFields,
                     userId,
@@ -318,7 +325,7 @@ class TaskUpdateService {
                 updated.push({
                     id: task.id,
                     name: task.name,
-                    projectId: task.projectId,
+                    projectId: taskProjectId,
                     projectName: taskProjectName,
                     changes: updateResult.changes,
                 })
@@ -328,10 +335,11 @@ class TaskUpdateService {
                     taskName: task.name,
                     error: error.message,
                 })
+                const taskProjectId = task.projectId || (projectIds.length === 1 ? projectIds[0] : null)
                 failed.push({
                     id: task.id,
                     name: task.name,
-                    projectId: task.projectId,
+                    projectId: taskProjectId,
                     error: error.message,
                 })
             }
