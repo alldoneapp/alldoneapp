@@ -38,6 +38,7 @@ export default function AssistantCustomizations({
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUser = useSelector(state => state.loggedUser)
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
+    const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const [isFromTemplateProject, setIsFromTemplateProject] = useState(true)
     const [isOrganizeMode, setIsOrganizeMode] = useState(false)
 
@@ -52,6 +53,11 @@ export default function AssistantCustomizations({
     const canEditAssitant = !isGlobalAsisstant && !isAnonymous && belongsToProject && !assistant.fromTemplate
 
     const isGuide = !isInGlobalProject && loggedUser.realGuideProjectIds.includes(projectDetailedId)
+
+    // Only block deletion if the assistant belongs to the default project
+    // This allows deletion of project assistants even when they're set as default (assistant.isDefault)
+    const isAssistantInDefaultProject =
+        !isGlobalAsisstant && projectDetailedId === defaultProjectId && assistant.isDefault
 
     const updateIsFromTemplate = templateProject => {
         setIsFromTemplateProject(templateProject ? templateProject.globalAssistantIds.includes(assistant.uid) : false)
@@ -151,7 +157,7 @@ export default function AssistantCustomizations({
                 projectId={projectDetailedId}
                 noteId={assistant.noteIdsByProject[projectDetailedId]}
             />
-            {!isAnonymous && belongsToProject && !isFromTemplateProject && !assistant.isDefault && (
+            {!isAnonymous && belongsToProject && !isFromTemplateProject && !isAssistantInDefaultProject && (
                 <View style={localStyles.deleteButtonContainer}>
                     <DeleteAssistant
                         isGlobalAsisstant={isGlobalAsisstant}

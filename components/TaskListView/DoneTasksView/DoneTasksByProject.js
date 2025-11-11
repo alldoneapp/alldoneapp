@@ -26,6 +26,10 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const [filters, filtersArray] = useSelectorHashtagFilters()
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(project.id)
 
+    // Check if this project is using the default project's assistant
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const isUsingDefaultProjectAssistant = !project?.assistantId && project.id !== defaultProjectId && defaultProjectId
+
     const { todayTasksByDate, todaySubtasksByTask, todayEstimationByDate } = useTodayTasks(project)
     const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck } = useEarlierTasks(
         project,
@@ -58,8 +62,13 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
 
     return filteredTasksByDate.length > 0 || inSelectedProject ? (
         <View style={localStyles.container}>
+            {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
+                <View style={{ marginTop: 16 }}>
+                    <AssistantLine />
+                </View>
+            )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
-            {!isAnonymous && inSelectedProject && <AssistantLine />}
+            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && <AssistantLine />}
             {filteredTasksByDate.map((item, index) => {
                 const dateFormated = item[0]
                 const taskList = item[1]

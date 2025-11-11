@@ -54,6 +54,11 @@ export default function OpenTasksByProject({
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const hideProjectData = !inSelectedProject && (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
 
+    // Check if this project is using the default project's assistant
+    const project = useSelector(state => state.loggedUserProjectsMap[projectId])
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const isUsingDefaultProjectAssistant = !project?.assistantId && projectId !== defaultProjectId && defaultProjectId
+
     useEffect(() => {
         const watcherKey = v4()
         watchAllMilestones(projectId, watcherKey)
@@ -102,6 +107,11 @@ export default function OpenTasksByProject({
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
                     <NeedShowMoreOpenTasksButton projectId={projectId} />
                     <NeedShowMoreEmptyGoalsButton projectId={projectId} />
+                    {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
+                        <View style={{ marginTop: 16 }}>
+                            <AssistantLine />
+                        </View>
+                    )}
                     <ProjectHeader
                         projectIndex={projectIndex}
                         projectId={projectId}
@@ -109,7 +119,7 @@ export default function OpenTasksByProject({
                         showAddTask={!isAssistant}
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                     />
-                    {!isAnonymous && inSelectedProject && <AssistantLine />}
+                    {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && <AssistantLine />}
                     {filteredOpenTasksDates.map((dateFormated, index) => {
                         return (
                             <OpenTasksByDate

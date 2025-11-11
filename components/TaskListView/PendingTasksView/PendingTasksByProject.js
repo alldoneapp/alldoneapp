@@ -21,6 +21,10 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const [amountOfTasksByDate, setAmountOfTasksByDate] = useState({})
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(project.id)
 
+    // Check if this project is using the default project's assistant
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const isUsingDefaultProjectAssistant = !project?.assistantId && project.id !== defaultProjectId && defaultProjectId
+
     const updateTasks = (tasksByDateAndStep, estimationValue, amountOfTasksByDate) => {
         setTasksByDateAndStep(tasksByDateAndStep)
         setEstimationByDate(estimationValue)
@@ -46,8 +50,13 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
 
     return filteredTasksByDateAndStep.length > 0 || inSelectedProject ? (
         <View style={localStyles.container}>
+            {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
+                <View style={{ marginTop: 16 }}>
+                    <AssistantLine />
+                </View>
+            )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
-            {!isAnonymous && inSelectedProject && <AssistantLine />}
+            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && <AssistantLine />}
             {filteredTasksByDateAndStep.map((item, index) => {
                 const dateFormated = item[0]
                 const tasksByStep = item[1]
