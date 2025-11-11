@@ -9,17 +9,30 @@ import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assi
 import Icon from '../../../Icon'
 import { shrinkTagText } from '../../../../functions/Utils/parseTextUtils'
 
-export default function AssistantItem({ projectId, assistant, updateAssistant, currentAssistantId, closeModal }) {
+export default function AssistantItem({
+    projectId,
+    assistant,
+    updateAssistant,
+    currentAssistantId,
+    closeModal,
+    isDefaultProjectOption,
+}) {
     const smallScreen = useSelector(state => state.smallScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { displayName, description, photoURL50, uid } = assistant
 
-    const selected =
-        assistant.uid === currentAssistantId ||
-        assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
+    // For the "default project assistant" option, check if currentAssistantId is empty/null
+    const selected = isDefaultProjectOption
+        ? !currentAssistantId || currentAssistantId === ''
+        : assistant.uid === currentAssistantId ||
+          assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
 
     const selectOption = () => {
-        if (!currentAssistantId || assistant.uid !== currentAssistantId) updateAssistant(uid)
+        // If it's the default project option, pass null to clear the assistantId
+        const assistantIdToSet = isDefaultProjectOption ? null : uid
+        if (isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId) {
+            updateAssistant(assistantIdToSet)
+        }
         closeModal()
     }
 

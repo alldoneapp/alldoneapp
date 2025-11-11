@@ -1031,5 +1031,8 @@
     "Authorization Header Value placeholder": "Bearer ihr-api-schlüssel",
     "Send messages in the chat to trigger the webhook": "Senden Sie Nachrichten im Chat, um den Webhook auszulösen",
     "The webhook will receive this prompt and call back when complete": "Der Webhook erhält diesen Prompt und ruft zurück, wenn er fertig ist",
-    "Workflow is being executed now ...": "Der Workflow wird jetzt ausgeführt ..."
+    "Workflow is being executed now ...": "Der Workflow wird jetzt ausgeführt ...",
+    "Project assistant": "Projekt-Assistent",
+    "Assistant from default project": "Assistent vom Standardprojekt",
+    "Uses the assistant from your default project": "Verwendet den Assistenten aus Ihrem Standardprojekt"
 }

@@ -31,6 +31,7 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
     }
 
     const updateAssistant = assistantId => {
+        // assistantId can be null to clear the assistant (for "use default project assistant" option)
         if (objectType === 'tasks') {
             setTaskAssistant(projectId, objectId, assistantId, !!currentAssistantId)
         } else if (objectType === 'chats') {
@@ -46,7 +47,8 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
         } else if (objectType === 'goals') {
             setGoalAssistant(projectId, objectId, assistantId, !!currentAssistantId)
         } else if (objectType === 'projects') {
-            setProjectAssistant(projectId, assistantId, !!currentAssistantId)
+            // For projects, assistantId can be null/empty to use default project's assistant
+            setProjectAssistant(projectId, assistantId || '', !!currentAssistantId)
         }
     }
 

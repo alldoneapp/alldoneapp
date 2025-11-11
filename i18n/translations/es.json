@@ -1394,6 +1394,8 @@
     "Type the link": "Introduzca el link",
     "The link is invalid": "El enlace es invalido",
     "Project assistant": "Asistente de projecto",
+    "Assistant from default project": "Asistente del proyecto predeterminado",
+    "Uses the assistant from your default project": "Usa el asistente de tu proyecto predeterminado",
     "Assistant tasks": "Tareas del asistente",
     "Select project": "Seleccione el projecto",
     "Observed": "Observada",
