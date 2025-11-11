@@ -8,6 +8,7 @@ import ContactsHelper from '../../../ContactsView/Utils/ContactsHelper'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
+import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function MessageItemHeader({ projectId, message, serverTime, creatorData, highlight }) {
     const dispatch = useDispatch()
@@ -22,9 +23,11 @@ export default function MessageItemHeader({ projectId, message, serverTime, crea
         if (isProjectUser) {
             ContactsHelper.navigateToUserProfile(projectId, creatorId)
         } else {
+            // Get the correct project ID where the assistant actually exists
+            const assistantProjectId = getAssistantProjectId(creatorId, projectId)
             NavigationService.navigate('AssistantDetailedView', {
                 assistantId: creatorId,
-                projectId,
+                projectId: assistantProjectId,
             })
             dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_CUSTOMIZATIONS))
         }

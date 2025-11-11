@@ -153,3 +153,40 @@ const getDefaultAssistantInProject = project => {
     const { defaultAssistant } = store.getState()
     return defaultAssistant
 }
+
+export const getAssistantProjectId = (assistantId, currentProjectId) => {
+    // First check if it's a global assistant
+    if (isGlobalAssistant(assistantId)) {
+        return GLOBAL_PROJECT_ID
+    }
+
+    // Check if assistant exists in the current project
+    const assistantInCurrentProject = getNormalAssistantInProject(currentProjectId, assistantId)
+    if (assistantInCurrentProject) {
+        return currentProjectId
+    }
+
+    // If not found in current project, check if we're using default project's assistant
+    const currentProject = ProjectHelper.getProjectById(currentProjectId)
+    const { defaultProjectId } = store.getState()
+
+    if (currentProject && !currentProject.assistantId && defaultProjectId && currentProjectId !== defaultProjectId) {
+        // Check if assistant exists in default project
+        const assistantInDefaultProject = getNormalAssistantInProject(defaultProjectId, assistantId)
+        if (assistantInDefaultProject) {
+            return defaultProjectId
+        }
+    }
+
+    // Fallback: search all projects
+    const { projectAssistants } = store.getState()
+    const assistantsByProject = Object.keys(projectAssistants)
+
+    for (let i = 0; i < assistantsByProject.length; i++) {
+        const assistant = getNormalAssistantInProject(assistantsByProject[i], assistantId)
+        if (assistant) return assistantsByProject[i]
+    }
+
+    // If still not found, return current project as fallback
+    return currentProjectId
+}
