@@ -118,7 +118,8 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         assistantProject,
         assistant.uid,
         tasks,
-        amountOfButtonOptions
+        amountOfButtonOptions,
+        selectedProject?.id
     )
 
     const hasQuickActions = optionsLikeButtons.length > 0 || showSubmenu

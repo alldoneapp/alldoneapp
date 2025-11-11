@@ -982,7 +982,16 @@ class TasksHelper {
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
         console.log('TasksHelper: Project index:', projectIndex)
 
-        const user = task != null ? await Backend.getUserOrContactBy(projectId, task.userId) : null
+        let user = task != null ? await Backend.getUserOrContactBy(projectId, task.userId) : null
+        // If user not found and task has an assistantId, try finding the assistant across all projects
+        // This handles cases where the assistant is from another project
+        if (!user && task != null && task.userId) {
+            const assistant = getAssistant(task.userId)
+            if (assistant) {
+                user = assistant
+                console.log('TasksHelper: Found assistant via frontend lookup:', user)
+            }
+        }
         console.log('TasksHelper: Task user data:', user)
 
         if (!task) {

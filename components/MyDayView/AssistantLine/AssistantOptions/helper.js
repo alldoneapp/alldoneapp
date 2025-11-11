@@ -3,14 +3,14 @@ import { TASK_TYPE_PROMPT } from '../../../UIComponents/FloatModals/PreConfigTas
 import { shrinkTagText } from '../../../../functions/Utils/parseTextUtils'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { getAssistant, getAssistantInProject } from '../../../AdminPanel/Assistants/assistantsHelper'
-import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import ProjectHelper, { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
-const getOptions = (project, assistantId, tasks) => {
+const getOptions = (project, assistantId, tasks, selectedProjectId) => {
     return tasks.map(task => {
         return {
             id: task.id,
@@ -37,8 +37,16 @@ const getOptions = (project, assistantId, tasks) => {
                         ...(task.taskMetadata || {}),
                         sendWhatsApp: !!task.sendWhatsApp,
                     }
+                    // Use the currently selected project ID instead of the assistant's original project
+                    // This matches the behavior of createBotQuickTopic
+                    const { loggedUser, selectedProjectIndex } = store.getState()
+                    const targetProjectId =
+                        selectedProjectId ||
+                        (checkIfSelectedProject(selectedProjectIndex)
+                            ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
+                            : loggedUser.defaultProjectId)
                     generateTaskFromPreConfig(
-                        project.id,
+                        targetProjectId,
                         task.name,
                         assistantId,
                         task.prompt,
@@ -68,8 +76,14 @@ export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, i
     return calculatedAmount
 }
 
-export const getOptionsPresentationData = (project, defaultAssistantId, tasks, amountOfButtonOptions) => {
-    const options = getOptions(project, defaultAssistantId, tasks)
+export const getOptionsPresentationData = (
+    project,
+    defaultAssistantId,
+    tasks,
+    amountOfButtonOptions,
+    selectedProjectId
+) => {
+    const options = getOptions(project, defaultAssistantId, tasks, selectedProjectId)
     const optionsLikeButtons = options.slice(0, amountOfButtonOptions)
     const optionsInModal = options.slice(amountOfButtonOptions)
     const showSubmenu = optionsInModal.length > 0

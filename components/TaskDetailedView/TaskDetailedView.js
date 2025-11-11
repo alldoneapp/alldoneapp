@@ -52,6 +52,7 @@ import GoldAnimationsContainer from '../RootView/GoldAnimationsContainer'
 import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 
 const TaskDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -97,8 +98,20 @@ const TaskDetailedView = ({ navigation }) => {
     }
 
     const afterAssigneeFetch = user => {
-        user.uid = task.userId
-        dispatch([setAssignee(user)])
+        // If user not found via backend, try finding assistant across all projects
+        // This handles cases where the assistant is from another project
+        if (!user && task?.userId) {
+            const assistant = getAssistant(task.userId)
+            if (assistant) {
+                user = assistant
+            }
+        }
+
+        // Only set assignee if user was found
+        if (user) {
+            user.uid = task.userId
+            dispatch([setAssignee(user)])
+        }
     }
 
     useEffect(() => {
