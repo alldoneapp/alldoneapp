@@ -135,7 +135,15 @@ export const getAssistantLineData = (selectedProject, defaultAssistantId, defaul
     const assistantId =
         selectedProject && selectedProject.assistantId ? selectedProject.assistantId : defaultAssistantId
     const assistant = getAssistant(assistantId)
-    const assistantProject = selectedProject || ProjectHelper.getProjectById(defaultProjectId)
+
+    // Determine the actual project where the assistant lives
+    // If selected project has no assistantId, it's using the default project's assistant
+    const isUsingDefaultProjectAssistant =
+        selectedProject && !selectedProject.assistantId && selectedProject.id !== defaultProjectId && defaultProjectId
+    const assistantProject = isUsingDefaultProjectAssistant
+        ? ProjectHelper.getProjectById(defaultProjectId)
+        : selectedProject || ProjectHelper.getProjectById(defaultProjectId)
     const assistantProjectId = assistantProject ? assistantProject.id : ''
+
     return { assistant, assistantProject, assistantProjectId }
 }
