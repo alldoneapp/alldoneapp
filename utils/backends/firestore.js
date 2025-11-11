@@ -2474,42 +2474,12 @@ export async function uploadNewProject(project, user, userIdsToNotifyByFeed, set
         name: project.name,
     })
 
-    // Create a copy of the default assistant for this project
-    const { defaultAssistant, loggedUser } = store.getState()
-    let newAssistant = null
-
-    if (defaultAssistant && defaultAssistant.uid) {
-        newAssistant = {
-            ...defaultAssistant,
-            uid: getId(),
-            noteIdsByProject: {},
-            lastVisitBoard: {},
-            commentsData: null,
-            displayName: defaultAssistant.displayName.trim(),
-            createdDate: Date.now(),
-            creatorId: user.uid,
-            lastEditionDate: Date.now(),
-            lastEditorId: user.uid,
-        }
-        project.assistantId = newAssistant.uid
-    }
+    // New projects will use the default project's assistant (assistantId remains empty)
+    // This means they'll automatically inherit the assistant from the user's default project
+    // No need to create a copy of the assistant
 
     const batch = new BatchWrapper(db)
     batch.set(db.doc(`projects/${projectId}`), project)
-
-    // Add assistant to batch if created
-    if (newAssistant) {
-        const assistantToStore = { ...newAssistant }
-        delete assistantToStore.uid
-        batch.set(db.doc(`assistants/${projectId}/items/${newAssistant.uid}`), assistantToStore, { merge: true })
-
-        const TasksHelper = require('../../components/TaskListView/Utils/TasksHelper').default
-        const cleanedTitle = TasksHelper.getTaskNameWithoutMeta(newAssistant.displayName)
-        logEvent('new_assistant', {
-            uid: newAssistant.uid,
-            name: cleanedTitle,
-        })
-    }
 
     const updateData = {
         projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
@@ -2529,7 +2499,8 @@ export async function uploadNewProject(project, user, userIdsToNotifyByFeed, set
     if (addingTemplate) {
         store.dispatch(setChatNotificationsInProject(projectId, []))
     } else {
-        const assistants = newAssistant ? [newAssistant] : []
+        // No assistants array since new projects use the default project's assistant
+        const assistants = []
         if (setLikeDefaultProject) {
             store.dispatch(
                 setProjectInitialData({ ...project, id: projectId }, [user], [defaultStream], [], assistants)
