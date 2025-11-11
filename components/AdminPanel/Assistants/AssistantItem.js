@@ -11,6 +11,7 @@ export default function AssistantItem({
     closeEdition,
     refKey,
     onAssistantClick,
+    project,
 }) {
     const setRef = ref => {
         setDismissibleRefs(ref, refKey)
@@ -28,6 +29,7 @@ export default function AssistantItem({
                     projectId={projectId}
                     assistant={assistant}
                     onAssistantClick={onAssistantClick}
+                    project={project}
                 />
             }
             modalComponent={

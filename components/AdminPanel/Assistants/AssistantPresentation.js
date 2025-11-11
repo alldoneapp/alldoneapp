@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View, TouchableOpacity } from 'react-native'
+import { StyleSheet, View, TouchableOpacity, Text } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../styles/global'
@@ -11,9 +11,11 @@ import Backend from '../../../utils/BackendBridge'
 import ObjectNoteTag from '../../Tags/ObjectNoteTag'
 import CommentWrapperTag from './CommentWrapperTag'
 import { isGlobalAssistant } from './assistantsHelper'
+import { translate } from '../../../i18n/TranslationService'
 
-export default function AssistantPresentation({ projectId, assistant, onAssistantClick }) {
+export default function AssistantPresentation({ projectId, assistant, onAssistantClick, project }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
     const [backlinksTasksCount, setBacklinksTasksCount] = useState(0)
     const [backlinksNotesCount, setBacklinksNotesCount] = useState(0)
     const [backlinkTaskObject, setBacklinkTaskObject] = useState(null)
@@ -53,6 +55,9 @@ export default function AssistantPresentation({ projectId, assistant, onAssistan
 
     const isGlobal = isGlobalAssistant(assistant.uid)
 
+    // Show tag when this assistant is explicitly set as the project assistant
+    const isProjectAssistant = project && project.assistantId && project.assistantId === assistant.uid
+
     return (
         <View style={{ flexDirection: 'row' }}>
             <TouchableOpacity
@@ -78,6 +83,11 @@ export default function AssistantPresentation({ projectId, assistant, onAssistan
                 </View>
             </TouchableOpacity>
             <View style={localStyles.tagsArea}>
+                {isProjectAssistant && (
+                    <View style={localStyles.projectAssistantTag}>
+                        <Text style={localStyles.projectAssistantText}>{translate('Project assistant')}</Text>
+                    </View>
+                )}
                 {!isGlobal && (
                     <CommentWrapperTag
                         projectId={projectId}
@@ -139,5 +149,20 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginLeft: 8,
+    },
+    projectAssistantTag: {
+        flexDirection: 'row',
+        backgroundColor: colors.Gray300,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 24,
+        paddingHorizontal: 8,
+        marginRight: 8,
+    },
+    projectAssistantText: {
+        ...styles.subtitle2,
+        color: colors.Text03,
+        marginTop: 2,
     },
 })

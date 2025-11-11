@@ -2,7 +2,14 @@ import React from 'react'
 
 import AssistantItem from './AssistantItem'
 
-export default function AssistantsList({ projectId, assistants, setDismissibleRefs, closeEdition, onAssistantClick }) {
+export default function AssistantsList({
+    projectId,
+    assistants,
+    setDismissibleRefs,
+    closeEdition,
+    onAssistantClick,
+    project,
+}) {
     return (
         <>
             {assistants.map(assistant => (
@@ -14,6 +21,7 @@ export default function AssistantsList({ projectId, assistants, setDismissibleRe
                     closeEdition={closeEdition}
                     refKey={assistant.uid}
                     onAssistantClick={onAssistantClick}
+                    project={project}
                 />
             ))}
         </>

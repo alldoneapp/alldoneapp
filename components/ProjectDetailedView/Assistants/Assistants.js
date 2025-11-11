@@ -129,6 +129,7 @@ export default function Assistants({ project, accessGranted }) {
                 setDismissibleRefs={setDismissibleRefs}
                 closeEdition={closeEdition}
                 onAssistantClick={navigateToAssistantBoard}
+                project={project}
             />
         </View>
     )
