@@ -96,7 +96,20 @@ export default function TaskCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
+            const clientSubmissionTime = Date.now()
+            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
+                timestamp: new Date().toISOString(),
+                submissionTime: clientSubmissionTime,
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                commentLength: comment?.length,
+            })
             await createObjectMessage(projectId, objectId, comment, objectType, STAYWARD_COMMENT, null, null)
+            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
+                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+            })
             if (!assistantEnabled) closeModal()
         }
     }

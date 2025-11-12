@@ -119,6 +119,19 @@ export default function RichCommentModal({
     })
 
     const done = ({ comment, mentions, privacy, hasKarma }) => {
+        const clientSubmissionTime = Date.now()
+        console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
+            timestamp: new Date().toISOString(),
+            submissionTime: clientSubmissionTime,
+            projectId,
+            objectType,
+            objectId,
+            assistantId,
+            assistantEnabled,
+            inTaskModal,
+            commentLength: comment?.length,
+        })
+
         if (assistantEnabled && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
@@ -127,9 +140,15 @@ export default function RichCommentModal({
 
             if (inTaskModal) {
                 processDone(comment.trim(), mentions, privacy, hasKarma)
+                console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
+                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                })
             } else {
                 updateNewAttachmentsData(projectId, comment).then(text => {
                     processDone(text.trim(), mentions, privacy, hasKarma)
+                    console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
+                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                    })
                 })
             }
 

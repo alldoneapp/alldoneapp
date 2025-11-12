@@ -71,23 +71,50 @@ export default function CommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
+            const clientSubmissionTime = Date.now()
             const { taskId, contactId, userId, noteId, goalId, skillId, assistantId } = commentedFeed
 
+            console.log('⏱️ [TIMING] CLIENT: CommentsWrapper addComment called', {
+                timestamp: new Date().toISOString(),
+                submissionTime: clientSubmissionTime,
+                projectId,
+                objectType: taskId
+                    ? 'tasks'
+                    : noteId
+                    ? 'notes'
+                    : goalId
+                    ? 'goals'
+                    : skillId
+                    ? 'skills'
+                    : userId || contactId
+                    ? 'contacts'
+                    : assistantId
+                    ? 'assistants'
+                    : 'unknown',
+                objectId: taskId || noteId || goalId || skillId || userId || contactId || assistantId,
+                assistantId,
+                commentLength: comment?.length,
+            })
+
             if (taskId) {
-                createObjectMessage(projectId, taskId, comment, 'tasks', STAYWARD_COMMENT, null, null, null)
+                await createObjectMessage(projectId, taskId, comment, 'tasks', STAYWARD_COMMENT, null, null, null)
             } else if (noteId) {
-                createObjectMessage(projectId, noteId, comment, 'notes', null, null, null)
+                await createObjectMessage(projectId, noteId, comment, 'notes', null, null, null)
             } else if (goalId) {
-                createObjectMessage(projectId, goalId, comment, 'goals', null, null, null)
+                await createObjectMessage(projectId, goalId, comment, 'goals', null, null, null)
             } else if (skillId) {
-                createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
+                await createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
             } else if (userId) {
-                createObjectMessage(projectId, userId, comment, 'contacts', null, null, null)
+                await createObjectMessage(projectId, userId, comment, 'contacts', null, null, null)
             } else if (contactId) {
-                createObjectMessage(projectId, contactId, comment, 'contacts', null, null, null)
+                await createObjectMessage(projectId, contactId, comment, 'contacts', null, null, null)
             } else if (assistantId) {
-                createObjectMessage(projectId, assistantId, comment, 'assistants', null, null, null)
+                await createObjectMessage(projectId, assistantId, comment, 'assistants', null, null, null)
             }
+
+            console.log('⏱️ [TIMING] CLIENT: CommentsWrapper createObjectMessage completed', {
+                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+            })
 
             extraFunction && extraFunction()
 
