@@ -58,6 +58,19 @@ class FocusTaskService {
     }
 
     /**
+     * Apply timezone offset to a moment instance
+     * @param {Object} momentInstance - Moment instance to apply timezone to
+     * @param {number} timezoneOffset - Timezone offset in minutes
+     * @returns {Object} Moment instance with timezone applied
+     */
+    applyTimezone(momentInstance, timezoneOffset) {
+        if (typeof timezoneOffset === 'number' && !Number.isNaN(timezoneOffset)) {
+            return momentInstance.utcOffset(timezoneOffset)
+        }
+        return momentInstance
+    }
+
+    /**
      * Get current focus task for a user
      * @param {string} userId - User ID
      * @returns {Object|null} Current focus task or null if none set
@@ -139,13 +152,15 @@ class FocusTaskService {
      * @param {string} previousTaskParentGoalId - Previous task's parent goal for prioritization (optional)
      * @param {string} excludeTaskId - Task ID to exclude from selection (optional, used for "force new" feature).
      *                                 When provided, selects randomly from top 10 candidates for variety.
+     * @param {number} timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
      * @returns {Object|null} New focus task or null if none found
      */
     async findAndSetNewFocusTask(
         userId,
         currentProjectId = null,
         previousTaskParentGoalId = null,
-        excludeTaskId = null
+        excludeTaskId = null,
+        timezoneOffset = null
     ) {
         await this.ensureInitialized()
 
@@ -217,15 +232,24 @@ class FocusTaskService {
                 }
             }
 
-            const currentTime = this.options.moment()
-            const fifteenMinutesFromNow = this.options.moment().add(15, 'minutes')
-            const endOfToday = this.options.moment().endOf('day').valueOf()
+            // Apply user's timezone for accurate time-based task selection
+            const currentTime = this.applyTimezone(this.options.moment(), timezoneOffset)
+            const fifteenMinutesFromNow = this.applyTimezone(this.options.moment(), timezoneOffset).add(15, 'minutes')
+            const endOfToday = this.applyTimezone(this.options.moment(), timezoneOffset).endOf('day').valueOf()
+
+            console.log('FocusTaskService: Time calculations with user timezone', {
+                userId,
+                timezoneOffset,
+                currentTime: currentTime.format('YYYY-MM-DD HH:mm:ss'),
+                fifteenMinutesFromNow: fifteenMinutesFromNow.format('YYYY-MM-DD HH:mm:ss'),
+                endOfToday: new Date(endOfToday).toISOString(),
+            })
 
             // Phase 1: Check for upcoming calendar tasks across all user projects
             // Note: Calendar tasks are NOT randomized - we always select the earliest upcoming task
             let earliestUpcomingCalendarTask = null
             let earliestUpcomingCalendarTaskProject = null
-            let earliestStartTime = this.options.moment().add(16, 'minutes')
+            let earliestStartTime = this.applyTimezone(this.options.moment(), timezoneOffset).add(16, 'minutes')
 
             for (const projectId of userProjectIds) {
                 try {
@@ -249,7 +273,11 @@ class FocusTaskService {
                         }
                         if (task.calendarData && task.calendarData.start) {
                             const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
-                            const taskStartTime = this.options.moment(taskStartTimeString)
+                            // Apply timezone to task start time for accurate comparison
+                            const taskStartTime = this.applyTimezone(
+                                this.options.moment(taskStartTimeString),
+                                timezoneOffset
+                            )
                             if (
                                 taskStartTime.isBetween(currentTime, fifteenMinutesFromNow, undefined, '[)') &&
                                 taskStartTime.isBefore(earliestStartTime)
@@ -650,6 +678,7 @@ class FocusTaskService {
      * @param {Object} options - Options object
      * @param {boolean} options.selectMinimalFields - Return minimal task fields only
      * @param {boolean} options.forceNew - Force finding a new/different focus task, skipping current one
+     * @param {number} options.timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
      * @returns {Object} Focus task result
      */
     async getFocusTask(userId, projectId = null, options = {}) {
@@ -657,6 +686,7 @@ class FocusTaskService {
 
         const selectMinimalFields = !!options.selectMinimalFields
         const forceNew = !!options.forceNew
+        const timezoneOffset = options.timezoneOffset || null
 
         let currentFocusTask = await this.getCurrentFocusTask(userId)
         let wasNewTaskSet = false
@@ -666,7 +696,7 @@ class FocusTaskService {
             const excludeTaskId = currentFocusTask?.id || null
 
             // Try to find alternative task
-            const newTask = await this.findAndSetNewFocusTask(userId, projectId, null, excludeTaskId)
+            const newTask = await this.findAndSetNewFocusTask(userId, projectId, null, excludeTaskId, timezoneOffset)
 
             // OPTION 1: If no alternative found, return current task with message
             if (!newTask && currentFocusTask) {
@@ -718,7 +748,7 @@ class FocusTaskService {
             }
         } else if (!currentFocusTask) {
             // Normal flow: No current focus task, find and set a new one
-            currentFocusTask = await this.findAndSetNewFocusTask(userId, projectId)
+            currentFocusTask = await this.findAndSetNewFocusTask(userId, projectId, null, null, timezoneOffset)
             wasNewTaskSet = !!currentFocusTask
         }
 

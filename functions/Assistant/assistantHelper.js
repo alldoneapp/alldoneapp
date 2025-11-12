@@ -486,7 +486,9 @@ async function* convertOpenAIStream(stream) {
     let chunkCount = 0
     let totalContentLength = 0
 
-    console.log('🔧 STREAM CONVERTER: Starting to process OpenAI stream')
+    if (ENABLE_DETAILED_LOGGING) {
+        console.log('🔧 STREAM CONVERTER: Starting to process OpenAI stream')
+    }
 
     for await (const chunk of stream) {
         chunkCount++
@@ -510,7 +512,9 @@ async function* convertOpenAIStream(stream) {
             totalContentLength += delta.content.length
         }
 
-        console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, logData)
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, logData)
+        }
 
         if (!delta && !finishReason) continue
 
@@ -559,14 +563,16 @@ async function* convertOpenAIStream(stream) {
             // Stream is done, yield accumulated tool calls
             const completedToolCalls = Object.values(accumulatedToolCalls)
             if (completedToolCalls.length > 0) {
-                console.log('🔧 STREAM: Yielding completed tool calls:', {
-                    count: completedToolCalls.length,
-                    calls: completedToolCalls.map(tc => ({
-                        id: tc.id,
-                        name: tc.function.name,
-                        argsLength: tc.function.arguments.length,
-                    })),
-                })
+                if (ENABLE_DETAILED_LOGGING) {
+                    console.log('🔧 STREAM: Yielding completed tool calls:', {
+                        count: completedToolCalls.length,
+                        calls: completedToolCalls.map(tc => ({
+                            id: tc.id,
+                            name: tc.function.name,
+                            argsLength: tc.function.arguments.length,
+                        })),
+                    })
+                }
                 yield {
                     content: '',
                     additional_kwargs: {
@@ -576,20 +582,28 @@ async function* convertOpenAIStream(stream) {
             }
             accumulatedToolCalls = {} // Reset for next potential tool calls
         } else if (finishReason === 'stop') {
-            console.log('🔧 STREAM: Stream finished with reason: stop')
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('🔧 STREAM: Stream finished with reason: stop')
+            }
         } else if (finishReason === 'length') {
-            console.log('🔧 STREAM: Stream finished with reason: length (max tokens)')
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('🔧 STREAM: Stream finished with reason: length (max tokens)')
+            }
         } else if (finishReason) {
-            console.log('🔧 STREAM: Stream finished with reason:', finishReason)
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('🔧 STREAM: Stream finished with reason:', finishReason)
+            }
         }
     }
 
-    console.log(`🔧 STREAM CONVERTER: Finished processing stream`, {
-        totalChunks: chunkCount,
-        totalContentLength,
-        hadToolCalls: Object.keys(accumulatedToolCalls).length > 0,
-        toolCallsCount: Object.keys(accumulatedToolCalls).length,
-    })
+    if (ENABLE_DETAILED_LOGGING) {
+        console.log(`🔧 STREAM CONVERTER: Finished processing stream`, {
+            totalChunks: chunkCount,
+            totalContentLength,
+            hadToolCalls: Object.keys(accumulatedToolCalls).length > 0,
+            toolCallsCount: Object.keys(accumulatedToolCalls).length,
+        })
+    }
 }
 
 function formatMessage(objectType, message, assistantId) {
@@ -1299,6 +1313,18 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
         case 'get_focus_task': {
             const { FocusTaskService } = require('../shared/FocusTaskService')
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+
+            // Get user's timezone for proper date/time calculations
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            const userData = userDoc.exists ? userDoc.data() : {}
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
+
+            console.log('📝 GET_FOCUS_TASK TOOL: User timezone info', {
+                userId: creatorId,
+                timezoneOffset,
+                hasTimezone: !!userData?.timezone,
+            })
 
             const focusTaskService = new FocusTaskService({
                 database: admin.firestore(),
@@ -1317,6 +1343,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const result = await focusTaskService.getFocusTask(creatorId, targetProjectId, {
                 selectMinimalFields: true,
                 forceNew: forceNew,
+                timezoneOffset: timezoneOffset,
             })
 
             return {
@@ -1715,8 +1742,8 @@ async function storeChunks(
         // Batch update mechanism to reduce Firestore writes
         let pendingUpdate = null
         let updateTimeout = null
-        const BATCH_UPDATE_DELAY_MS = 150 // Update every 150ms max
-        const BATCH_UPDATE_CHUNK_THRESHOLD = 3 // Or every 3 chunks, whichever comes first
+        const BATCH_UPDATE_DELAY_MS = 300 // Update every 300ms max (increased for better performance)
+        const BATCH_UPDATE_CHUNK_THRESHOLD = 10 // Or every 10 chunks, whichever comes first (increased for better performance)
 
         const flushPendingUpdate = async () => {
             if (pendingUpdate) {
@@ -1802,20 +1829,24 @@ async function storeChunks(
 
             // If a tool was already executed, skip all remaining chunks from the stream
             if (toolAlreadyExecuted) {
-                console.log('Tool already executed, discarding remaining stream chunk')
+                if (ENABLE_DETAILED_LOGGING) {
+                    console.log('Tool already executed, discarding remaining stream chunk')
+                }
                 continue
             }
 
             // Handle native OpenAI tool calls (from GPT models with native tool calling)
             if (chunk.additional_kwargs?.tool_calls && Array.isArray(chunk.additional_kwargs.tool_calls)) {
-                console.log('🔧 NATIVE TOOL CALL: Detected native tool call', {
-                    toolCallsCount: chunk.additional_kwargs.tool_calls.length,
-                    toolCalls: chunk.additional_kwargs.tool_calls.map(tc => ({
-                        id: tc.id,
-                        name: tc.function?.name,
-                        argsLength: tc.function?.arguments?.length,
-                    })),
-                })
+                if (ENABLE_DETAILED_LOGGING) {
+                    console.log('🔧 NATIVE TOOL CALL: Detected native tool call', {
+                        toolCallsCount: chunk.additional_kwargs.tool_calls.length,
+                        toolCalls: chunk.additional_kwargs.tool_calls.map(tc => ({
+                            id: tc.id,
+                            name: tc.function?.name,
+                            argsLength: tc.function?.arguments?.length,
+                        })),
+                    })
+                }
 
                 // Check if we have conversation history to resume with
                 if (!conversationHistory || !modelKey || !temperatureKey) {
@@ -2103,7 +2134,9 @@ async function storeChunks(
                     isLoading: true,
                     isThinking: false,
                 })
-                console.log('Updated comment with loading state')
+                if (ENABLE_DETAILED_LOGGING) {
+                    console.log('Updated comment with loading state')
+                }
                 continue
             }
 
@@ -2120,9 +2153,11 @@ async function storeChunks(
                     isThinking: false,
                     isLoading: false,
                 })
-                console.log('Cleared thinking mode and updated with replacement content:', {
-                    contentLength: commentText.length,
-                })
+                if (ENABLE_DETAILED_LOGGING) {
+                    console.log('Cleared thinking mode and updated with replacement content:', {
+                        contentLength: commentText.length,
+                    })
+                }
                 continue
             }
 
@@ -2185,27 +2220,35 @@ async function storeChunks(
         // Flush any pending updates before final operations
         await flushPendingUpdate()
 
-        console.log('Finished processing stream chunks:', {
-            totalChunks: chunkCount,
-            finalCommentLength: commentText.length,
-        })
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Finished processing stream chunks:', {
+                totalChunks: chunkCount,
+                finalCommentLength: commentText.length,
+            })
+        }
 
         // Simple validation: warn if assistant mentioned actions without tool calls
         validateToolCallConsistency(commentText)
 
         const lastComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true)
-        console.log('Generated last comment:', {
-            hasLastComment: !!lastComment,
-            lastCommentLength: lastComment?.length,
-            originalLength: commentText.length,
-        })
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Generated last comment:', {
+                hasLastComment: !!lastComment,
+                lastCommentLength: lastComment?.length,
+                originalLength: commentText.length,
+            })
+        }
 
         promises = []
 
-        console.log('Updating last assistant comment data...')
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Updating last assistant comment data...')
+        }
         promises.push(updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId))
 
-        console.log('Generating notifications...')
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Generating notifications...')
+        }
         promises.push(
             generateNotifications(
                 projectId,
@@ -2224,15 +2267,17 @@ async function storeChunks(
             )
         )
 
-        console.log('Updating chat object...')
-        console.log('KW SPECIAL Chat update data:', {
-            objectId,
-            projectId,
-            assistantId,
-            userIdsToNotify,
-            members: [userIdsToNotify[0], assistantId],
-            path: `chatObjects/${projectId}/chats/${objectId}`,
-        })
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Updating chat object...')
+            console.log('KW SPECIAL Chat update data:', {
+                objectId,
+                projectId,
+                assistantId,
+                userIdsToNotify,
+                members: [userIdsToNotify[0], assistantId],
+                path: `chatObjects/${projectId}/chats/${objectId}`,
+            })
+        }
         promises.push(
             admin
                 .firestore()
@@ -2247,7 +2292,9 @@ async function storeChunks(
                 })
         )
 
-        console.log('Updating last comment data...')
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Updating last comment data...')
+        }
         promises.push(
             updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, commentText, STAYWARD_COMMENT)
         )

@@ -1167,6 +1167,18 @@ class AlldoneSimpleMCPServer {
         const userId = await this.getAuthenticatedUserForClient(request)
         const db = admin.firestore()
 
+        // Get user's timezone for proper date/time calculations
+        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+        const userDoc = await db.collection('users').doc(userId).get()
+        const userData = userDoc.exists ? userDoc.data() : {}
+        const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
+
+        console.log('📝 GET_FOCUS_TASK: User timezone info', {
+            userId,
+            timezoneOffset,
+            hasTimezone: !!userData?.timezone,
+        })
+
         // Initialize FocusTaskService if not already done
         if (!this.focusTaskService) {
             const { FocusTaskService } = require('../shared/FocusTaskService')
@@ -1183,6 +1195,7 @@ class AlldoneSimpleMCPServer {
             const result = await this.focusTaskService.getFocusTask(userId, projectId, {
                 selectMinimalFields: true,
                 forceNew: forceNew,
+                timezoneOffset: timezoneOffset,
             })
 
             return {
