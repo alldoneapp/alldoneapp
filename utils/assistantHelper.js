@@ -336,11 +336,26 @@ const createTopicForPreConfigTask = async (
             taskMetadata,
         }
 
+        const clientSubmissionTime = Date.now()
+        console.log('⏱️ [TIMING] CLIENT: Pre-config task submitted, calling generatePreConfigTaskResultSecondGen', {
+            timestamp: new Date().toISOString(),
+            submissionTime: clientSubmissionTime,
+            userId: loggedUser.uid,
+            projectId,
+            taskId,
+            assistantId,
+            promptLength: prompt?.length,
+        })
         console.log('Calling generatePreConfigTaskResultSecondGen with params:', functionParams)
 
         try {
             await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
                 timeout: 540000, // 9 minutes (540 seconds) to match backend timeout
+            })
+            const clientCallCompleteTime = Date.now()
+            console.log('⏱️ [TIMING] CLIENT: generatePreConfigTaskResultSecondGen completed', {
+                timeSinceSubmission: `${clientCallCompleteTime - clientSubmissionTime}ms`,
+                timestamp: new Date().toISOString(),
             })
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
         } catch (error) {

@@ -23,6 +23,20 @@ async function generatePreConfigTaskResult(
     aiSettings,
     taskMetadata = null
 ) {
+    const functionStartTime = Date.now()
+    console.log('🚀 [TIMING] generatePreConfigTaskResult START', {
+        timestamp: new Date().toISOString(),
+        startTime: functionStartTime,
+        userId,
+        projectId,
+        objectId,
+        assistantId,
+        promptLength: prompt?.length,
+        language,
+        hasAiSettings: !!aiSettings,
+        aiSettingsProvided: aiSettings,
+        taskMetadata,
+    })
     console.log('🤖 ASSISTANT TASK EXECUTION: Starting task generation:', {
         userId,
         projectId,
@@ -53,6 +67,8 @@ async function generatePreConfigTaskResult(
         )
     }
 
+    // Step 1: Fetch settings and user data
+    const step1Start = Date.now()
     const promises = []
     // Evaluate if aiSettings provided are valid (non-empty)
     const hasValidAiSettings = aiSettings && aiSettings.model && aiSettings.temperature
@@ -76,6 +92,14 @@ async function generatePreConfigTaskResult(
     }
     promises.push(getUserData(userId))
     const [settings, user] = await Promise.all(promises)
+    const step1Duration = Date.now() - step1Start
+
+    console.log('✅ [TIMING] Step 1 - Settings & User fetch completed', {
+        duration: `${step1Duration}ms`,
+        elapsed: `${Date.now() - functionStartTime}ms`,
+        hasSettings: !!settings,
+        userGold: user?.gold,
+    })
     console.log('🤖 ASSISTANT TASK EXECUTION: Retrieved settings and user:', {
         settings: {
             model: settings?.model,
@@ -131,6 +155,8 @@ async function generatePreConfigTaskResult(
             userTimezoneOffset = user.preferredTimezone
         }
 
+        // Step 2: Prepare context messages
+        const step2Start = Date.now()
         addBaseInstructions(
             contextMessages,
             displayName,
@@ -140,15 +166,33 @@ async function generatePreConfigTaskResult(
             userTimezoneOffset
         )
         contextMessages.push(['user', parseTextForUseLiKePrompt(prompt)])
+        const step2Duration = Date.now() - step2Start
+
+        console.log('✅ [TIMING] Step 2 - Context preparation completed', {
+            duration: `${step2Duration}ms`,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+            contextMessagesCount: contextMessages.length,
+            model,
+            temperature,
+        })
         console.log('Prepared chat prompt with model and temperature:', { model, temperature })
 
         const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : []
 
-        // Fetch common data in parallel with API call to reduce time-to-first-token
+        // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token
+        const step3Start = Date.now()
         const [stream, commonData] = await Promise.all([
             interactWithChatStream(contextMessages, model, temperature, allowedTools),
             getCommonData(projectId, 'tasks', objectId),
         ])
+        const step3Duration = Date.now() - step3Start
+
+        console.log('✅ [TIMING] Step 3 - Stream creation & Common Data fetch (parallel)', {
+            duration: `${step3Duration}ms`,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+            hasStream: !!stream,
+            hasCommonData: !!commonData,
+        })
 
         console.log('KW Special Calling storeBotAnswerStream with parameters:', {
             projectId,
@@ -165,6 +209,8 @@ async function generatePreConfigTaskResult(
             hasPreFetchedCommonData: !!commonData,
         })
 
+        // Step 4: Process stream
+        const step4Start = Date.now()
         const aiCommentText = await storeBotAnswerStream(
             projectId,
             'tasks',
@@ -182,10 +228,22 @@ async function generatePreConfigTaskResult(
             model, // modelKey
             temperature, // temperatureKey
             allowedTools,
-            commonData // Pass pre-fetched common data
+            commonData, // Pass pre-fetched common data
+            functionStartTime // Pass function start time for time-to-first-token tracking
         )
+        const step4Duration = Date.now() - step4Start
 
+        console.log('✅ [TIMING] Step 4 - Stream processing completed', {
+            duration: `${step4Duration}ms`,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+            hasComment: !!aiCommentText,
+            commentLength: aiCommentText?.length,
+        })
+
+        // Step 5: Gold reduction
+        let step5Duration = null
         if (aiCommentText) {
+            const step5Start = Date.now()
             console.log('🤖 ASSISTANT TASK EXECUTION: About to reduce gold:', {
                 userId,
                 userCurrentGold: user.gold,
@@ -197,9 +255,27 @@ async function generatePreConfigTaskResult(
                     : 'unknown',
             })
             await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+            step5Duration = Date.now() - step5Start
+
+            console.log('✅ [TIMING] Step 5 - Gold reduction completed', {
+                duration: `${step5Duration}ms`,
+                elapsed: `${Date.now() - functionStartTime}ms`,
+            })
         } else {
             console.log('🤖 ASSISTANT TASK EXECUTION: No AI comment text generated, skipping gold reduction')
         }
+
+        const totalDuration = Date.now() - functionStartTime
+        console.log('🎯 [TIMING] generatePreConfigTaskResult COMPLETE', {
+            totalDuration: `${totalDuration}ms`,
+            breakdown: {
+                settingsAndUserFetch: `${step1Duration}ms`,
+                contextPreparation: `${step2Duration}ms`,
+                streamCreationAndCommonData: `${step3Duration}ms`,
+                streamProcessing: `${step4Duration}ms`,
+                goldReduction: step5Duration ? `${step5Duration}ms` : 'N/A',
+            },
+        })
 
         // Send WhatsApp notification if enabled in task metadata
         console.log('WhatsApp notification config:', {

@@ -573,6 +573,17 @@ export async function createObjectMessage(
         await Promise.all(promises).then(() => {
             // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
             if (!editingCommentId && assistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
+                const clientSubmissionTime = Date.now()
+                console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
+                    timestamp: new Date().toISOString(),
+                    submissionTime: clientSubmissionTime,
+                    userId: creatorId,
+                    messageId: commentId,
+                    projectId,
+                    objectType,
+                    objectId,
+                    assistantId,
+                })
                 runHttpsCallableFunction('askToBotSecondGen', {
                     userId: creatorId,
                     messageId: commentId,
@@ -585,6 +596,19 @@ export async function createObjectMessage(
                     assistantId,
                     followerIds,
                 })
+                    .then(() => {
+                        const clientCallCompleteTime = Date.now()
+                        console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated', {
+                            timeSinceSubmission: `${clientCallCompleteTime - clientSubmissionTime}ms`,
+                            timestamp: new Date().toISOString(),
+                        })
+                    })
+                    .catch(error => {
+                        console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
+                            error: error.message,
+                            timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                        })
+                    })
             }
         })
     }

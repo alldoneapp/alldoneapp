@@ -160,7 +160,8 @@ async function askToOpenAIBotOptimized(
             model,
             temperature,
             allowedTools,
-            commonData // Pass pre-fetched data
+            commonData, // Pass pre-fetched data
+            functionStartTime // Pass function start time for time-to-first-token tracking
         )
         const step5Duration = Date.now() - step5Start
 
@@ -275,7 +276,8 @@ async function storeBotAnswerStreamOptimized(
     modelKey,
     temperatureKey,
     allowedTools,
-    commonData // Pre-fetched data
+    commonData, // Pre-fetched data
+    functionStartTime = null // Function start time for time-to-first-token tracking
 ) {
     const { project, chat, chatLink } = commonData || (await getCommonDataOptimized(projectId, objectType, objectId))
 
@@ -300,7 +302,8 @@ async function storeBotAnswerStreamOptimized(
         modelKey,
         temperatureKey,
         allowedTools,
-        commonData // Pass pre-fetched common data to reduce time-to-first-token
+        commonData, // Pass pre-fetched common data to reduce time-to-first-token
+        functionStartTime // Pass function start time for time-to-first-token tracking
     )
 }
 

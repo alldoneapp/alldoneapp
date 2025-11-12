@@ -1145,13 +1145,21 @@ exports.askToBotSecondGen = onCall(
     },
     async request => {
         const functionEntryTime = Date.now()
+        const { data, auth } = request
+
         console.log('🎯 [TIMING] askToBotSecondGen ENTRY POINT', {
             timestamp: new Date().toISOString(),
-            hasAuth: !!request.auth,
-            dataKeys: Object.keys(request.data || {}),
+            entryTime: functionEntryTime,
+            hasAuth: !!auth,
+            dataKeys: Object.keys(data || {}),
+            userId: data?.userId,
+            messageId: data?.messageId,
+            projectId: data?.projectId,
+            objectType: data?.objectType,
+            objectId: data?.objectId,
+            assistantId: data?.assistantId,
         })
 
-        const { data, auth } = request
         if (auth) {
             console.log(`📊 [TIMING] Module require (pre-loaded): 0ms`)
             const {
@@ -1279,8 +1287,21 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
         cors: true,
     },
     async request => {
-        console.log('🚀 generatePreConfigTaskResultSecondGen called in emulator!')
+        const functionEntryTime = Date.now()
         const { data, auth } = request
+
+        console.log('🎯 [TIMING] generatePreConfigTaskResultSecondGen ENTRY POINT', {
+            timestamp: new Date().toISOString(),
+            entryTime: functionEntryTime,
+            hasAuth: !!auth,
+            userId: data?.userId,
+            projectId: data?.projectId,
+            taskId: data?.taskId,
+            assistantId: data?.assistantId,
+            promptLength: data?.prompt?.length,
+        })
+        console.log('🚀 generatePreConfigTaskResultSecondGen called in emulator!')
+
         if (auth) {
             const { generatePreConfigTaskResult } = require('./Assistant/assistantPreConfigTaskTopic')
             const {

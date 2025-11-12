@@ -1753,13 +1753,26 @@ async function storeChunks(
         let chunksSinceLastUpdate = 0
         console.log('🚀 [TIMING] Starting stream processing...')
 
+        // Track time-to-first-token from function start (use global if available)
+        const timeToFirstTokenStart = globalFunctionStartTime || streamProcessStart
+
         for await (const chunk of stream) {
             chunkCount++
             const chunkTime = Date.now()
 
             if (!firstChunkTime) {
                 firstChunkTime = chunkTime
-                console.log(`⚡ [TIMING] First chunk received: ${firstChunkTime - streamProcessStart}ms`)
+                const timeToFirstToken = firstChunkTime - timeToFirstTokenStart
+                const timeFromStreamStart = firstChunkTime - streamProcessStart
+                const timeFromInitialSetup = firstChunkTime - chunksStartTime
+                console.log(`⚡ [TIMING] FIRST TOKEN RECEIVED`, {
+                    timeToFirstToken: `${timeToFirstToken}ms`,
+                    timeFromStreamStart: `${timeFromStreamStart}ms`,
+                    timeFromInitialSetup: `${timeFromInitialSetup}ms`,
+                    timestamp: new Date().toISOString(),
+                    functionStartTime: timeToFirstTokenStart,
+                    firstChunkTime: firstChunkTime,
+                })
             }
 
             console.log(`📦 [TIMING] Chunk #${chunkCount}:`, {
@@ -2273,6 +2286,9 @@ async function getCommonData(projectId, objectType, objectId) {
     return { project, chat, chatLink }
 }
 
+// Global variable to track function start time for time-to-first-token calculation
+let globalFunctionStartTime = null
+
 async function storeBotAnswerStream(
     projectId,
     objectType,
@@ -2290,9 +2306,15 @@ async function storeBotAnswerStream(
     modelKey = null,
     temperatureKey = null,
     allowedTools = [],
-    commonData = null // Optional pre-fetched common data to reduce time-to-first-token
+    commonData = null, // Optional pre-fetched common data to reduce time-to-first-token
+    functionStartTime = null // Optional function start time for time-to-first-token tracking
 ) {
     const streamProcessStart = Date.now()
+    // Store function start time globally for time-to-first-token tracking
+    if (functionStartTime) {
+        globalFunctionStartTime = functionStartTime
+    }
+
     console.log('💾 [TIMING] storeBotAnswerStream START', {
         timestamp: new Date().toISOString(),
         projectId,
@@ -2301,6 +2323,7 @@ async function storeBotAnswerStream(
         assistantId,
         hasStream: !!stream,
         hasPreFetchedCommonData: !!commonData,
+        functionStartTime: functionStartTime || globalFunctionStartTime,
     })
 
     try {
