@@ -117,24 +117,26 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
         if (removedGlobalAssistantIds.includes(newProject.assistantId))
             promises.push(setProjectAssistant(newProject.id, ''))
     }
-    if (newProject.isTemplate) {
-        const addedGlobalAssistantIds = difference(newProject.globalAssistantIds, oldProject.globalAssistantIds)
-        const addedSomeGlobalAssistants = addedGlobalAssistantIds.length > 0
-        const updatedProjectAssistant = oldProject.assistantId !== newProject.assistantId
-        if (removedSomeGlobalAssistants || addedSomeGlobalAssistants || updatedProjectAssistant) {
-            const guideIds = await getTemplateGuideIds(projectId, admin)
-            if (removedSomeGlobalAssistants)
-                promises.push(removeSomeGlobalAssistantFromTemplateGuides(guideIds, removedGlobalAssistantIds, admin))
-            if (addedSomeGlobalAssistants)
-                promises.push(addSomeGlobalAssistantToTemplateGuides(guideIds, addedGlobalAssistantIds, admin))
-            if (updatedProjectAssistant) {
-                const isGlobalAssistant = newProject.globalAssistantIds.includes(newProject.assistantId)
-                promises.push(
-                    updateProjectAssistantToTemplateGuides(guideIds, newProject.assistantId, isGlobalAssistant, admin)
-                )
-            }
-        }
-    }
+    
+    // DEPRECATED: Template-to-guides cascade feature has been deactivated
+    // if (newProject.isTemplate) {
+    //     const addedGlobalAssistantIds = difference(newProject.globalAssistantIds, oldProject.globalAssistantIds)
+    //     const addedSomeGlobalAssistants = addedGlobalAssistantIds.length > 0
+    //     const updatedProjectAssistant = oldProject.assistantId !== newProject.assistantId
+    //     if (removedSomeGlobalAssistants || addedSomeGlobalAssistants || updatedProjectAssistant) {
+    //         const guideIds = await getTemplateGuideIds(projectId, admin)
+    //         if (removedSomeGlobalAssistants)
+    //             promises.push(removeSomeGlobalAssistantFromTemplateGuides(guideIds, removedGlobalAssistantIds, admin))
+    //         if (addedSomeGlobalAssistants)
+    //             promises.push(addSomeGlobalAssistantToTemplateGuides(guideIds, addedGlobalAssistantIds, admin))
+    //         if (updatedProjectAssistant) {
+    //             const isGlobalAssistant = newProject.globalAssistantIds.includes(newProject.assistantId)
+    //             promises.push(
+    //                 updateProjectAssistantToTemplateGuides(guideIds, newProject.assistantId, isGlobalAssistant, admin)
+    //             )
+    //         }
+    //     }
+    // }
 
     if (!newProject.activeFullSearch && !oldProject.active && newProject.active && !newProject.parentTemplateId) {
         promises.push(startProjectIndexationInAlgolia([newProject], null))
