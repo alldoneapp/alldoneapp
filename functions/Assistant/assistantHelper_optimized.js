@@ -43,7 +43,7 @@ async function getOptimizedContextMessages(
     const admin = require('firebase-admin')
 
     // Start all operations in parallel
-    const [commentDocs, notesContext] = await Promise.all([
+    const parallelPromises = [
         // Fetch messages
         admin
             .firestore()
@@ -52,12 +52,28 @@ async function getOptimizedContextMessages(
             .limit(10) // Reduced from 50 to improve speed
             .get()
             .then(snapshot => snapshot.docs),
+    ]
 
-        // Fetch mentioned notes context if needed
-        userId && messageId
-            ? fetchMentionedNotesContextOptimized(messageId, userId, projectId, commentDocs)
-            : Promise.resolve(null),
-    ])
+    // If we need notes context, fetch the specific message in parallel
+    if (userId && messageId) {
+        parallelPromises.push(
+            admin
+                .firestore()
+                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${messageId}`)
+                .get()
+                .then(async doc => {
+                    if (!doc.exists) return null
+                    const commentText = doc.data().commentText
+                    const { fetchMentionedNotesContext } = require('./noteContextHelper')
+                    return await fetchMentionedNotesContext(commentText, userId, projectId)
+                })
+                .catch(() => null)
+        )
+    } else {
+        parallelPromises.push(Promise.resolve(null))
+    }
+
+    const [commentDocs, notesContext] = await Promise.all(parallelPromises)
 
     // Process messages
     const messages = []
