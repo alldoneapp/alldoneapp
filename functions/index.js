@@ -1134,7 +1134,7 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
 exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GiB', // Increased for better performance
+        memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 2 instances warm to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
         region: 'europe-west1',
@@ -1271,7 +1271,7 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
 exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GiB', // Increased for better performance
+        memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
@@ -1315,7 +1315,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
 exports.generateBotAdvaiceSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '2GiB', // Increased for better performance
+        memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
@@ -1932,7 +1932,7 @@ exports.addCalendarEventsToTasksSecondGen = onCall(
     {
         timeoutSeconds: 540,
         memory: '512MiB',
-        minInstances: 0, //inProduction ? 5 : 1,
+        // minInstances: 0, //inProduction ? 5 : 1,
         region: 'europe-west1',
         cors: true,
     },
@@ -2158,7 +2158,7 @@ exports.getLinkPreviewDataSecondGen = onRequest(
     {
         timeoutSeconds: 540,
         memory: '512MiB',
-        minInstances: 0, //inProduction ? 5 : 1,
+        // minInstances: 0, //inProduction ? 5 : 1,
         region: 'europe-west1',
     },
     async (req, res) => {
