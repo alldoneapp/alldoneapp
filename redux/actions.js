@@ -1895,6 +1895,14 @@ export const setSomedayTasksExpanded = somedayTasksExpanded => {
     return action
 }
 
+export const setLaterTasksExpandState = laterTasksExpandState => {
+    const action = {
+        type: 'Set later tasks expand state',
+        laterTasksExpandState,
+    }
+    return action
+}
+
 export const setOpenTasksAmount = openTasksAmount => {
     const action = {
         type: 'Set open tasks amount',
@@ -2742,13 +2750,21 @@ export const setLastTaskAddedId = lastTaskAddedId => {
     return action
 }
 
-export const setOpenTasksShowMoreDataInProject = (projectId, tasksType, workstreamId, inSomeday, hasTasks) => {
+export const setOpenTasksShowMoreDataInProject = (
+    projectId,
+    tasksType,
+    workstreamId,
+    inSomeday,
+    hasTasks,
+    inTomorrow
+) => {
     const action = {
         type: 'Set open tasks show more data in project',
         projectId,
         tasksType,
         workstreamId,
         inSomeday,
+        inTomorrow,
         hasTasks,
     }
     return action

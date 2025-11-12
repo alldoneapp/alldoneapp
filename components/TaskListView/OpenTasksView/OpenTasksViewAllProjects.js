@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import OpenTasksByProject from './OpenTasksByProject'
-import { resetLoadingData, setLaterTasksExpanded, setSomedayTasksExpanded } from '../../../redux/actions'
+import { resetLoadingData, setLaterTasksExpandState } from '../../../redux/actions'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
@@ -48,7 +48,7 @@ export default function OpenTasksViewAllProjects() {
 
     useEffect(() => {
         return () => {
-            dispatch([setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
+            dispatch(setLaterTasksExpandState(0))
         }
     }, [])
 

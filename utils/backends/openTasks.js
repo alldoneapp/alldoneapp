@@ -246,7 +246,8 @@ const getOpenTasksQuery = (
     showSomedayTasks,
     currentUserId,
     loggedUser,
-    endOfDay
+    endOfDay,
+    endOfTomorrow
 ) => {
     const { uid: loggedUserId, isAnonymous } = loggedUser
     let query = getDb().collection(`items/${projectId}/tasks`).where('inDone', '==', false)
@@ -259,8 +260,23 @@ const getOpenTasksQuery = (
             .where('currentReviewerId', '==', currentUserId)
             .where('isPublicFor', 'array-contains-any', allowUserIds)
 
-        if (!showLaterTasks && !showSomedayTasks) query = query.where('dueDate', '<=', endOfDay)
-        if (showLaterTasks && !showSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+        // Support three expand states:
+        // State 0 (both false): only today (dueDate <= endOfDay)
+        // State 1 (showLaterTasks=true but showSomedayTasks=false): today + tomorrow (dueDate <= endOfTomorrow)
+        // State 2 (both true): all tasks including someday (no date filter)
+        if (!showLaterTasks && !showSomedayTasks) {
+            // State 0: Only today
+            query = query.where('dueDate', '<=', endOfDay)
+        } else if (showLaterTasks && !showSomedayTasks) {
+            // State 1: Today + tomorrow only (new behavior)
+            if (endOfTomorrow) {
+                query = query.where('dueDate', '<=', endOfTomorrow).where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+            } else {
+                // Fallback to old behavior (all future tasks) if endOfTomorrow not provided
+                query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+            }
+        }
+        // State 2 (both true): No date filter, fetch all tasks including someday
     }
     return query
 }
@@ -288,6 +304,7 @@ const watchUserOpenTasks = (
 
     const date = moment()
     const endOfDay = date.endOf('day').valueOf()
+    const endOfTomorrow = moment().endOf('day').add(1, 'day').valueOf()
     const dayDateFormated = TODAY_DATE
 
     let query = getOpenTasksQuery(
@@ -297,7 +314,8 @@ const watchUserOpenTasks = (
         showSomedayTasks,
         currentUserId,
         loggedUser,
-        endOfDay
+        endOfDay,
+        endOfTomorrow
     )
 
     let cacheChanges = []
@@ -1046,7 +1064,8 @@ const getOpenStreamAndUserTasksQuery = (
     showSomedayTasks,
     endOfDay,
     loggedUser,
-    assigneeUserId
+    assigneeUserId,
+    endOfTomorrow
 ) => {
     const { uid: loggedUserId, isAnonymous } = loggedUser
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
@@ -1057,8 +1076,19 @@ const getOpenStreamAndUserTasksQuery = (
         .where('userId', '==', assigneeUserId)
         .where('isPublicFor', 'array-contains-any', allowUserIds)
 
-    if (!showLaterTasks && !showSomedayTasks) query = query.where('dueDate', '<=', endOfDay)
-    if (showLaterTasks && !showSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+    // Support three expand states (same as getOpenTasksQuery)
+    if (!showLaterTasks && !showSomedayTasks) {
+        // State 0: Only today
+        query = query.where('dueDate', '<=', endOfDay)
+    } else if (showLaterTasks && !showSomedayTasks) {
+        // State 1: Today + tomorrow only
+        if (endOfTomorrow) {
+            query = query.where('dueDate', '<=', endOfTomorrow).where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+        } else {
+            query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+        }
+    }
+    // State 2: No date filter
 
     return query
 }
@@ -1083,6 +1113,7 @@ const watchStreamAndUserOpenTasks = (
 
     const date = moment()
     const endOfDay = date.endOf('day').valueOf()
+    const endOfTomorrow = moment().endOf('day').add(1, 'day').valueOf()
     const dayDateFormated = TODAY_DATE
 
     let query = getOpenStreamAndUserTasksQuery(
@@ -1091,7 +1122,8 @@ const watchStreamAndUserOpenTasks = (
         showSomedayTasks,
         endOfDay,
         loggedUser,
-        assigneeUserId
+        assigneeUserId,
+        endOfTomorrow
     )
 
     let cacheChanges = []
@@ -1224,6 +1256,7 @@ function watchEmptyGoals(
 
     const date = moment()
     const endOfDay = date.endOf('day').valueOf()
+    const endOfTomorrow = moment().endOf('day').add(1, 'day').valueOf()
 
     const ownerId = getOwnerId(projectId, currentUserId)
     let cacheChanges = []
@@ -1245,6 +1278,7 @@ function watchEmptyGoals(
                     mergedChanges,
                     currentUserId,
                     endOfDay,
+                    endOfTomorrow,
                     storedTasks,
                     estimationByDate,
                     amountOfTasksByDate,
@@ -1274,6 +1308,7 @@ const processEmptyGoalChanges = (
     changes,
     currentUserId,
     endOfDay,
+    endOfTomorrow,
     storedTasks,
     estimationByDate,
     amountOfTasksByDate,
@@ -1292,6 +1327,7 @@ const processEmptyGoalChanges = (
         const userReminderDate = assigneesReminderDate[currentUserId]
         const goalInBacklog = userReminderDate === BACKLOG_DATE_NUMERIC
         const goalIsTodayOrOverdue = userReminderDate <= endOfDay
+        const goalIsTomorrow = endOfTomorrow && userReminderDate > endOfDay && userReminderDate <= endOfTomorrow
         const goalIsLater = userReminderDate > endOfDay && !goalInBacklog
         const date = goalIsTodayOrOverdue
             ? dayDateFormated
@@ -1311,7 +1347,16 @@ const processEmptyGoalChanges = (
             safeGoalIsPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
             (!isAnonymous && safeGoalIsPublicFor.includes(loggedUserId))
         const isNotDynamicCompleted = progress !== DYNAMIC_PERCENT || dynamicProgress !== 100
-        const needToBeListedInThisDate = showSomedayTasks || goalIsTodayOrOverdue || (showLaterTasks && goalIsLater)
+
+        // Support three expand states:
+        // State 0 (both false): only today/overdue
+        // State 1 (showLaterTasks=true, showSomedayTasks=false): today + tomorrow only
+        // State 2 (both true): all including someday
+        const needToBeListedInThisDate =
+            goalIsTodayOrOverdue ||
+            (showLaterTasks && !showSomedayTasks && goalIsTomorrow) ||
+            (showLaterTasks && showSomedayTasks && goalIsLater) ||
+            (showSomedayTasks && goalInBacklog)
         let needToProcessTheGoal = isPublic && isNotDynamicCompleted && needToBeListedInThisDate
         const addTask = () => {
             if (needToProcessTheGoal) {
@@ -1390,7 +1435,8 @@ const unwatchEmptyGoalsWatcher = (projectId, currentUserId, watcher) => {
 export const contractOpenTasks = (projectId, instanceKey, openTasks, updateTaks) => {
     updateTaks([openTasks[0]], false)
     watchOpenTasks(projectId, updateTaks, false, false, true, instanceKey)
-    store.dispatch([setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
+    // State is managed by the calling component (AllProjectsShowMoreButtonContainer)
+    // so we don't dispatch here to avoid duplicate state updates
 }
 
 export const contractSomedayOpenTasks = (projectId, instanceKey, openTasks, updateTaks) => {

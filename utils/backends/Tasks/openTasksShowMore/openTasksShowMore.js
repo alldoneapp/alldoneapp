@@ -16,22 +16,41 @@ import store from '../../../../redux/store'
 const getProjectDataStructure = (projectId, newOpenTasksShowMoreData) => {
     if (newOpenTasksShowMoreData[projectId]) return newOpenTasksShowMoreData[projectId]
     return {
-        [TO_ATTEND_TASKS_MY_DAY_TYPE]: { hasFutureTasks: false, hasSomedayTasks: false },
-        [OBSERVED_TASKS_MY_DAY_TYPE]: { hasFutureTasks: false, hasSomedayTasks: false },
+        [TO_ATTEND_TASKS_MY_DAY_TYPE]: { hasTomorrowTasks: false, hasFutureTasks: false, hasSomedayTasks: false },
+        [OBSERVED_TASKS_MY_DAY_TYPE]: { hasTomorrowTasks: false, hasFutureTasks: false, hasSomedayTasks: false },
         [WORKSTREAM_TASKS_MY_DAY_TYPE]: {},
-        [GOALS_MY_DAY_TYPE]: { hasFutureTasks: false, hasSomedayTasks: false },
+        [GOALS_MY_DAY_TYPE]: { hasTomorrowTasks: false, hasFutureTasks: false, hasSomedayTasks: false },
+        hasTomorrowTasks: false,
         hasFutureTasks: false,
         hasSomedayTasks: false,
     }
 }
 
-const updateProjectData = (newOpenTasksShowMoreData, projectId, tasksType, workstreamId, inSomeday, hasTasks) => {
+const updateProjectData = (
+    newOpenTasksShowMoreData,
+    projectId,
+    tasksType,
+    workstreamId,
+    inSomeday,
+    hasTasks,
+    inTomorrow
+) => {
     let projectData = getProjectDataStructure(projectId, newOpenTasksShowMoreData)
 
     if (tasksType === WORKSTREAM_TASKS_MY_DAY_TYPE) {
-        let data = projectData[tasksType][workstreamId] || { hasFutureTasks: false, hasSomedayTasks: false }
+        let data = projectData[tasksType][workstreamId] || {
+            hasTomorrowTasks: false,
+            hasFutureTasks: false,
+            hasSomedayTasks: false,
+        }
         data = { ...data }
-        inSomeday ? (data.hasSomedayTasks = hasTasks) : (data.hasFutureTasks = hasTasks)
+        if (inSomeday) {
+            data.hasSomedayTasks = hasTasks
+        } else if (inTomorrow) {
+            data.hasTomorrowTasks = hasTasks
+        } else {
+            data.hasFutureTasks = hasTasks
+        }
 
         projectData = {
             ...projectData,
@@ -42,7 +61,13 @@ const updateProjectData = (newOpenTasksShowMoreData, projectId, tasksType, works
         }
     } else {
         let data = { ...projectData[tasksType] }
-        inSomeday ? (data.hasSomedayTasks = hasTasks) : (data.hasFutureTasks = hasTasks)
+        if (inSomeday) {
+            data.hasSomedayTasks = hasTasks
+        } else if (inTomorrow) {
+            data.hasTomorrowTasks = hasTasks
+        } else {
+            data.hasFutureTasks = hasTasks
+        }
 
         projectData = { ...projectData, [tasksType]: data }
     }
@@ -87,13 +112,16 @@ export const addProjectDataToOpenTasksShowMoreData = (
     workstreamId,
     openTasksShowMoreData,
     inSomeday,
-    hasTasks
+    hasTasks,
+    inTomorrow
 ) => {
     const newOpenTasksShowMoreData = { ...openTasksShowMoreData }
-    updateProjectData(newOpenTasksShowMoreData, projectId, tasksType, workstreamId, inSomeday, hasTasks)
+    updateProjectData(newOpenTasksShowMoreData, projectId, tasksType, workstreamId, inSomeday, hasTasks, inTomorrow)
 
     if (inSomeday) {
         updateGlobalData(newOpenTasksShowMoreData, projectId, hasTasks, 'hasSomedayTasks')
+    } else if (inTomorrow) {
+        updateGlobalData(newOpenTasksShowMoreData, projectId, hasTasks, 'hasTomorrowTasks')
     } else {
         updateGlobalData(newOpenTasksShowMoreData, projectId, hasTasks, 'hasFutureTasks')
     }
@@ -120,6 +148,41 @@ const getBaseQueryForWorkstreamTasks = (projectId, workstreamId, allowUserIds) =
         .where('userId', '==', workstreamId)
 }
 
+export async function watchIfThereAreTomorrowTasksToAttend(
+    projectId,
+    boardUserId,
+    isAnonymous,
+    loggedUserId,
+    watcherKey
+) {
+    const endOfDay = moment().endOf('day').valueOf()
+    const endOfTomorrow = moment().endOf('day').add(1, 'day').valueOf()
+    const allowUserIds = getAllowUserIds(loggedUserId, isAnonymous)
+    let oldThereAreTomorrowTasks = null
+
+    globalWatcherUnsub[watcherKey] = getBaseQueryForTasksToAttend(projectId, boardUserId, allowUserIds)
+        .where('dueDate', '>', endOfDay)
+        .where('dueDate', '<=', endOfTomorrow)
+        .limit(1)
+        .onSnapshot(snapshot => {
+            const thereAreTomorrowTasks = snapshot.docs.length > 0
+
+            if (oldThereAreTomorrowTasks !== thereAreTomorrowTasks) {
+                oldThereAreTomorrowTasks = thereAreTomorrowTasks
+                store.dispatch(
+                    setOpenTasksShowMoreDataInProject(
+                        projectId,
+                        TO_ATTEND_TASKS_MY_DAY_TYPE,
+                        null,
+                        false,
+                        thereAreTomorrowTasks,
+                        true
+                    )
+                )
+            }
+        })
+}
+
 export async function watchIfThereAreFutureTasksToAttend(
     projectId,
     boardUserId,
@@ -128,11 +191,12 @@ export async function watchIfThereAreFutureTasksToAttend(
     watcherKey
 ) {
     const endOfDay = moment().endOf('day').valueOf()
+    const endOfTomorrow = moment().endOf('day').add(1, 'day').valueOf()
     const allowUserIds = getAllowUserIds(loggedUserId, isAnonymous)
     let oldThereAreFutureTasks = null
 
     globalWatcherUnsub[watcherKey] = getBaseQueryForTasksToAttend(projectId, boardUserId, allowUserIds)
-        .where('dueDate', '>', endOfDay)
+        .where('dueDate', '>', endOfTomorrow)
         .where('dueDate', '<', BACKLOG_DATE_NUMERIC)
         .limit(1)
         .onSnapshot(snapshot => {

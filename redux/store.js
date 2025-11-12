@@ -259,6 +259,7 @@ export const initialState = {
     allFeedsData: {},
     amountDoneTasksExpanded: 0,
     laterTasksExpanded: false,
+    laterTasksExpandState: 0,
     somedayTasksExpanded: false,
     openTasksAmount: 0,
     doneTasksAmount: null,
@@ -1497,6 +1498,13 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 somedayTasksExpanded: action.somedayTasksExpanded,
+            }
+        }
+
+        case 'Set later tasks expand state': {
+            return {
+                ...state,
+                laterTasksExpandState: action.laterTasksExpandState,
             }
         }
 
@@ -2945,7 +2953,7 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set open tasks show more data in project': {
-            const { projectId, tasksType, workstreamId, inSomeday, hasTasks } = action
+            const { projectId, tasksType, workstreamId, inSomeday, hasTasks, inTomorrow } = action
 
             const openTasksShowMoreData = addProjectDataToOpenTasksShowMoreData(
                 projectId,
@@ -2953,7 +2961,8 @@ export const theReducer = (state = initialState, action) => {
                 workstreamId,
                 state.openTasksShowMoreData,
                 inSomeday,
-                hasTasks
+                hasTasks,
+                inTomorrow
             )
             return { ...state, openTasksShowMoreData }
         }
