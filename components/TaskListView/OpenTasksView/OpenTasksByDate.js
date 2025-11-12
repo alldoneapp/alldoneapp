@@ -34,6 +34,7 @@ export default function OpenTasksByDate({
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX].length
     )
     const laterTasksExpanded = useSelector(state => state.laterTasksExpanded)
+    const laterTasksExpandState = useSelector(state => state.laterTasksExpandState)
     const somedayTasksExpanded = useSelector(state => state.somedayTasksExpanded)
     const lastFormatedDate = useSelector(
         state =>
@@ -59,13 +60,26 @@ export default function OpenTasksByDate({
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
+    // Determine if we should show the "show more" button
+    // For All Projects view: button appears after the last visible date based on expand state
+    // For Selected Project view: button appears after today if not expanded
+    const isLastVisibleDate = sortedLoggedUserProjectIds
+        ? laterTasksExpandState === 0
+            ? dateIsToday
+            : dateFormated === lastFormatedDate
+        : dateIsToday
+
+    const shouldShowButtonInCurrentExpandState = sortedLoggedUserProjectIds
+        ? laterTasksExpandState < 2 // In All Projects: show if not fully expanded (state 0 or 1)
+        : !laterTasksExpanded // In Selected Project: show if not expanded
+
     const showTopShowMoreButton =
-        dateIsToday &&
+        isLastVisibleDate &&
         (thereAreLaterOpenTasksInProject ||
             thereAreLaterEmptyGoalsInProject ||
             thereAreSomedayOpenTasksInProject ||
             thereAreSomedayEmptyGoalsInProject) &&
-        (inSelectedProject || !laterTasksExpanded)
+        (inSelectedProject || shouldShowButtonInCurrentExpandState)
 
     const showMiddleContractShowMoreButton =
         dateFormated === lastFormatedDate && laterTasksExpanded && !somedayTasksExpanded
