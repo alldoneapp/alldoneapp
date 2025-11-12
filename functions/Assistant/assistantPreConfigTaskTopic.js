@@ -70,31 +70,43 @@ async function generatePreConfigTaskResult(
         )
     }
 
-    // Step 1: Fetch settings and user data
+    // Step 1: Fetch settings and user data in parallel
     const step1Start = Date.now()
-    const promises = []
     // Evaluate if aiSettings provided are valid (non-empty)
     const hasValidAiSettings = aiSettings && aiSettings.model && aiSettings.temperature
 
+    let settingsPromise
     if (hasValidAiSettings) {
-        // Use provided aiSettings if they are valid
-        const assistant = await getAssistantForChat(projectId, assistantId)
-        promises.push(
-            Promise.resolve({
+        // Fetch assistant in parallel with user data (assistant needed for displayName and allowedTools)
+        settingsPromise = Promise.all([
+            getAssistantForChat(projectId, assistantId),
+            getUserData(userId), // Fetch user here too to parallelize
+        ]).then(([assistant, user]) => {
+            return {
                 model: aiSettings.model || assistant.model || 'MODEL_GPT3_5',
                 temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
                 instructions: aiSettings.systemMessage || assistant.instructions || 'You are a helpful assistant.',
                 displayName: assistant.displayName, // Always use assistant's display name
                 uid: assistantId,
                 allowedTools: assistant.allowedTools || [], // Include allowedTools from assistant
-            })
-        )
+                _user: user, // Include user data to avoid re-fetching
+            }
+        })
     } else {
         // Otherwise, fetch task or assistant settings, which will fallback as needed
-        promises.push(getTaskOrAssistantSettings(projectId, objectId, assistantId))
+        settingsPromise = getTaskOrAssistantSettings(projectId, objectId, assistantId)
     }
-    promises.push(getUserData(userId))
-    const [settings, user] = await Promise.all(promises)
+
+    // Fetch user data in parallel (unless already fetched above)
+    const userPromise = hasValidAiSettings
+        ? Promise.resolve(null) // Will be extracted from settings
+        : getUserData(userId)
+
+    const [settingsResult, userData] = await Promise.all([settingsPromise, userPromise])
+
+    // Extract user from settings if it was included, otherwise use userData
+    const user = settingsResult?._user || userData
+    const settings = hasValidAiSettings ? { ...settingsResult, _user: undefined } : settingsResult
     const step1Duration = Date.now() - step1Start
 
     console.log('✅ [TIMING] Step 1 - Settings & User fetch completed', {

@@ -2403,34 +2403,90 @@ function addSpaceToUrl(url, text) {
     return text.replace(re, ` ${url} `)
 }
 
+// Cache for assistant data (5 minute TTL)
+const assistantCache = new Map()
+const ASSISTANT_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 async function getAssistantForChat(projectId, assistantId) {
+    const fetchStart = Date.now()
+    const cacheKey = `${projectId}_${assistantId}`
+    const now = Date.now()
+
+    // Check cache first
+    const cached = assistantCache.get(cacheKey)
+    if (cached && now - cached.timestamp < ASSISTANT_CACHE_TTL) {
+        console.log('⚙️ ASSISTANT SETTINGS: Using cached assistant data', {
+            cacheHit: true,
+            duration: `${Date.now() - fetchStart}ms`,
+        })
+        return cached.data
+    }
+
     let assistant = null
     if (assistantId) {
-        // Try to get assistant from global project first
-        assistant = await getAssistantData(admin, GLOBAL_PROJECT_ID, assistantId)
-        // If not found in global, try project-specific
-        if (!assistant) {
-            assistant = await getAssistantData(admin, projectId, assistantId)
-        }
+        // Try to get assistant from global project and project-specific in parallel
+        const parallelStart = Date.now()
+        const [globalAssistant, projectAssistant] = await Promise.all([
+            getAssistantData(admin, GLOBAL_PROJECT_ID, assistantId),
+            getAssistantData(admin, projectId, assistantId),
+        ])
+        const parallelDuration = Date.now() - parallelStart
+        assistant = globalAssistant || projectAssistant
+        console.log('⚙️ ASSISTANT SETTINGS: Fetched assistant data (parallel)', {
+            cacheHit: false,
+            parallelDuration: `${parallelDuration}ms`,
+            foundInGlobal: !!globalAssistant,
+            foundInProject: !!projectAssistant,
+        })
     }
     if (!assistant) {
+        const defaultStart = Date.now()
         assistant = await getDefaultAssistantData(admin)
+        console.log('⚙️ ASSISTANT SETTINGS: Fetched default assistant', {
+            duration: `${Date.now() - defaultStart}ms`,
+        })
     }
     // Provide fallback defaults for missing fields
     assistant.model = assistant.model || 'MODEL_GPT3_5'
     assistant.temperature = assistant.temperature || 'TEMPERATURE_NORMAL'
     assistant.instructions = assistant.instructions || 'You are a helpful assistant.'
     assistant.allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+
+    // Cache the result
+    if (assistant) {
+        assistantCache.set(cacheKey, { data: assistant, timestamp: now })
+        // Clean old cache entries if cache gets too large
+        if (assistantCache.size > 100) {
+            const oldestKey = assistantCache.keys().next().value
+            assistantCache.delete(oldestKey)
+        }
+    }
+
+    const totalDuration = Date.now() - fetchStart
+    console.log('⚙️ ASSISTANT SETTINGS: getAssistantForChat completed', {
+        totalDuration: `${totalDuration}ms`,
+        cached: !!cached,
+    })
+
     return assistant
 }
 
 // New function to get task-level settings or fall back to assistant settings
 async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
+    const settingsStart = Date.now()
     console.log('⚙️ ASSISTANT SETTINGS: Getting task or assistant settings:', { projectId, taskId, assistantId })
 
-    // Get task data first
-    const taskRef = admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`)
-    const taskDoc = await taskRef.get()
+    // Fetch task data and assistant settings in parallel
+    const parallelStart = Date.now()
+    const [taskDoc, assistant] = await Promise.all([
+        admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`).get(),
+        getAssistantForChat(projectId, assistantId),
+    ])
+    const parallelDuration = Date.now() - parallelStart
+    console.log('⚙️ ASSISTANT SETTINGS: Parallel fetch completed', {
+        parallelDuration: `${parallelDuration}ms`,
+    })
+
     const task = taskDoc.data()
     console.log('⚙️ ASSISTANT SETTINGS: Task data:', {
         hasTask: !!task,
@@ -2438,9 +2494,6 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         taskAiTemperature: task?.aiTemperature,
         hasTaskAiSystemMessage: !!task?.aiSystemMessage,
     })
-
-    // Get assistant settings
-    const assistant = await getAssistantForChat(projectId, assistantId)
     console.log('⚙️ ASSISTANT SETTINGS: Assistant data:', {
         hasAssistant: !!assistant,
         assistantModel: assistant?.model,
@@ -2472,6 +2525,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
             temperature: task && task.aiTemperature ? 'task' : 'assistant',
             instructions: task && task.aiSystemMessage ? 'task' : 'assistant',
         },
+        totalDuration: `${Date.now() - settingsStart}ms`,
     })
     return settings
 }
