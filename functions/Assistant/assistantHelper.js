@@ -36,6 +36,7 @@ const { getProject } = require('../Firestore/generalFirestoreCloud')
 const { getChat } = require('../Chats/chatsFirestoreCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -1784,16 +1785,18 @@ async function storeChunks(
                 })
             }
 
-            console.log(`📦 [TIMING] Chunk #${chunkCount}:`, {
-                timeSinceLastChunk: `${chunkTime - lastChunkTime}ms`,
-                timeSinceStart: `${chunkTime - streamProcessStart}ms`,
-                hasContent: !!chunk.content,
-                contentLength: chunk.content?.length,
-                isLoading: chunk.isLoading,
-                isThinking: chunk.isThinking,
-                clearThinkingMode: chunk.clearThinkingMode,
-                hasReplacementContent: !!chunk.replacementContent,
-            })
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log(`📦 [TIMING] Chunk #${chunkCount}:`, {
+                    timeSinceLastChunk: `${chunkTime - lastChunkTime}ms`,
+                    timeSinceStart: `${chunkTime - streamProcessStart}ms`,
+                    hasContent: !!chunk.content,
+                    contentLength: chunk.content?.length,
+                    isLoading: chunk.isLoading,
+                    isThinking: chunk.isThinking,
+                    clearThinkingMode: chunk.clearThinkingMode,
+                    hasReplacementContent: !!chunk.replacementContent,
+                })
+            }
 
             lastChunkTime = chunkTime
 
@@ -2130,11 +2133,13 @@ async function storeChunks(
 
             // Add the content to our accumulated text
             const contentToAdd = parser ? parser(chunk.content) : chunk.content
-            console.log('Content to add:', {
-                originalLength: chunk.content?.length,
-                parsedLength: contentToAdd?.length,
-                isThinkingMode: thinkingMode,
-            })
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('Content to add:', {
+                    originalLength: chunk.content?.length,
+                    parsedLength: contentToAdd?.length,
+                    isThinkingMode: thinkingMode,
+                })
+            }
 
             // If in thinking mode, accumulate thinking content separately
             if (thinkingMode) {
@@ -2164,12 +2169,14 @@ async function storeChunks(
                 shouldFlushImmediately
             )
 
-            console.log('Scheduled comment update:', {
-                commentLength: commentText.length,
-                isThinking: thinkingMode,
-                chunksSinceLastUpdate,
-                willFlushImmediately: shouldFlushImmediately,
-            })
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('Scheduled comment update:', {
+                    commentLength: commentText.length,
+                    isThinking: thinkingMode,
+                    chunksSinceLastUpdate,
+                    willFlushImmediately: shouldFlushImmediately,
+                })
+            }
 
             // Note: Manual TOOL: format parsing removed - native tool calling only
             // Tools are only available for GPT models that support native tool calling

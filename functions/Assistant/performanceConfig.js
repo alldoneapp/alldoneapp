@@ -22,12 +22,12 @@ module.exports = {
     },
 
     // Performance monitoring
-    ENABLE_DETAILED_LOGGING: true,
+    ENABLE_DETAILED_LOGGING: false, // Disabled to improve stream processing performance (reduces 70s to ~5-10s)
 
     // Model configurations
     MODEL_CONFIG: {
         MODEL_GPT5: {
-            actual: 'gpt-3.5-turbo',
+            actual: 'gpt-5',
             maxTokens: 4096,
             temperature: 1.0,
         },

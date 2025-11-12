@@ -10,6 +10,21 @@ const {
 } = require('./assistantHelper')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
+const { Tiktoken } = require('@dqbd/tiktoken/lite')
+
+// Pre-load tiktoken at module load (performance optimization)
+console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')
+const jsonLoadStart = Date.now()
+const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
+console.log(`✅ [TIMING] Tiktoken JSON loaded: ${Date.now() - jsonLoadStart}ms`)
+
+const encoderInitStart = Date.now()
+const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
+console.log(`✅ [TIMING] Tiktoken encoder initialized: ${Date.now() - encoderInitStart}ms`)
+
+function getEncoder() {
+    return encoder
+}
 
 async function generatePreConfigTaskResult(
     userId,
@@ -316,7 +331,7 @@ async function generatePreConfigTaskResult(
                     ? require('./assistantHelper').getTokensPerGold(model)
                     : 'unknown',
             })
-            await reduceGoldWhenChatWithAI(userId, userGold, model, aiCommentText, contextMessages)
+            await reduceGoldWhenChatWithAI(userId, userGold, model, aiCommentText, contextMessages, getEncoder())
             step5Duration = Date.now() - step5Start
 
             console.log('✅ [TIMING] Step 5 - Gold reduction completed', {
