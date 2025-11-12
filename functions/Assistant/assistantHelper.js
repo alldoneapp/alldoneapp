@@ -2243,7 +2243,7 @@ async function storeChunks(
                     [`commentsData.lastCommentOwnerId`]: assistantId,
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                    [`commentsData.amount`]: 1, // Use direct value for emulator
+                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1), // Fixed: increment counter instead of resetting to 1
                 })
         )
 
