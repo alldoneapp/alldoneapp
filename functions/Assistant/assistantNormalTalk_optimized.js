@@ -3,11 +3,7 @@
 const admin = require('firebase-admin')
 const {
     getOptimizedContextMessages,
-    interactWithChatStreamOptimized,
-    getCachedEnvFunctions,
-} = require('./assistantHelper_optimized')
-
-const {
+    interactWithChatStream, // Now uses cached clients internally
     storeBotAnswerStream,
     getAssistantForChat,
     reduceGoldWhenChatWithAI,
@@ -131,10 +127,10 @@ async function askToOpenAIBotOptimized(
         const userContext = messages?.find(msg => msg[0] === 'user')
         const userContextForTools = userContext ? { message: userContext[1] || '' } : null
 
-        // Step 4: Create stream
+        // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()
         const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
-        const stream = await interactWithChatStreamOptimized(contextMessages, model, temperature, allowedTools)
+        const stream = await interactWithChatStream(contextMessages, model, temperature, allowedTools)
         const step4Duration = Date.now() - step4Start
 
         console.log('✅ [TIMING] Step 4 - Stream creation (optimized)', {

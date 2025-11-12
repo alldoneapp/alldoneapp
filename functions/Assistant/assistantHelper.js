@@ -66,6 +66,30 @@ let cachedNoteService = null
 let cachedSearchService = null
 let cachedTaskService = null
 
+// Cache environment variables at module level (performance optimization)
+let cachedEnvFunctions = null
+let envLoadTime = 0
+
+function getCachedEnvFunctions() {
+    const now = Date.now()
+    // Cache for 5 minutes
+    if (!cachedEnvFunctions || now - envLoadTime > 300000) {
+        cachedEnvFunctions = getEnvFunctions()
+        envLoadTime = now
+    }
+    return cachedEnvFunctions
+}
+
+// Cache OpenAI clients (performance optimization)
+const openAIClients = new Map()
+
+function getOpenAIClient(apiKey) {
+    if (!openAIClients.has(apiKey)) {
+        openAIClients.set(apiKey, new OpenAI({ apiKey }))
+    }
+    return openAIClients.get(apiKey)
+}
+
 /**
  * Check if a model supports native OpenAI tool/function calling
  * @param {string} modelKey - The model key (e.g., MODEL_GPT4O)
@@ -277,11 +301,11 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         promptLength: formattedPrompt?.length,
     })
 
-    // Step 1: Get model config and environment
+    // Step 1: Get model config and cached environment
     const configStart = Date.now()
     const model = getModel(modelKey)
     const temperature = getTemperature(temperatureKey)
-    const envFunctions = getEnvFunctions()
+    const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
 
     console.log(`📊 [TIMING] Config loading: ${configDuration}ms`, {
@@ -325,9 +349,10 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         }
     } else {
         // Native OpenAI implementation with tool calling support
+        // Use cached OpenAI client (performance optimization)
         const openAIInitStart = Date.now()
-        const openai = new OpenAI({ apiKey: OPEN_AI_KEY })
-        console.log(`📊 [TIMING] OpenAI client init: ${Date.now() - openAIInitStart}ms`)
+        const openai = getOpenAIClient(OPEN_AI_KEY)
+        console.log(`📊 [TIMING] OpenAI client (CACHED): ${Date.now() - openAIInitStart}ms`)
 
         // Convert messages to OpenAI format
         const formatStart = Date.now()
@@ -2372,6 +2397,86 @@ function parseTextForUseLiKePrompt(text) {
     return text.replaceAll('{', '{{').replaceAll('}', '}}')
 }
 
+// Optimized context fetching with parallel operations
+async function getOptimizedContextMessages(
+    messageId,
+    projectId,
+    objectType,
+    objectId,
+    language,
+    assistantName,
+    instructions,
+    allowedTools,
+    userTimezoneOffset,
+    userId
+) {
+    // Start all operations in parallel
+    const parallelPromises = [
+        // Fetch messages
+        admin
+            .firestore()
+            .collection(`chatComments/${projectId}/${objectType}/${objectId}/comments`)
+            .orderBy('lastChangeDate', 'desc')
+            .limit(10) // Reduced from 50 to improve speed
+            .get()
+            .then(snapshot => snapshot.docs),
+    ]
+
+    // If we need notes context, fetch the specific message in parallel
+    if (userId && messageId) {
+        parallelPromises.push(
+            admin
+                .firestore()
+                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${messageId}`)
+                .get()
+                .then(async doc => {
+                    if (!doc.exists) return null
+                    const commentText = doc.data().commentText
+                    const { fetchMentionedNotesContext } = require('./noteContextHelper')
+                    return await fetchMentionedNotesContext(commentText, userId, projectId)
+                })
+                .catch(() => null)
+        )
+    } else {
+        parallelPromises.push(Promise.resolve(null))
+    }
+
+    const [commentDocs, notesContext] = await Promise.all(parallelPromises)
+
+    // Process messages
+    const messages = []
+    let amountOfCommentsInContext = 0
+
+    for (let i = 0; i < commentDocs.length; i++) {
+        if (amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
+            const messageData = commentDocs[i].data()
+            const { commentText, fromAssistant } = messageData
+            if (commentText) {
+                const role = fromAssistant ? 'assistant' : 'user'
+                // Use parseTextForUseLiKePrompt for consistency with original implementation
+                messages.push([role, parseTextForUseLiKePrompt(commentText)])
+            }
+            amountOfCommentsInContext++
+            if (amountOfCommentsInContext === 5) break // Reduced from 3 to 5 for better context
+        }
+    }
+
+    // Add base instructions
+    addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset)
+
+    const reversedMessages = messages.reverse()
+
+    // Add notes context if available
+    if (notesContext && reversedMessages.length > 0) {
+        const lastMessageIndex = reversedMessages.length - 1
+        if (reversedMessages[lastMessageIndex][0] === 'user') {
+            reversedMessages[lastMessageIndex][1] += notesContext
+        }
+    }
+
+    return reversedMessages
+}
+
 /**
  * Example function showing how internal assistants can use SearchService
  * This function can be called by AI assistants to search for relevant content
@@ -2520,4 +2625,8 @@ module.exports = {
     getTaskOrAssistantSettings,
     searchForAssistant,
     generateSearchSummary,
+    // Optimized functions with caching
+    getCachedEnvFunctions,
+    getOpenAIClient,
+    getOptimizedContextMessages,
 }
