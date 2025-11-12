@@ -6,6 +6,7 @@ const {
     getAssistantForChat,
     addBaseInstructions,
     parseTextForUseLiKePrompt,
+    getCommonData, // For parallel fetching to reduce time-to-first-token
 } = require('./assistantHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -49,7 +50,12 @@ async function generateBotWelcomeMessageForGuideUser(
     addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
     messages.push(['system', template])
 
-    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
+    // Fetch common data in parallel with API call to reduce time-to-first-token
+    const [stream, commonData] = await Promise.all([
+        interactWithChatStream(messages, model, temperature, allowedTools),
+        getCommonData(projectId, 'topics', objectId),
+    ])
+
     await storeBotAnswerStream(
         projectId,
         'topics',
@@ -70,7 +76,8 @@ async function generateBotWelcomeMessageForGuideUser(
         messages, // conversationHistory
         model, // modelKey
         temperature, // temperatureKey
-        allowedTools
+        allowedTools,
+        commonData // Pass pre-fetched common data
     )
 }
 

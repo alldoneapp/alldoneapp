@@ -6,6 +6,7 @@ const {
     reduceGoldWhenChatWithAI,
     getTaskOrAssistantSettings,
     getAssistantForChat,
+    getCommonData, // For parallel fetching to reduce time-to-first-token
 } = require('./assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
@@ -142,7 +143,13 @@ async function generatePreConfigTaskResult(
         console.log('Prepared chat prompt with model and temperature:', { model, temperature })
 
         const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : []
-        const stream = await interactWithChatStream(contextMessages, model, temperature, allowedTools)
+
+        // Fetch common data in parallel with API call to reduce time-to-first-token
+        const [stream, commonData] = await Promise.all([
+            interactWithChatStream(contextMessages, model, temperature, allowedTools),
+            getCommonData(projectId, 'tasks', objectId),
+        ])
+
         console.log('KW Special Calling storeBotAnswerStream with parameters:', {
             projectId,
             objectType: 'tasks',
@@ -155,6 +162,7 @@ async function generatePreConfigTaskResult(
             assistantId: settings.uid,
             followerIds: [userId],
             displayName,
+            hasPreFetchedCommonData: !!commonData,
         })
 
         const aiCommentText = await storeBotAnswerStream(
@@ -173,7 +181,8 @@ async function generatePreConfigTaskResult(
             contextMessages, // conversationHistory
             model, // modelKey
             temperature, // temperatureKey
-            allowedTools
+            allowedTools,
+            commonData // Pass pre-fetched common data
         )
 
         if (aiCommentText) {

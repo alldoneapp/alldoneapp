@@ -4,6 +4,7 @@ const {
     storeBotAnswerStream,
     getAssistantForChat,
     addBaseInstructions,
+    getCommonData, // For parallel fetching to reduce time-to-first-token
 } = require('./assistantHelper')
 const { FEED_PUBLIC_FOR_ALL, getFirstName, sortProjects } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -180,7 +181,12 @@ async function generateBotDailyTopicFirstComment(
     addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
     messages.push(['system', template])
 
-    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
+    // Fetch common data in parallel with API call to reduce time-to-first-token
+    const [stream, commonData] = await Promise.all([
+        interactWithChatStream(messages, model, temperature, allowedTools),
+        getCommonData(defaultProjectId, 'topics', objectId),
+    ])
+
     console.log('KW Special storeBotAnswerStream parameters:', {
         projectId: defaultProjectId,
         objectType: 'topics',
@@ -192,6 +198,7 @@ async function generateBotDailyTopicFirstComment(
         assistantId: assistant.uid,
         followerIds: [userId],
         displayName,
+        hasPreFetchedCommonData: !!commonData,
     })
     await storeBotAnswerStream(
         defaultProjectId,
@@ -209,7 +216,8 @@ async function generateBotDailyTopicFirstComment(
         messages, // conversationHistory
         model, // modelKey
         temperature, // temperatureKey
-        allowedTools
+        allowedTools,
+        commonData // Pass pre-fetched common data
     )
 }
 

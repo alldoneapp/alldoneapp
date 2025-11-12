@@ -280,8 +280,7 @@ async function storeBotAnswerStreamOptimized(
 
     if (!chat) return ''
 
-    // For now, just use the regular storeBotAnswerStream
-    // TODO: Create a version that accepts pre-fetched data
+    // Use storeBotAnswerStream with pre-fetched common data
     const { storeBotAnswerStream } = require('./assistantHelper')
     return await storeBotAnswerStream(
         projectId,
@@ -299,7 +298,8 @@ async function storeBotAnswerStreamOptimized(
         conversationHistory,
         modelKey,
         temperatureKey,
-        allowedTools
+        allowedTools,
+        commonData // Pass pre-fetched common data to reduce time-to-first-token
     )
 }
 

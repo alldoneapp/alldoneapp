@@ -5,6 +5,7 @@ const {
     addBaseInstructions,
     getTaskOrAssistantSettings,
     parseTextForUseLiKePrompt,
+    getCommonData, // For parallel fetching to reduce time-to-first-token
 } = require('./assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 
@@ -51,7 +52,12 @@ async function generateBotAdvaiceForTopic(
     // just use this to give the assistant the topic name
     messages.push(['system', template])
 
-    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
+    // Fetch common data in parallel with API call to reduce time-to-first-token
+    const [stream, commonData] = await Promise.all([
+        interactWithChatStream(messages, model, temperature, allowedTools),
+        getCommonData(projectId, objectType, objectId),
+    ])
+
     await storeBotAnswerStream(
         projectId,
         objectType,
@@ -68,7 +74,8 @@ async function generateBotAdvaiceForTopic(
         messages, // conversationHistory
         model, // modelKey
         temperature, // temperatureKey
-        allowedTools
+        allowedTools,
+        commonData // Pass pre-fetched common data
     )
 }
 

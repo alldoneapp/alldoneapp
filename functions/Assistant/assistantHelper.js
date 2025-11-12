@@ -2204,7 +2204,8 @@ async function storeBotAnswerStream(
     conversationHistory = null,
     modelKey = null,
     temperatureKey = null,
-    allowedTools = []
+    allowedTools = [],
+    commonData = null // Optional pre-fetched common data to reduce time-to-first-token
 ) {
     const streamProcessStart = Date.now()
     console.log('💾 [TIMING] storeBotAnswerStream START', {
@@ -2214,18 +2215,20 @@ async function storeBotAnswerStream(
         objectId,
         assistantId,
         hasStream: !!stream,
+        hasPreFetchedCommonData: !!commonData,
     })
 
     try {
-        // Fetch common data
+        // Fetch common data (or use pre-fetched data)
         const commonDataStart = Date.now()
-        const { project, chat, chatLink } = await getCommonData(projectId, objectType, objectId)
+        const { project, chat, chatLink } = commonData || (await getCommonData(projectId, objectType, objectId))
         const commonDataDuration = Date.now() - commonDataStart
 
         console.log(`📊 [TIMING] Common data fetch: ${commonDataDuration}ms`, {
             hasProject: !!project,
             hasChat: !!chat,
             hasChatLink: !!chatLink,
+            wasPreFetched: !!commonData,
         })
 
         // Store chunks
@@ -2625,6 +2628,7 @@ module.exports = {
     getTaskOrAssistantSettings,
     searchForAssistant,
     generateSearchSummary,
+    getCommonData, // Export for parallel fetching to reduce time-to-first-token
     // Optimized functions with caching
     getCachedEnvFunctions,
     getOpenAIClient,
