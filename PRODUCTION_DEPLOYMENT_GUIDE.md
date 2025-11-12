@@ -67,12 +67,29 @@ firebase projects:list
 
 ## 🚀 Deploy Functions to Production
 
-When ready to deploy the optimized functions:
+### Quick Deploy Script (Recommended)
 
 ```bash
-# Deploy functions to production
+./deploy-functions-production.sh
+# Choose 'ai' to deploy only AI functions
+# Choose 'all' to deploy all functions
+```
+
+### Manual Deployment
+
+```bash
+# Deploy all functions to production
 firebase deploy --only functions --project YOUR-PRODUCTION-PROJECT-ID
 
-# Or specific functions only
-firebase deploy --only functions:askToBotSecondGen --project YOUR-PRODUCTION-PROJECT-ID
+# Deploy only AI assistant functions
+firebase deploy --only functions:askToBotSecondGen,functions:generatePreConfigTaskResultSecondGen,functions:generateBotAdvaiceSecondGen --project YOUR-PRODUCTION-PROJECT-ID
 ```
+
+### What's Included in This Deployment:
+
+-   ✅ Tiktoken optimization (800ms faster)
+-   ✅ Parallel data fetching
+-   ✅ **Removed getEnvFunctions timing logs**
+-   ✅ Cached environment variables
+-   ✅ 2GB memory allocation
+-   ✅ minInstances: 1 (reduced cold starts)
