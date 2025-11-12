@@ -504,7 +504,7 @@ export const generateTaskFromPreConfig = async (
                 taskWithPublicFor.isPublicFor,
                 taskWithPublicFor.assistantId,
                 generatedPrompt,
-                aiSettings,
+                resolvedAiSettings,
                 mergedMetadata
             ).catch(error => {
                 console.error('Failed to create topic for pre-config task:', error)
