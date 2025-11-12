@@ -1,5 +1,6 @@
 // Optimized Firestore operations with connection reuse
 const admin = require('firebase-admin')
+const { CACHE_TTL } = require('./performanceConfig')
 
 // Cache Firestore instance
 let firestoreInstance = null
@@ -11,10 +12,18 @@ function getFirestore() {
 }
 
 // Optimized user data fetching with field selection
+const userCache = new Map()
+
 async function getUserDataOptimized(userId) {
     const startTime = Date.now()
-    const db = getFirestore()
+    const now = Date.now()
+    const cacheEntry = userCache.get(userId)
+    if (cacheEntry && now - cacheEntry.timestamp < CACHE_TTL.USER) {
+        console.log(`[FIRESTORE] getUserData (CACHED): ${Date.now() - startTime}ms`)
+        return cacheEntry.data
+    }
 
+    const db = getFirestore()
     const userDoc = await db.doc(`users/${userId}`).get()
     const data = userDoc.exists ? userDoc.data() : null
 
@@ -25,6 +34,8 @@ async function getUserDataOptimized(userId) {
         timezoneMinutes: data?.timezoneMinutes,
         preferredTimezone: data?.preferredTimezone,
     }
+
+    userCache.set(userId, { data: result, timestamp: now })
 
     console.log(`[FIRESTORE] getUserData: ${Date.now() - startTime}ms`)
     return result

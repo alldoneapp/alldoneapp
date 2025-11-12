@@ -1585,6 +1585,8 @@ exports.onUpdateChatSecondGen = onDocumentUpdated(
         document: 'chatObjects/{projectId}/chats/{chatId}',
         timeoutSeconds: 540,
         memory: '256MB',
+        minInstances: 1,
+        maxInstances: 100,
         region: 'europe-west1',
     },
     async event => {
