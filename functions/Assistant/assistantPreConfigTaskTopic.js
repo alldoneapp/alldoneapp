@@ -21,9 +21,12 @@ async function generatePreConfigTaskResult(
     prompt,
     language,
     aiSettings,
-    taskMetadata = null
+    taskMetadata = null,
+    functionEntryTime = null // Optional entry time from HTTP function entry point
 ) {
     const functionStartTime = Date.now()
+    // Use entry time if provided, otherwise use function start time
+    const timeToFirstTokenStart = functionEntryTime || functionStartTime
     console.log('🚀 [TIMING] generatePreConfigTaskResult START', {
         timestamp: new Date().toISOString(),
         startTime: functionStartTime,
@@ -229,7 +232,7 @@ async function generatePreConfigTaskResult(
             temperature, // temperatureKey
             allowedTools,
             commonData, // Pass pre-fetched common data
-            functionStartTime // Pass function start time for time-to-first-token tracking
+            timeToFirstTokenStart // Pass entry time for accurate time-to-first-token tracking
         )
         const step4Duration = Date.now() - step4Start
 

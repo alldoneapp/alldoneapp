@@ -1772,6 +1772,11 @@ async function storeChunks(
                     timestamp: new Date().toISOString(),
                     functionStartTime: timeToFirstTokenStart,
                     firstChunkTime: firstChunkTime,
+                    breakdown: {
+                        fromEntryPoint: `${timeToFirstToken}ms`,
+                        fromStreamStart: `${timeFromStreamStart}ms`,
+                        fromInitialSetup: `${timeFromInitialSetup}ms`,
+                    },
                 })
             }
 

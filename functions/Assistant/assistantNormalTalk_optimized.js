@@ -42,9 +42,12 @@ async function askToOpenAIBotOptimized(
     isPublicFor,
     language,
     assistantId,
-    followerIds
+    followerIds,
+    functionEntryTime = null // Optional entry time from HTTP function entry point
 ) {
     const functionStartTime = Date.now()
+    // Use entry time if provided, otherwise use function start time
+    const timeToFirstTokenStart = functionEntryTime || functionStartTime
     console.log('🚀 [TIMING] askToOpenAIBotOptimized START', {
         timestamp: new Date().toISOString(),
         userId,
@@ -53,6 +56,9 @@ async function askToOpenAIBotOptimized(
         objectType,
         objectId,
         assistantId,
+        functionStartTime,
+        functionEntryTime: functionEntryTime || 'not provided',
+        timeToFirstTokenStart,
     })
 
     try {
@@ -161,7 +167,7 @@ async function askToOpenAIBotOptimized(
             temperature,
             allowedTools,
             commonData, // Pass pre-fetched data
-            functionStartTime // Pass function start time for time-to-first-token tracking
+            timeToFirstTokenStart // Pass entry time for accurate time-to-first-token tracking
         )
         const step5Duration = Date.now() - step5Start
 

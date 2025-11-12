@@ -1195,7 +1195,8 @@ exports.askToBotSecondGen = onCall(
                 isPublicFor,
                 language,
                 assistantId,
-                followerIds
+                followerIds,
+                functionEntryTime // Pass entry time for time-to-first-token tracking
             )
 
             const totalFunctionTime = Date.now() - functionEntryTime
@@ -1203,6 +1204,8 @@ exports.askToBotSecondGen = onCall(
                 totalFunctionTime: `${totalFunctionTime}ms`,
                 setupTime: `${askToOpenAIBotStart - functionEntryTime}ms`,
                 askToOpenAIBotTime: `${Date.now() - askToOpenAIBotStart}ms`,
+                entryTime: functionEntryTime,
+                completionTime: Date.now(),
             })
 
             return result
@@ -1316,7 +1319,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 aiSettings,
                 taskMetadata,
             } = data
-            return await generatePreConfigTaskResult(
+            const result = await generatePreConfigTaskResult(
                 userId,
                 projectId,
                 taskId,
@@ -1326,8 +1329,18 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 prompt,
                 language,
                 aiSettings,
-                taskMetadata
+                taskMetadata,
+                functionEntryTime // Pass entry time for time-to-first-token tracking
             )
+
+            const totalFunctionTime = Date.now() - functionEntryTime
+            console.log('🎯 [TIMING] generatePreConfigTaskResultSecondGen COMPLETE', {
+                totalFunctionTime: `${totalFunctionTime}ms`,
+                entryTime: functionEntryTime,
+                completionTime: Date.now(),
+            })
+
+            return result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
