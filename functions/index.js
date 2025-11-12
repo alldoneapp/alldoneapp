@@ -1134,7 +1134,7 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
 exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GiB', // Increased for better performance
+        memory: '512MiB', // Increased for better performance
         minInstances: 1, // Keep 2 instances warm to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
         region: 'europe-west1',
@@ -1255,7 +1255,7 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
 exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GiB', // Increased for better performance
+        memory: '512MiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
@@ -1299,7 +1299,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
 exports.generateBotAdvaiceSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '1GiB', // Increased for better performance
+        memory: '512MiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
