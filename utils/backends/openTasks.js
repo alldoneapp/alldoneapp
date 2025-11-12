@@ -1433,7 +1433,11 @@ const unwatchEmptyGoalsWatcher = (projectId, currentUserId, watcher) => {
 }
 
 export const contractOpenTasks = (projectId, instanceKey, openTasks, updateTaks) => {
+    // First unwatch existing listeners to prevent stale data from being pushed
+    unwatchOpenTasks(projectId, instanceKey)
+    // Immediately update UI to show only today's tasks
     updateTaks([openTasks[0]], false)
+    // Set up new watchers that only fetch today's tasks
     watchOpenTasks(projectId, updateTaks, false, false, true, instanceKey)
     // State is managed by the calling component (AllProjectsShowMoreButtonContainer)
     // so we don't dispatch here to avoid duplicate state updates
