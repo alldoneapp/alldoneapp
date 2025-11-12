@@ -1438,7 +1438,8 @@ export const contractOpenTasks = (projectId, instanceKey, openTasks, updateTaks)
     // Immediately update UI to show only today's tasks
     updateTaks([openTasks[0]], false)
     // Set up new watchers that only fetch today's tasks
-    watchOpenTasks(projectId, updateTaks, false, false, true, instanceKey)
+    // Use keepMainDayData=false since we just cleared the data with unwatchOpenTasks
+    watchOpenTasks(projectId, updateTaks, false, false, false, instanceKey)
     // State is managed by the calling component (AllProjectsShowMoreButtonContainer)
     // so we don't dispatch here to avoid duplicate state updates
 }

@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { View } from 'react-native'
 
 import ShowMoreButton from '../../UIControls/ShowMoreButton'
-import { contractOpenTasks, updateOpTasks, watchOpenTasks, unwatchOpenTasks } from '../../../utils/backends/openTasks'
+import { contractOpenTasks, updateOpTasks, watchOpenTasks } from '../../../utils/backends/openTasks'
 import { setLaterTasksExpandState } from '../../../redux/actions'
 import store from '../../../redux/store'
 
@@ -35,10 +35,9 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
                 )
             }
 
-            // Unwatch existing listeners before setting up new ones
-            unwatchOpenTasks(projectId, instanceKey)
-            // Show today + tomorrow: showLaterTasks=true, showSomedayTasks=false (with endOfTomorrow filter)
-            watchOpenTasks(projectId, updateTasks, true, false, true, instanceKey)
+            // When expanding, we need to fetch fresh data to include tomorrow's tasks
+            // Use keepMainDayData=false to avoid issues with stale watcher data
+            watchOpenTasks(projectId, updateTasks, true, false, false, instanceKey)
         })
     }
 
@@ -60,10 +59,9 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
                 )
             }
 
-            // Unwatch existing listeners before setting up new ones
-            unwatchOpenTasks(projectId, instanceKey)
-            // Show all: showLaterTasks=true, showSomedayTasks=true
-            watchOpenTasks(projectId, updateTasks, true, true, true, instanceKey)
+            // When expanding, we need to fetch fresh data to include all future tasks
+            // Use keepMainDayData=false to avoid issues with stale watcher data
+            watchOpenTasks(projectId, updateTasks, true, true, false, instanceKey)
         })
     }
 
