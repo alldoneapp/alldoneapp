@@ -176,7 +176,14 @@ async function spentGold(userId, goldToReduce) {
     }
 }
 
-const reduceGoldWhenChatWithAI = async (userId, userCurrentGold, aiModel, aiCommentText, contextMessages) => {
+const reduceGoldWhenChatWithAI = async (
+    userId,
+    userCurrentGold,
+    aiModel,
+    aiCommentText,
+    contextMessages,
+    encoder = null
+) => {
     console.log('🔋 GOLD COST TRACKING: Starting gold reduction process:', {
         userId,
         userCurrentGold,
@@ -185,9 +192,10 @@ const reduceGoldWhenChatWithAI = async (userId, userCurrentGold, aiModel, aiComm
         tokensPerGold: getTokensPerGold(aiModel),
         textLength: aiCommentText?.length,
         contextMessagesCount: contextMessages?.length,
+        hasReusedEncoder: !!encoder,
     })
 
-    const tokens = calculateTokens(aiCommentText, contextMessages, aiModel)
+    const tokens = calculateTokens(aiCommentText, contextMessages, aiModel, encoder)
     console.log('🔋 GOLD COST TRACKING: Token calculation complete:', {
         totalTokens: tokens,
         aiModel,
@@ -207,7 +215,7 @@ const reduceGoldWhenChatWithAI = async (userId, userCurrentGold, aiModel, aiComm
     console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
 }
 
-const calculateTokens = (aiText, contextMessages, modelKey) => {
+const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     console.log('🧮 TOKEN CALCULATION: Starting for model:', modelKey)
 
     const aiTextLength = aiText?.length || 0
@@ -223,6 +231,7 @@ const calculateTokens = (aiText, contextMessages, modelKey) => {
         contextMessagesCount: contextMessages.length,
         contextMessageDetails,
         encodeMessageGap: ENCODE_MESSAGE_GAP,
+        hasReusedEncoder: !!encoder,
     })
 
     // For Sonar models, use character count
@@ -251,7 +260,8 @@ const calculateTokens = (aiText, contextMessages, modelKey) => {
     }
 
     // For other models, use token encoding
-    const encoding = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
+    // Reuse provided encoder or create a new one
+    const encoding = encoder || new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
     let aiTokens = encoding.encode(aiText).length
     let contextTokens = 0
     let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
@@ -264,7 +274,11 @@ const calculateTokens = (aiText, contextMessages, modelKey) => {
     })
 
     const totalTokens = aiTokens + contextTokens + gapTokens
-    encoding.free()
+
+    // Only free encoder if we created it (not if it was passed in)
+    if (!encoder) {
+        encoding.free()
+    }
 
     console.log('🧮 TOKEN CALCULATION: OpenAI model result:', {
         aiTokens,
@@ -1693,10 +1707,50 @@ async function storeChunks(
             .firestore()
             .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
 
+        // Batch update mechanism to reduce Firestore writes
+        let pendingUpdate = null
+        let updateTimeout = null
+        const BATCH_UPDATE_DELAY_MS = 150 // Update every 150ms max
+        const BATCH_UPDATE_CHUNK_THRESHOLD = 3 // Or every 3 chunks, whichever comes first
+
+        const flushPendingUpdate = async () => {
+            if (pendingUpdate) {
+                const updateData = { ...pendingUpdate }
+                pendingUpdate = null
+                if (updateTimeout) {
+                    clearTimeout(updateTimeout)
+                    updateTimeout = null
+                }
+                await commentRef.update(updateData)
+            }
+        }
+
+        const scheduleUpdate = async (updateData, immediate = false) => {
+            // Merge with pending update
+            pendingUpdate = { ...pendingUpdate, ...updateData }
+
+            if (immediate) {
+                // Flush immediately for critical updates (loading states, tool calls, etc.)
+                await flushPendingUpdate()
+                return
+            }
+
+            // Clear existing timeout
+            if (updateTimeout) {
+                clearTimeout(updateTimeout)
+            }
+
+            // Schedule update after delay or when threshold reached
+            updateTimeout = setTimeout(async () => {
+                await flushPendingUpdate()
+            }, BATCH_UPDATE_DELAY_MS)
+        }
+
         // Process each chunk from the stream
         const streamProcessStart = Date.now()
         let firstChunkTime = null
         let lastChunkTime = Date.now()
+        let chunksSinceLastUpdate = 0
         console.log('🚀 [TIMING] Starting stream processing...')
 
         for await (const chunk of stream) {
@@ -1743,6 +1797,7 @@ async function storeChunks(
                     console.warn(
                         '🔧 NATIVE TOOL CALL: Missing conversation history or model info - tools disabled for this model'
                     )
+                    await flushPendingUpdate() // Flush any pending updates first
                     commentText += '\n\n[Tools are only available for GPT models]'
                     await commentRef.update({ commentText, isLoading: false })
                     toolAlreadyExecuted = true
@@ -1786,6 +1841,7 @@ async function storeChunks(
 
                     if (!allowed) {
                         console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
+                        await flushPendingUpdate() // Flush any pending updates first
                         commentText += `\n\nTool not permitted: ${toolName}`
                         await commentRef.update({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
@@ -1793,6 +1849,7 @@ async function storeChunks(
                     }
 
                     // Show loading indicator
+                    await flushPendingUpdate() // Flush any pending updates first
                     const loadingMessage = `⏳ Executing ${toolName}...`
                     commentText += `\n\n${loadingMessage}`
                     await commentRef.update({ commentText, isLoading: true })
@@ -1825,6 +1882,7 @@ async function storeChunks(
                             error: error.message,
                             stack: error.stack,
                         })
+                        await flushPendingUpdate() // Flush any pending updates first
                         const errorMsg = `Error executing ${toolName}: ${error.message}`
                         commentText = commentText.replace(loadingMessage, errorMsg)
                         await commentRef.update({ commentText, isLoading: false })
@@ -1908,6 +1966,7 @@ async function storeChunks(
                     console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
 
                     // Remove loading indicator
+                    await flushPendingUpdate() // Flush any pending updates first
                     commentText = commentText.replace(loadingMessage, '')
                     await commentRef.update({ commentText, isLoading: false })
 
@@ -1953,8 +2012,9 @@ async function storeChunks(
                         if (newChunk.content) {
                             totalContentReceived += newChunk.content.length
                             commentText += newChunk.content
-                            await commentRef.update({ commentText })
-                            console.log('🔧 NATIVE TOOL CALL: Updated comment with new content', {
+                            // Use batched updates for resumed stream chunks too
+                            await scheduleUpdate({ commentText }, false)
+                            console.log('🔧 NATIVE TOOL CALL: Scheduled comment update with new content', {
                                 iteration: toolCallIteration,
                                 chunkNumber: resumedChunkCount,
                                 addedContentLength: newChunk.content.length,
@@ -1963,6 +2023,9 @@ async function storeChunks(
                             })
                         }
                     }
+
+                    // Flush any pending updates from resumed stream
+                    await flushPendingUpdate()
 
                     console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
                         iteration: toolCallIteration,
@@ -1994,6 +2057,7 @@ async function storeChunks(
 
                 // Check if we hit max iterations
                 if (toolCallIteration >= MAX_TOOL_ITERATIONS) {
+                    await flushPendingUpdate() // Flush any pending updates first
                     console.warn('🔧 NATIVE TOOL CALL: Hit max tool call iterations!', {
                         maxIterations: MAX_TOOL_ITERATIONS,
                     })
@@ -2005,8 +2069,10 @@ async function storeChunks(
                 break // Exit the main loop since we've processed everything
             }
 
-            // Handle loading indicator for deep research
+            // Handle loading indicator for deep research (immediate update for critical states)
             if (chunk.isLoading) {
+                await flushPendingUpdate() // Flush any pending updates first
+                commentText = chunk.content
                 await commentRef.update({
                     commentText: chunk.content,
                     isLoading: true,
@@ -2016,8 +2082,9 @@ async function storeChunks(
                 continue
             }
 
-            // If we receive a signal to clear thinking and replace with answer content
+            // If we receive a signal to clear thinking and replace with answer content (immediate update)
             if (chunk.clearThinkingMode && chunk.replacementContent) {
+                await flushPendingUpdate() // Flush any pending updates first
                 thinkingMode = false
                 // Replace the entire comment text with the answer content
                 commentText = chunk.replacementContent
@@ -2057,20 +2124,38 @@ async function storeChunks(
                 commentText = answerContent
             }
 
-            // Update the comment with current text and thinking state
-            await commentRef.update({
-                commentText,
-                isThinking: thinkingMode,
-                isLoading: false,
-            })
-            console.log('Updated comment with new content:', {
+            // Batch update: schedule update instead of immediate write
+            chunksSinceLastUpdate++
+            const shouldFlushImmediately = chunksSinceLastUpdate >= BATCH_UPDATE_CHUNK_THRESHOLD
+
+            if (shouldFlushImmediately) {
+                chunksSinceLastUpdate = 0
+                await flushPendingUpdate()
+            }
+
+            scheduleUpdate(
+                {
+                    commentText,
+                    isThinking: thinkingMode,
+                    isLoading: false,
+                },
+                shouldFlushImmediately
+            )
+
+            console.log('Scheduled comment update:', {
                 commentLength: commentText.length,
                 isThinking: thinkingMode,
+                chunksSinceLastUpdate,
+                willFlushImmediately: shouldFlushImmediately,
             })
 
             // Note: Manual TOOL: format parsing removed - native tool calling only
             // Tools are only available for GPT models that support native tool calling
         }
+
+        // Flush any pending updates before final operations
+        await flushPendingUpdate()
+
         console.log('Finished processing stream chunks:', {
             totalChunks: chunkCount,
             finalCommentLength: commentText.length,

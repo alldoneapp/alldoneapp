@@ -171,11 +171,12 @@ async function askToOpenAIBotOptimized(
             elapsed: `${Date.now() - functionStartTime}ms`,
         })
 
-        // Step 6: Handle gold reduction
+        // Step 6: Handle gold reduction (reuse encoder for efficiency)
         let step6Duration = null
         if (aiCommentText) {
             const step6Start = Date.now()
-            await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+            const encoder = getEncoder() // Reuse pre-initialized encoder
+            await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages, encoder)
             step6Duration = Date.now() - step6Start
 
             console.log('✅ [TIMING] Step 6 - Gold reduced', {
@@ -317,4 +318,5 @@ function getLinkedParentChatUrl(projectId, objectType, objectId) {
 
 module.exports = {
     askToOpenAIBot: askToOpenAIBotOptimized,
+    getEncoder, // Export encoder getter for reuse in assistantHelper
 }
