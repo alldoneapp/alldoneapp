@@ -279,23 +279,21 @@ async function storeBotAnswerStreamOptimized(
 
     if (!chat) return ''
 
-    // Use the existing storeChunks function with the pre-fetched data
-    const { storeChunks } = require('./assistantHelper')
-    return await storeChunks(
+    // For now, just use the regular storeBotAnswerStream
+    // TODO: Create a version that accepts pre-fetched data
+    const { storeBotAnswerStream } = require('./assistantHelper')
+    return await storeBotAnswerStream(
         projectId,
         objectType,
         objectId,
-        userIdsToNotify,
         stream,
+        userIdsToNotify,
+        isPublicFor,
         parser,
         assistantId,
-        isPublicFor,
         followerIds,
-        chat.title,
         assistantName,
-        project.name,
-        chatLink,
-        requestUserId || '',
+        requestUserId,
         userContext,
         conversationHistory,
         modelKey,

@@ -203,12 +203,15 @@ async function interactWithChatStreamOptimized(formattedPrompt, modelKey, temper
         const apiCallDuration = Date.now() - apiCallStart
 
         const totalDuration = Date.now() - streamStartTime
+        const openAIClientDuration = formatStart - openAIClientStart
+        const messageFormattingDuration = apiCallStart - formatStart
+
         console.log('🌊 [TIMING] interactWithChatStreamOptimized COMPLETE', {
             totalDuration: `${totalDuration}ms`,
             breakdown: {
                 configLoading: `${configDuration}ms`,
-                openAIClient: `${Date.now() - openAIClientStart}ms`,
-                messageFormatting: `${Date.now() - formatStart}ms`,
+                openAIClient: `${openAIClientDuration}ms`,
+                messageFormatting: `${messageFormattingDuration}ms`,
                 apiCall: `${apiCallDuration}ms`,
             },
             optimization: 'CACHED_CLIENT',
