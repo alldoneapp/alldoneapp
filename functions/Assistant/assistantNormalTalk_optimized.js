@@ -62,7 +62,7 @@ async function askToOpenAIBotOptimized(
     try {
         // Step 1: Fetch user and assistant data in parallel
         const step1Start = Date.now()
-        const [user, assistant] = await Promise.all([getUserData(userId), getAssistantForChat(assistantId)])
+        const [user, assistant] = await Promise.all([getUserData(userId), getAssistantForChat(projectId, assistantId)])
         const step1Duration = Date.now() - step1Start
 
         console.log('✅ [TIMING] Step 1 - PARALLEL User/Assistant fetch completed', {
