@@ -1433,15 +1433,14 @@ const unwatchEmptyGoalsWatcher = (projectId, currentUserId, watcher) => {
 }
 
 export const contractOpenTasks = (projectId, instanceKey, openTasks, updateTaks) => {
-    // First unwatch existing listeners to prevent stale data from being pushed
+    // First, unwatch existing listeners to prevent stale data from being pushed
+    // This stops all Firestore listeners for this project
     unwatchOpenTasks(projectId, instanceKey)
-    // Immediately update UI to show only today's tasks
-    updateTaks([openTasks[0]], false)
+
     // Set up new watchers that only fetch today's tasks
     // Use keepMainDayData=false since we just cleared the data with unwatchOpenTasks
+    // These watchers will update the UI when Firestore data arrives
     watchOpenTasks(projectId, updateTaks, false, false, false, instanceKey)
-    // State is managed by the calling component (AllProjectsShowMoreButtonContainer)
-    // so we don't dispatch here to avoid duplicate state updates
 }
 
 export const contractSomedayOpenTasks = (projectId, instanceKey, openTasks, updateTaks) => {

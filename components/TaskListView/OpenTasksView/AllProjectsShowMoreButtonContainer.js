@@ -75,6 +75,9 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
             const openTasksStore = store.getState().openTasksStore[instanceKey]
             const openTasks = openTasksStore ? openTasksStore : []
 
+            // Filter to only keep today's tasks
+            const todayTasks = openTasks && openTasks.length > 0 ? [openTasks[0]] : []
+
             const updateTasks = (initialTasks, initialLoadingInOpenTasks) => {
                 updateOpTasks(
                     projectId,
@@ -85,6 +88,9 @@ export default function AllProjectsShowMoreButtonContainer({ projectIds, setProj
                     false
                 )
             }
+
+            // Manually update to show only today BEFORE setting up new watchers
+            updateTasks(todayTasks, false)
 
             contractOpenTasks(projectId, instanceKey, openTasks, updateTasks)
         })
