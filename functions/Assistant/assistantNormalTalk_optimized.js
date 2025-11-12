@@ -86,6 +86,7 @@ async function askToOpenAIBotOptimized(
 
         // Step 2: Parallel fetch context messages and common data
         const step2Start = Date.now()
+        const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
         const [messages, commonData] = await Promise.all([
             // Fetch context messages
             getOptimizedContextMessages(
@@ -96,7 +97,7 @@ async function askToOpenAIBotOptimized(
                 language,
                 displayName,
                 instructions,
-                Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
+                allowedTools,
                 userTimezoneOffset,
                 userId
             ),
@@ -129,7 +130,6 @@ async function askToOpenAIBotOptimized(
 
         // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()
-        const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
         const stream = await interactWithChatStream(contextMessages, model, temperature, allowedTools)
         const step4Duration = Date.now() - step4Start
 

@@ -1131,6 +1131,9 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
 
 //AI ASSISTANTS
 
+// Pre-load module at top level to avoid repeated require overhead
+const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk_optimized')
+
 exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: 540,
@@ -1150,9 +1153,7 @@ exports.askToBotSecondGen = onCall(
 
         const { data, auth } = request
         if (auth) {
-            const requireStart = Date.now()
-            const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk_optimized')
-            console.log(`📊 [TIMING] Module require (optimized): ${Date.now() - requireStart}ms`)
+            console.log(`📊 [TIMING] Module require (pre-loaded): 0ms`)
             const {
                 userId,
                 messageId,
