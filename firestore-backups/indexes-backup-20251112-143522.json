@@ -1,0 +1,5402 @@
+{
+    "indexes": [
+        {
+            "collectionGroup": "-O39ZYmhnAtA-Ffrzp5k",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "type",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "order",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "all",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "allComments",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "commentsData.lastCommentOwnerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEdited.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEdited.editorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEditorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "members",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "type",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "usersFollowing",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "usersFollowing",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "usersFollowing",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "usersFollowing",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "comments",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "comments",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "contacts",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "recorderUserId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "contacts",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastChangeUserId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "recorderUserId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "contacts",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEditorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "recorderUserId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "customs",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isDeleted",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lowerCaseName",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "feeds",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "followed",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "followedComments",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assigneesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "childrenTasksAmount",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "progress",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assigneesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assigneesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "progress",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assigneesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "progress",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assigneesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "startingMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "progress",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "startingMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "startingMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDoneMilestone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "progress",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEditorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEditorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "milestoneId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "milestoneId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "progress",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "milestoneId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "milestoneId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentStreamId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "startingMilestoneDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "mcpUserAuth",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "expiresAt",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "doneDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "doneDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "workstreamId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "workstreamsIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "milestonesItems",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "workstreamsIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "followersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "followersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isPrivate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isVisibleInFollowedFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isVisibleInFollowedFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isVisibleInFollowedFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isVisibleInFollowedFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isVisibleInFollowedFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyData.days",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isVisibleInFollowedFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "stickyEndDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEdited.editorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "lastEditorId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentContactsIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentNotesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEdited.timestamp",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentsInContentIds.linkedParentContactsIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentsInTitleIds.linkedParentContactsIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "notes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "oauthAuthSessions",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "clientId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "preConfigTasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assistantId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "order",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "preConfigTasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "assistantId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "type",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "order",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "projects",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "active",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "activeFullSearch",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastLoggedUserDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "projects",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "projects",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isTemplate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "name",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "projects",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isTemplate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentTemplateId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "projects",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isTemplate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentTemplateId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "projects",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentTemplateId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "calendarData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "gmailData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "suggestedBy",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "calendarData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "calendarData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "recurrence",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timesDoneInExpectedDay",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "recurrence",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timesDoneInExpectedDay",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isForEmail",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "observersIds",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "calendarData",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "calendarData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isForEmail",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isForEmail",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isDeleted",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "gmailData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.V99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds64s4RwKszFXPYlmRCpdx91L3tiC3",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIdsV99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklogByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklogByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklogByObserversIds.V99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklogByObserversIds.V99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.V99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isDeleted",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.V99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIdsV99FjfeFzgatJ7ziKrvfWqZe7gp1",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "observersIds",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "genericData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inBacklogByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDateByObserversIds.`64s4RwKszFXPYlmRCpdx91L3tiC3`",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentContactsIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentNotesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentNotesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentNotesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentNotesIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "linkedParentTasksIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "observersIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "inBacklog",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentGoalId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "recurrence",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timesDoneInExpectedDay",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "suggestedBy",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "stepHistory",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "parentDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        },
+        {
+            "collectionGroup": "users",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "projectIds",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ],
+            "density": "SPARSE_ALL"
+        }
+    ],
+    "fieldOverrides": [
+        {
+            "collectionGroup": "comments",
+            "fieldPath": "comment",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "comments",
+            "fieldPath": "commenterId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "comments",
+            "fieldPath": "commenterPhotoURL",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "comments",
+            "fieldPath": "date",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "comments",
+            "fieldPath": "projectId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "company",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "displayName",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "email",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "isPrivate",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "lastChangeUserId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "phone",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "photoURL",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "photoURL300",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "photoURL50",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "recorderUserId",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "contacts",
+            "fieldPath": "role",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "changedProperty",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "commentId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "commentText",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "date",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "itemId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "itemName",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "lastChangeUserId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "newValue",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "oldValue",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "uid",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "userIdsGaveKarma",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "userName",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "entries",
+            "fieldPath": "userPhotoURL",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "info",
+            "fieldPath": "isMandatory",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "info",
+            "fieldPath": "major",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "info",
+            "fieldPath": "minor",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "info",
+            "fieldPath": "patch",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "info",
+            "fieldPath": "time",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "invitations",
+            "fieldPath": "inviterId",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "invitations",
+            "fieldPath": "url",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "invitations",
+            "fieldPath": "userId",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "notes",
+            "fieldPath": "userId",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                },
+                {
+                    "order": "DESCENDING",
+                    "queryScope": "COLLECTION"
+                },
+                {
+                    "arrayConfig": "CONTAINS",
+                    "queryScope": "COLLECTION"
+                },
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION_GROUP"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "color",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "created",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "creatorId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "isPrivate",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "name",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "projectStartDate",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "sprintNames",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "projects",
+            "fieldPath": "usersData",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "completed",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "created",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "creatorId",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "done",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "dueDate",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "estimations",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "followerUserIds",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "followerUsers",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "hasStar",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "isPrivate",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "lastChangeUserId",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "name",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "points",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "rank",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "recurrence",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "stepHistory",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "tasks",
+            "fieldPath": "userId",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "displayName",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "karma",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "lastLogin",
+            "ttl": false,
+            "indexes": [
+                {
+                    "order": "DESCENDING",
+                    "queryScope": "COLLECTION"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "level",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "photoURL",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "showProjectsSidebar",
+            "ttl": false,
+            "indexes": []
+        },
+        {
+            "collectionGroup": "users",
+            "fieldPath": "xp",
+            "ttl": false,
+            "indexes": []
+        }
+    ]
+}

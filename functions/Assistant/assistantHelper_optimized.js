@@ -142,13 +142,6 @@ async function interactWithChatStreamOptimized(formattedPrompt, modelKey, temper
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
 
-    console.log(`📊 [TIMING] Config loading (CACHED): ${configDuration}ms`, {
-        model,
-        temperature,
-        hasPerplexityKey: !!envFunctions.PERPLEXITY_API_KEY,
-        hasOpenAIKey: !!envFunctions.OPEN_AI_KEY,
-    })
-
     const { OPEN_AI_KEY, PERPLEXITY_API_KEY } = envFunctions
 
     if (modelKey.startsWith('MODEL_SONAR')) {

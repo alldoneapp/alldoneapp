@@ -1,11 +1,16 @@
 {
     "indexes": [
         {
-            "collectionGroup": "tasks",
-            "queryScope": "COLLECTION_GROUP",
+            "__comment__": "Tasks - Template tasks query",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
             "fields": [
                 {
-                    "fieldPath": "alertEnabled",
+                    "fieldPath": "calendarData",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "gmailData",
                     "order": "ASCENDING"
                 },
                 {
@@ -13,18 +18,125 @@
                     "order": "ASCENDING"
                 },
                 {
-                    "fieldPath": "done",
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Tasks - Done tasks with completion date",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Tasks - Open tasks (not done, not subtask)",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Tasks - Subtasks query",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "parentId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Tasks - Calendar tasks within time range",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
                     "order": "ASCENDING"
                 }
             ]
         },
         {
-            "collectionId": "users",
+            "__comment__": "Milestones - Undone milestones by date",
+            "collectionGroup": "milestonesItems",
             "queryScope": "COLLECTION",
             "fields": [
                 {
-                    "fieldPath": "lastLogin",
+                    "fieldPath": "done",
                     "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "date",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "OAuth tokens - Valid tokens for user",
+            "collectionGroup": "oauthTokens",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "expiresAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "MCP - Recent auth codes",
+            "collectionGroup": "authCodes",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "clientId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
                 }
             ]
         }

@@ -17,18 +17,23 @@ const {
 
 const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
-const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
 
 const TOTAL_MAX_TOKENS_IN_MODEL = 4096
 const ENCODE_INITIAL_GAP = 3
 
-// Pre-initialize tiktoken encoder
-let encoder = null
+// Pre-load heavy JSON and encoder at module load time (cold start)
+console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')
+const jsonLoadStart = Date.now()
+const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
+console.log(`✅ [TIMING] Tiktoken JSON loaded: ${Date.now() - jsonLoadStart}ms`)
+
+// Pre-initialize tiktoken encoder immediately after JSON load
+const encoderInitStart = Date.now()
+const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
+console.log(`✅ [TIMING] Tiktoken encoder initialized: ${Date.now() - encoderInitStart}ms`)
+
 function getEncoder() {
-    if (!encoder) {
-        encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-    }
-    return encoder
+    return encoder // Always return pre-initialized encoder
 }
 
 async function askToOpenAIBotOptimized(
@@ -228,7 +233,7 @@ function generateContextOptimized(messages) {
             }
         }
     } finally {
-        // Don't free encoder - keep it cached
+        // Keep the pre-initialized encoder alive
     }
 
     return contextMessages.reverse()
