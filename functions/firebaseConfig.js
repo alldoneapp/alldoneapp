@@ -36,6 +36,29 @@ function getEnvironment() {
 const environment = getEnvironment()
 console.log(`[alldone] Using environment: ${environment}`)
 
+const FIRESTORE_SETTINGS = {
+    ignoreUndefinedProperties: true,
+    cacheSizeBytes: 50 * 1024 * 1024, // 50MB cache
+}
+
+function applyFirestoreSettings(admin) {
+    if (globalThis.__ALDONE_FIRESTORE_CONFIGURED__) {
+        return
+    }
+
+    try {
+        const firestore = admin.firestore()
+        if (firestore && typeof firestore.settings === 'function') {
+            firestore.settings(FIRESTORE_SETTINGS)
+            globalThis.__ALDONE_FIRESTORE_CONFIGURED__ = true
+            console.log('[alldone] Firestore settings applied')
+        }
+    } catch (error) {
+        console.error('[alldone] Failed to apply Firestore settings', { error: error.message })
+        // Do not rethrow—using default Firestore configuration is acceptable fallback
+    }
+}
+
 // Load environment-specific configuration
 let firebaseConfigData
 let configFileName
@@ -73,6 +96,7 @@ exports.init = admin => {
         const app = admin.app()
         console.log('[alldone] admin.app() already exists, reusing')
         globalThis.__ALDONE_ADMIN_APP__ = app
+        applyFirestoreSettings(admin)
         return app
     } catch (e) {
         // Default app is not initialized yet
@@ -101,6 +125,7 @@ exports.init = admin => {
 
         const app = admin.initializeApp(config)
         globalThis.__ALDONE_ADMIN_APP__ = app
+        applyFirestoreSettings(admin)
         return app
     } catch (e) {
         const duplicate =
@@ -114,6 +139,7 @@ exports.init = admin => {
             console.log('[alldone] Caught duplicate-app during init, returning existing admin app')
             const app = admin.app()
             globalThis.__ALDONE_ADMIN_APP__ = app
+            applyFirestoreSettings(admin)
             return app
         }
         throw e

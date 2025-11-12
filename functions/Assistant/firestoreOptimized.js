@@ -6,11 +6,6 @@ let firestoreInstance = null
 function getFirestore() {
     if (!firestoreInstance) {
         firestoreInstance = admin.firestore()
-        // Enable offline persistence and other optimizations
-        firestoreInstance.settings({
-            ignoreUndefinedProperties: true,
-            cacheSizeBytes: 50 * 1024 * 1024, // 50MB cache
-        })
     }
     return firestoreInstance
 }
