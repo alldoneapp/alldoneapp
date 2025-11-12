@@ -26,7 +26,9 @@ function hasRealValues(envObject) {
 }
 
 const getEnvFunctions = () => {
+    const envLoadStart = Date.now()
     const isEmulator = !!process.env.FUNCTIONS_EMULATOR
+    console.log(`🔧 [TIMING] getEnvFunctions START (isEmulator: ${isEmulator})`)
 
     let envFunctions = {}
     let source = 'none'
@@ -46,12 +48,17 @@ const getEnvFunctions = () => {
             ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
             SIB_API_KEY: process.env.SIB_API_KEY || '',
         }
+        console.log(`📊 [TIMING] Environment loaded from process.env: ${Date.now() - envLoadStart}ms`)
     } else {
         // In production/staging, try to load from env_functions.json first
         const envJsonPath = path.join(__dirname, 'env_functions.json')
+        const fileCheckStart = Date.now()
         if (fs.existsSync(envJsonPath)) {
+            console.log(`📊 [TIMING] File exists check: ${Date.now() - fileCheckStart}ms`)
             try {
+                const readStart = Date.now()
                 const envJson = JSON.parse(fs.readFileSync(envJsonPath, 'utf8'))
+                console.log(`📊 [TIMING] JSON file read and parse: ${Date.now() - readStart}ms`)
 
                 const jsonEnvFunctions = {
                     PERPLEXITY_API_KEY: envJson.PERPLEXITY_API_KEY || '',
@@ -156,6 +163,7 @@ const getEnvFunctions = () => {
         console.warn('Warning: SIB_API_KEY is not set or is a placeholder')
     }
 
+    console.log(`🔧 [TIMING] getEnvFunctions COMPLETE: ${Date.now() - envLoadStart}ms (source: ${source})`)
     return envFunctions
 }
 

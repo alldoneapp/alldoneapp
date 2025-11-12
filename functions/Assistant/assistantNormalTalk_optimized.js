@@ -43,17 +43,37 @@ async function askToOpenAIBotOptimized(
     assistantId,
     followerIds
 ) {
-    console.log('askToOpenAIBotOptimized starting...')
-    const startTime = Date.now()
+    const functionStartTime = Date.now()
+    console.log('🚀 [TIMING] askToOpenAIBotOptimized START', {
+        timestamp: new Date().toISOString(),
+        userId,
+        messageId,
+        projectId,
+        objectType,
+        objectId,
+        assistantId,
+    })
 
     try {
-        // Critical: Fetch user and assistant data in parallel
+        // Step 1: Fetch user and assistant data in parallel
+        const step1Start = Date.now()
         const [user, assistant] = await Promise.all([getUserData(userId), getAssistantForChat(assistantId)])
+        const step1Duration = Date.now() - step1Start
 
-        console.log(`User/Assistant fetch took: ${Date.now() - startTime}ms`)
+        console.log('✅ [TIMING] Step 1 - PARALLEL User/Assistant fetch completed', {
+            duration: `${step1Duration}ms`,
+            hasAssistant: !!assistant,
+            userGold: user?.gold,
+            assistantModel: assistant?.model,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+        })
 
         if (!user || user.gold <= 0) {
-            console.log('User has no gold:', { userId, userGold: user?.gold })
+            console.log('⚠️ [TIMING] User has no gold', {
+                userId,
+                userGold: user?.gold,
+                duration: `${Date.now() - functionStartTime}ms`,
+            })
             return
         }
 
@@ -63,8 +83,8 @@ async function askToOpenAIBotOptimized(
         const userTimezoneOffset =
             user.timezone ?? user.timezoneOffset ?? user.timezoneMinutes ?? user.preferredTimezone ?? null
 
-        // Start parallel operations
-        const contextStart = Date.now()
+        // Step 2: Parallel fetch context messages and common data
+        const step2Start = Date.now()
         const [messages, commonData] = await Promise.all([
             // Fetch context messages
             getOptimizedContextMessages(
@@ -82,25 +102,46 @@ async function askToOpenAIBotOptimized(
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),
         ])
+        const step2Duration = Date.now() - step2Start
 
-        console.log(`Context fetch took: ${Date.now() - contextStart}ms`)
+        console.log('✅ [TIMING] Step 2 - PARALLEL Context & Common Data fetch', {
+            duration: `${step2Duration}ms`,
+            messagesCount: messages?.length,
+            hasCommonData: !!commonData,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+        })
 
-        // Generate optimized context
+        // Step 3: Generate optimized context
+        const step3Start = Date.now()
         const contextMessages = generateContextOptimized(messages)
+        const step3Duration = Date.now() - step3Start
+
+        console.log('✅ [TIMING] Step 3 - Context generation', {
+            duration: `${step3Duration}ms`,
+            contextMessagesCount: contextMessages?.length,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+        })
 
         // Extract user context for tools
         const userContext = messages?.find(msg => msg[0] === 'user')
         const userContextForTools = userContext ? { message: userContext[1] || '' } : null
 
-        // Start streaming
-        const streamStart = Date.now()
+        // Step 4: Create stream
+        const step4Start = Date.now()
         const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
         const stream = await interactWithChatStreamOptimized(contextMessages, model, temperature, allowedTools)
+        const step4Duration = Date.now() - step4Start
 
-        console.log(`Stream initialization took: ${Date.now() - streamStart}ms`)
-        console.log(`Total time before streaming: ${Date.now() - startTime}ms`)
+        console.log('✅ [TIMING] Step 4 - Stream creation (optimized)', {
+            duration: `${step4Duration}ms`,
+            model,
+            temperature,
+            allowedToolsCount: allowedTools.length,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+        })
 
-        // Process stream with pre-fetched data
+        // Step 5: Process stream with pre-fetched data
+        const step5Start = Date.now()
         const aiCommentText = await storeBotAnswerStreamOptimized(
             projectId,
             objectType,
@@ -120,15 +161,50 @@ async function askToOpenAIBotOptimized(
             allowedTools,
             commonData // Pass pre-fetched data
         )
+        const step5Duration = Date.now() - step5Start
 
-        // Handle gold reduction
+        console.log('✅ [TIMING] Step 5 - Stream processing (with pre-fetched data)', {
+            duration: `${step5Duration}ms`,
+            hasComment: !!aiCommentText,
+            commentLength: aiCommentText?.length,
+            elapsed: `${Date.now() - functionStartTime}ms`,
+        })
+
+        // Step 6: Handle gold reduction
+        let step6Duration = null
         if (aiCommentText) {
+            const step6Start = Date.now()
             await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+            step6Duration = Date.now() - step6Start
+
+            console.log('✅ [TIMING] Step 6 - Gold reduced', {
+                duration: `${step6Duration}ms`,
+                currentGold: user.gold,
+                elapsed: `${Date.now() - functionStartTime}ms`,
+            })
         }
 
-        console.log(`Total execution time: ${Date.now() - startTime}ms`)
+        // Final summary
+        const totalDuration = Date.now() - functionStartTime
+        console.log('🎯 [TIMING] askToOpenAIBotOptimized COMPLETE', {
+            totalDuration: `${totalDuration}ms`,
+            breakdown: {
+                parallelUserAssistantFetch: `${step1Duration}ms`,
+                parallelContextAndCommonData: `${step2Duration}ms`,
+                contextGeneration: `${step3Duration}ms`,
+                streamCreation: `${step4Duration}ms`,
+                streamProcessing: `${step5Duration}ms`,
+                goldReduction: step6Duration ? `${step6Duration}ms` : 'N/A',
+            },
+            optimization: 'PARALLEL_OPS',
+        })
     } catch (error) {
-        console.error('Error in askToOpenAIBotOptimized:', error)
+        const errorDuration = Date.now() - functionStartTime
+        console.error('❌ [TIMING] Error in askToOpenAIBotOptimized', {
+            error: error.message,
+            stack: error.stack,
+            duration: `${errorDuration}ms`,
+        })
         throw error
     }
 }

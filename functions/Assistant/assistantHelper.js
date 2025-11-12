@@ -269,16 +269,27 @@ const calculateGoldToReduce = (userGold, totalTokens, model) => {
 }
 
 async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey, allowedTools = []) {
-    console.log('Starting interactWithChatStream...')
-    console.log('Model Key:', modelKey)
-    console.log('Allowed Tools:', allowedTools)
-    console.log('Formatted Prompt structure:', JSON.stringify(formattedPrompt, null, 2))
+    const streamStartTime = Date.now()
+    console.log('🌊 [TIMING] interactWithChatStream START', {
+        timestamp: new Date().toISOString(),
+        modelKey,
+        allowedToolsCount: allowedTools.length,
+        promptLength: formattedPrompt?.length,
+    })
 
+    // Step 1: Get model config and environment
+    const configStart = Date.now()
     const model = getModel(modelKey)
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getEnvFunctions()
-    console.log('Environment functions loaded')
-    console.log('Environment has PERPLEXITY_API_KEY:', !!envFunctions.PERPLEXITY_API_KEY)
+    const configDuration = Date.now() - configStart
+
+    console.log(`📊 [TIMING] Config loading: ${configDuration}ms`, {
+        model,
+        temperature,
+        hasPerplexityKey: !!envFunctions.PERPLEXITY_API_KEY,
+        hasOpenAIKey: !!envFunctions.OPEN_AI_KEY,
+    })
 
     const { OPEN_AI_KEY, PERPLEXITY_API_KEY } = envFunctions
 
@@ -314,9 +325,12 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         }
     } else {
         // Native OpenAI implementation with tool calling support
+        const openAIInitStart = Date.now()
         const openai = new OpenAI({ apiKey: OPEN_AI_KEY })
+        console.log(`📊 [TIMING] OpenAI client init: ${Date.now() - openAIInitStart}ms`)
 
         // Convert messages to OpenAI format
+        const formatStart = Date.now()
         const messages = Array.isArray(formattedPrompt)
             ? formattedPrompt.map(msg => {
                   // Handle array format [role, content]
@@ -340,6 +354,7 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
                   throw new Error('Unexpected message format')
               })
             : formattedPrompt
+        console.log(`📊 [TIMING] Message formatting: ${Date.now() - formatStart}ms`)
 
         const requestParams = {
             model: model,
@@ -399,9 +414,24 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
                 : null,
         })
 
-        console.log('Calling OpenAI API...')
+        // Make the actual API call to OpenAI
+        const apiCallStart = Date.now()
+        console.log('📞 [TIMING] Calling OpenAI API...')
         const stream = await openai.chat.completions.create(requestParams)
-        console.log('OpenAI API call successful, got stream')
+        const apiCallDuration = Date.now() - apiCallStart
+        console.log(`✅ [TIMING] OpenAI API call successful: ${apiCallDuration}ms`)
+
+        const totalDuration = Date.now() - streamStartTime
+        console.log('🌊 [TIMING] interactWithChatStream COMPLETE', {
+            totalDuration: `${totalDuration}ms`,
+            breakdown: {
+                configLoading: `${configDuration}ms`,
+                openAIClientInit: openAIInitStart ? `${Date.now() - openAIInitStart - apiCallDuration}ms` : 'N/A',
+                apiCall: `${apiCallDuration}ms`,
+                model,
+                temperature,
+            },
+        })
 
         // Convert OpenAI stream to our expected format
         return convertOpenAIStream(stream)
@@ -1594,28 +1624,20 @@ async function storeChunks(
     temperatureKey = null,
     allowedTools = []
 ) {
-    console.log('Starting storeChunks with:', {
+    const chunksStartTime = Date.now()
+    console.log('🔄 [TIMING] storeChunks START', {
+        timestamp: new Date().toISOString(),
         projectId,
         objectType,
         objectId,
         hasStream: !!stream,
-        hasParser: !!parser,
         assistantId,
-        isPublicFor,
-        followerIdsCount: followerIds?.length,
-        objectName,
-        assistantName,
-        projectname,
-        hasChatLink: !!chatLink,
     })
 
     try {
+        // Step 1: Create initial comment
+        const step1Start = Date.now()
         const { commentId, comment } = formatMessage(objectType, '', assistantId)
-        console.log('Formatted initial message:', {
-            commentId,
-            hasComment: !!comment,
-            commentContent: comment,
-        })
 
         let promises = []
         promises.push(getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor))
@@ -1626,9 +1648,11 @@ async function storeChunks(
                 .set(comment)
         )
 
-        console.log('Getting current follower IDs and creating initial comment...')
         const [currentFollowerIds] = await Promise.all(promises)
-        console.log('Got current follower IDs:', {
+        const step1Duration = Date.now() - step1Start
+
+        console.log(`📊 [TIMING] Initial setup: ${step1Duration}ms`, {
+            commentId,
             followerCount: currentFollowerIds?.length,
         })
 
@@ -1645,10 +1669,23 @@ async function storeChunks(
             .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
 
         // Process each chunk from the stream
-        console.log('Starting to process stream chunks...')
+        const streamProcessStart = Date.now()
+        let firstChunkTime = null
+        let lastChunkTime = Date.now()
+        console.log('🚀 [TIMING] Starting stream processing...')
+
         for await (const chunk of stream) {
             chunkCount++
-            console.log(`Processing chunk #${chunkCount}:`, {
+            const chunkTime = Date.now()
+
+            if (!firstChunkTime) {
+                firstChunkTime = chunkTime
+                console.log(`⚡ [TIMING] First chunk received: ${firstChunkTime - streamProcessStart}ms`)
+            }
+
+            console.log(`📦 [TIMING] Chunk #${chunkCount}:`, {
+                timeSinceLastChunk: `${chunkTime - lastChunkTime}ms`,
+                timeSinceStart: `${chunkTime - streamProcessStart}ms`,
                 hasContent: !!chunk.content,
                 contentLength: chunk.content?.length,
                 isLoading: chunk.isLoading,
@@ -1656,6 +1693,8 @@ async function storeChunks(
                 clearThinkingMode: chunk.clearThinkingMode,
                 hasReplacementContent: !!chunk.replacementContent,
             })
+
+            lastChunkTime = chunkTime
 
             // If a tool was already executed, skip all remaining chunks from the stream
             if (toolAlreadyExecuted) {
@@ -2074,13 +2113,36 @@ async function storeChunks(
             updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, commentText, STAYWARD_COMMENT)
         )
 
-        console.log('Waiting for all promises to resolve...')
+        // Final operations
+        const finalOpsStart = Date.now()
+        console.log('🔨 [TIMING] Starting final operations...')
         await Promise.all(promises)
-        console.log('All promises resolved successfully')
+        const finalOpsDuration = Date.now() - finalOpsStart
+
+        const streamProcessDuration = Date.now() - streamProcessStart
+        const totalDuration = Date.now() - chunksStartTime
+
+        console.log('🔄 [TIMING] storeChunks COMPLETE', {
+            totalDuration: `${totalDuration}ms`,
+            breakdown: {
+                initialSetup: `${step1Duration}ms`,
+                streamProcessing: `${streamProcessDuration}ms`,
+                timeToFirstChunk: firstChunkTime ? `${firstChunkTime - streamProcessStart}ms` : 'N/A',
+                finalOperations: `${finalOpsDuration}ms`,
+            },
+            stats: {
+                totalChunks: chunkCount,
+                commentLength: commentText.length,
+            },
+        })
 
         return commentText
     } catch (error) {
-        console.error('Error in storeChunks:', error)
+        console.error('❌ [TIMING] Error in storeChunks:', {
+            error: error.message,
+            duration: `${Date.now() - chunksStartTime}ms`,
+            chunksProcessed: chunkCount,
+        })
         throw error
     }
 }
@@ -2119,26 +2181,30 @@ async function storeBotAnswerStream(
     temperatureKey = null,
     allowedTools = []
 ) {
-    console.log('Starting storeBotAnswerStream with:', {
+    const streamProcessStart = Date.now()
+    console.log('💾 [TIMING] storeBotAnswerStream START', {
+        timestamp: new Date().toISOString(),
         projectId,
         objectType,
         objectId,
         assistantId,
-        assistantName,
         hasStream: !!stream,
-        hasParser: !!parser,
-        userIdsToNotifyCount: userIdsToNotify?.length,
-        followerIdsCount: followerIds?.length,
     })
 
     try {
+        // Fetch common data
+        const commonDataStart = Date.now()
         const { project, chat, chatLink } = await getCommonData(projectId, objectType, objectId)
-        console.log('Retrieved common data:', {
+        const commonDataDuration = Date.now() - commonDataStart
+
+        console.log(`📊 [TIMING] Common data fetch: ${commonDataDuration}ms`, {
             hasProject: !!project,
             hasChat: !!chat,
             hasChatLink: !!chatLink,
         })
 
+        // Store chunks
+        const storeChunksStart = Date.now()
         const result = chat
             ? await storeChunks(
                   projectId,
@@ -2162,15 +2228,25 @@ async function storeBotAnswerStream(
                   allowedTools
               )
             : ''
+        const storeChunksDuration = Date.now() - storeChunksStart
 
-        console.log('storeBotAnswerStream returning comment text:', {
+        const totalDuration = Date.now() - streamProcessStart
+        console.log('💾 [TIMING] storeBotAnswerStream COMPLETE', {
+            totalDuration: `${totalDuration}ms`,
+            breakdown: {
+                commonDataFetch: `${commonDataDuration}ms`,
+                storeChunks: `${storeChunksDuration}ms`,
+            },
             hasText: !!result,
             textLength: result?.length,
         })
 
         return result
     } catch (error) {
-        console.error('Error in storeBotAnswerStream:', error)
+        console.error('❌ [TIMING] Error in storeBotAnswerStream:', {
+            error: error.message,
+            duration: `${Date.now() - streamProcessStart}ms`,
+        })
         throw error
     }
 }

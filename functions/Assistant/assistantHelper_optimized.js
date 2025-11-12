@@ -111,11 +111,27 @@ async function fetchMentionedNotesContextOptimized(messageId, userId, projectId,
 
 // Optimized streaming function with connection pooling
 async function interactWithChatStreamOptimized(formattedPrompt, modelKey, temperatureKey, allowedTools = []) {
-    console.log('Starting optimized chat stream...')
+    const streamStartTime = Date.now()
+    console.log('🌊 [TIMING] interactWithChatStreamOptimized START', {
+        timestamp: new Date().toISOString(),
+        modelKey,
+        allowedToolsCount: allowedTools.length,
+        promptLength: formattedPrompt?.length,
+    })
 
+    // Step 1: Get model config and cached environment
+    const configStart = Date.now()
     const model = getModel(modelKey)
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
+    const configDuration = Date.now() - configStart
+
+    console.log(`📊 [TIMING] Config loading (CACHED): ${configDuration}ms`, {
+        model,
+        temperature,
+        hasPerplexityKey: !!envFunctions.PERPLEXITY_API_KEY,
+        hasOpenAIKey: !!envFunctions.OPEN_AI_KEY,
+    })
 
     const { OPEN_AI_KEY, PERPLEXITY_API_KEY } = envFunctions
 
@@ -126,9 +142,12 @@ async function interactWithChatStreamOptimized(formattedPrompt, modelKey, temper
         return client.stream(formattedPrompt)
     } else {
         // Use cached OpenAI client
+        const openAIClientStart = Date.now()
         const openai = getOpenAIClient(OPEN_AI_KEY)
+        console.log(`📊 [TIMING] OpenAI client (CACHED): ${Date.now() - openAIClientStart}ms`)
 
         // Convert messages to OpenAI format
+        const formatStart = Date.now()
         const messages = Array.isArray(formattedPrompt)
             ? formattedPrompt.map(msg => {
                   if (Array.isArray(msg)) {
@@ -143,6 +162,7 @@ async function interactWithChatStreamOptimized(formattedPrompt, modelKey, temper
                   throw new Error('Unexpected message format')
               })
             : formattedPrompt
+        console.log(`📊 [TIMING] Message formatting: ${Date.now() - formatStart}ms`)
 
         const requestParams = {
             model: model,
@@ -160,7 +180,24 @@ async function interactWithChatStreamOptimized(formattedPrompt, modelKey, temper
             requestParams.tool_choice = 'auto'
         }
 
+        // Make the API call
+        const apiCallStart = Date.now()
+        console.log('📞 [TIMING] Calling OpenAI API (optimized)...')
         const stream = await openai.chat.completions.create(requestParams)
+        const apiCallDuration = Date.now() - apiCallStart
+
+        const totalDuration = Date.now() - streamStartTime
+        console.log('🌊 [TIMING] interactWithChatStreamOptimized COMPLETE', {
+            totalDuration: `${totalDuration}ms`,
+            breakdown: {
+                configLoading: `${configDuration}ms`,
+                openAIClient: `${Date.now() - openAIClientStart}ms`,
+                messageFormatting: `${Date.now() - formatStart}ms`,
+                apiCall: `${apiCallDuration}ms`,
+            },
+            optimization: 'CACHED_CLIENT',
+        })
+
         return convertOpenAIStream(stream)
     }
 }

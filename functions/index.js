@@ -1134,17 +1134,25 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
 exports.askToBotSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MiB', // Increased for better performance
+        memory: '2GiB', // Increased for better performance
         minInstances: 1, // Keep 2 instances warm to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
         region: 'europe-west1',
         cors: true,
     },
     async request => {
-        console.log('askToBotSecondGen function called')
+        const functionEntryTime = Date.now()
+        console.log('🎯 [TIMING] askToBotSecondGen ENTRY POINT', {
+            timestamp: new Date().toISOString(),
+            hasAuth: !!request.auth,
+            dataKeys: Object.keys(request.data || {}),
+        })
+
         const { data, auth } = request
         if (auth) {
-            const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk')
+            const requireStart = Date.now()
+            const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk_optimized')
+            console.log(`📊 [TIMING] Module require (optimized): ${Date.now() - requireStart}ms`)
             const {
                 userId,
                 messageId,
@@ -1157,19 +1165,18 @@ exports.askToBotSecondGen = onCall(
                 assistantId,
                 followerIds,
             } = data
-            console.log('askToBotSecondGen: calling askToOpenAIBot with params:', {
+            console.log('📊 [TIMING] Function setup complete, calling askToOpenAIBot:', {
+                setupTime: `${Date.now() - functionEntryTime}ms`,
                 userId,
                 messageId,
                 projectId,
                 objectType,
                 objectId,
-                userIdsToNotify,
-                isPublicFor,
-                language,
                 assistantId,
-                followerIds,
             })
-            return await askToOpenAIBot(
+
+            const askToOpenAIBotStart = Date.now()
+            const result = await askToOpenAIBot(
                 userId,
                 messageId,
                 projectId,
@@ -1181,6 +1188,15 @@ exports.askToBotSecondGen = onCall(
                 assistantId,
                 followerIds
             )
+
+            const totalFunctionTime = Date.now() - functionEntryTime
+            console.log('🎯 [TIMING] askToBotSecondGen COMPLETE', {
+                totalFunctionTime: `${totalFunctionTime}ms`,
+                setupTime: `${askToOpenAIBotStart - functionEntryTime}ms`,
+                askToOpenAIBotTime: `${Date.now() - askToOpenAIBotStart}ms`,
+            })
+
+            return result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -1255,7 +1271,7 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
 exports.generatePreConfigTaskResultSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MiB', // Increased for better performance
+        memory: '2GiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
@@ -1299,7 +1315,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
 exports.generateBotAdvaiceSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '512MiB', // Increased for better performance
+        memory: '2GiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
         region: 'europe-west1',
