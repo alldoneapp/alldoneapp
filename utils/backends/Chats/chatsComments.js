@@ -574,9 +574,11 @@ export async function createObjectMessage(
             // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
             if (!editingCommentId && assistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
                 const clientSubmissionTime = Date.now()
+                const clientSubmissionTimestamp = new Date().toISOString()
                 console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
-                    timestamp: new Date().toISOString(),
+                    timestamp: clientSubmissionTimestamp,
                     submissionTime: clientSubmissionTime,
+                    submissionTimeISO: clientSubmissionTimestamp,
                     userId: creatorId,
                     messageId: commentId,
                     projectId,
@@ -584,6 +586,7 @@ export async function createObjectMessage(
                     objectId,
                     assistantId,
                 })
+                const functionCallStartTime = Date.now()
                 runHttpsCallableFunction('askToBotSecondGen', {
                     userId: creatorId,
                     messageId: commentId,
@@ -598,14 +601,25 @@ export async function createObjectMessage(
                 })
                     .then(() => {
                         const clientCallCompleteTime = Date.now()
+                        const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
+                        const networkLatency = functionCallStartTime - clientSubmissionTime
                         console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated', {
-                            timeSinceSubmission: `${clientCallCompleteTime - clientSubmissionTime}ms`,
                             timestamp: new Date().toISOString(),
+                            submissionTime: clientSubmissionTime,
+                            submissionTimeISO: clientSubmissionTimestamp,
+                            completionTime: clientCallCompleteTime,
+                            completionTimeISO: new Date().toISOString(),
+                            timeSinceSubmission: `${totalClientToServerTime}ms`,
+                            networkLatency: `${networkLatency}ms`,
+                            backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
                         })
                     })
                     .catch(error => {
                         console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
                             error: error.message,
+                            timestamp: new Date().toISOString(),
+                            submissionTime: clientSubmissionTime,
+                            submissionTimeISO: clientSubmissionTimestamp,
                             timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                         })
                     })

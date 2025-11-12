@@ -337,9 +337,11 @@ const createTopicForPreConfigTask = async (
         }
 
         const clientSubmissionTime = Date.now()
+        const clientSubmissionTimestamp = new Date().toISOString()
         console.log('⏱️ [TIMING] CLIENT: Pre-config task submitted, calling generatePreConfigTaskResultSecondGen', {
-            timestamp: new Date().toISOString(),
+            timestamp: clientSubmissionTimestamp,
             submissionTime: clientSubmissionTime,
+            submissionTimeISO: clientSubmissionTimestamp,
             userId: loggedUser.uid,
             projectId,
             taskId,
@@ -349,13 +351,23 @@ const createTopicForPreConfigTask = async (
         console.log('Calling generatePreConfigTaskResultSecondGen with params:', functionParams)
 
         try {
+            const functionCallStartTime = Date.now()
             await runHttpsCallableFunction('generatePreConfigTaskResultSecondGen', functionParams, {
                 timeout: 540000, // 9 minutes (540 seconds) to match backend timeout
             })
             const clientCallCompleteTime = Date.now()
+            const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
+            const networkLatency = functionCallStartTime - clientSubmissionTime
+
             console.log('⏱️ [TIMING] CLIENT: generatePreConfigTaskResultSecondGen completed', {
-                timeSinceSubmission: `${clientCallCompleteTime - clientSubmissionTime}ms`,
                 timestamp: new Date().toISOString(),
+                submissionTime: clientSubmissionTime,
+                submissionTimeISO: clientSubmissionTimestamp,
+                completionTime: clientCallCompleteTime,
+                completionTimeISO: new Date().toISOString(),
+                timeSinceSubmission: `${totalClientToServerTime}ms`,
+                networkLatency: `${networkLatency}ms`,
+                backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
             })
             console.log('Successfully completed generatePreConfigTaskResultSecondGen')
         } catch (error) {
