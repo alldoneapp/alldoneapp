@@ -135,6 +135,19 @@ async function generatePreConfigTaskResult(
     const userGold = typeof user?.gold === 'number' ? user.gold : 0
     const step1Duration = Date.now() - step1Start
 
+    console.log('🕵️ [DEBUG] Step 1 data snapshot', {
+        settingsSource,
+        hasSettings: !!settings,
+        settingsModel: settings?.model,
+        settingsTemperature: settings?.temperature,
+        hasInstructions: !!settings?.instructions,
+        displayName: settings?.displayName,
+        assistantUid: settings?.uid || assistantId,
+        userLoaded: !!user,
+        userFields: user ? Object.keys(user) : [],
+        userGold,
+    })
+
     console.log('✅ [TIMING] Step 1 - Settings & User fetch completed', {
         duration: `${step1Duration}ms`,
         elapsed: `${Date.now() - functionStartTime}ms`,
@@ -224,6 +237,12 @@ async function generatePreConfigTaskResult(
 
         // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token
         const step3Start = Date.now()
+        console.log('🕵️ [DEBUG] Preparing stream and common data fetch', {
+            model,
+            temperature,
+            allowedToolsLength: allowedTools.length,
+            contextMessagesCount: contextMessages.length,
+        })
         const [stream, commonData] = await Promise.all([
             interactWithChatStream(contextMessages, model, temperature, allowedTools),
             getCommonData(projectId, 'tasks', objectId),
