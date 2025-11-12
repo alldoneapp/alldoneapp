@@ -15,14 +15,19 @@ async function getUserDataOptimized(userId) {
     const startTime = Date.now()
     const db = getFirestore()
 
-    // Only select the fields we need
-    const userDoc = await db
-        .doc(`users/${userId}`)
-        .select('gold', 'timezone', 'timezoneOffset', 'timezoneMinutes', 'preferredTimezone')
-        .get()
+    const userDoc = await db.doc(`users/${userId}`).get()
+    const data = userDoc.exists ? userDoc.data() : null
+
+    const result = {
+        gold: data?.gold,
+        timezone: data?.timezone,
+        timezoneOffset: data?.timezoneOffset,
+        timezoneMinutes: data?.timezoneMinutes,
+        preferredTimezone: data?.preferredTimezone,
+    }
 
     console.log(`[FIRESTORE] getUserData: ${Date.now() - startTime}ms`)
-    return userDoc.data()
+    return result
 }
 
 // Optimized assistant fetching with caching
