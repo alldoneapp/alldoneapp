@@ -16,7 +16,6 @@ const {
 const { logEvent } = require('../GAnalytics/GAnalytics')
 const {
     GLOBAL_PROJECT_ID,
-    getAssistantData,
     getDefaultAssistantData,
     updateAssistantLastCommentData,
 } = require('../Firestore/assistantsFirestore')
@@ -882,22 +881,27 @@ const getCurrentFollowerIds = async (followerIds, projectId, objectType, objectI
 }
 
 const updateLastAssistantCommentData = async (projectId, objectType, objectId, currentFollowerIds, creatorId) => {
-    const promises = []
+    if (!Array.isArray(currentFollowerIds) || currentFollowerIds.length === 0) {
+        return
+    }
+
+    const batch = admin.firestore().batch()
+    const timestamp = moment().utc().valueOf()
+
     currentFollowerIds.forEach(followerId => {
         const ref = admin.firestore().doc(`users/${followerId}`)
-        const updateDate = { objectType, objectId, creatorId, creatorType: 'assistant', date: moment().utc().valueOf() }
+        const updateDate = { objectType, objectId, creatorId, creatorType: 'assistant', date: timestamp }
 
-        promises.push(
-            ref.update({
-                [`lastAssistantCommentData.${projectId}`]: updateDate,
-                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                    ...updateDate,
-                    projectId,
-                },
-            })
-        )
+        batch.update(ref, {
+            [`lastAssistantCommentData.${projectId}`]: updateDate,
+            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                ...updateDate,
+                projectId,
+            },
+        })
     })
-    await Promise.all(promises)
+
+    await batch.commit()
 }
 
 /**
@@ -2406,33 +2410,86 @@ function addSpaceToUrl(url, text) {
 // Cache for assistant data (5 minute TTL)
 const assistantCache = new Map()
 const ASSISTANT_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const ASSISTANT_ONLY_CACHE_PREFIX = '__assistant__'
+
+const getAssistantProjectCacheKey = (projectId, assistantId) => `${projectId}_${assistantId}`
+const getAssistantOnlyCacheKey = assistantId => `${ASSISTANT_ONLY_CACHE_PREFIX}_${assistantId}`
+
+const primeDefaultAssistantCache = async () => {
+    if (typeof getDefaultAssistantData !== 'function') {
+        return
+    }
+    try {
+        const defaultAssistant = await getDefaultAssistantData(admin)
+        if (defaultAssistant?.uid) {
+            const normalizedAssistant = {
+                ...defaultAssistant,
+                model: defaultAssistant.model || 'MODEL_GPT3_5',
+                temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
+                instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
+                allowedTools: Array.isArray(defaultAssistant.allowedTools) ? defaultAssistant.allowedTools : [],
+            }
+            assistantCache.set(getAssistantOnlyCacheKey(defaultAssistant.uid), {
+                data: normalizedAssistant,
+                timestamp: Date.now(),
+            })
+            console.log('⚙️ ASSISTANT SETTINGS: Default assistant cached during warmup', {
+                assistantId: defaultAssistant.uid,
+            })
+        }
+    } catch (error) {
+        console.log('⚙️ ASSISTANT SETTINGS: Unable to warm assistant cache', {
+            error: error.message,
+        })
+    }
+}
+
+primeDefaultAssistantCache()
 
 async function getAssistantForChat(projectId, assistantId) {
     const fetchStart = Date.now()
-    const cacheKey = `${projectId}_${assistantId}`
     const now = Date.now()
+    const cacheKey = getAssistantProjectCacheKey(projectId, assistantId)
 
     // Check cache first
-    const cached = assistantCache.get(cacheKey)
+    let cached = assistantCache.get(cacheKey)
     if (cached && now - cached.timestamp < ASSISTANT_CACHE_TTL) {
         console.log('⚙️ ASSISTANT SETTINGS: Using cached assistant data', {
             cacheHit: true,
             duration: `${Date.now() - fetchStart}ms`,
+            cacheSource: 'project',
         })
         return cached.data
     }
 
+    // Fallback to assistant-only cache entry
+    if (!cached) {
+        const assistantOnlyKey = getAssistantOnlyCacheKey(assistantId)
+        const assistantOnlyCached = assistantCache.get(assistantOnlyKey)
+        if (assistantOnlyCached && now - assistantOnlyCached.timestamp < ASSISTANT_CACHE_TTL) {
+            assistantCache.set(cacheKey, assistantOnlyCached)
+            console.log('⚙️ ASSISTANT SETTINGS: Using cached assistant data', {
+                cacheHit: true,
+                duration: `${Date.now() - fetchStart}ms`,
+                cacheSource: 'assistant_only',
+            })
+            return assistantOnlyCached.data
+        }
+    }
+
     let assistant = null
     if (assistantId) {
-        // Try to get assistant from global project and project-specific in parallel
+        const db = admin.firestore()
         const parallelStart = Date.now()
-        const [globalAssistant, projectAssistant] = await Promise.all([
-            getAssistantData(admin, GLOBAL_PROJECT_ID, assistantId),
-            getAssistantData(admin, projectId, assistantId),
-        ])
+        const [globalDoc, projectDoc] = await db.getAll(
+            db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`),
+            db.doc(`assistants/${projectId}/items/${assistantId}`)
+        )
         const parallelDuration = Date.now() - parallelStart
+        const globalAssistant = globalDoc?.exists ? { ...globalDoc.data(), uid: globalDoc.id } : null
+        const projectAssistant = projectDoc?.exists ? { ...projectDoc.data(), uid: projectDoc.id } : null
         assistant = globalAssistant || projectAssistant
-        console.log('⚙️ ASSISTANT SETTINGS: Fetched assistant data (parallel)', {
+        console.log('⚙️ ASSISTANT SETTINGS: Fetched assistant data (batched)', {
             cacheHit: false,
             parallelDuration: `${parallelDuration}ms`,
             foundInGlobal: !!globalAssistant,
@@ -2447,14 +2504,20 @@ async function getAssistantForChat(projectId, assistantId) {
         })
     }
     // Provide fallback defaults for missing fields
-    assistant.model = assistant.model || 'MODEL_GPT3_5'
-    assistant.temperature = assistant.temperature || 'TEMPERATURE_NORMAL'
-    assistant.instructions = assistant.instructions || 'You are a helpful assistant.'
-    assistant.allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+    assistant = assistant || {}
+    assistant.model = assistant?.model || 'MODEL_GPT3_5'
+    assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
+    assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
+    assistant.allowedTools = Array.isArray(assistant?.allowedTools) ? assistant.allowedTools : []
+    assistant.uid = assistant?.uid || assistantId
 
     // Cache the result
     if (assistant) {
-        assistantCache.set(cacheKey, { data: assistant, timestamp: now })
+        const cachePayload = { data: assistant, timestamp: now }
+        assistantCache.set(cacheKey, cachePayload)
+        if (assistant.uid) {
+            assistantCache.set(getAssistantOnlyCacheKey(assistant.uid), cachePayload)
+        }
         // Clean old cache entries if cache gets too large
         if (assistantCache.size > 100) {
             const oldestKey = assistantCache.keys().next().value

@@ -332,7 +332,7 @@ const createTopicForPreConfigTask = async (
             assistantId,
             prompt,
             language: window.navigator.language,
-            aiSettings,
+            aiSettings: resolvedAiSettings,
             taskMetadata,
         }
 
@@ -404,12 +404,26 @@ export const generateTaskFromPreConfig = async (
     options = {}
 ) => {
     const { skipNavigation = false } = options
+    const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
+    const resolvedAiSettings = aiSettings
+        ? {
+              ...aiSettings,
+              assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
+              assistantDisplayName:
+                  aiSettings.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
+              allowedTools: Array.isArray(aiSettings.allowedTools)
+                  ? aiSettings.allowedTools
+                  : Array.isArray(assistantDetails?.allowedTools)
+                  ? assistantDetails.allowedTools
+                  : [],
+          }
+        : null
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,
         name,
         assistantId,
-        aiSettings,
+        aiSettings: resolvedAiSettings,
         taskMetadata,
         skipNavigation,
     })
@@ -425,10 +439,10 @@ export const generateTaskFromPreConfig = async (
     generatedTask.isPublicFor = [FEED_PUBLIC_FOR_ALL]
 
     // Add AI settings to the task if provided
-    if (aiSettings) {
-        generatedTask.aiModel = aiSettings.model
-        generatedTask.aiTemperature = aiSettings.temperature
-        generatedTask.aiSystemMessage = aiSettings.systemMessage
+    if (resolvedAiSettings) {
+        generatedTask.aiModel = resolvedAiSettings.model
+        generatedTask.aiTemperature = resolvedAiSettings.temperature
+        generatedTask.aiSystemMessage = resolvedAiSettings.systemMessage
     }
 
     // Add taskMetadata to the task if provided (for webhook tasks)
@@ -457,7 +471,7 @@ export const generateTaskFromPreConfig = async (
             taskId: taskWithPublicFor.id,
             isPublicFor: taskWithPublicFor.isPublicFor,
             assistantId: taskWithPublicFor.assistantId,
-            aiSettings,
+            aiSettings: resolvedAiSettings,
             taskMetadata,
             taskWithPublicForSendWhatsApp: taskWithPublicFor.sendWhatsApp,
             taskWithPublicForTaskMetadata: taskWithPublicFor.taskMetadata,

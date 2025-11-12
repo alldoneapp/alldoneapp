@@ -8,7 +8,7 @@ const {
     getAssistantForChat,
     getCommonData, // For parallel fetching to reduce time-to-first-token
 } = require('./assistantHelper')
-const { getUserData } = require('../Users/usersFirestore')
+const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 
 async function generatePreConfigTaskResult(
@@ -74,46 +74,73 @@ async function generatePreConfigTaskResult(
     const step1Start = Date.now()
     // Evaluate if aiSettings provided are valid (non-empty)
     const hasValidAiSettings = aiSettings && aiSettings.model && aiSettings.temperature
+    const hasCompleteClientSettings =
+        hasValidAiSettings &&
+        typeof aiSettings.assistantDisplayName === 'string' &&
+        aiSettings.assistantDisplayName.trim().length > 0 &&
+        typeof (aiSettings.assistantUid || assistantId) === 'string' &&
+        (aiSettings.assistantUid || assistantId) &&
+        Array.isArray(aiSettings.allowedTools)
 
-    let settingsPromise
-    if (hasValidAiSettings) {
-        // Fetch assistant in parallel with user data (assistant needed for displayName and allowedTools)
-        settingsPromise = Promise.all([
+    const userPromise = getUserDataOptimized(userId)
+    let settingsSource = 'task_or_assistant'
+    let settings
+    let user
+
+    if (hasCompleteClientSettings) {
+        settingsSource = 'client_ai_settings'
+        const displayName = aiSettings.assistantDisplayName || 'Assistant'
+        const uid = aiSettings.assistantUid || assistantId
+        const instructions = aiSettings.systemMessage || 'You are a helpful assistant.'
+        settings = {
+            model: aiSettings.model || 'MODEL_GPT3_5',
+            temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
+            instructions,
+            displayName,
+            uid,
+            allowedTools: Array.isArray(aiSettings.allowedTools) ? aiSettings.allowedTools : [],
+        }
+        user = await userPromise
+    } else if (hasValidAiSettings) {
+        settingsSource = 'assistant_with_client_overrides'
+        const [assistant = {}, fetchedUser] = await Promise.all([
             getAssistantForChat(projectId, assistantId),
-            getUserData(userId), // Fetch user here too to parallelize
-        ]).then(([assistant, user]) => {
-            return {
-                model: aiSettings.model || assistant.model || 'MODEL_GPT3_5',
-                temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
-                instructions: aiSettings.systemMessage || assistant.instructions || 'You are a helpful assistant.',
-                displayName: assistant.displayName, // Always use assistant's display name
-                uid: assistantId,
-                allowedTools: assistant.allowedTools || [], // Include allowedTools from assistant
-                _user: user, // Include user data to avoid re-fetching
-            }
-        })
+            userPromise,
+        ])
+        user = fetchedUser
+        const fallbackDisplayName = assistant.displayName || aiSettings.assistantDisplayName || 'Assistant'
+        const fallbackInstructions =
+            aiSettings.systemMessage || assistant.instructions || 'You are a helpful assistant.'
+        const allowedTools = Array.isArray(aiSettings.allowedTools)
+            ? aiSettings.allowedTools
+            : Array.isArray(assistant.allowedTools)
+            ? assistant.allowedTools
+            : []
+        settings = {
+            model: aiSettings.model || assistant.model || 'MODEL_GPT3_5',
+            temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
+            instructions: fallbackInstructions,
+            displayName: fallbackDisplayName,
+            uid: assistant.uid || assistantId,
+            allowedTools,
+        }
     } else {
-        // Otherwise, fetch task or assistant settings, which will fallback as needed
-        settingsPromise = getTaskOrAssistantSettings(projectId, objectId, assistantId)
+        const [settingsResult, fetchedUser] = await Promise.all([
+            getTaskOrAssistantSettings(projectId, objectId, assistantId),
+            userPromise,
+        ])
+        settings = settingsResult
+        user = fetchedUser
     }
-
-    // Fetch user data in parallel (unless already fetched above)
-    const userPromise = hasValidAiSettings
-        ? Promise.resolve(null) // Will be extracted from settings
-        : getUserData(userId)
-
-    const [settingsResult, userData] = await Promise.all([settingsPromise, userPromise])
-
-    // Extract user from settings if it was included, otherwise use userData
-    const user = settingsResult?._user || userData
-    const settings = hasValidAiSettings ? { ...settingsResult, _user: undefined } : settingsResult
+    const userGold = typeof user?.gold === 'number' ? user.gold : 0
     const step1Duration = Date.now() - step1Start
 
     console.log('✅ [TIMING] Step 1 - Settings & User fetch completed', {
         duration: `${step1Duration}ms`,
         elapsed: `${Date.now() - functionStartTime}ms`,
         hasSettings: !!settings,
-        userGold: user?.gold,
+        userGold,
+        settingsSource,
     })
     console.log('🤖 ASSISTANT TASK EXECUTION: Retrieved settings and user:', {
         settings: {
@@ -123,10 +150,11 @@ async function generatePreConfigTaskResult(
             displayName: settings?.displayName,
             allowedToolsCount: settings?.allowedTools?.length || 0,
         },
-        userGold: user.gold,
+        userGold,
+        settingsSource,
     })
 
-    if (user.gold > 0) {
+    if (userGold > 0) {
         const { model, temperature, instructions, displayName } = settings
         console.log('🤖 ASSISTANT TASK EXECUTION: Final AI settings for execution:', {
             model,
@@ -139,7 +167,7 @@ async function generatePreConfigTaskResult(
             instructionsLength: instructions?.length,
             displayName,
             language,
-            userCurrentGold: user.gold,
+            userCurrentGold: userGold,
         })
 
         // Validate settings before proceeding
@@ -261,7 +289,7 @@ async function generatePreConfigTaskResult(
             const step5Start = Date.now()
             console.log('🤖 ASSISTANT TASK EXECUTION: About to reduce gold:', {
                 userId,
-                userCurrentGold: user.gold,
+                userCurrentGold: userGold,
                 model,
                 aiCommentTextLength: aiCommentText.length,
                 contextMessagesCount: contextMessages.length,
@@ -269,7 +297,7 @@ async function generatePreConfigTaskResult(
                     ? require('./assistantHelper').getTokensPerGold(model)
                     : 'unknown',
             })
-            await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages)
+            await reduceGoldWhenChatWithAI(userId, userGold, model, aiCommentText, contextMessages)
             step5Duration = Date.now() - step5Start
 
             console.log('✅ [TIMING] Step 5 - Gold reduction completed', {
