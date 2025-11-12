@@ -332,7 +332,7 @@ const createTopicForPreConfigTask = async (
             assistantId,
             prompt,
             language: window.navigator.language,
-            aiSettings: resolvedAiSettings,
+            aiSettings,
             taskMetadata,
         }
 
