@@ -583,43 +583,93 @@ export function initFCM(userId) {
     userRef.update({ pushNotificationsStatus: true })
 }
 
+// Helper function to request notification permission - must be called from a user gesture
+export async function requestNotificationPermission() {
+    if (!firebase.messaging || !firebase.messaging.isSupported || !firebase.messaging.isSupported()) {
+        return { success: false, reason: 'Messaging not supported' }
+    }
+
+    if (Notification.permission === 'granted') {
+        return { success: true, alreadyGranted: true }
+    }
+
+    try {
+        const permission = await Notification.requestPermission()
+        if (permission === 'granted') {
+            const token = await messaging.getToken()
+            const { fcmToken, uid } = store.getState().loggedUser
+            if (!fcmToken.some(item => item === token)) {
+                await db.doc(`/users/${uid}`).update({
+                    fcmToken: firebase.firestore.FieldValue.arrayUnion(token),
+                })
+            }
+            // Setup token refresh listener
+            messaging.onTokenRefresh(() => {
+                messaging
+                    .getToken()
+                    .then(refreshedToken => {
+                        const { fcmToken, uid } = store.getState().loggedUser
+                        if (!fcmToken.some(item => item === refreshedToken)) {
+                            db.doc(`/users/${uid}`).update({
+                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
+                            })
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Unable to retrieve refreshed token ', err)
+                    })
+            })
+            return { success: true, token }
+        } else {
+            return { success: false, reason: 'Permission denied by user' }
+        }
+    } catch (err) {
+        console.error('Failed to request notification permission:', err)
+        return { success: false, reason: err.message }
+    }
+}
+
 export function initFCMonLoad() {
     if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
-        // Use modern Notification API instead of deprecated messaging.requestPermission()
-        Notification.requestPermission()
-            .then(permission => {
-                if (permission === 'granted') {
-                    return messaging.getToken()
-                } else {
-                    throw new Error('Notification permission denied')
-                }
-            })
-            .then(token => {
-                const { fcmToken, uid } = store.getState().loggedUser
-                if (!fcmToken.some(item => item === token)) {
-                    db.doc(`/users/${uid}`).update({
-                        fcmToken: firebase.firestore.FieldValue.arrayUnion(token),
-                    })
-                }
-            })
-            .catch(err => {
-                console.error('Failed to get FCM token:', err)
-            })
-        messaging.onTokenRefresh(() => {
+        // Check if permission was already granted before requesting
+        // Only request permission in response to a user gesture to avoid browser violations
+        if (Notification.permission === 'granted') {
+            // Permission already granted, get token directly
             messaging
                 .getToken()
-                .then(refreshedToken => {
+                .then(token => {
                     const { fcmToken, uid } = store.getState().loggedUser
-                    if (!fcmToken.some(item => item === refreshedToken)) {
+                    if (!fcmToken.some(item => item === token)) {
                         db.doc(`/users/${uid}`).update({
-                            fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
+                            fcmToken: firebase.firestore.FieldValue.arrayUnion(token),
                         })
                     }
                 })
                 .catch(err => {
-                    console.error('Unable to retrieve refreshed token ', err)
+                    console.error('Failed to get FCM token:', err)
                 })
-        })
+
+            messaging.onTokenRefresh(() => {
+                messaging
+                    .getToken()
+                    .then(refreshedToken => {
+                        const { fcmToken, uid } = store.getState().loggedUser
+                        if (!fcmToken.some(item => item === refreshedToken)) {
+                            db.doc(`/users/${uid}`).update({
+                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
+                            })
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Unable to retrieve refreshed token ', err)
+                    })
+            })
+        } else {
+            // Permission not granted yet - wait for user gesture
+            console.log(
+                'Notification permission not granted yet. Use requestNotificationPermission() from a user action.'
+            )
+        }
     }
 }
 
