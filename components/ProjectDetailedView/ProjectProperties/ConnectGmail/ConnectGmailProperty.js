@@ -2,12 +2,12 @@ import React, { useState } from 'react'
 import Popover from 'react-tiny-popover'
 
 import ConnectGmailModal from './ConnectGmailModal/ConnectGmailModal'
-import GooleApi from '../../../../apis/google/GooleApi'
+import GoogleApi from '../../../../apis/google/GoogleApi'
 import ConnectGmailButton from './ConnectGmailButton'
 
 export default function ConnectGmailProperty({ projectId, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
-    const [isSignedIn, setIsSignedIn] = useState(GooleApi.checkGmailAccessGranted)
+    const [isSignedIn, setIsSignedIn] = useState(GoogleApi.checkGmailAccessGranted)
 
     const openModal = () => {
         setIsOpen(true)

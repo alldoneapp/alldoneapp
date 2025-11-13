@@ -8,7 +8,7 @@ import { sortBy } from 'lodash'
 import ParentGoalSection from './ParentGoalSection'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfGmailIsConnected } from '../../../utils/backends/firestore'
-import GooleApi from '../../../apis/google/GooleApi'
+import GoogleApi from '../../../apis/google/GoogleApi'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
@@ -23,8 +23,8 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
     const [showReload, setShowReload] = useState(false)
 
     useEffect(() => {
-        GooleApi.onLoad(() => {
-            setShowReload(GooleApi.checkGmailAccessGranted())
+        GoogleApi.onLoad(() => {
+            setShowReload(GoogleApi.checkGmailAccessGranted())
         })
     }, [])
 

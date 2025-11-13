@@ -138,7 +138,8 @@ import {
 } from '../../components/Workstreams/WorkstreamHelper'
 import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../../components/SidebarMenu/Collapsible/CollapsibleHelper'
-import GooleApi from '../../apis/google/GooleApi'
+import GoogleApi from '../../apis/google/GoogleApi'
+import apiCalendar from '../../apis/google/calendar/apiCalendar'
 import { updateQuotaTraffic } from './Premium/premiumFirestore'
 import {
     ESTIMATION_0_MIN,
@@ -6777,13 +6778,13 @@ export async function checkIfCalendarConnected(projectId) {
         return
     }
 
-    if (!GooleApi.checkAccessGranted()) {
+    if (!GoogleApi.checkAccessGranted()) {
         if (__DEV__) console.log('[Calendar Sync] FAILED: No Google API access granted')
         return
     }
 
     const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
-    const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+    const currentEmail = GoogleApi.getBasicUserProfile()?.getEmail()
     if (__DEV__) console.log('[Calendar Sync] Email check - current:', currentEmail, 'expected:', emailToUse)
 
     // Avoid prompting for auth on view load. If the active account
@@ -6804,7 +6805,7 @@ export async function checkIfCalendarConnected(projectId) {
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
 
-    await Promise.resolve(GooleApi.listTodayEvents(30)).then(async ({ result }) => {
+    await Promise.resolve(apiCalendar.listTodayEvents(30)).then(async ({ result }) => {
         if (result) {
             store.dispatch(startLoadingData())
             const promises = []
@@ -6850,15 +6851,15 @@ export async function checkIfCalendarConnected(projectId) {
 
 export async function checkIfGmailIsConnected(projectId) {
     const { uid, apisConnected, email } = store.getState().loggedUser
-    if (apisConnected && apisConnected[projectId]?.gmail && GooleApi.checkGmailAccessGranted()) {
+    if (apisConnected && apisConnected[projectId]?.gmail && GoogleApi.checkGmailAccessGranted()) {
         const emailToUse = apisConnected?.[projectId]?.gmailEmail || email
         // Avoid prompting for auth on view load. If the active account
         // does not match the project's account, skip silent sync.
-        const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
+        const currentEmail = GoogleApi.getBasicUserProfile()?.getEmail()
         if (currentEmail && currentEmail !== emailToUse) {
             return
         }
-        await GooleApi.listGmail()
+        await GoogleApi.listGmail()
             .then(result => {
                 connectToGmail({
                     projectId,

@@ -35,7 +35,7 @@ import { cleanDataWhenRemoveWorkstreamMember, WORKSTREAM_ID_PREFIX } from '../..
 import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../../utils/backends/firestore'
-import GooleApi from '../../../apis/google/GooleApi'
+import GoogleApi from '../../../apis/google/GoogleApi'
 
 export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
@@ -79,7 +79,7 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
     useEffect(() => {
         const { loggedUser } = store.getState()
         if (currentUserId === loggedUser.uid) {
-            GooleApi.onLoad(() => {
+            GoogleApi.onLoad(() => {
                 // Only check calendar/gmail if this project has them configured
                 const projectApis = loggedUser.apisConnected?.[projectId]
                 if (projectApis?.calendar) {

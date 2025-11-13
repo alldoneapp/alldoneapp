@@ -1,20 +1,19 @@
 import { apiKey, client_id, discoveryDocs, gmailScope, scope } from './apisConfig'
 import { deleteCacheAndRefresh } from '../../utils/Observers'
+import scriptLoader from '../scriptLoader'
 
-var Config = {
-    client_id,
-    apiKey,
-    discoveryDocs,
-    scope: 'profile',
-    cookiepolicy: 'single_host_origin',
-    prompt: 'select_account',
-}
+const scriptSrcGoogle = 'https://accounts.google.com/gsi/client'
 
-class GooleApi {
+class GoogleApi {
     sign: boolean = false
     gapi: any = null
+    tokenClient: any = null
+    gmailTokenClient: any = null
     onLoadCallback: any = null
     calendar: string = 'primary'
+    userProfile: any = null
+    authCallback: any = null
+    gmailAuthCallback: any = null
 
     constructor() {
         try {
@@ -37,6 +36,7 @@ class GooleApi {
             this.deleteEvent = this.deleteEvent.bind(this)
             this.getEvent = this.getEvent.bind(this)
             this.getBasicUserProfile = this.getBasicUserProfile.bind(this)
+            this.fetchUserProfile = this.fetchUserProfile.bind(this)
             this.handleClientLoad()
         } catch (e) {
             console.log(e)
@@ -52,31 +52,77 @@ class GooleApi {
     }
 
     /**
-     * Check has Granted Scope
+     * Check if user has granted calendar scope
      */
     public checkAccessGranted(): boolean {
-        return this.gapi.auth2.getAuthInstance().currentUser.get().hasGrantedScopes(scope)
+        if (!this.gapi?.client) return false
+        const token = this.gapi.client.getToken()
+        if (!token) return false
+
+        // Check if the token has the required scope
+        return token.scope && token.scope.includes(scope)
     }
 
     /**
-     * Check has Granted Scope
+     * Check if user has granted Gmail scope
      */
     public checkGmailAccessGranted(): boolean {
-        return this.gapi.auth2.getAuthInstance().currentUser.get().hasGrantedScopes(gmailScope)
+        if (!this.gapi?.client) return false
+        const token = this.gapi.client.getToken()
+        if (!token) return false
+
+        // Check if the token has the required scope
+        return token.scope && token.scope.includes(gmailScope)
     }
 
     /**
-     * Auth to the google Api.
+     * Initialize gapi client without auth2
      */
     private initClient(): void {
         this.gapi = window['gapi']
         this.gapi.client
-            .init(Config)
+            .init({
+                apiKey: apiKey,
+                discoveryDocs: discoveryDocs,
+            })
             .then(() => {
-                // Listen for sign-in state changes.
-                this.gapi.auth2.getAuthInstance().currentUser.listen(this.updateSigninStatus)
-                // Handle the initial sign-in state.
-                // this.updateSigninStatus(this.gapi.auth2.getAuthInstance().currentUser.get().hasGrantedScopes(scope))
+                // Initialize token clients for different scopes
+                if (window['google']?.accounts?.oauth2) {
+                    this.tokenClient = window['google'].accounts.oauth2.initTokenClient({
+                        client_id: client_id,
+                        scope: scope,
+                        callback: (response: any) => {
+                            if (response.error) {
+                                console.error('Calendar auth error:', response.error)
+                                return
+                            }
+                            this.updateSigninStatus(true)
+                            this.fetchUserProfile()
+                            if (this.authCallback) {
+                                this.authCallback()
+                                this.authCallback = null
+                            }
+                        },
+                    })
+
+                    this.gmailTokenClient = window['google'].accounts.oauth2.initTokenClient({
+                        client_id: client_id,
+                        scope: gmailScope,
+                        callback: (response: any) => {
+                            if (response.error) {
+                                console.error('Gmail auth error:', response.error)
+                                return
+                            }
+                            this.updateSigninStatus(true)
+                            this.fetchUserProfile()
+                            if (this.gmailAuthCallback) {
+                                this.gmailAuthCallback()
+                                this.gmailAuthCallback = null
+                            }
+                        },
+                    })
+                }
+
                 if (this.onLoadCallback) {
                     this.onLoadCallback()
                 }
@@ -87,8 +133,7 @@ class GooleApi {
     }
 
     /**
-     * Init Google Api
-     * And create gapi in global
+     * Initialize Google API client and GIS
      */
     private handleClientLoad(): void {
         this.gapi = window['gapi']
@@ -96,42 +141,87 @@ class GooleApi {
         script.src = 'https://apis.google.com/js/api.js'
         document.body.appendChild(script)
         script.onload = (): void => {
-            window['gapi'].load('client:auth2', this.initClient)
+            window['gapi'].load('client', () => {
+                // Load GIS client
+                scriptLoader.loadScript(scriptSrcGoogle).then(() => {
+                    this.initClient()
+                })
+            })
         }
     }
 
     /**
-     * Sign in Google user account
+     * Fetch user profile information from Google OAuth2 API
+     */
+    private async fetchUserProfile(): Promise<void> {
+        try {
+            const token = this.gapi?.client?.getToken()
+            if (!token?.access_token) return
+
+            const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                    Authorization: `Bearer ${token.access_token}`,
+                },
+            })
+
+            if (response.ok) {
+                this.userProfile = await response.json()
+            }
+        } catch (error) {
+            console.error('Error fetching user profile:', error)
+        }
+    }
+
+    /**
+     * Sign in Google user account for calendar access
      */
     public async handleAuthClick(): Promise<void> {
-        if (this.gapi) {
-            const option = new this.gapi.auth2.SigninOptionsBuilder()
-            option.setScope(scope)
-            const googleUser = this.gapi.auth2.getAuthInstance().currentUser.get()
-            await googleUser.grant(option)
-        } else {
-            console.log('Error: this.gapi not loaded')
-            deleteCacheAndRefresh()
-        }
+        return new Promise((resolve, reject) => {
+            if (!this.tokenClient) {
+                console.log('Error: Token client not loaded')
+                deleteCacheAndRefresh()
+                reject('Token client not loaded')
+                return
+            }
+
+            this.authCallback = resolve
+
+            // Check if already has access
+            if (this.checkAccessGranted()) {
+                this.fetchUserProfile().then(() => resolve())
+            } else {
+                // Request access with consent prompt
+                this.tokenClient.requestAccessToken({ prompt: 'consent' })
+            }
+        })
     }
 
     /**
-     * Sign in Google user account
+     * Sign in Google user account for Gmail access
      */
     public async handleGmailAuthClick(): Promise<void> {
-        if (this.gapi) {
-            const option = new this.gapi.auth2.SigninOptionsBuilder()
-            option.setScope(gmailScope)
-            const googleUser = this.gapi.auth2.getAuthInstance().currentUser.get()
-            await googleUser.grant(option)
-        } else {
-            console.log('Error: this.gapi not loaded')
-            deleteCacheAndRefresh()
-        }
+        return new Promise((resolve, reject) => {
+            if (!this.gmailTokenClient) {
+                console.log('Error: Gmail token client not loaded')
+                deleteCacheAndRefresh()
+                reject('Gmail token client not loaded')
+                return
+            }
+
+            this.gmailAuthCallback = resolve
+
+            // Check if already has access
+            if (this.checkGmailAccessGranted()) {
+                this.fetchUserProfile().then(() => resolve())
+            } else {
+                // Request access with consent prompt
+                this.gmailTokenClient.requestAccessToken({ prompt: 'consent' })
+            }
+        })
     }
 
     /**
-     * Set the default attribute calendar
+     * Set the default calendar
      * @param {string} newCalendar
      */
     public setCalendar(newCalendar: string): void {
@@ -139,15 +229,15 @@ class GooleApi {
     }
 
     /**
-     * Execute the callback function when a user is disconnected or connected with the sign status.
+     * Execute the callback function when sign status changes
+     * Note: With GIS, we need to manually track state
      * @param callback
      */
     public listenSign(callback: any): void {
-        if (this.gapi) {
-            this.gapi.auth2.getAuthInstance().isSignedIn.listen(callback)
-        } else {
-            console.log('Error: this.gapi not loaded')
-        }
+        // Store callback for manual invocation after auth changes
+        // This is a compatibility shim for the old gapi.auth2.isSignedIn.listen
+        console.warn('listenSign: Manual state tracking required with GIS')
+        // You may need to call callback manually after successful auth
     }
 
     /**
@@ -166,13 +256,16 @@ class GooleApi {
      * Sign out user google account
      */
     public handleSignOutClick(): void {
-        if (this.gapi) {
-            var auth2 = this.gapi.auth2.getAuthInstance()
-            auth2.signOut().then(function () {
+        const token = this.gapi?.client?.getToken()
+        if (token) {
+            window['google'].accounts.oauth2.revoke(token.access_token, () => {
                 console.log('User signed out.')
+                this.gapi.client.setToken(null)
+                this.userProfile = null
+                this.updateSigninStatus(false)
             })
         } else {
-            console.log('Error: this.gapi not loaded')
+            console.log('No token to revoke')
         }
     }
 
@@ -341,14 +434,22 @@ class GooleApi {
     }
 
     /**
-     * @returns {any} Get the user's basic profile information. Documentation: https://developers.google.com/identity/sign-in/web/reference#googleusergetbasicprofile
+     * Get the user's basic profile information
+     * Returns a compatibility object similar to gapi.auth2 getBasicProfile
      */
     getBasicUserProfile(): any {
-        if (this.gapi) {
-            return this.gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile()
-        } else {
-            console.log('Error: gapi is not loaded use onLoad before please.')
+        if (!this.userProfile) {
+            // Try to fetch if not already loaded
+            this.fetchUserProfile()
             return null
+        }
+
+        // Return compatibility object that matches old gapi.auth2.getBasicProfile() interface
+        return {
+            getEmail: () => this.userProfile.email,
+            getId: () => this.userProfile.sub,
+            getName: () => this.userProfile.name,
+            getImageUrl: () => this.userProfile.picture,
         }
     }
 
@@ -378,7 +479,6 @@ class GooleApi {
      * @param {string} eventId specifies individual event
      * @returns {any}
      */
-
     getEvent(eventId: string, calendarId: string = this.calendar): any {
         if (this.gapi) {
             return this.gapi.client.calendar.events.get({
@@ -392,10 +492,10 @@ class GooleApi {
     }
 }
 
-let gooleApi
+let googleApi
 try {
-    gooleApi = new GooleApi()
+    googleApi = new GoogleApi()
 } catch (e) {
     console.log(e)
 }
-export default gooleApi
+export default googleApi

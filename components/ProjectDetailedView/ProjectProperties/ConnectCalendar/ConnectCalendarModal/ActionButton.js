@@ -5,7 +5,8 @@ import moment from 'moment'
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
 import Backend from '../../../../../utils/BackendBridge'
-import GooleApi from '../../../../../apis/google/GooleApi'
+import GoogleApi from '../../../../../apis/google/GoogleApi'
+import apiCalendar from '../../../../../apis/google/calendar/apiCalendar'
 import { runHttpsCallableFunction } from '../../../../../utils/backends/firestore'
 import { isSomethingConnected } from '../../../../../apis/google/ApiHelper'
 import store from '../../../../../redux/store'
@@ -20,8 +21,8 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const isConnectedAndSignedIn = isConnected && isSignedIn
 
     const loadEvents = () => {
-        GooleApi.listTodayEvents(30).then(({ result }) => {
-            const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
+        apiCalendar.listTodayEvents(30).then(({ result }) => {
+            const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
             runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
                 events: result?.items,
                 projectId,
@@ -41,11 +42,11 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     }
 
     const onPress = () => {
-        !isSomethingConnected() && GooleApi.handleSignOutClick()
+        !isSomethingConnected() && GoogleApi.handleSignOutClick()
         if (isSignedIn && isConnected) {
             disconnect()
         } else {
-            GooleApi.handleAuthClick().then(connect)
+            GoogleApi.handleAuthClick().then(connect)
         }
     }
 
@@ -58,7 +59,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     }
 
     const connect = async () => {
-        const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
+        const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
 
         // Disconnect same calendar account from other projects for this user
         try {
@@ -94,7 +95,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             .set({ apisConnected: { [projectId]: { calendar: true, calendarEmail: email } } }, { merge: true })
             .then(loadEvents)
         closePopover()
-        setIsSignedIn(GooleApi.checkAccessGranted())
+        setIsSignedIn(GoogleApi.checkAccessGranted())
     }
 
     return (

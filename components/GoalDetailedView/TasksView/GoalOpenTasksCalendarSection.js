@@ -7,7 +7,7 @@ import GoogleCalendar from '../../../assets/svg/GoogleCalendar'
 import { CALENDAR_TASK_INDEX } from '../../../utils/backends/Tasks/openGoalTasks'
 import GoalTasksList from './GoalTasksList'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
-import GooleApi from '../../../apis/google/GooleApi'
+import GoogleApi from '../../../apis/google/GoogleApi'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 
 export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks, dateIndex, isActiveOrganizeMode }) {
@@ -15,8 +15,8 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
     const [showReload, setShowReload] = useState(false)
 
     useEffect(() => {
-        GooleApi.onLoad(() => {
-            setShowReload(GooleApi.checkAccessGranted())
+        GoogleApi.onLoad(() => {
+            setShowReload(GoogleApi.checkAccessGranted())
         })
     }, [])
 

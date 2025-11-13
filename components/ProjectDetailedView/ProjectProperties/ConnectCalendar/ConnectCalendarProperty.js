@@ -2,12 +2,12 @@ import React, { useState } from 'react'
 import Popover from 'react-tiny-popover'
 
 import ConnectCalendarModal from './ConnectCalendarModal/ConnectCalendarModal'
-import GooleApi from '../../../../apis/google/GooleApi'
+import GoogleApi from '../../../../apis/google/GoogleApi'
 import ConnectCalendarButton from './ConnectCalendarButton'
 
 export default function ConnectCalendarProperty({ projectId, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
-    const [isSignedIn, setIsSignedIn] = useState(GooleApi.checkAccessGranted)
+    const [isSignedIn, setIsSignedIn] = useState(GoogleApi.checkAccessGranted)
 
     const openModal = () => {
         setIsOpen(true)

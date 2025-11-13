@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import MyDayOpenTasks from './MyDayTasks/MyDayOpenTasks/MyDayOpenTasks'
 import MyDayWorkflowTasks from './MyDayTasks/MyDayWorkflowTasks/MyDayWorkflowTasks'
 import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
-import gooleApi from '../../apis/google/GooleApi'
+import GoogleApi from '../../../apis/google/GoogleApi'
 import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../utils/backends/firestore'
 import store from '../../redux/store'
 
@@ -19,7 +19,7 @@ export default function MyDayView() {
     const inDoneSection = taskViewToggleSection === 'Done'
 
     useEffect(() => {
-        gooleApi.onLoad(() => {
+        GoogleApi.onLoad(() => {
             const { apisConnected } = store.getState().loggedUser
             if (apisConnected) {
                 Object.entries(apisConnected).forEach(([pid, flags]) => {

@@ -9,7 +9,7 @@ import TasksList from './TasksList'
 import ParentGoalSection from './ParentGoalSection'
 import { sortBy } from 'lodash'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
-import GooleApi from '../../../apis/google/GooleApi'
+import GoogleApi from '../../../apis/google/GoogleApi'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
@@ -26,8 +26,8 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
 
     useEffect(() => {
-        GooleApi.onLoad(() => {
-            setShowReload(GooleApi.checkAccessGranted())
+        GoogleApi.onLoad(() => {
+            setShowReload(GoogleApi.checkAccessGranted())
         })
     }, [])
 

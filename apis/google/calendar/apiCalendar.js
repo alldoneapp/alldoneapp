@@ -1,4 +1,4 @@
-/*import { client_id } from '../apisConfig'
+import { client_id } from '../apisConfig'
 import scriptLoader from '../../scriptLoader'
 import ProfileInit from '../profileInit'
 
@@ -125,4 +125,3 @@ try {
     console.log(e)
 }
 export default apiCalendar
-*/

@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
 import Backend from '../../../../../utils/BackendBridge'
-import GooleApi from '../../../../../apis/google/GooleApi'
+import GoogleApi from '../../../../../apis/google/GoogleApi'
 import { connectToGmail } from '../../../../../utils/backends/firestore'
 import { isSomethingConnected } from '../../../../../apis/google/ApiHelper'
 
@@ -15,8 +15,8 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const isConnectedAndSignedIn = isConnected && isSignedIn
 
     const loadEvents = () => {
-        GooleApi.listGmail().then(result => {
-            const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
+        GoogleApi.listGmail().then(result => {
+            const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
             connectToGmail({
                 projectId,
                 date: Date.now(),
@@ -35,21 +35,21 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     }
 
     const connect = () => {
-        const email = GooleApi.getBasicUserProfile()?.getEmail() || userEmail
+        const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
         Backend.getDb()
             .doc(`users/${loggedUserId}`)
             .set({ apisConnected: { [projectId]: { gmail: true, gmailEmail: email } } }, { merge: true })
             .then(loadEvents)
         closePopover()
-        setIsSignedIn(GooleApi.checkGmailAccessGranted())
+        setIsSignedIn(GoogleApi.checkGmailAccessGranted())
     }
 
     const onPress = () => {
-        !isSomethingConnected() && GooleApi.handleSignOutClick()
+        !isSomethingConnected() && GoogleApi.handleSignOutClick()
         if (isSignedIn && isConnected) {
             disconnect()
         } else {
-            GooleApi.handleGmailAuthClick().then(connect)
+            GoogleApi.handleGmailAuthClick().then(connect)
         }
     }
 

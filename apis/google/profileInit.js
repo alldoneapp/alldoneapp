@@ -11,12 +11,8 @@ const discoveryDocs = [
 ]
 
 const config = {
-    client_id,
     apiKey,
     discoveryDocs,
-    scope: 'profile',
-    cookiepolicy: 'single_host_origin',
-    prompt: 'select_account',
 }
 
 class ProfileInit {
