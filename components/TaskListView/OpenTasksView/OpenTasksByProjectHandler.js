@@ -80,8 +80,14 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
         const { loggedUser } = store.getState()
         if (currentUserId === loggedUser.uid) {
             GooleApi.onLoad(() => {
-                checkIfCalendarConnected(projectId)
-                checkIfGmailIsConnected(projectId)
+                // Only check calendar/gmail if this project has them configured
+                const projectApis = loggedUser.apisConnected?.[projectId]
+                if (projectApis?.calendar) {
+                    checkIfCalendarConnected(projectId)
+                }
+                if (projectApis?.gmail) {
+                    checkIfGmailIsConnected(projectId)
+                }
             })
         }
     }, [])

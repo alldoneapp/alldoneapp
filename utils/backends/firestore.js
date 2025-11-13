@@ -6720,46 +6720,74 @@ export async function createNoteInObject(
 
 // Calendar Functions
 
+// Track recently synced projects to prevent redundant calls
+const calendarSyncCache = new Map()
+const SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
+
 export async function checkIfCalendarConnected(projectId) {
-    console.log('[Calendar Sync] Called with projectId:', projectId)
+    if (__DEV__) console.log('[Calendar Sync] Called with projectId:', projectId)
+
+    // Check if this project was recently synced
+    const lastSyncTime = calendarSyncCache.get(projectId)
+    if (lastSyncTime && Date.now() - lastSyncTime < SYNC_COOLDOWN_MS) {
+        if (__DEV__) console.log('[Calendar Sync] Skipping - project synced recently:', projectId)
+        return
+    }
+
     const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
-    console.log('[Calendar Sync] apisConnected:', apisConnected)
-    console.log('[Calendar Sync] userEmail:', userEmail)
+    if (__DEV__) {
+        console.log('[Calendar Sync] apisConnected:', apisConnected)
+        console.log('[Calendar Sync] userEmail:', userEmail)
+    }
 
     if (!apisConnected) {
-        console.log('[Calendar Sync] FAILED: No apisConnected')
+        if (__DEV__) console.log('[Calendar Sync] FAILED: No apisConnected')
         return
     }
 
     if (!apisConnected[projectId]) {
-        console.log('[Calendar Sync] FAILED: No config for projectId', projectId)
-        console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
+        if (__DEV__) {
+            console.log('[Calendar Sync] FAILED: No config for projectId', projectId)
+            console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
+        }
         return
     }
 
     if (!apisConnected[projectId]?.calendar) {
-        console.log('[Calendar Sync] FAILED: Calendar not connected for project', projectId)
-        console.log('[Calendar Sync] Project config:', apisConnected[projectId])
+        if (__DEV__) {
+            console.log('[Calendar Sync] FAILED: Calendar not connected for project', projectId)
+            console.log('[Calendar Sync] Project config:', apisConnected[projectId])
+        }
         return
     }
 
     if (!GooleApi.checkAccessGranted()) {
-        console.log('[Calendar Sync] FAILED: No Google API access granted')
+        if (__DEV__) console.log('[Calendar Sync] FAILED: No Google API access granted')
         return
     }
 
     const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
     const currentEmail = GooleApi.getBasicUserProfile()?.getEmail()
-    console.log('[Calendar Sync] Email check - current:', currentEmail, 'expected:', emailToUse)
+    if (__DEV__) console.log('[Calendar Sync] Email check - current:', currentEmail, 'expected:', emailToUse)
 
     // Avoid prompting for auth on view load. If the active account
     // does not match the project's account, skip silent sync.
     if (currentEmail && currentEmail !== emailToUse) {
-        console.log('[Calendar Sync] FAILED: Email mismatch - current account is', currentEmail, 'but need', emailToUse)
+        if (__DEV__)
+            console.log(
+                '[Calendar Sync] FAILED: Email mismatch - current account is',
+                currentEmail,
+                'but need',
+                emailToUse
+            )
         return
     }
 
-    console.log('[Calendar Sync] All checks passed, fetching calendar events...')
+    if (__DEV__) console.log('[Calendar Sync] All checks passed, fetching calendar events...')
+
+    // Mark this project as synced before starting the sync
+    calendarSyncCache.set(projectId, Date.now())
+
     await Promise.resolve(GooleApi.listTodayEvents(30)).then(async ({ result }) => {
         if (result) {
             store.dispatch(startLoadingData())
@@ -6791,7 +6819,7 @@ export async function checkIfCalendarConnected(projectId) {
             )
             await Promise.all(promises)
                 .then(() => {
-                    console.log('[Calendar Sync] Successfully synced calendar events')
+                    if (__DEV__) console.log('[Calendar Sync] Successfully synced calendar events')
                     store.dispatch(stopLoadingData())
                 })
                 .catch(e => {
@@ -6799,7 +6827,7 @@ export async function checkIfCalendarConnected(projectId) {
                     store.dispatch(stopLoadingData())
                 })
         } else {
-            console.log('[Calendar Sync] No calendar events returned from Google API')
+            if (__DEV__) console.log('[Calendar Sync] No calendar events returned from Google API')
         }
     })
 }
