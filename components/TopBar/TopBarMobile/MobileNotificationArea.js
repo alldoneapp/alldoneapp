@@ -4,13 +4,15 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native'
 
 import {
     hideFloatPopup,
+    navigateToAllProjectsTasks,
     navigateToUpdates,
     setReloadGlobalFeeds,
     setSearchText,
+    setSelectedSidebarTab,
     showGlobalSearchPopup,
     switchProject,
 } from '../../../redux/actions'
-import { ROOT_ROUTES } from '../../../utils/TabNavigationConstants'
+import { ROOT_ROUTES, DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 import { dismissAllPopups } from '../../../utils/HelperFunctions'
 import Icon from '../../Icon'
 import AmountTag from '../../Feeds/FollowSwitchableTag/AmountTag'
@@ -34,8 +36,13 @@ export default function MobileNotificationArea({ expandSecondaryBar }) {
         if (store.getState().expandedNavPicker) {
             expandSecondaryBar?.()
         }
-        dispatch(switchProject(ALL_PROJECTS_INDEX))
         dismissAllPopups()
+        dispatch([
+            switchProject(ALL_PROJECTS_INDEX),
+            setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
+            navigateToAllProjectsTasks({ taskViewToggleSection: 'Open', taskViewToggleIndex: 0 }),
+        ])
+        NavigationService.navigate('Root')
     }
 
     const onPressSearch = e => {
