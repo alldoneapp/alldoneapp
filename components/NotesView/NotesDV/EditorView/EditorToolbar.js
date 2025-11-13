@@ -612,7 +612,7 @@ Font.whitelist = ['arial', 'comic-sans', 'courier-new', 'georgia', 'helvetica', 
 Quill.register(Font, true)
 Quill.register('modules/cursors', QuillCursors)
 // Quill.register('modules/imageDrop', ImageDrop)
-Quill.register('modules/dragAndDrop', DragAndDropModule)
+Quill.register('modules/dragAndDrop', DragAndDropModule, true)
 Quill.register({
     'modules/autoformat': Autoformat,
     'formats/hashtag': Hashtag,

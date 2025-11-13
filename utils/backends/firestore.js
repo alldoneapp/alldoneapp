@@ -539,9 +539,15 @@ export function initFCM(userId) {
     const uid = userId ? userId : store.getState().loggedUser.uid
     const userRef = db.doc(`/users/${uid}`)
     if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
-        messaging
-            .requestPermission()
-            .then(() => messaging.getToken())
+        // Use modern Notification API instead of deprecated messaging.requestPermission()
+        Notification.requestPermission()
+            .then(permission => {
+                if (permission === 'granted') {
+                    return messaging.getToken()
+                } else {
+                    throw new Error('Notification permission denied')
+                }
+            })
             .then(token => {
                 userRef.get().then(doc => {
                     const user = mapUserData(doc.id, doc.data())
@@ -552,16 +558,18 @@ export function initFCM(userId) {
                     }
                 })
             })
-            .catch(console.error)
+            .catch(err => {
+                console.error('Failed to get FCM token:', err)
+            })
         messaging.onTokenRefresh(() => {
             messaging
                 .getToken()
                 .then(refreshedToken => {
                     userRef.get().then(doc => {
                         const user = mapUserData(doc.id, doc.data())
-                        if (!user.fcmToken.some(item => item === token)) {
+                        if (!user.fcmToken.some(item => item === refreshedToken)) {
                             doc.ref.update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(token),
+                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
                             })
                         }
                     })
@@ -576,9 +584,15 @@ export function initFCM(userId) {
 
 export function initFCMonLoad() {
     if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
-        messaging
-            .requestPermission()
-            .then(() => messaging.getToken())
+        // Use modern Notification API instead of deprecated messaging.requestPermission()
+        Notification.requestPermission()
+            .then(permission => {
+                if (permission === 'granted') {
+                    return messaging.getToken()
+                } else {
+                    throw new Error('Notification permission denied')
+                }
+            })
             .then(token => {
                 const { fcmToken, uid } = store.getState().loggedUser
                 if (!fcmToken.some(item => item === token)) {
@@ -587,7 +601,9 @@ export function initFCMonLoad() {
                     })
                 }
             })
-            .catch(console.error)
+            .catch(err => {
+                console.error('Failed to get FCM token:', err)
+            })
         messaging.onTokenRefresh(() => {
             messaging
                 .getToken()

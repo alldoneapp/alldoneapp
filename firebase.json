@@ -9,6 +9,10 @@
                     {
                         "key": "Cache-Control",
                         "value": "private, no-cache, max-age=0"
+                    },
+                    {
+                        "key": "Content-Security-Policy",
+                        "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://www.googletagmanager.com https://accounts.google.com blob: data:; frame-src 'self' https://accounts.google.com https://content.googleapis.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:;"
                     }
                 ]
             }
