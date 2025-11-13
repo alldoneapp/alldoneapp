@@ -6947,23 +6947,52 @@ const getTemplateIdWhenSingUp = async initialUrl => {
 
 export const addToMarketingList = async (email, initialUrl) => {
     if (inProductionEnvironment()) {
-        const templateId = await getTemplateIdWhenSingUp(initialUrl)
-        const listId = parseInt(SIB_MARKETING_SERVICE_LIST, 10)
-        const languageIndex = getUserLanguageIndexForSendinBlue()
-        fetch('https://api.sendinblue.com/v3/contacts', {
-            method: 'POST',
-            headers: {
-                accept: 'application/json',
-                'content-type': 'application/json',
-                'api-key': SIB_API_KEY,
-            },
-            body: JSON.stringify({
+        try {
+            const templateId = await getTemplateIdWhenSingUp(initialUrl)
+            const listId = parseInt(SIB_MARKETING_SERVICE_LIST, 10)
+            const languageIndex = getUserLanguageIndexForSendinBlue()
+
+            console.log('Adding contact to Brevo marketing list:', {
                 email,
-                listIds: [listId],
-                attributes: { LANGUAGE: languageIndex, templateId },
-                updateEnabled: true,
-            }),
-        })
+                listId,
+                templateId,
+                languageIndex,
+            })
+
+            const response = await fetch('https://api.sendinblue.com/v3/contacts', {
+                method: 'POST',
+                headers: {
+                    accept: 'application/json',
+                    'content-type': 'application/json',
+                    'api-key': SIB_API_KEY,
+                },
+                body: JSON.stringify({
+                    email,
+                    listIds: [listId],
+                    attributes: { LANGUAGE: languageIndex, templateId },
+                    updateEnabled: true,
+                }),
+            })
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('Brevo API error:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    error: errorText,
+                    email,
+                })
+            } else {
+                const result = await response.json()
+                console.log('Successfully added contact to Brevo:', email, result)
+            }
+        } catch (error) {
+            console.error('Failed to add contact to Brevo marketing list:', {
+                error: error.message,
+                stack: error.stack,
+                email,
+            })
+        }
     }
 }
 
