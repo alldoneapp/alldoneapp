@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import MyDayOpenTasks from './MyDayTasks/MyDayOpenTasks/MyDayOpenTasks'
 import MyDayWorkflowTasks from './MyDayTasks/MyDayWorkflowTasks/MyDayWorkflowTasks'
 import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
-import GoogleApi from '../../../apis/google/GoogleApi'
+import GoogleApi from '../../apis/google/GoogleApi'
 import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../utils/backends/firestore'
 import store from '../../redux/store'
 
