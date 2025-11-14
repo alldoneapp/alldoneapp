@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { View, Image, StyleSheet, Animated, Text } from 'react-native'
 import { createPortal } from 'react-dom'
-import firebase from '../../../apis/firebase'
+import { firebase } from '@firebase/app'
 import { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
