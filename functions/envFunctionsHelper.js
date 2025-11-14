@@ -47,6 +47,8 @@ const getEnvFunctions = () => {
             ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
             SIB_API_KEY: process.env.SIB_API_KEY || '',
             SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
+            IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
+            GIPHY_API_KEY: process.env.GIPHY_API_KEY || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -67,6 +69,8 @@ const getEnvFunctions = () => {
                     ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: envJson.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: envJson.SIB_MARKETING_SERVICE_LIST || '5',
+                    IP_REGISTRY_API_KEY: envJson.IP_REGISTRY_API_KEY || '',
+                    GIPHY_API_KEY: envJson.GIPHY_API_KEY || '',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -91,6 +95,8 @@ const getEnvFunctions = () => {
                         ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                         SIB_API_KEY: process.env.SIB_API_KEY || '',
                         SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
+                        IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
+                        GIPHY_API_KEY: process.env.GIPHY_API_KEY || '',
                         GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -112,6 +118,8 @@ const getEnvFunctions = () => {
                     ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: process.env.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
+                    IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
+                    GIPHY_API_KEY: process.env.GIPHY_API_KEY || '',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -133,6 +141,8 @@ const getEnvFunctions = () => {
                 ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                 SIB_API_KEY: process.env.SIB_API_KEY || '',
                 SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
+                IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
+                GIPHY_API_KEY: process.env.GIPHY_API_KEY || '',
                 GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||

@@ -644,6 +644,42 @@ exports.addContactToBrevoMarketingList = onCall(
     }
 )
 
+exports.ipRegistryLookup = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { ipRegistryLookup } = require('./IpRegistry/ipRegistryLookup')
+            return await ipRegistryLookup(data)
+        } else {
+            throw new HttpsError('permission-denied', 'Authentication required')
+        }
+    }
+)
+
+exports.giphyRandomGif = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { giphyRandomGif } = require('./Giphy/giphyRandomGif')
+            return await giphyRandomGif(data)
+        } else {
+            throw new HttpsError('permission-denied', 'Authentication required')
+        }
+    }
+)
+
 exports.linkStripeAccount = onCall(
     {
         timeoutSeconds: 30,

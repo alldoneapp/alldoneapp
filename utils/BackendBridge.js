@@ -827,10 +827,6 @@ export default class Backend {
         return bridge.getAlgoliaSearchOnlyKeys()
     }
 
-    static getGiphyApiKey() {
-        return bridge.getGiphyApiKey()
-    }
-
     static watchNoteRevisionHistoryCopies(projectId, noteId, callback) {
         return bridge.watchNoteRevisionHistoryCopies(projectId, noteId, callback)
     }

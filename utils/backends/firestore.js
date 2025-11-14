@@ -42,9 +42,6 @@ import {
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
     GOOGLE_ANALYTICS_KEY,
     GOOGLE_ADS_GUIDE_CONVERSION_TAG,
-    IP_REGISTRY_API_KEY,
-    GIPHY_API_KEY,
-    PERPLEXITY_API_KEY,
 } from 'react-native-dotenv'
 // END-ENVS
 import { updateXpByCreateProject } from '../Levels'
@@ -6456,10 +6453,6 @@ export function getNotesCollaborationServerData() {
     return { NOTES_COLLABORATION_SERVER }
 }
 
-export function getIpRegistryVariables() {
-    return { IP_REGISTRY_API_KEY }
-}
-
 export const getAppUrlHost = () => {
     const { host } = getUrlParts(HOSTING_URL)
     return host
@@ -6479,10 +6472,6 @@ export const inStagingEnvironment = () => {
 
 export function getAlgoliaSearchOnlyKeys() {
     return { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY }
-}
-
-export function getGiphyApiKey() {
-    return { GIPHY_API_KEY }
 }
 
 export function getAnalyticsVariables() {

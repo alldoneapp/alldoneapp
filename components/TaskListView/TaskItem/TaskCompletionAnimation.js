@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { View, Image, StyleSheet, Animated, Text } from 'react-native'
 import { createPortal } from 'react-dom'
-import Backend from '../../../utils/BackendBridge'
+import firebase from '../../../apis/firebase'
 import { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
+
+const functions = firebase.functions()
 
 export const ANIMATION_DURATION = 2000 // 2 seconds
 
@@ -18,13 +20,6 @@ const CELEBRATION_SEARCH_TERMS = [
     'amazing',
     'mission accomplished',
 ]
-
-const getRandomGif = async tag => {
-    const apiUrl = `https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_API_KEY}&tag=${encodeURIComponent(
-        tag
-    )}&rating=g`
-    // ... rest of the code ...
-}
 
 export default function TaskCompletionAnimation({ visible, onAnimationComplete }) {
     const opacity = useRef(new Animated.Value(0)).current
@@ -41,19 +36,14 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
         if (visible) {
             // Get a random search term
             const searchTerm = CELEBRATION_SEARCH_TERMS[Math.floor(Math.random() * CELEBRATION_SEARCH_TERMS.length)]
-            const { GIPHY_API_KEY } = Backend.getGiphyApiKey()
 
-            // Fetch a random celebration GIF from Giphy
-            const apiUrl = `https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_API_KEY}&tag=${encodeURIComponent(
-                searchTerm
-            )}`
-
-            fetch(apiUrl)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.data && data.data.images && isMounted.current) {
+            // Fetch a random celebration GIF from Giphy via cloud function
+            const giphyFn = functions.httpsCallable('giphyRandomGif')
+            giphyFn({ tag: searchTerm, rating: 'g' })
+                .then(result => {
+                    if (result.data.success && result.data.gif && result.data.gif.images && isMounted.current) {
                         // Use the downsized version for better performance
-                        const url = data.data.images.downsized.url
+                        const url = result.data.gif.images.downsized.url
                         setGifUrl(url)
 
                         // Start animation sequence only after GIF is loaded
@@ -79,6 +69,11 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
                                 })
                             }
                         })
+                    } else {
+                        console.warn('No GIF data received from cloud function')
+                        if (isMounted.current) {
+                            onAnimationComplete()
+                        }
                     }
                 })
                 .catch(error => {
