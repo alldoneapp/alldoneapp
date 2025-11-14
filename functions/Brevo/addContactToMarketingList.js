@@ -43,6 +43,7 @@ const getTemplateIdWhenSignUp = async initialUrl => {
  * @param {string} data.email - User email address
  * @param {string} data.initialUrl - Initial URL for template detection
  * @param {string} data.languageIndex - User's language preference (optional)
+ * @param {string} data.userId - User ID to store as EXT_ID (optional)
  * @returns {Promise<Object>} Result object
  */
 const addContactToMarketingList = async data => {
@@ -52,7 +53,7 @@ const addContactToMarketingList = async data => {
         throw new Error('SIB_API_KEY is not configured')
     }
 
-    const { email, initialUrl, languageIndex } = data
+    const { email, initialUrl, languageIndex, userId } = data
 
     if (!email) {
         throw new Error('Email is required')
@@ -70,6 +71,7 @@ const addContactToMarketingList = async data => {
             listId,
             templateId,
             languageIndex: userLanguageIndex,
+            userId,
         })
 
         const response = await fetch('https://api.sendinblue.com/v3/contacts', {
@@ -84,8 +86,8 @@ const addContactToMarketingList = async data => {
                 listIds: [listId],
                 attributes: {
                     LANGUAGE: userLanguageIndex,
-                    templateId,
                     SOURCE: 'Alldone',
+                    EXT_ID: userId || '',
                 },
                 updateEnabled: true,
             }),

@@ -637,7 +637,12 @@ exports.addContactToBrevoMarketingList = onCall(
         const { data, auth } = request
         if (auth) {
             const { addContactToMarketingList } = require('./Brevo/addContactToMarketingList')
-            return await addContactToMarketingList(data)
+            // Add user ID from auth context to the data
+            const dataWithUserId = {
+                ...data,
+                userId: auth.uid,
+            }
+            return await addContactToMarketingList(dataWithUserId)
         } else {
             throw new HttpsError('permission-denied', 'Authentication required')
         }

@@ -6927,6 +6927,7 @@ export const addToMarketingList = async (email, initialUrl) => {
                 email,
                 initialUrl,
                 languageIndex,
+                note: 'userId (EXT_ID) will be added automatically from auth context',
             })
 
             const addToBrevoFn = functions.httpsCallable('addContactToBrevoMarketingList')
