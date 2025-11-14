@@ -66,13 +66,30 @@ const addContactToMarketingList = async data => {
         const listId = parseInt(SIB_MARKETING_SERVICE_LIST, 10)
         const userLanguageIndex = languageIndex || getUserLanguageIndexForBrevo()
 
-        console.log('Adding contact to Brevo marketing list:', {
+        // Prepare the payload
+        const payload = {
             email,
-            listId,
+            listIds: [listId],
+            attributes: {
+                LANGUAGE: userLanguageIndex,
+                SOURCE: 'Alldone',
+                EXT_ID: userId || '',
+            },
+            updateEnabled: true,
+        }
+
+        console.log('==================== BREVO API CALL ====================')
+        console.log('Endpoint: https://api.sendinblue.com/v3/contacts')
+        console.log('Method: POST')
+        console.log('Headers: accept: application/json, content-type: application/json')
+        console.log('Payload being sent to Brevo:')
+        console.log(JSON.stringify(payload, null, 2))
+        console.log('Additional context:', {
             templateId,
-            languageIndex: userLanguageIndex,
-            userId,
+            hasUserId: !!userId,
+            hasLanguageIndex: !!languageIndex,
         })
+        console.log('=======================================================')
 
         const response = await fetch('https://api.sendinblue.com/v3/contacts', {
             method: 'POST',
@@ -81,26 +98,16 @@ const addContactToMarketingList = async data => {
                 'content-type': 'application/json',
                 'api-key': SIB_API_KEY,
             },
-            body: JSON.stringify({
-                email,
-                listIds: [listId],
-                attributes: {
-                    LANGUAGE: userLanguageIndex,
-                    SOURCE: 'Alldone',
-                    EXT_ID: userId || '',
-                },
-                updateEnabled: true,
-            }),
+            body: JSON.stringify(payload),
         })
 
         if (!response.ok) {
             const errorText = await response.text()
-            console.error('Brevo API error:', {
-                status: response.status,
-                statusText: response.statusText,
-                error: errorText,
-                email,
-            })
+            console.error('==================== BREVO API ERROR ====================')
+            console.error('Status:', response.status, response.statusText)
+            console.error('Email:', email)
+            console.error('Error response:', errorText)
+            console.error('========================================================')
             throw new Error(`Brevo API error: ${response.status} - ${errorText}`)
         }
 
@@ -115,7 +122,12 @@ const addContactToMarketingList = async data => {
             }
         }
 
-        console.log('Successfully added contact to Brevo:', email, result || 'No content returned')
+        console.log('==================== BREVO API SUCCESS ====================')
+        console.log('Status:', response.status, response.statusText)
+        console.log('Email:', email)
+        console.log('Response:', result ? JSON.stringify(result, null, 2) : 'No content returned (204)')
+        console.log('===========================================================')
+
 
         return {
             success: true,
@@ -123,11 +135,11 @@ const addContactToMarketingList = async data => {
             result: result || { message: 'Contact added/updated successfully' },
         }
     } catch (error) {
-        console.error('Failed to add contact to Brevo marketing list:', {
-            error: error.message,
-            stack: error.stack,
-            email,
-        })
+        console.error('==================== BREVO API EXCEPTION ====================')
+        console.error('Email:', email)
+        console.error('Error message:', error.message)
+        console.error('Stack trace:', error.stack)
+        console.error('=============================================================')
         throw error
     }
 }
