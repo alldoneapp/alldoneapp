@@ -340,6 +340,8 @@ alldone-mcp-server/config/firebase-service-account.json
 .env.*
 !.env.example
 !.env.template
+functions/env_functions.json
+functions/env_functions*.json
 
 # Alldone MCP Server - Security: Never commit config files with credentials
 alldone-mcp-server/claude-mcp-config.json
