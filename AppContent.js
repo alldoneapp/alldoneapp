@@ -42,16 +42,27 @@ export default function AppContent() {
         if (registeredNewUser) {
             await processNewUser(firebaseUser)
         } else {
-            const user = await loadGlobalDataAndGetUser(userId)
+            try {
+                const user = await loadGlobalDataAndGetUser(userId)
 
-            if (user) {
-                await loadInitialDataForLoggedUser(user)
-            } else if (wait > 0) {
-                setTimeout(() => {
-                    tryLogIn(firebaseUser, 0)
-                }, wait)
-            } else {
-                deleteCacheAndRefresh()
+                if (user) {
+                    await loadInitialDataForLoggedUser(user)
+                } else if (wait > 0) {
+                    setTimeout(() => {
+                        tryLogIn(firebaseUser, 0)
+                    }, wait)
+                } else {
+                    // User document doesn't exist in Firestore
+                    console.error('User document not found in Firestore for user:', userId)
+                    console.error('Logging out to prevent infinite reload loop')
+                    await Backend.auth().signOut()
+                    alert('Your user account data could not be loaded. Please contact support or try logging in again.')
+                }
+            } catch (error) {
+                console.error('Error during login:', error)
+                // Don't reload on error, just log out
+                await Backend.auth().signOut()
+                alert('An error occurred during login. Please try again.')
             }
         }
     }

@@ -62,8 +62,18 @@ import {
 //ACCESS FUNCTIONS
 
 export async function getUserData(userId, isLoggedUser) {
-    const user = (await getDb().doc(`/users/${userId}`).get()).data()
-    return user ? mapUserData(userId, user, isLoggedUser) : null
+    try {
+        const docSnapshot = await getDb().doc(`/users/${userId}`).get()
+        if (!docSnapshot.exists) {
+            console.error(`User document not found in Firestore: /users/${userId}`)
+            return null
+        }
+        const user = docSnapshot.data()
+        return user ? mapUserData(userId, user, isLoggedUser) : null
+    } catch (error) {
+        console.error(`Error fetching user data for ${userId}:`, error)
+        return null
+    }
 }
 
 const convertUserDocsInUsers = docs => {
