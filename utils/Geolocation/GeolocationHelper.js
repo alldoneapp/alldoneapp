@@ -1,5 +1,5 @@
 import { find, method } from 'lodash'
-import firebase from '../../apis/firebase'
+import { firebase } from '@firebase/app'
 
 import dateFormatsByCountry from './date_formats_by_country.json'
 import {
