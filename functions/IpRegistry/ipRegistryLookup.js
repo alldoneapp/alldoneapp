@@ -12,7 +12,14 @@ const ipRegistryLookup = async data => {
     const { IP_REGISTRY_API_KEY } = getEnvFunctions()
 
     if (!IP_REGISTRY_API_KEY) {
-        throw new Error('IP_REGISTRY_API_KEY is not configured')
+        console.warn('IP_REGISTRY_API_KEY is not configured, using default fallback location')
+        return {
+            success: false,
+            error: 'IP_REGISTRY_API_KEY is not configured',
+            location: {
+                country: { name: 'Germany' },
+            },
+        }
     }
 
     const { ip } = data
