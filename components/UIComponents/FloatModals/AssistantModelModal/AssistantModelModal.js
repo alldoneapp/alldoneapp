@@ -24,7 +24,7 @@ const options = [
     { text: 'GPT 3_5', model: MODEL_GPT3_5, shortcutKey: '1' },
     { text: 'GPT 4', model: MODEL_GPT4, shortcutKey: '2' },
     { text: 'GPT 4o', model: MODEL_GPT4O, shortcutKey: '3' },
-    { text: 'GPT 5.1', model: MODEL_GPT5_1, shortcutKey: '4' },
+    { text: 'GPT 5_1', model: MODEL_GPT5_1, shortcutKey: '4' },
     { text: 'Sonar', model: MODEL_SONAR, shortcutKey: '5' },
     { text: 'Sonar Pro', model: MODEL_SONAR_PRO, shortcutKey: '6' },
     { text: 'Sonar Reasoning', model: MODEL_SONAR_REASONING, shortcutKey: '7' },

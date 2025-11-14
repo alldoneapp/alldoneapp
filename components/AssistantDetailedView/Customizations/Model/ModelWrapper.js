@@ -47,7 +47,7 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
         if (model === MODEL_GPT3_5) return 'GPT 3_5'
         if (model === MODEL_GPT4) return 'GPT 4'
         if (model === MODEL_GPT4O) return 'GPT 4o'
-        if (model === MODEL_GPT5_1) return 'GPT 5.1'
+        if (model === MODEL_GPT5_1) return 'GPT 5_1'
         if (model === MODEL_SONAR) return 'Sonar'
         if (model === MODEL_SONAR_PRO) return 'Sonar Pro'
         if (model === MODEL_SONAR_REASONING) return 'Sonar Reasoning'
