@@ -1,12 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { View, Image, StyleSheet, Animated, Text } from 'react-native'
 import { createPortal } from 'react-dom'
-import { firebase } from '@firebase/app'
+import { runHttpsCallableFunction } from '../../../utils/backends/firestore'
 import { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
-
-const functions = firebase.functions()
 
 export const ANIMATION_DURATION = 2000 // 2 seconds
 
@@ -38,12 +36,11 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
             const searchTerm = CELEBRATION_SEARCH_TERMS[Math.floor(Math.random() * CELEBRATION_SEARCH_TERMS.length)]
 
             // Fetch a random celebration GIF from Giphy via cloud function
-            const giphyFn = functions.httpsCallable('giphyRandomGif')
-            giphyFn({ tag: searchTerm, rating: 'g' })
+            runHttpsCallableFunction('giphyRandomGif', { tag: searchTerm, rating: 'g' })
                 .then(result => {
-                    if (result.data.success && result.data.gif && result.data.gif.images && isMounted.current) {
+                    if (result.success && result.gif && result.gif.images && isMounted.current) {
                         // Use the downsized version for better performance
-                        const url = result.data.gif.images.downsized.url
+                        const url = result.gif.images.downsized.url
                         setGifUrl(url)
 
                         // Start animation sequence only after GIF is loaded

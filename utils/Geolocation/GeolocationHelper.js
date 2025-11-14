@@ -1,5 +1,4 @@
 import { find, method } from 'lodash'
-import { firebase } from '@firebase/app'
 
 import dateFormatsByCountry from './date_formats_by_country.json'
 import {
@@ -7,8 +6,7 @@ import {
     MONDAY_FIRST_IN_CALENDAR,
     SUNDAY_FIRST_IN_CALENDAR,
 } from '../../components/UIComponents/FloatModals/DateFormatPickerModal'
-
-const functions = firebase.functions()
+import { runHttpsCallableFunction } from '../backends/firestore'
 
 export const initIpRegistry = () => {
     // No longer needed - using cloud function
@@ -17,11 +15,10 @@ export const initIpRegistry = () => {
 
 const getCurrentLocationInfo = async () => {
     try {
-        const ipLookupFn = functions.httpsCallable('ipRegistryLookup')
-        const result = await ipLookupFn({})
+        const result = await runHttpsCallableFunction('ipRegistryLookup', {})
 
-        if (result.data.success && result.data.location) {
-            return result.data.location
+        if (result.success && result.location) {
+            return result.location
         }
 
         console.warn('IP Registry lookup failed, using default')
