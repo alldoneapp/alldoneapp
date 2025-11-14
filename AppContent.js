@@ -35,6 +35,62 @@ export default function AppContent() {
         await SharedHelper.processUrlAsAnonymous()
     }
 
+    const handleMissingUserDocument = async firebaseUser => {
+        const { uid: userId, email } = firebaseUser
+        console.warn('INCONSISTENT STATE: Firebase Auth user exists but Firestore user document is missing')
+        console.warn('User ID:', userId, 'Email:', email)
+        console.log('Attempting to recover by creating missing user document...')
+
+        try {
+            // Try to create the user properly as if it's a new signup
+            await processNewUser(firebaseUser)
+            console.log('✅ Successfully recovered user account')
+            return true
+        } catch (error) {
+            console.error('❌ Failed to recover user account:', error)
+
+            // Show error dialog with options
+            const userChoice = confirm(
+                `Your account is in an inconsistent state and automatic recovery failed.\n\n` +
+                    `Error: ${error.message || 'Unknown error'}\n\n` +
+                    `Would you like to:\n` +
+                    `• Click OK to delete your authentication and start fresh\n` +
+                    `• Click Cancel to try logging in again later\n\n` +
+                    `If this problem persists, please contact support with your email: ${email}`
+            )
+
+            if (userChoice) {
+                // User chose to delete auth and start fresh
+                try {
+                    console.log('User chose to delete auth - attempting to delete Firebase Auth user...')
+                    await firebaseUser.delete()
+                    console.log('✅ Firebase Auth user deleted successfully')
+                    alert(
+                        'Your authentication has been reset. You can now sign up again with a fresh account.\n\n' +
+                            'If you had important data, please contact support.'
+                    )
+                } catch (deleteError) {
+                    console.error('Failed to delete Firebase Auth user:', deleteError)
+                    // If delete fails, at least sign them out
+                    await Backend.auth().signOut()
+                    alert(
+                        'Could not delete your authentication. You have been logged out.\n\n' +
+                            'Please contact support with your email: ' +
+                            email
+                    )
+                }
+            } else {
+                // User chose to try again later
+                await Backend.auth().signOut()
+                alert(
+                    'You have been logged out. Please try logging in again or contact support if the problem persists.'
+                )
+            }
+
+            return false
+        }
+    }
+
     const tryLogIn = async (firebaseUser, wait) => {
         const { registeredNewUser } = store.getState()
         const { uid: userId } = firebaseUser
@@ -52,17 +108,16 @@ export default function AppContent() {
                         tryLogIn(firebaseUser, 0)
                     }, wait)
                 } else {
-                    // User document doesn't exist in Firestore
-                    console.error('User document not found in Firestore for user:', userId)
-                    console.error('Logging out to prevent infinite reload loop')
-                    await Backend.auth().signOut()
-                    alert('Your user account data could not be loaded. Please contact support or try logging in again.')
+                    // User document doesn't exist in Firestore - try to recover
+                    await handleMissingUserDocument(firebaseUser)
                 }
             } catch (error) {
                 console.error('Error during login:', error)
-                // Don't reload on error, just log out
+                alert(
+                    `An error occurred during login: ${error.message || 'Unknown error'}\n\n` +
+                        'You will be logged out. Please try again or contact support.'
+                )
                 await Backend.auth().signOut()
-                alert('An error occurred during login. Please try again.')
             }
         }
     }
