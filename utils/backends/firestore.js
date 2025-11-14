@@ -6983,8 +6983,17 @@ export const addToMarketingList = async (email, initialUrl) => {
                     email,
                 })
             } else {
-                const result = await response.json()
-                console.log('Successfully added contact to Brevo:', email, result)
+                // Brevo API returns 204 (No Content) for updates, 201 for creates
+                // Only parse JSON if there's content
+                let result = null
+                const contentType = response.headers.get('content-type')
+                if (contentType && contentType.includes('application/json')) {
+                    const text = await response.text()
+                    if (text) {
+                        result = JSON.parse(text)
+                    }
+                }
+                console.log('Successfully added contact to Brevo:', email, result || 'No content returned')
             }
         } catch (error) {
             console.error('Failed to add contact to Brevo marketing list:', {
