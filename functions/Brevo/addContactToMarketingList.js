@@ -85,6 +85,7 @@ const addContactToMarketingList = async data => {
                 attributes: {
                     LANGUAGE: userLanguageIndex,
                     templateId,
+                    SOURCE: 'Alldone',
                 },
                 updateEnabled: true,
             }),
