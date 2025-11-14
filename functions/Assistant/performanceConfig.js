@@ -26,8 +26,8 @@ module.exports = {
 
     // Model configurations
     MODEL_CONFIG: {
-        MODEL_GPT5: {
-            actual: 'gpt-5',
+        MODEL_GPT5_1: {
+            actual: 'gpt-5.1',
             maxTokens: 4096,
             temperature: 1.0,
         },

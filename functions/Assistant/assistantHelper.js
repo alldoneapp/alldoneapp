@@ -41,7 +41,7 @@ const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
 const MODEL_GPT4O = 'MODEL_GPT4O'
-const MODEL_GPT5 = 'MODEL_GPT5'
+const MODEL_GPT5_1 = 'MODEL_GPT5_1'
 const MODEL_SONAR = 'MODEL_SONAR'
 const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
 const MODEL_SONAR_REASONING = 'MODEL_SONAR_REASONING'
@@ -55,7 +55,7 @@ const TEMPERATURE_HIGH = 'TEMPERATURE_HIGH'
 const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
 
 const COMPLETION_MAX_TOKENS = 1000
-const COMPLETION_MAX_TOKENS_GPT5 = 2000 // GPT-5 needs more tokens due to stricter limits
+const COMPLETION_MAX_TOKENS_GPT5_1 = 2000 // GPT-5.1 needs more tokens due to stricter limits
 
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
@@ -97,7 +97,7 @@ function getOpenAIClient(apiKey) {
  */
 const modelSupportsNativeTools = modelKey => {
     // Only GPT models support native tool calling
-    return modelKey === MODEL_GPT3_5 || modelKey === MODEL_GPT4 || modelKey === MODEL_GPT4O || modelKey === MODEL_GPT5
+    return modelKey === MODEL_GPT3_5 || modelKey === MODEL_GPT4 || modelKey === MODEL_GPT4O || modelKey === MODEL_GPT5_1
 }
 
 /**
@@ -106,8 +106,8 @@ const modelSupportsNativeTools = modelKey => {
  * @returns {boolean} True if model supports custom temperature
  */
 const modelSupportsCustomTemperature = modelKey => {
-    // GPT-5 and some newer models only support default temperature (1.0)
-    if (modelKey === MODEL_GPT5) return false
+    // GPT-5.1 and some newer models only support default temperature (1.0)
+    if (modelKey === MODEL_GPT5_1) return false
     return true
 }
 
@@ -115,7 +115,7 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 100
     if (modelKey === MODEL_GPT4) return 10
     if (modelKey === MODEL_GPT4O) return 50
-    if (modelKey === MODEL_GPT5) return 10
+    if (modelKey === MODEL_GPT5_1) return 10
     if (modelKey === MODEL_SONAR) return 100
     if (modelKey === MODEL_SONAR_PRO) return 50
     if (modelKey === MODEL_SONAR_REASONING) return 20
@@ -127,7 +127,7 @@ const getModel = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 'gpt-3.5-turbo'
     if (modelKey === MODEL_GPT4) return 'gpt-4'
     if (modelKey === MODEL_GPT4O) return 'gpt-4o'
-    if (modelKey === MODEL_GPT5) return 'gpt-5'
+    if (modelKey === MODEL_GPT5_1) return 'gpt-5.1'
     if (modelKey === MODEL_SONAR) return 'sonar'
     if (modelKey === MODEL_SONAR_PRO) return 'sonar-pro'
     if (modelKey === MODEL_SONAR_REASONING) return 'sonar-reasoning'
@@ -405,7 +405,7 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         console.log(`Using natural token limits for model ${model}`)
 
         // Only add temperature if the model supports custom temperature
-        // Some models (like gpt-5) only support the default temperature (1.0)
+        // Some models (like gpt-5.1) only support the default temperature (1.0)
         if (modelSupportsCustomTemperature(modelKey)) {
             requestParams.temperature = temperature
         } else {
