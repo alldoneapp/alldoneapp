@@ -10,7 +10,11 @@ self.addEventListener('fetch', function (event) {
         event.request.url.includes('firebasestorage.googleapis.com') ||
         event.request.url.includes('firestore.googleapis.com') ||
         event.request.url.includes('accounts.google.com') ||
-        event.request.url.includes('googleapis.com')
+        event.request.url.includes('googleapis.com') ||
+        event.request.url.includes('googletagmanager.com') ||
+        event.request.url.includes('google-analytics.com') ||
+        event.request.url.includes('googleusercontent.com') ||
+        event.request.url.includes('doubleclick.net')
     ) {
         return
     }
