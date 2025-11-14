@@ -128,7 +128,6 @@ const addContactToMarketingList = async data => {
         console.log('Response:', result ? JSON.stringify(result, null, 2) : 'No content returned (204)')
         console.log('===========================================================')
 
-
         return {
             success: true,
             email,
