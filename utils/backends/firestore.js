@@ -43,8 +43,6 @@ import {
     GOOGLE_ANALYTICS_KEY,
     GOOGLE_ADS_GUIDE_CONVERSION_TAG,
     IP_REGISTRY_API_KEY,
-    SIB_API_KEY,
-    SIB_MARKETING_SERVICE_LIST,
     GIPHY_API_KEY,
     PERPLEXITY_API_KEY,
 } from 'react-native-dotenv'
@@ -6931,70 +6929,25 @@ export const duplicateProject = async (projectId, options) => {
     await moveTasksFn({ projectId, user, options })
 }
 
-const getTemplateIdWhenSingUp = async initialUrl => {
-    if (initialUrl) {
-        const projectId = initialUrl.split('/')[2]
-        if (projectId) {
-            const project = (await db.doc(`/projects/${projectId}`).get()).data()
-            if (project && project.isTemplate) {
-                return projectId
-            }
-        }
-    }
-
-    return ''
-}
-
 export const addToMarketingList = async (email, initialUrl) => {
     if (inProductionEnvironment()) {
         try {
-            const templateId = await getTemplateIdWhenSingUp(initialUrl)
-            const listId = parseInt(SIB_MARKETING_SERVICE_LIST, 10)
             const languageIndex = getUserLanguageIndexForSendinBlue()
 
-            console.log('Adding contact to Brevo marketing list:', {
+            console.log('Adding contact to Brevo marketing list via cloud function:', {
                 email,
-                listId,
-                templateId,
+                initialUrl,
                 languageIndex,
             })
 
-            const response = await fetch('https://api.sendinblue.com/v3/contacts', {
-                method: 'POST',
-                headers: {
-                    accept: 'application/json',
-                    'content-type': 'application/json',
-                    'api-key': SIB_API_KEY,
-                },
-                body: JSON.stringify({
-                    email,
-                    listIds: [listId],
-                    attributes: { LANGUAGE: languageIndex, templateId },
-                    updateEnabled: true,
-                }),
+            const addToBrevoFn = functions.httpsCallable('addContactToBrevoMarketingList')
+            const result = await addToBrevoFn({
+                email,
+                initialUrl,
+                languageIndex,
             })
 
-            if (!response.ok) {
-                const errorText = await response.text()
-                console.error('Brevo API error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    error: errorText,
-                    email,
-                })
-            } else {
-                // Brevo API returns 204 (No Content) for updates, 201 for creates
-                // Only parse JSON if there's content
-                let result = null
-                const contentType = response.headers.get('content-type')
-                if (contentType && contentType.includes('application/json')) {
-                    const text = await response.text()
-                    if (text) {
-                        result = JSON.parse(text)
-                    }
-                }
-                console.log('Successfully added contact to Brevo:', email, result || 'No content returned')
-            }
+            console.log('Successfully added contact to Brevo:', result.data)
         } catch (error) {
             console.error('Failed to add contact to Brevo marketing list:', {
                 error: error.message,

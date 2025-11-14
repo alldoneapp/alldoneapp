@@ -46,6 +46,7 @@ const getEnvFunctions = () => {
             ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
             ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
             SIB_API_KEY: process.env.SIB_API_KEY || '',
+            SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -65,6 +66,7 @@ const getEnvFunctions = () => {
                     ALGOLIA_APP_ID: envJson.ALGOLIA_APP_ID || '',
                     ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: envJson.SIB_API_KEY || '',
+                    SIB_MARKETING_SERVICE_LIST: envJson.SIB_MARKETING_SERVICE_LIST || '5',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -88,6 +90,7 @@ const getEnvFunctions = () => {
                         ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                         ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                         SIB_API_KEY: process.env.SIB_API_KEY || '',
+                        SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                         GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -108,6 +111,7 @@ const getEnvFunctions = () => {
                     ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                     ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: process.env.SIB_API_KEY || '',
+                    SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
@@ -128,6 +132,7 @@ const getEnvFunctions = () => {
                 ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
                 ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                 SIB_API_KEY: process.env.SIB_API_KEY || '',
+                SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                 GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET:
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||

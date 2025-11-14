@@ -626,6 +626,24 @@ exports.createStripePortalSession = onCall(
     }
 )
 
+exports.addContactToBrevoMarketingList = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { addContactToMarketingList } = require('./Brevo/addContactToMarketingList')
+            return await addContactToMarketingList(data)
+        } else {
+            throw new HttpsError('permission-denied', 'Authentication required')
+        }
+    }
+)
+
 exports.linkStripeAccount = onCall(
     {
         timeoutSeconds: 30,
