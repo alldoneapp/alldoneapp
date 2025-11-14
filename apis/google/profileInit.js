@@ -26,9 +26,19 @@ class ProfileInit {
 
     handleClientLoad() {
         const self = this
-        scriptLoader.loadScript(scriptSrcGapi).then(() => {
-            gapi.load('client', () => self.initGapiClient())
-        })
+        scriptLoader
+            .loadScript(scriptSrcGapi)
+            .then(() => {
+                if (window.gapi) {
+                    gapi.load('client', () => self.initGapiClient())
+                } else {
+                    console.error('Google API library failed to load properly')
+                }
+            })
+            .catch(error => {
+                console.error('Error loading Google API script:', error)
+                console.error('Google Calendar, Gmail, and Drive integrations will not be available')
+            })
     }
 
     checkAccessGranted() {

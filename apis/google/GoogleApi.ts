@@ -137,17 +137,45 @@ class GoogleApi {
      */
     private handleClientLoad(): void {
         this.gapi = window['gapi']
-        const script = document.createElement('script')
-        script.src = 'https://apis.google.com/js/api.js'
-        document.body.appendChild(script)
-        script.onload = (): void => {
+
+        // Check if gapi is already loaded
+        if (window['gapi']) {
             window['gapi'].load('client', () => {
                 // Load GIS client
-                scriptLoader.loadScript(scriptSrcGoogle).then(() => {
-                    this.initClient()
-                })
+                scriptLoader
+                    .loadScript(scriptSrcGoogle)
+                    .then(() => {
+                        this.initClient()
+                    })
+                    .catch(error => {
+                        console.error('Error loading GIS client:', error)
+                    })
             })
+            return
         }
+
+        // Use scriptLoader for better error handling
+        scriptLoader
+            .loadScript('https://apis.google.com/js/api.js')
+            .then(() => {
+                if (window['gapi']) {
+                    window['gapi'].load('client', () => {
+                        // Load GIS client
+                        scriptLoader
+                            .loadScript(scriptSrcGoogle)
+                            .then(() => {
+                                this.initClient()
+                            })
+                            .catch(error => {
+                                console.error('Error loading GIS client:', error)
+                            })
+                    })
+                }
+            })
+            .catch(error => {
+                console.error('Error loading Google API script:', error)
+                console.error('Google Calendar and Gmail integrations will not be available')
+            })
     }
 
     /**
