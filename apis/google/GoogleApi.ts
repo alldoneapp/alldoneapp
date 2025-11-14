@@ -37,7 +37,11 @@ class GoogleApi {
             this.getEvent = this.getEvent.bind(this)
             this.getBasicUserProfile = this.getBasicUserProfile.bind(this)
             this.fetchUserProfile = this.fetchUserProfile.bind(this)
-            this.handleClientLoad()
+
+            // Defer loading to avoid blocking app initialization
+            setTimeout(() => {
+                this.handleClientLoad()
+            }, 2000)
         } catch (e) {
             console.log(e)
         }

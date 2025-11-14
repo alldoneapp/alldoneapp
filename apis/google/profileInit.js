@@ -17,7 +17,10 @@ const config = {
 
 class ProfileInit {
     constructor() {
-        this.handleClientLoad()
+        // Defer loading to avoid blocking app initialization
+        setTimeout(() => {
+            this.handleClientLoad()
+        }, 2500)
     }
 
     async initGapiClient() {
