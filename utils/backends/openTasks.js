@@ -1433,6 +1433,7 @@ const unwatchEmptyGoalsWatcher = (projectId, currentUserId, watcher) => {
 }
 
 export const contractOpenTasks = (projectId, instanceKey, openTasks, updateTaks) => {
+    store.dispatch([setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
     // First, unwatch existing listeners to prevent stale data from being pushed
     // This stops all Firestore listeners for this project
     unwatchOpenTasks(projectId, instanceKey)

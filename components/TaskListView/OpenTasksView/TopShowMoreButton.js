@@ -56,7 +56,20 @@ export default function TopShowMoreButton({ instanceKey, projectIndex, setProjec
         }
     }
 
+    const logContractState = () => {
+        if (process.env.NODE_ENV !== 'production') {
+            const { laterTasksExpanded: expandedState, laterTasksExpandState } = store.getState()
+            console.debug('[OpenTasks] Contract later tasks toggle', {
+                projectId,
+                instanceKey,
+                expandedState,
+                laterTasksExpandState,
+            })
+        }
+    }
+
     const contractTasks = () => {
+        logContractState()
         const openTasksStore = store.getState().openTasksStore[instanceKey]
         const openTasks = openTasksStore ? openTasksStore : []
         contractOpenTasks(projectId, instanceKey, openTasks, updateTaks)
