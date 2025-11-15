@@ -102,7 +102,21 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     const startTime = Date.now()
     console.log(`[onUpdateProject] Function triggered for projectId: ${projectId}`)
 
-    // Track which fields changed
+    // Track which fields changed (ALL fields to diagnose phantom updates)
+    const allChangedFields = []
+    const allOldFields = Object.keys(oldProject)
+    const allNewFields = Object.keys(newProject)
+    const allFields = [...new Set([...allOldFields, ...allNewFields])]
+
+    allFields.forEach(field => {
+        const oldValue = JSON.stringify(oldProject[field])
+        const newValue = JSON.stringify(newProject[field])
+        if (oldValue !== newValue) {
+            allChangedFields.push(field)
+        }
+    })
+
+    // Track which relevant fields changed
     const changedFields = []
     const relevantFields = [
         'userIds',
@@ -127,7 +141,11 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
         }
     })
 
-    console.log(`[onUpdateProject] Changed fields:`, JSON.stringify(changedFields))
+    // Log ALL changed fields to diagnose phantom updates
+    if (allChangedFields.length > 0) {
+        console.log(`[onUpdateProject] ALL changed fields: ${allChangedFields.join(', ')}`)
+    }
+    console.log(`[onUpdateProject] Relevant changed fields:`, JSON.stringify(changedFields))
 
     // Early return if no relevant fields changed
     if (changedFields.length === 0) {
