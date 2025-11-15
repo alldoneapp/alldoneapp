@@ -2503,9 +2503,6 @@ const primeDefaultAssistantCache = async () => {
                 data: normalizedAssistant,
                 timestamp: Date.now(),
             })
-            console.log('⚙️ ASSISTANT SETTINGS: Default assistant cached during warmup', {
-                assistantId: defaultAssistant.uid,
-            })
         }
     } catch (error) {
         console.log('⚙️ ASSISTANT SETTINGS: Unable to warm assistant cache', {
