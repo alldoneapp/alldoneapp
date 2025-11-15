@@ -16,7 +16,9 @@ const updateProjectLastUserInteractionDate = async (projectId, date) => {
 }
 
 const setProjectAssistant = async (projectId, assistantId) => {
-    admin.firestore().doc(`projects/${projectId}`).update({ assistantId })
+    console.log(`[setProjectAssistant] Updating project ${projectId} assistantId to: "${assistantId}"`)
+    await admin.firestore().doc(`projects/${projectId}`).update({ assistantId })
+    console.log(`[setProjectAssistant] Successfully updated project ${projectId}`)
 }
 
 module.exports = { updateProjectLastUserInteractionDate, setProjectAssistant }

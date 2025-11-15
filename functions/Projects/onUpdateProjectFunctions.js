@@ -99,25 +99,86 @@ const updateProjectAssistantToTemplateGuides = async (guideIds, assistantId, isG
 }
 
 const onUpdateProject = async (projectId, oldProject, newProject) => {
+    const startTime = Date.now()
+    console.log(`[onUpdateProject] Function triggered for projectId: ${projectId}`)
+
+    // Track which fields changed
+    const changedFields = []
+    const relevantFields = [
+        'userIds',
+        'globalAssistantIds',
+        'assistantId',
+        'active',
+        'activeFullSearch',
+        'monthlyXp',
+        'monthlyTraffic',
+        'parentTemplateId',
+    ]
+
+    relevantFields.forEach(field => {
+        const oldValue = JSON.stringify(oldProject[field])
+        const newValue = JSON.stringify(newProject[field])
+        if (oldValue !== newValue) {
+            changedFields.push({
+                field,
+                oldValue: oldProject[field],
+                newValue: newProject[field],
+            })
+        }
+    })
+
+    console.log(`[onUpdateProject] Changed fields:`, JSON.stringify(changedFields))
+
+    // Early return if no relevant fields changed
+    if (changedFields.length === 0) {
+        console.log(`[onUpdateProject] No relevant fields changed, skipping execution for projectId: ${projectId}`)
+        return
+    }
+
     const promises = []
-    promises.push(generateProjectWarnings(projectId, oldProject, newProject, admin))
+    const executionReasons = []
+
+    // Only run quota warnings if quota-related fields changed
+    const quotaFieldsChanged = changedFields.some(c => ['monthlyXp', 'monthlyTraffic'].includes(c.field))
+    if (quotaFieldsChanged) {
+        console.log(`[onUpdateProject] Quota fields changed, generating project warnings`)
+        executionReasons.push('quota_check')
+        promises.push(generateProjectWarnings(projectId, oldProject, newProject, admin))
+    } else {
+        console.log(`[onUpdateProject] Quota fields unchanged, skipping generateProjectWarnings`)
+    }
 
     const removedUserId = difference(oldProject.userIds, newProject.userIds)[0]
-    if (removedUserId)
+    if (removedUserId) {
+        console.log(`[onUpdateProject] User removed from project: ${removedUserId}`)
+        executionReasons.push(`user_removed:${removedUserId}`)
         promises.push(removeUserDataFromProject(projectId, removedUserId, admin, firebase_tools, process, admin))
+    }
 
     const removedGlobalAssistantIds = difference(oldProject.globalAssistantIds, newProject.globalAssistantIds)
     const removedSomeGlobalAssistants = removedGlobalAssistantIds.length > 0
 
     if (removedSomeGlobalAssistants) {
+        console.log(`[onUpdateProject] Global assistants removed: ${removedGlobalAssistantIds.join(', ')}`)
+        executionReasons.push(`assistants_removed:${removedGlobalAssistantIds.length}`)
+
         promises.push(removeDeletedGlobalAssistantChats(projectId, removedGlobalAssistantIds))
         promises.push(removeDeletedGlobalAssistantNotes(projectId, removedGlobalAssistantIds))
         promises.push(removeDeletedGlobalAssistantsFromObjectBacklinks(projectId, removedGlobalAssistantIds))
         promises.push(deleteTasksFromAssistantsInProject(projectId, removedGlobalAssistantIds))
-        if (removedGlobalAssistantIds.includes(newProject.assistantId))
+
+        // FIX: Only update assistantId if it's not already empty (prevents recursive trigger)
+        if (removedGlobalAssistantIds.includes(newProject.assistantId) && newProject.assistantId !== '') {
+            console.log(
+                `[onUpdateProject] Active assistant was removed, clearing assistantId (old: ${newProject.assistantId})`
+            )
+            executionReasons.push('clear_active_assistant')
             promises.push(setProjectAssistant(newProject.id, ''))
+        } else if (removedGlobalAssistantIds.includes(newProject.assistantId)) {
+            console.log(`[onUpdateProject] Active assistant was removed but assistantId already empty, skipping update`)
+        }
     }
-    
+
     // DEPRECATED: Template-to-guides cascade feature has been deactivated
     // if (newProject.isTemplate) {
     //     const addedGlobalAssistantIds = difference(newProject.globalAssistantIds, oldProject.globalAssistantIds)
@@ -139,10 +200,18 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     // }
 
     if (!newProject.activeFullSearch && !oldProject.active && newProject.active && !newProject.parentTemplateId) {
+        console.log(`[onUpdateProject] Project activated, starting Algolia indexation`)
+        executionReasons.push('algolia_indexation_start')
         promises.push(startProjectIndexationInAlgolia([newProject], null))
     }
 
+    console.log(`[onUpdateProject] Execution reasons: ${executionReasons.join(', ')}`)
+    console.log(`[onUpdateProject] Executing ${promises.length} operations for projectId: ${projectId}`)
+
     await Promise.all(promises)
+
+    const executionTime = Date.now() - startTime
+    console.log(`[onUpdateProject] Completed for projectId: ${projectId} in ${executionTime}ms`)
 }
 
 module.exports = { onUpdateProject }
