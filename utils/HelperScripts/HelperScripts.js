@@ -7941,9 +7941,10 @@ async function setLastUserInteractionDateInProjects(appAdmin) {
         const lastEditionDate =
             userLastEditionDate > contactLastEditionDate ? userLastEditionDate : contactLastEditionDate
 
-        promises.push(
-            appAdmin.firestore().doc(`projects/${project.id}`).update({ lastUserInteractionDate: lastEditionDate })
-        )
+        // DEPRECATED: lastUserInteractionDate field has been removed, replaced with lastActionDate
+        // promises.push(
+        //     appAdmin.firestore().doc(`projects/${project.id}`).update({ lastUserInteractionDate: lastEditionDate })
+        // )
 
         if (promises.length > 200) {
             await Promise.all(promises)

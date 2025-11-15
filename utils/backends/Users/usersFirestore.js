@@ -534,7 +534,6 @@ export async function setUserRoleInProject(project, user, newRole, oldRole) {
 
     batch.update(getDb().doc(`/projects/${project.id}`), {
         [`usersData.${user.uid}.role`]: newRole,
-        lastUserInteractionDate: Date.now(),
     })
 
     await createUserRoleChangedFeed(project.id, user, user.uid, newRole, oldRole, batch)
@@ -553,7 +552,6 @@ export async function setUserCompanyInProject(project, user, newCompany, oldComp
 
     batch.update(getDb().doc(`/projects/${project.id}`), {
         [`usersData.${user.uid}.company`]: newCompany,
-        lastUserInteractionDate: Date.now(),
     })
 
     await createUserCompanyChangedFeed(project.id, user, user.uid, newCompany, oldCompany, batch)
@@ -575,7 +573,6 @@ export async function setUserDescriptionInProject(project, user, newDescription,
     batch.update(getDb().doc(`/projects/${project.id}`), {
         [`usersData.${user.uid}.description`]: plainDescription,
         [`usersData.${user.uid}.extendedDescription`]: newDescription,
-        lastUserInteractionDate: Date.now(),
     })
 
     await createUserDescriptionChangedFeed(project.id, user, user.uid, newDescription, oldDescription, batch)
@@ -594,7 +591,6 @@ export async function setUserHighlightInProject(project, user, highlightColor) {
         .doc(`projects/${project.id}`)
         .update({
             [`usersData.${user.uid}.hasStar`]: highlightColor,
-            lastUserInteractionDate: Date.now(),
         })
 
     const batch = new BatchWrapper(getDb())
@@ -616,7 +612,6 @@ export async function setUserPrivacyInProject(project, user, isPrivate, isPublic
     batch.update(getDb().doc(`/projects/${project.id}`), {
         [`usersData.${user.uid}.isPrivate`]: isPrivate,
         [`usersData.${user.uid}.isPublicFor`]: isPublicFor,
-        lastUserInteractionDate: Date.now(),
     })
 
     updateChatPrivacy(project.id, user.uid, 'contacts', isPublicFor)
@@ -817,7 +812,6 @@ function updateProjectDataWhenKickUserFromProject(userId, project, batch) {
     const projectUpdate = {
         userIds: firebase.firestore.FieldValue.arrayRemove(userId),
         [`usersData.${userId}`]: firebase.firestore.FieldValue.delete(),
-        lastUserInteractionDate: Date.now(),
     }
     if (templateCreatorId === userId) projectUpdate.templateCreatorId = administratorUser.uid
     batch.update(getDb().doc(`projects/${project.id}`), projectUpdate)

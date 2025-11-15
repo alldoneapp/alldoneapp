@@ -236,7 +236,7 @@ function mapProjectData(projectId, project, customData) {
             ? project.lastLoggedUserDate
             : moment().subtract(1, 'year').valueOf(),
         active: project.active ? project.active : false,
-        lastUserInteractionDate: project.lastUserInteractionDate ? project.lastUserInteractionDate : Date.now(),
+        lastActionDate: project.lastActionDate ? project.lastActionDate : Date.now(),
         autoEstimation: project.autoEstimation === false ? false : true,
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         ...customData,

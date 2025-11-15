@@ -628,7 +628,7 @@ class ProjectHelper {
             workstreamIds: [DEFAULT_WORKSTREAM_ID],
             globalAssistantIds: [],
             lastLoggedUserDate: date,
-            lastUserInteractionDate: date,
+            lastActionDate: date,
             active: true,
             assistantId: '',
             autoEstimation: true,
