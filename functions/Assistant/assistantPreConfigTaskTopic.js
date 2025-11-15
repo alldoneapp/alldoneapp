@@ -7,6 +7,7 @@ const {
     getTaskOrAssistantSettings,
     getAssistantForChat,
     getCommonData, // For parallel fetching to reduce time-to-first-token
+    normalizeModelKey, // For model normalization and backward compatibility
 } = require('./assistantHelper')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
@@ -108,7 +109,7 @@ async function generatePreConfigTaskResult(
         const uid = aiSettings.assistantUid || assistantId
         const instructions = aiSettings.systemMessage || 'You are a helpful assistant.'
         settings = {
-            model: aiSettings.model || 'MODEL_GPT3_5',
+            model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_1'),
             temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
             instructions,
             displayName,
@@ -132,7 +133,7 @@ async function generatePreConfigTaskResult(
             ? assistant.allowedTools
             : []
         settings = {
-            model: aiSettings.model || assistant.model || 'MODEL_GPT3_5',
+            model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_1'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
             instructions: fallbackInstructions,
             displayName: fallbackDisplayName,
