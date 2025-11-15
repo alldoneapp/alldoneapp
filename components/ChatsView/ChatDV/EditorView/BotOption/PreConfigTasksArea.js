@@ -7,7 +7,7 @@ import PreConfigTaskOption from './PreConfigTaskOption'
 import { watchAssistantTasks } from '../../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../../utils/backends/firestore'
 import { stopLoadingData } from '../../../../../redux/actions'
-import { GLOBAL_PROJECT_ID } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantProjectId } from '../../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function PreConfigTasksArea({
     selectTask,
@@ -18,11 +18,9 @@ export default function PreConfigTasksArea({
     inMyDay,
 }) {
     const dispatch = useDispatch()
-    const globalAssistants = useSelector(state => state.globalAssistants)
     const [tasks, setTasks] = useState([])
 
-    const isGlobalAssistant = globalAssistants.find(item => item.uid === assistantId)
-    const tasksProjectId = isGlobalAssistant ? GLOBAL_PROJECT_ID : projectId
+    const tasksProjectId = getAssistantProjectId(assistantId, projectId)
 
     useEffect(() => {
         const watcherKey = v4()
