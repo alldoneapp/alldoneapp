@@ -508,8 +508,7 @@ const filterGoalsInMilestone = (goalsToShowAmount, milestoneDate, goals, assigne
             ? parentDoneMilestoneIds.includes(milestoneId)
             : completionMilestoneDate >= milestoneDate &&
               startingMilestoneDate <= milestoneDate &&
-              (milestoneDate !== BACKLOG_DATE_NUMERIC ||
-                  (progress !== 100 && (progress !== DYNAMIC_PERCENT || dynamicProgress !== 100)))
+              (milestoneDate !== BACKLOG_DATE_NUMERIC || progress !== 100)
         const belongsToAnAssigneeToShow = assigneesIds.some(assigneeId => assigneesIdsToShow.includes(assigneeId))
 
         if (belongsToMilestone && belongsToAnAssigneeToShow) {

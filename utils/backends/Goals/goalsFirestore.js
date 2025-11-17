@@ -174,9 +174,7 @@ async function getGoalsInOpenMilestone(
         if (
             goal.startingMilestoneDate <= milestoneDate &&
             !idsOfGoalsToExclude.includes(goal.id) &&
-            (milestoneDate !== BACKLOG_DATE_NUMERIC ||
-                !getOnlyIncompleteGoalsInBacklog ||
-                (goal.progress !== 100 && (goal.progress !== DYNAMIC_PERCENT || goal.dynamicProgress !== 100)))
+            (milestoneDate !== BACKLOG_DATE_NUMERIC || !getOnlyIncompleteGoalsInBacklog || goal.progress !== 100)
         ) {
             goals.push(goal)
         }
