@@ -87,7 +87,10 @@ export default function BotOptionsModal({
             ) : selectedTask ? (
                 <PreConfigTaskGeneratorModal
                     projectId={projectId}
-                    closeModal={closeModal}
+                    closeModal={() => {
+                        setSelectedTask(null)
+                        closeModal()
+                    }}
                     task={selectedTask}
                     assistant={assistant}
                     processPromp={prompt => {
