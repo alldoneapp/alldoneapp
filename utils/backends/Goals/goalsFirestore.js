@@ -883,8 +883,15 @@ export const updateGoalLastCommentData = async (projectId, goalId, lastComment, 
 
 export async function updateGoalProgress(projectId, progress, goal) {
     const { loggedUser } = store.getState()
-    updateGoalData(projectId, goal.id, { progress }, null)
-    updateGoalProgressFeedsChain(projectId, progress, goal)
+
+    // If setting a Someday goal to 100%, move it to a done milestone
+    if (progress === 100 && goal.completionMilestoneDate === BACKLOG_DATE_NUMERIC) {
+        await moveCompletedGoalInBacklogToDone(projectId, goal)
+    } else {
+        updateGoalData(projectId, goal.id, { progress }, null)
+        updateGoalProgressFeedsChain(projectId, progress, goal)
+    }
+
     updateXpByChangeGoalProgress(loggedUser.uid, firebase, getDb(), projectId)
 }
 
@@ -979,7 +986,10 @@ export async function updateGoalProject(oldProject, newProject, goal) {
 }
 
 export async function moveCompletedGoalInBacklogToDone(projectId, goal) {
-    if (goal.progress !== 100) updateGoalProgress(projectId, 100, goal)
+    if (goal.progress !== 100) {
+        updateGoalData(projectId, goal.id, { progress: 100 }, null)
+        updateGoalProgressFeedsChain(projectId, 100, goal)
+    }
     const todayDate = moment().startOf('day').hour(12).minute(0).valueOf()
     let milestone = await getMilestoneUsingDate(projectId, todayDate, true, goal.ownerId)
 
