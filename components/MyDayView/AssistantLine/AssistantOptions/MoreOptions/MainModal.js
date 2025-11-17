@@ -60,7 +60,10 @@ export default function MainModal({ closeModal, options, openPreconfigTaskModal,
                             shortcut={(index + 1).toString()}
                             action={
                                 type !== TASK_OPTION || task.type === TASK_TYPE_EXTERNAL_LINK || gold > 0
-                                    ? action
+                                    ? () => {
+                                          action()
+                                          closeModal()
+                                      }
                                     : openOutOfGoldModal
                             }
                         />
