@@ -49,7 +49,6 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
                         // Use the downsized version for better performance
                         const url = result.gif.images.downsized.url
                         console.log('TaskCompletionAnimation: GIF URL:', url)
-                        setGifUrl(url)
 
                         // Start animation sequence only after GIF is loaded
                         console.log('TaskCompletionAnimation: Prefetching image...')
@@ -57,6 +56,8 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
                             .then(() => {
                                 console.log('TaskCompletionAnimation: Image prefetched successfully')
                                 if (isMounted.current) {
+                                    // Set the URL only after successful prefetch - this will trigger render
+                                    setGifUrl(url)
                                     console.log('TaskCompletionAnimation: Starting animation')
                                     Animated.sequence([
                                         Animated.timing(opacity, {
@@ -101,7 +102,14 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
         }
     }, [visible])
 
-    if (!visible || !gifUrl) return null
+    console.log('TaskCompletionAnimation render - visible:', visible, 'gifUrl:', gifUrl)
+
+    if (!visible || !gifUrl) {
+        console.log('TaskCompletionAnimation: Not rendering - visible:', visible, 'gifUrl:', gifUrl)
+        return null
+    }
+
+    console.log('TaskCompletionAnimation: Rendering modal!')
 
     const modal = (
         <View style={styles.modalContainer}>
