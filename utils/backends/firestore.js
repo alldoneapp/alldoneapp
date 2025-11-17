@@ -528,6 +528,8 @@ function loadDeferredFirebaseModules() {
 export function initGoogleTagManager(userId) {
     gtag('config', GOOGLE_ANALYTICS_KEY, {
         user_id: userId,
+        allow_google_signals: false,
+        allow_ad_personalization_signals: false,
     })
 }
 
