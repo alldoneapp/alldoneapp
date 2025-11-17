@@ -21,6 +21,7 @@ export default function MoreOptionsModal({ closeModal, options, projectId, assis
     const closePreconfigTaskModal = () => {
         setShowPreConfigTask({ visible: false, task: null })
         dispatch(hideFloatPopup())
+        closeModal()
     }
 
     const openOutOfGoldModal = () => {
