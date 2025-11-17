@@ -62,9 +62,7 @@ const giphyRandomGif = async data => {
             id: result.data.id,
         })
 
-        console.log('Giphy result.data.images:', JSON.stringify(result.data.images, null, 2))
-
-        const returnValue = {
+        return {
             success: true,
             gif: {
                 id: result.data.id,
@@ -79,10 +77,6 @@ const giphyRandomGif = async data => {
                 title: result.data.title,
             },
         }
-
-        console.log('Returning from giphyRandomGif:', JSON.stringify(returnValue, null, 2))
-
-        return returnValue
     } catch (error) {
         console.error('Failed to fetch GIF from Giphy:', {
             error: error.message,

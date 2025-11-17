@@ -32,33 +32,22 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
 
     useEffect(() => {
         if (visible) {
-            console.log('TaskCompletionAnimation: visible triggered')
             // Get a random search term
             const searchTerm = CELEBRATION_SEARCH_TERMS[Math.floor(Math.random() * CELEBRATION_SEARCH_TERMS.length)]
-            console.log('TaskCompletionAnimation: searchTerm:', searchTerm)
 
             // Fetch a random celebration GIF from Giphy via cloud function
             runHttpsCallableFunction('giphyRandomGif', { tag: searchTerm, rating: 'g' })
                 .then(result => {
-                    console.log('TaskCompletionAnimation: result received:', result)
-                    console.log('TaskCompletionAnimation: result.success:', result.success)
-                    console.log('TaskCompletionAnimation: result.gif:', result.gif)
-                    console.log('TaskCompletionAnimation: result.gif?.images:', result.gif?.images)
-                    console.log('TaskCompletionAnimation: isMounted.current:', isMounted.current)
                     if (result.success && result.gif && result.gif.images && isMounted.current) {
                         // Use the downsized version for better performance
                         const url = result.gif.images.downsized.url
-                        console.log('TaskCompletionAnimation: GIF URL:', url)
 
                         // Start animation sequence only after GIF is loaded
-                        console.log('TaskCompletionAnimation: Prefetching image...')
                         Image.prefetch(url)
                             .then(() => {
-                                console.log('TaskCompletionAnimation: Image prefetched successfully')
                                 if (isMounted.current) {
                                     // Set the URL only after successful prefetch - this will trigger render
                                     setGifUrl(url)
-                                    console.log('TaskCompletionAnimation: Starting animation')
                                     Animated.sequence([
                                         Animated.timing(opacity, {
                                             toValue: 1,
@@ -72,7 +61,6 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
                                             useNativeDriver: true,
                                         }),
                                     ]).start(() => {
-                                        console.log('TaskCompletionAnimation: Animation complete')
                                         if (isMounted.current) {
                                             setGifUrl(null)
                                             onAnimationComplete()
@@ -87,7 +75,6 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
                                 }
                             })
                     } else {
-                        console.warn('TaskCompletionAnimation: No GIF data received from cloud function', result)
                         if (isMounted.current) {
                             onAnimationComplete()
                         }
@@ -102,14 +89,9 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
         }
     }, [visible])
 
-    console.log('TaskCompletionAnimation render - visible:', visible, 'gifUrl:', gifUrl)
-
     if (!visible || !gifUrl) {
-        console.log('TaskCompletionAnimation: Not rendering - visible:', visible, 'gifUrl:', gifUrl)
         return null
     }
-
-    console.log('TaskCompletionAnimation: Rendering modal!')
 
     const modal = (
         <View style={styles.modalContainer}>
