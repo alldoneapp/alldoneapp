@@ -18,7 +18,7 @@ import {
     getWorkflowStepId,
 } from '../../utils/HelperFunctions'
 import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-import { startLoadingData } from '../../redux/actions'
+import { startLoadingData, showTaskCompletionAnimation } from '../../redux/actions'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import FileTag from '../Tags/FileTag'
@@ -308,6 +308,11 @@ export default class WorkflowModal extends Component {
                 commentWithAttachments && commentWithAttachments.length > 0
                     ? getCommentDirectionWhenMoveTaskInTheWorklfow(stepToMoveIndex, stepsIds, stepHistory)
                     : STAYWARD_COMMENT
+
+            // Show animation if task is being marked as done
+            if (stepToMoveId === DONE_STEP) {
+                store.dispatch(showTaskCompletionAnimation())
+            }
 
             if (task.userIds.length === 1) {
                 moveTasksFromOpen(

@@ -16,7 +16,7 @@ import CustomFollowUpDateModal from './CustomFollowUpDateModal'
 import { OPEN_STEP, DONE_STEP, getTaskAutoEstimation, BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
-import { setLastSelectedDueDate } from '../../redux/actions'
+import { setLastSelectedDueDate, showTaskCompletionAnimation } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { updateNewAttachmentsData, STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { FOLLOW_UP_MODAL_ID, MENTION_MODAL_ID, removeModal, storeModal } from '../ModalsManager/modalsManager'
@@ -175,6 +175,10 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
             }
             const safeEstimation = estimation ?? 0
             const estimations = { [OPEN_STEP]: safeEstimation }
+
+            // Show completion animation
+            store.dispatch(showTaskCompletionAnimation())
+
             moveTasksFromOpen(
                 projectId,
                 task,
