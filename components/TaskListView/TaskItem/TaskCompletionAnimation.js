@@ -32,49 +32,64 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
 
     useEffect(() => {
         if (visible) {
+            console.log('TaskCompletionAnimation: visible triggered')
             // Get a random search term
             const searchTerm = CELEBRATION_SEARCH_TERMS[Math.floor(Math.random() * CELEBRATION_SEARCH_TERMS.length)]
+            console.log('TaskCompletionAnimation: searchTerm:', searchTerm)
 
             // Fetch a random celebration GIF from Giphy via cloud function
             runHttpsCallableFunction('giphyRandomGif', { tag: searchTerm, rating: 'g' })
                 .then(result => {
+                    console.log('TaskCompletionAnimation: result received:', result)
                     if (result.success && result.gif && result.gif.images && isMounted.current) {
                         // Use the downsized version for better performance
                         const url = result.gif.images.downsized.url
+                        console.log('TaskCompletionAnimation: GIF URL:', url)
                         setGifUrl(url)
 
                         // Start animation sequence only after GIF is loaded
-                        Image.prefetch(url).then(() => {
-                            if (isMounted.current) {
-                                Animated.sequence([
-                                    Animated.timing(opacity, {
-                                        toValue: 1,
-                                        duration: 300,
-                                        useNativeDriver: true,
-                                    }),
-                                    Animated.delay(ANIMATION_DURATION - 600),
-                                    Animated.timing(opacity, {
-                                        toValue: 0,
-                                        duration: 300,
-                                        useNativeDriver: true,
-                                    }),
-                                ]).start(() => {
-                                    if (isMounted.current) {
-                                        setGifUrl(null)
-                                        onAnimationComplete()
-                                    }
-                                })
-                            }
-                        })
+                        console.log('TaskCompletionAnimation: Prefetching image...')
+                        Image.prefetch(url)
+                            .then(() => {
+                                console.log('TaskCompletionAnimation: Image prefetched successfully')
+                                if (isMounted.current) {
+                                    console.log('TaskCompletionAnimation: Starting animation')
+                                    Animated.sequence([
+                                        Animated.timing(opacity, {
+                                            toValue: 1,
+                                            duration: 300,
+                                            useNativeDriver: true,
+                                        }),
+                                        Animated.delay(ANIMATION_DURATION - 600),
+                                        Animated.timing(opacity, {
+                                            toValue: 0,
+                                            duration: 300,
+                                            useNativeDriver: true,
+                                        }),
+                                    ]).start(() => {
+                                        console.log('TaskCompletionAnimation: Animation complete')
+                                        if (isMounted.current) {
+                                            setGifUrl(null)
+                                            onAnimationComplete()
+                                        }
+                                    })
+                                }
+                            })
+                            .catch(err => {
+                                console.error('TaskCompletionAnimation: Image prefetch failed:', err)
+                                if (isMounted.current) {
+                                    onAnimationComplete()
+                                }
+                            })
                     } else {
-                        console.warn('No GIF data received from cloud function')
+                        console.warn('TaskCompletionAnimation: No GIF data received from cloud function', result)
                         if (isMounted.current) {
                             onAnimationComplete()
                         }
                     }
                 })
                 .catch(error => {
-                    console.error('Error fetching GIF:', error)
+                    console.error('TaskCompletionAnimation: Error fetching GIF:', error)
                     if (isMounted.current) {
                         onAnimationComplete()
                     }
