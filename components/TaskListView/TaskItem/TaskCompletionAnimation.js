@@ -41,6 +41,10 @@ export default function TaskCompletionAnimation({ visible, onAnimationComplete }
             runHttpsCallableFunction('giphyRandomGif', { tag: searchTerm, rating: 'g' })
                 .then(result => {
                     console.log('TaskCompletionAnimation: result received:', result)
+                    console.log('TaskCompletionAnimation: result.success:', result.success)
+                    console.log('TaskCompletionAnimation: result.gif:', result.gif)
+                    console.log('TaskCompletionAnimation: result.gif?.images:', result.gif?.images)
+                    console.log('TaskCompletionAnimation: isMounted.current:', isMounted.current)
                     if (result.success && result.gif && result.gif.images && isMounted.current) {
                         // Use the downsized version for better performance
                         const url = result.gif.images.downsized.url
