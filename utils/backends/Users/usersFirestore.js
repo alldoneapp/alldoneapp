@@ -707,6 +707,10 @@ export async function setBotAdvaiceTriggerPercent(userId, botAdvaiceTriggerPerce
     getDb().doc(`users/${userId}`).update({ botAdvaiceTriggerPercent })
 }
 
+export async function setSomedayTaskTriggerPercent(userId, somedayTaskTriggerPercent) {
+    getDb().doc(`users/${userId}`).update({ somedayTaskTriggerPercent })
+}
+
 export async function setNumberGoalsAllTeams(userId, goalsAmount) {
     getDb().doc(`users/${userId}`).update({ numberGoalsAllTeams: goalsAmount })
 }

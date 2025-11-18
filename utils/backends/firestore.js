@@ -3353,6 +3353,7 @@ export function mapUserData(userId, user) {
         timezone: user.timezone ? user.timezone : 0,
         numberTodayTasks: user.numberTodayTasks != null ? user.numberTodayTasks : 10,
         botAdvaiceTriggerPercent: user.botAdvaiceTriggerPercent != null ? user.botAdvaiceTriggerPercent : 0,
+        somedayTaskTriggerPercent: user.somedayTaskTriggerPercent != null ? user.somedayTaskTriggerPercent : 10,
         numberGoalsAllTeams: user.numberGoalsAllTeams != null ? user.numberGoalsAllTeams : 5,
         numberChatsAllTeams: user.numberChatsAllTeams != null ? user.numberChatsAllTeams : 5,
         numberUsersSidebar: user.numberUsersSidebar != null ? user.numberUsersSidebar : 3,

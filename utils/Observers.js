@@ -10,6 +10,7 @@ import {
     showConfirmPopup,
 } from '../redux/actions'
 import Backend from './BackendBridge'
+import { selectRandomSomedayTask } from './backends/Tasks/randomSomedayTask'
 
 const clickObvserversCallbacks = {}
 
@@ -91,6 +92,17 @@ export const deleteCache = async () => {
 }
 
 export const deleteCacheAndRefresh = async () => {
+    // Try to select a random Someday task before refreshing
+    const userId = store.getState().loggedUser?.uid
+    if (userId) {
+        try {
+            await selectRandomSomedayTask(userId)
+        } catch (error) {
+            console.error('Error selecting random Someday task:', error)
+            // Continue with refresh even if this fails
+        }
+    }
+
     await deleteCache()
     window.location.reload()
 }

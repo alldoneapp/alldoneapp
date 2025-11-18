@@ -22,6 +22,7 @@ const {
     FEED_TASK_RECURRENCE_CHANGED,
     FEED_TASK_ASSIGNEE_ESTIMATION_CHANGED,
     FEED_TASK_REVIEWER_ESTIMATION_CHANGED,
+    FEED_TASK_SOMEDAY_SELECTED,
     FEED_TASK_UPDATED,
 } = require('./FeedsConstants')
 const { generateTaskObjectModel, updateTasksFeedsAmountOfSubtasks } = require('./tasksFeedsHelper')
@@ -599,6 +600,48 @@ async function createTaskUpdatedFeed(
     )
 }
 
+async function createTaskSomedaySelectedFeed(projectId, task, taskId, batch, feedUser, needGenerateNotification) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const taskFeedObject = generateTaskObjectModel(currentMilliseconds, task, taskId)
+
+    const isSubtask = task.parentId ? true : false
+
+    const entryText = `This task from someday has been randomly selected for today. <a href="/settings/customizations">Change setting here</a>`
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_TASK_SOMEDAY_SELECTED,
+        lastChangeDate: currentMilliseconds,
+        entryText,
+        feedUser,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    const { parentId } = taskFeedObject
+    taskFeedObject.parentId = null
+
+    // Force red notification by adding the user to followers
+    const followersIds = [task.currentReviewerId]
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        followersIds,
+        taskId,
+        'tasks',
+        taskFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
+
+    if (isSubtask) {
+        await updateTasksFeedsAmountOfSubtasks(projectId, parentId, taskId, currentDateFormated, -1, batch)
+    }
+}
+
 module.exports = {
     createTaskCreatedFeed,
     createTaskFollowedFeed,
@@ -610,5 +653,6 @@ module.exports = {
     createTaskRecurrenceChangedFeed,
     createTaskAssigneeEstimationChangedFeed,
     createTaskReviewerEstimationChangedFeed,
+    createTaskSomedaySelectedFeed,
     createTaskUpdatedFeed,
 }

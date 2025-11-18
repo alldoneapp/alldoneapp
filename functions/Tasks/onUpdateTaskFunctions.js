@@ -10,6 +10,8 @@ const { updateContactOpenTasksAmount } = require('../Firestore/contactsFirestore
 const { getUserWithTaskActive, resetActiveTaskDates, clearUserTaskInFocusIfMatch } = require('../Users/usersFirestore')
 const { getActiveTaskRoundedStartAndEndDates } = require('../MyDay/myDayHelperCloud')
 const { createRecurringTaskInCloudFunction } = require('./recurringTasksCloud')
+const { createTaskSomedaySelectedFeed } = require('../Feeds/tasksFeeds')
+const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 
 const proccessAlgoliaRecord = async (taskId, projectId, oldTask, newTask) => {
     if (oldTask.lockKey === newTask.lockKey) {
@@ -189,6 +191,35 @@ const onUpdateTask = async (taskId, projectId, change) => {
                 },
             })
         }
+    }
+
+    // Check if task was randomly selected from Someday
+    if (
+        oldTask.dueDate === BACKLOG_DATE_NUMERIC &&
+        newTask.dueDate !== BACKLOG_DATE_NUMERIC &&
+        newTask.randomlySelectedFromSomeday
+    ) {
+        console.log('🎲 SOMEDAY TASK SELECTED:', {
+            taskId,
+            projectId,
+            taskName: newTask.name,
+            oldDueDate: oldTask.dueDate,
+            newDueDate: newTask.dueDate,
+        })
+
+        const batch = admin.firestore().batch()
+        const feedUser = {
+            uid: newTask.lastEditorId,
+            displayName: newTask.lastEditorName,
+        }
+
+        promises.push(createTaskSomedaySelectedFeed(projectId, newTask, taskId, batch, feedUser, true))
+
+        // Commit the batch after all promises resolve
+        await Promise.all(promises)
+        await batch.commit()
+
+        return
     }
 
     await Promise.all(promises)

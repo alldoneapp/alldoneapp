@@ -7,6 +7,7 @@ import MaxUsersInSidebar from './Properties/MaxUsersInSidebar'
 import MaxNumberGoals from './Properties/MaxNumberGoals'
 import MaxNumberChats from './Properties/MaxNumberChats'
 import BotAdvaiceTriggerPercent from './Properties/BotAdvaiceTriggerPercent'
+import SomedayTaskTriggerPercent from './Properties/SomedayTaskTriggerPercent'
 import GlobalKarmaPoints from './Properties/GlobalKarmaPoints'
 import DateFormat from './Properties/DateFormat'
 import NotificationEmail from './Properties/NotificationEmail'
@@ -44,6 +45,10 @@ const Customizations = () => {
                     <BotAdvaiceTriggerPercent
                         userId={loggedUser.uid}
                         botAdvaiceTriggerPercent={loggedUser.botAdvaiceTriggerPercent}
+                    />
+                    <SomedayTaskTriggerPercent
+                        userId={loggedUser.uid}
+                        somedayTaskTriggerPercent={loggedUser.somedayTaskTriggerPercent || 10}
                     />
                     <GlobalKarmaPoints />
                     <DateFormat userId={loggedUser.uid} dateFormat={loggedUser.dateFormat} />
