@@ -2431,13 +2431,57 @@ exports.googleOAuthCallback = onRequest(
 
         if (error) {
             // User denied access or other OAuth error
-            const baseUrl = getBaseUrl()
-            res.redirect(`${baseUrl}/?oauth_error=${encodeURIComponent(error)}`)
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Authentication Failed</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+                        .message { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .error { color: #d32f2f; }
+                    </style>
+                </head>
+                <body>
+                    <div class="message">
+                        <h2 class="error">Authentication Failed</h2>
+                        <p>The authentication was cancelled or failed.</p>
+                        <p>This window will close automatically...</p>
+                    </div>
+                    <script>
+                        // Notify parent window of error
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'oauth_error',
+                                error: '${encodeURIComponent(error)}'
+                            }, '*');
+                        }
+                        // Close window after a short delay
+                        setTimeout(() => window.close(), 2000);
+                    </script>
+                </body>
+                </html>
+            `)
             return
         }
 
         if (!code || !state) {
-            res.status(400).send('Missing code or state parameter')
+            res.status(400).send(`
+                <!DOCTYPE html>
+                <html>
+                <head><title>Error</title></head>
+                <body>
+                    <h2>Error</h2>
+                    <p>Missing code or state parameter</p>
+                    <script>
+                        if (window.opener) {
+                            window.opener.postMessage({ type: 'oauth_error', error: 'Missing parameters' }, '*');
+                        }
+                        setTimeout(() => window.close(), 2000);
+                    </script>
+                </body>
+                </html>
+            `)
             return
         }
 
@@ -2445,13 +2489,74 @@ exports.googleOAuthCallback = onRequest(
             const { handleOAuthCallback } = require('./GoogleOAuth/googleOAuthHandler')
             const result = await handleOAuthCallback(code, state)
 
-            // Redirect back to app with success
-            const baseUrl = getBaseUrl()
-            res.redirect(`${baseUrl}/?oauth_success=true&project_id=${result.projectId}`)
+            // Return HTML page that notifies parent and closes
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Authentication Successful</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+                        .message { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .success { color: #4caf50; }
+                        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #4caf50; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                    </style>
+                </head>
+                <body>
+                    <div class="message">
+                        <h2 class="success">✓ Authentication Successful</h2>
+                        <p>Your Google account has been connected!</p>
+                        <div class="spinner"></div>
+                        <p>Closing window...</p>
+                    </div>
+                    <script>
+                        // Notify parent window of success
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'oauth_success',
+                                projectId: '${result.projectId}',
+                                email: '${result.email}'
+                            }, '*');
+                        }
+                        // Close window after a short delay
+                        setTimeout(() => window.close(), 1500);
+                    </script>
+                </body>
+                </html>
+            `)
         } catch (error) {
             console.error('OAuth callback error:', error)
-            const baseUrl = getBaseUrl()
-            res.redirect(`${baseUrl}/?oauth_error=${encodeURIComponent(error.message)}`)
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Authentication Error</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+                        .message { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .error { color: #d32f2f; }
+                    </style>
+                </head>
+                <body>
+                    <div class="message">
+                        <h2 class="error">Authentication Error</h2>
+                        <p>An error occurred during authentication.</p>
+                        <p>${error.message}</p>
+                        <p>This window will close automatically...</p>
+                    </div>
+                    <script>
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'oauth_error',
+                                error: '${encodeURIComponent(error.message)}'
+                            }, '*');
+                        }
+                        setTimeout(() => window.close(), 3000);
+                    </script>
+                </body>
+                </html>
+            `)
         }
     }
 )

@@ -51,50 +51,63 @@ export async function startServerSideAuth(projectId: string): Promise<void> {
 
         const popup = window.open(authUrl, 'Google OAuth', `width=${width},height=${height},left=${left},top=${top}`)
 
-        // Wait for OAuth callback to complete
+        if (!popup) {
+            throw new Error('Failed to open OAuth popup. Please allow popups for this site.')
+        }
+
+        // Wait for OAuth callback to complete via postMessage
         return new Promise((resolve, reject) => {
-            // Poll for popup closure or URL change
-            const checkInterval = setInterval(() => {
-                if (!popup || popup.closed) {
-                    clearInterval(checkInterval)
-                    // Check if OAuth succeeded by querying for credentials
+            let timeout: NodeJS.Timeout
+
+            // Listen for postMessage from the OAuth callback popup
+            const messageHandler = (event: MessageEvent) => {
+                // For security, verify the message structure (we allow * origin since callback page is controlled by us)
+                if (event.data && typeof event.data === 'object') {
+                    if (event.data.type === 'oauth_success') {
+                        // Success! Clean up and resolve
+                        window.removeEventListener('message', messageHandler)
+                        clearTimeout(timeout)
+                        resolve()
+                    } else if (event.data.type === 'oauth_error') {
+                        // OAuth failed
+                        window.removeEventListener('message', messageHandler)
+                        clearTimeout(timeout)
+                        const errorMessage = event.data.error || 'OAuth authentication failed'
+                        reject(new Error(errorMessage))
+                    }
+                }
+            }
+
+            window.addEventListener('message', messageHandler)
+
+            // Fallback: check if popup was closed manually
+            const checkPopupClosed = setInterval(() => {
+                if (popup.closed) {
+                    clearInterval(checkPopupClosed)
+                    window.removeEventListener('message', messageHandler)
+                    clearTimeout(timeout)
+
+                    // Verify if auth succeeded by checking credentials
                     hasServerSideAuth()
                         .then(status => {
                             if (status.hasCredentials) {
                                 resolve()
                             } else {
-                                reject(new Error('OAuth flow cancelled or failed'))
+                                reject(new Error('OAuth flow was cancelled'))
                             }
                         })
                         .catch(reject)
                 }
-
-                // Also check for success/error in URL
-                try {
-                    if (popup && popup.location && popup.location.search) {
-                        const params = new URLSearchParams(popup.location.search)
-                        if (params.get('oauth_success')) {
-                            clearInterval(checkInterval)
-                            popup.close()
-                            resolve()
-                        } else if (params.get('oauth_error')) {
-                            clearInterval(checkInterval)
-                            popup.close()
-                            reject(new Error(params.get('oauth_error') || 'OAuth failed'))
-                        }
-                    }
-                } catch (e) {
-                    // Cross-origin access error - ignore
-                }
             }, 500)
 
             // Timeout after 5 minutes
-            setTimeout(() => {
-                clearInterval(checkInterval)
-                if (popup && !popup.closed) {
+            timeout = setTimeout(() => {
+                window.removeEventListener('message', messageHandler)
+                clearInterval(checkPopupClosed)
+                if (!popup.closed) {
                     popup.close()
                 }
-                reject(new Error('OAuth timeout'))
+                reject(new Error('OAuth authentication timed out'))
             }, 5 * 60 * 1000)
         })
     } catch (error) {
