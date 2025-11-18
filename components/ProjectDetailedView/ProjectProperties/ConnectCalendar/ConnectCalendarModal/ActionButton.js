@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
 import moment from 'moment'
 
@@ -12,24 +12,38 @@ import { isSomethingConnected } from '../../../../../apis/google/ApiHelper'
 import store from '../../../../../redux/store'
 import { showConfirmPopup } from '../../../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../../../UIComponents/ConfirmPopup'
+import {
+    startServerSideAuth,
+    revokeServerSideAuth,
+    setServerTokenInGoogleApi,
+} from '../../../../../apis/google/GoogleOAuthServerSide'
 
 export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const userEmail = useSelector(state => state.loggedUser.email)
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
+    const [isLoading, setIsLoading] = useState(false)
 
     const isConnectedAndSignedIn = isConnected && isSignedIn
 
-    const loadEvents = () => {
-        apiCalendar.listTodayEvents(30).then(({ result }) => {
+    const loadEvents = async () => {
+        try {
+            // Set server-side token in GoogleApi for immediate use
+            await setServerTokenInGoogleApi(GoogleApi)
+
+            // Now list events using the GoogleApi with server-side token
+            const { result } = await apiCalendar.listTodayEvents(30)
             const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
+
             runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
                 events: result?.items,
                 projectId,
                 uid: loggedUserId,
                 email,
             })
-        })
+        } catch (error) {
+            console.error('Error loading calendar events:', error)
+        }
     }
 
     const removeOpenEvents = () => {
@@ -41,61 +55,63 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
         })
     }
 
-    const onPress = () => {
-        !isSomethingConnected() && GoogleApi.handleSignOutClick()
-        if (isSignedIn && isConnected) {
-            disconnect()
-        } else {
-            GoogleApi.handleAuthClick().then(connect)
+    const onPress = async () => {
+        if (isLoading) return
+
+        setIsLoading(true)
+        try {
+            if (isSignedIn && isConnected) {
+                await disconnect()
+            } else {
+                await connectServerSide()
+            }
+        } catch (error) {
+            console.error('Error in calendar connection:', error)
+        } finally {
+            setIsLoading(false)
         }
     }
 
-    const disconnect = () => {
-        Backend.getDb()
-            .doc(`users/${loggedUserId}`)
-            .set({ apisConnected: { [projectId]: { calendar: false } } }, { merge: true })
-            .then(removeOpenEvents)
-        closePopover()
+    const connectServerSide = async () => {
+        try {
+            // Start server-side OAuth flow
+            await startServerSideAuth(projectId)
+
+            // OAuth callback will have updated apisConnected in Firestore
+            // Load calendar events
+            await loadEvents()
+
+            closePopover()
+            setIsSignedIn(true)
+        } catch (error) {
+            console.error('Error connecting calendar:', error)
+            store.dispatch(
+                showConfirmPopup({
+                    trigger: CONFIRM_POPUP_TRIGGER_INFO,
+                    object: {
+                        headerText: 'Connection failed',
+                        headerTextParams: {},
+                        headerQuestion: 'Failed to connect calendar. Please try again.',
+                        headerQuestionParams: {},
+                    },
+                })
+            )
+        }
     }
 
-    const connect = async () => {
-        const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
-
-        // Disconnect same calendar account from other projects for this user
+    const disconnect = async () => {
         try {
-            const duplicates = Object.entries(apisConnected || {}).filter(
-                ([pid, data]) => pid !== projectId && data?.calendar && data?.calendarEmail === email
-            )
+            // Revoke server-side OAuth credentials
+            await revokeServerSideAuth(projectId)
 
-            if (duplicates.length > 0) {
-                const db = Backend.getDb()
-                await Promise.all(
-                    duplicates.map(([pid]) =>
-                        db
-                            .doc(`users/${loggedUserId}`)
-                            .set({ apisConnected: { [pid]: { calendar: false } } }, { merge: true })
-                    )
-                )
-                store.dispatch(
-                    showConfirmPopup({
-                        trigger: CONFIRM_POPUP_TRIGGER_INFO,
-                        object: {
-                            headerText: 'Calendar connection moved',
-                            headerTextParams: {},
-                            headerQuestion: 'Calendar connection moved description',
-                            headerQuestionParams: { email },
-                        },
-                    })
-                )
-            }
-        } catch (e) {}
+            // Remove calendar tasks
+            removeOpenEvents()
 
-        Backend.getDb()
-            .doc(`users/${loggedUserId}`)
-            .set({ apisConnected: { [projectId]: { calendar: true, calendarEmail: email } } }, { merge: true })
-            .then(loadEvents)
-        closePopover()
-        setIsSignedIn(GoogleApi.checkAccessGranted())
+            closePopover()
+            setIsSignedIn(false)
+        } catch (error) {
+            console.error('Error disconnecting calendar:', error)
+        }
     }
 
     return (
@@ -104,6 +120,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             icon={isConnectedAndSignedIn ? 'unlink' : 'link'}
             buttonStyle={{ alignSelf: 'center' }}
             onPress={onPress}
+            disabled={isLoading}
         />
     )
 }

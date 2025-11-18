@@ -2382,3 +2382,155 @@ exports.cleanupExpiredWebhookTasks = onSchedule(
         await cleanupExpiredWebhooks()
     }
 )
+
+// GOOGLE OAUTH - Server-side OAuth for Calendar and Gmail integration
+
+// Initiate Google OAuth flow
+exports.googleOAuthInitiate = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'User must be authenticated')
+        }
+
+        const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
+        const { projectId } = data
+        const userId = auth.uid
+
+        try {
+            const authUrl = await initiateOAuth(userId, projectId)
+            return { authUrl }
+        } catch (error) {
+            console.error('Error initiating Google OAuth:', error)
+            throw new HttpsError('internal', `Failed to initiate OAuth: ${error.message}`)
+        }
+    }
+)
+
+// OAuth callback endpoint - handles redirect from Google
+exports.googleOAuthCallback = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: {
+            origin: true,
+            methods: ['GET', 'OPTIONS'],
+            allowedHeaders: ['Content-Type'],
+            credentials: false,
+        },
+    },
+    async (req, res) => {
+        const { code, state, error } = req.query
+
+        if (error) {
+            // User denied access or other OAuth error
+            const baseUrl = getBaseUrl()
+            res.redirect(`${baseUrl}/?oauth_error=${encodeURIComponent(error)}`)
+            return
+        }
+
+        if (!code || !state) {
+            res.status(400).send('Missing code or state parameter')
+            return
+        }
+
+        try {
+            const { handleOAuthCallback } = require('./GoogleOAuth/googleOAuthHandler')
+            const result = await handleOAuthCallback(code, state)
+
+            // Redirect back to app with success
+            const baseUrl = getBaseUrl()
+            res.redirect(`${baseUrl}/?oauth_success=true&project_id=${result.projectId}`)
+        } catch (error) {
+            console.error('OAuth callback error:', error)
+            const baseUrl = getBaseUrl()
+            res.redirect(`${baseUrl}/?oauth_error=${encodeURIComponent(error.message)}`)
+        }
+    }
+)
+
+// Get a fresh access token for the authenticated user
+exports.googleOAuthGetToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'User must be authenticated')
+        }
+
+        try {
+            const { getAccessToken } = require('./GoogleOAuth/googleOAuthHandler')
+            const accessToken = await getAccessToken(auth.uid)
+            return { accessToken }
+        } catch (error) {
+            console.error('Error getting access token:', error)
+            if (error.message.includes('not authenticated')) {
+                throw new HttpsError('not-found', 'User not authenticated with Google')
+            }
+            throw new HttpsError('internal', `Failed to get access token: ${error.message}`)
+        }
+    }
+)
+
+// Revoke Google OAuth access
+exports.googleOAuthRevoke = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'User must be authenticated')
+        }
+
+        try {
+            const { revokeAccess } = require('./GoogleOAuth/googleOAuthHandler')
+            const { projectId } = data
+            const result = await revokeAccess(auth.uid, projectId)
+            return result
+        } catch (error) {
+            console.error('Error revoking access:', error)
+            throw new HttpsError('internal', `Failed to revoke access: ${error.message}`)
+        }
+    }
+)
+
+// Check if user has valid Google credentials
+exports.googleOAuthCheckCredentials = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'User must be authenticated')
+        }
+
+        try {
+            const { hasValidCredentials } = require('./GoogleOAuth/googleOAuthHandler')
+            const hasCredentials = await hasValidCredentials(auth.uid)
+            return { hasCredentials }
+        } catch (error) {
+            console.error('Error checking credentials:', error)
+            throw new HttpsError('internal', `Failed to check credentials: ${error.message}`)
+        }
+    }
+)
