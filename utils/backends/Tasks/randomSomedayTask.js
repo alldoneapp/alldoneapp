@@ -1,5 +1,5 @@
 import { getDb } from '../firestore'
-import store from '../../../store'
+import store from '../../../redux/store'
 import { BACKLOG_DATE_NUMERIC } from '../../../components/TaskListView/Utils/TasksHelper'
 import moment from 'moment'
 
