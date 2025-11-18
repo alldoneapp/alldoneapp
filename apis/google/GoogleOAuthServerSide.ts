@@ -11,7 +11,7 @@
  * - Use revokeServerSideAuth() to disconnect
  */
 
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 
 export interface ServerSideAuthStatus {
     hasCredentials: boolean
@@ -39,15 +39,9 @@ export interface RevokeResult {
  * @returns Promise that resolves when OAuth is complete
  */
 export async function startServerSideAuth(projectId: string): Promise<void> {
-    const functions = getFunctions()
-    const googleOAuthInitiate = httpsCallable<{ projectId: string }, OAuthInitiateResult>(
-        functions,
-        'googleOAuthInitiate'
-    )
-
     try {
-        const result = await googleOAuthInitiate({ projectId })
-        const { authUrl } = result.data
+        const result = await runHttpsCallableFunction('googleOAuthInitiate', { projectId })
+        const { authUrl } = result
 
         // Open OAuth URL in a popup window
         const width = 600
@@ -115,15 +109,9 @@ export async function startServerSideAuth(projectId: string): Promise<void> {
  * @returns Promise with authentication status
  */
 export async function hasServerSideAuth(): Promise<ServerSideAuthStatus> {
-    const functions = getFunctions()
-    const googleOAuthCheckCredentials = httpsCallable<void, { hasCredentials: boolean }>(
-        functions,
-        'googleOAuthCheckCredentials'
-    )
-
     try {
-        const result = await googleOAuthCheckCredentials()
-        return { hasCredentials: result.data.hasCredentials }
+        const result = await runHttpsCallableFunction('googleOAuthCheckCredentials', {})
+        return { hasCredentials: result.hasCredentials }
     } catch (error) {
         console.error('Error checking credentials:', error)
         return { hasCredentials: false }
@@ -138,12 +126,9 @@ export async function hasServerSideAuth(): Promise<ServerSideAuthStatus> {
  * @throws Error if user is not authenticated
  */
 export async function getServerSideToken(): Promise<string> {
-    const functions = getFunctions()
-    const googleOAuthGetToken = httpsCallable<void, TokenResult>(functions, 'googleOAuthGetToken')
-
     try {
-        const result = await googleOAuthGetToken()
-        return result.data.accessToken
+        const result = await runHttpsCallableFunction('googleOAuthGetToken', {})
+        return result.accessToken
     } catch (error) {
         console.error('Error getting access token:', error)
         throw new Error(`Failed to get access token: ${error.message}`)
@@ -158,12 +143,9 @@ export async function getServerSideToken(): Promise<string> {
  * @returns Promise with revoke result
  */
 export async function revokeServerSideAuth(projectId?: string): Promise<RevokeResult> {
-    const functions = getFunctions()
-    const googleOAuthRevoke = httpsCallable<{ projectId?: string }, RevokeResult>(functions, 'googleOAuthRevoke')
-
     try {
-        const result = await googleOAuthRevoke({ projectId })
-        return result.data
+        const result = await runHttpsCallableFunction('googleOAuthRevoke', { projectId })
+        return result
     } catch (error) {
         console.error('Error revoking access:', error)
         throw new Error(`Failed to revoke access: ${error.message}`)
