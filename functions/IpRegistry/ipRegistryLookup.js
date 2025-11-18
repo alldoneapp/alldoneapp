@@ -17,7 +17,7 @@ const ipRegistryLookup = async data => {
             success: false,
             error: 'IP_REGISTRY_API_KEY is not configured',
             location: {
-                country: { name: 'Germany' },
+                country: { name: 'United States' },
             },
         }
     }
@@ -67,12 +67,12 @@ const ipRegistryLookup = async data => {
             stack: error.stack,
         })
 
-        // Return default fallback for Germany
+        // Return default fallback for United States
         return {
             success: false,
             error: error.message,
             location: {
-                country: { name: 'Germany' },
+                country: { name: 'United States' },
             },
         }
     }

@@ -26,7 +26,7 @@ const getCurrentLocationInfo = async () => {
         console.error('IP Registry cloud function error:', error)
     }
 
-    return { country: { name: 'Germany' } }
+    return { country: { name: 'United States' } }
 }
 
 const getDateFormatByCountry = async () => {
