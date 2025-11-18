@@ -35,6 +35,8 @@ The Google Calendar and Gmail OAuth integration has been upgraded from **client-
 -   `apis/google/GoogleOAuthServerSide.ts` - Client-side helper functions
 -   Updated `components/.../ConnectCalendar/ActionButton.js` - Use server-side flow
 -   Updated `components/.../ConnectCalendar/ConnectCalendarProperty.js` - Check server auth
+-   Updated `components/.../ConnectGmail/ActionButton.js` - Use server-side flow
+-   Updated `components/.../ConnectGmail/ConnectGmailProperty.js` - Check server auth
 
 ### Configuration
 
@@ -175,13 +177,30 @@ users/{userId} {
 
 ## Testing Checklist
 
+### Calendar
+
 -   [ ] Connect calendar on desktop
 -   [ ] Reload page - verify still connected
 -   [ ] Open app on mobile - verify already connected
 -   [ ] Sync calendar events - verify working
 -   [ ] Disconnect calendar - verify token revoked
 -   [ ] Reconnect - verify popup flow works
--   [ ] Check Firestore for stored tokens
+
+### Gmail
+
+-   [ ] Connect Gmail on desktop
+-   [ ] Reload page - verify still connected
+-   [ ] Open app on mobile - verify already connected
+-   [ ] Sync Gmail data - verify working
+-   [ ] Disconnect Gmail - verify working
+-   [ ] Reconnect - verify popup flow works
+
+### Unified OAuth
+
+-   [ ] Connect Calendar - verify Gmail also gets access (single OAuth grants both)
+-   [ ] Connect Gmail - verify Calendar also gets access (single OAuth grants both)
+-   [ ] Check Firestore for stored tokens at `/users/{uid}/private/googleAuth`
+-   [ ] Verify both services work across devices
 
 ## Troubleshooting
 
