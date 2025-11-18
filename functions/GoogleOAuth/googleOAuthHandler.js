@@ -38,6 +38,22 @@ function getOAuth2Client() {
     const clientSecret = envFunctions.GOOGLE_OAUTH_CLIENT_SECRET
     const baseUrl = getBaseUrl()
 
+    // Debug logging
+    console.log('🔐 OAuth Configuration:', {
+        clientId: clientId ? `${clientId.substring(0, 20)}...` : 'MISSING',
+        clientSecret: clientSecret ? 'SET' : 'MISSING',
+        baseUrl,
+    })
+
+    if (!clientId || !clientSecret) {
+        console.error('❌ Missing OAuth credentials!', {
+            clientId: !!clientId,
+            clientSecret: !!clientSecret,
+            envFunctions: Object.keys(envFunctions),
+        })
+        throw new Error('OAuth credentials not configured')
+    }
+
     // Redirect URI points to our callback function
     const redirectUri = `${baseUrl}/googleOAuthCallback`
 
