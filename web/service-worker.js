@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.4'
+const SW_VERSION = 'v1.5'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
@@ -39,7 +39,8 @@ self.addEventListener('fetch', function (event) {
         event.request.url.includes('google-analytics.com') ||
         event.request.url.includes('googleusercontent.com') ||
         event.request.url.includes('doubleclick.net') ||
-        event.request.url.includes('giphy.com')
+        event.request.url.includes('giphy.com') ||
+        event.request.url.includes('/googleOAuthCallback')
     ) {
         return
     }

@@ -82,7 +82,15 @@ export async function startServerSideAuth(projectId: string): Promise<void> {
 
             // Fallback: check if popup was closed manually
             const checkPopupClosed = setInterval(() => {
-                if (popup.closed) {
+                let isClosed = false
+                try {
+                    isClosed = popup.closed
+                } catch (e) {
+                    // Ignore COOP errors blocking access to .closed
+                    return
+                }
+
+                if (isClosed) {
                     clearInterval(checkPopupClosed)
                     window.removeEventListener('message', messageHandler)
                     clearTimeout(timeout)
