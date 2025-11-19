@@ -59,7 +59,7 @@
                 "function": "mcpServer"
             },
             {
-                "source": "/googleOAuthCallback",
+                "source": "/googleOAuthCallback**",
                 "function": "googleOAuthCallback"
             },
             {
