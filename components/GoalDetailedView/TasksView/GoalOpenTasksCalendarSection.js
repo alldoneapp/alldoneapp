@@ -9,16 +9,34 @@ import GoalTasksList from './GoalTasksList'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import GoogleApi from '../../../apis/google/GoogleApi'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
+import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../apis/google/GoogleOAuthServerSide'
 
 export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks, dateIndex, isActiveOrganizeMode }) {
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
+    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
     const [showReload, setShowReload] = useState(false)
 
     useEffect(() => {
-        GoogleApi.onLoad(() => {
-            setShowReload(GoogleApi.checkAccessGranted())
-        })
-    }, [])
+        const checkServerAuth = async () => {
+            try {
+                GoogleApi.onLoad(async () => {
+                    const authStatus = await hasServerSideAuth()
+                    if (authStatus.hasCredentials && isConnected) {
+                        // Load the server-side token into GoogleApi so API calls work
+                        await setServerTokenInGoogleApi(GoogleApi)
+                        setShowReload(true)
+                    } else {
+                        setShowReload(false)
+                    }
+                })
+            } catch (error) {
+                console.error('[GoalCalendarSection] Error checking server auth:', error)
+                setShowReload(false)
+            }
+        }
+
+        checkServerAuth()
+    }, [isConnected, projectId])
 
     const openLink = () => {
         return window.open(

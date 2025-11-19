@@ -11,6 +11,7 @@ import { sortBy } from 'lodash'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import GoogleApi from '../../../apis/google/GoogleApi'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
+import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../apis/google/GoogleOAuthServerSide'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
 // Removed global single-project lookup; use the current project instead
@@ -24,12 +25,29 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [showReload, setShowReload] = useState(false)
     const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
+    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
 
     useEffect(() => {
-        GoogleApi.onLoad(() => {
-            setShowReload(GoogleApi.checkAccessGranted())
-        })
-    }, [])
+        const checkServerAuth = async () => {
+            try {
+                GoogleApi.onLoad(async () => {
+                    const authStatus = await hasServerSideAuth()
+                    if (authStatus.hasCredentials && isConnected) {
+                        // Load the server-side token into GoogleApi so API calls work
+                        await setServerTokenInGoogleApi(GoogleApi)
+                        setShowReload(true)
+                    } else {
+                        setShowReload(false)
+                    }
+                })
+            } catch (error) {
+                console.error('[CalendarSection] Error checking server auth:', error)
+                setShowReload(false)
+            }
+        }
+
+        checkServerAuth()
+    }, [isConnected, projectId])
 
     const openLink = () => {
         return window.open(

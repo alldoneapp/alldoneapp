@@ -9,6 +9,7 @@ import ParentGoalSection from './ParentGoalSection'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfGmailIsConnected } from '../../../utils/backends/firestore'
 import GoogleApi from '../../../apis/google/GoogleApi'
+import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../apis/google/GoogleOAuthServerSide'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
@@ -23,10 +24,26 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
     const [showReload, setShowReload] = useState(false)
 
     useEffect(() => {
-        GoogleApi.onLoad(() => {
-            setShowReload(GoogleApi.checkGmailAccessGranted())
-        })
-    }, [])
+        const checkServerAuth = async () => {
+            try {
+                GoogleApi.onLoad(async () => {
+                    const authStatus = await hasServerSideAuth()
+                    if (authStatus.hasCredentials && isConnected) {
+                        // Load the server-side token into GoogleApi so API calls work
+                        await setServerTokenInGoogleApi(GoogleApi)
+                        setShowReload(true)
+                    } else {
+                        setShowReload(false)
+                    }
+                })
+            } catch (error) {
+                console.error('[EmailSection] Error checking server auth:', error)
+                setShowReload(false)
+            }
+        }
+
+        checkServerAuth()
+    }, [isConnected, projectId])
 
     const openLink = () => {
         return window.open(
