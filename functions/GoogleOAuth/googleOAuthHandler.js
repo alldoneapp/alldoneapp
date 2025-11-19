@@ -146,7 +146,17 @@ async function handleOAuthCallback(code, state) {
 
     // The tokens object contains access_token which is what we need
     console.log('[oauth] Fetching user info from Google...')
-    const { data: userInfo } = await oauth2.userinfo.get()
+    // Use the oauth2Client to make the request directly to ensure credentials are used
+    console.log('[oauth] Requesting user info via oauth2Client...')
+    const userInfoResponse = await oauth2Client.request({
+        url: 'https://www.googleapis.com/oauth2/v2/userinfo',
+    })
+    const userInfo = userInfoResponse.data
+    console.log('[oauth] 📥 User Info Raw Response:', {
+        status: userInfoResponse.status,
+        statusText: userInfoResponse.statusText,
+        dataKeys: Object.keys(userInfo),
+    })
 
     console.log('[oauth] 👤 Google User Info received:', {
         email: userInfo.email,
