@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import GoogleGmail from '../../../assets/svg/GoogleGmail'
@@ -8,8 +8,6 @@ import { sortBy } from 'lodash'
 import ParentGoalSection from './ParentGoalSection'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfGmailIsConnected } from '../../../utils/backends/firestore'
-import GoogleApi from '../../../apis/google/GoogleApi'
-import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../apis/google/GoogleOAuthServerSide'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
@@ -21,29 +19,6 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
-    const [showReload, setShowReload] = useState(false)
-
-    useEffect(() => {
-        const checkServerAuth = async () => {
-            try {
-                GoogleApi.onLoad(async () => {
-                    const authStatus = await hasServerSideAuth()
-                    if (authStatus.hasCredentials && isConnected) {
-                        // Load the server-side token into GoogleApi so API calls work
-                        await setServerTokenInGoogleApi(GoogleApi)
-                        setShowReload(true)
-                    } else {
-                        setShowReload(false)
-                    }
-                })
-            } catch (error) {
-                console.error('[EmailSection] Error checking server auth:', error)
-                setShowReload(false)
-            }
-        }
-
-        checkServerAuth()
-    }, [isConnected, projectId])
 
     const openLink = () => {
         return window.open(
@@ -76,9 +51,7 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
                         <GoogleGmail />
                         <Text style={localStyles.title}>Google Gmail</Text>
                     </TouchableOpacity>
-                    {showReload && isConnected && (
-                        <ReloadCalendar projectId={projectId} Promise={checkIfGmailIsConnected} />
-                    )}
+                    {isConnected && <ReloadCalendar projectId={projectId} Promise={checkIfGmailIsConnected} />}
                 </View>
             </View>
 
