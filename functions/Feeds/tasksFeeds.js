@@ -606,7 +606,7 @@ async function createTaskSomedaySelectedFeed(projectId, task, taskId, batch, fee
 
     const isSubtask = task.parentId ? true : false
 
-    const entryText = `This task from someday has been randomly selected for today. <a href="/settings/customizations">Change setting here</a>`
+    const entryText = `This task from someday has been randomly selected for today. https://my.alldone.app/settings/customizations`
 
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_TASK_SOMEDAY_SELECTED,
