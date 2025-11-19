@@ -28,24 +28,20 @@ export async function selectRandomSomedayTask(userId) {
         }
 
         console.log('[SomedayTask] Probability check passed. Fetching projects...')
-        // Get all projects the user has access to
-        const projectsSnapshot = await getDb()
-            .collection('projects')
-            .where('usersWithAccess', 'array-contains', userId)
-            .get()
+        // Get all projects from Redux store
+        const projects = store.getState().loggedUserProjects || []
 
-        if (projectsSnapshot.empty) {
-            console.log('[SomedayTask] No projects found for user.')
+        if (projects.length === 0) {
+            console.log('[SomedayTask] No projects found in store.')
             return null
         }
 
         // Collect all Someday tasks across all projects
         const somedayTasks = []
-        console.log(`[SomedayTask] Scanning ${projectsSnapshot.size} projects...`)
+        console.log(`[SomedayTask] Scanning ${projects.length} projects...`)
 
-        for (const projectDoc of projectsSnapshot.docs) {
-            const projectId = projectDoc.id
-            const project = projectDoc.data()
+        for (const project of projects) {
+            const projectId = project.id
 
             // Skip template projects
             if (project.isTemplate) continue
