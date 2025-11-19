@@ -84,9 +84,11 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         // Convert back to UTC for Google Calendar API
         const timeMin = startOfTodayUserTz.clone().subtract(timezoneOffset, 'minutes').toDate()
 
-        // End date: daysAhead from start of today in user's timezone
-        const endDateUserTz = startOfTodayUserTz.clone().add(daysAhead, 'days')
+        // End date: Start of tomorrow in user's timezone
+        // This matches the old behavior: sync only TODAY's events (00:00 today to 00:00 tomorrow)
+        const endDateUserTz = startOfTodayUserTz.clone().add(1, 'day')
         console.log('[serverSideCalendarSync] End date (user TZ):', endDateUserTz.format('YYYY-MM-DD HH:mm:ss'))
+        console.log('[serverSideCalendarSync] Note: Syncing only TODAY (not', daysAhead, 'days ahead)')
 
         // Convert back to UTC for Google Calendar API
         const timeMax = endDateUserTz.clone().subtract(timezoneOffset, 'minutes').toDate()
@@ -112,7 +114,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             timeMax: timeMax.toISOString(),
             showDeleted: false,
             singleEvents: true,
-            maxResults: 2500,
+            maxResults: 100, // Reasonable limit for today's events (was 2500 for 30 days)
             orderBy: 'startTime',
         })
 
