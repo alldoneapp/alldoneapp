@@ -1,10 +1,12 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { View, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import MyDayOpenTasks from './MyDayTasks/MyDayOpenTasks/MyDayOpenTasks'
 import MyDayWorkflowTasks from './MyDayTasks/MyDayWorkflowTasks/MyDayWorkflowTasks'
 import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
+import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../utils/backends/firestore'
+import store from '../../redux/store'
 
 export default function MyDayView() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -15,8 +17,24 @@ export default function MyDayView() {
     const inWorkflowSection = taskViewToggleSection === 'Workflow'
     const inDoneSection = taskViewToggleSection === 'Done'
 
-    // Removed auto-sync on page load - users should manually trigger sync via the sync button
-    // Auto-syncing was causing race conditions and duplicate task creation/deletion
+    // Auto-sync calendar and gmail on page load
+    // Now safe with server-side sync + cooldown cache
+    useEffect(() => {
+        const { apisConnected } = store.getState().loggedUser
+        if (apisConnected) {
+            console.log('[MyDayView] 🔄 Checking syncs for all connected projects...')
+            Object.entries(apisConnected).forEach(([pid, flags]) => {
+                if (flags?.calendar) {
+                    console.log('[MyDayView] 📅 Checking calendar sync for project:', pid)
+                    checkIfCalendarConnected(pid)
+                }
+                if (flags?.gmail) {
+                    console.log('[MyDayView] 📧 Checking gmail sync for project:', pid)
+                    checkIfGmailIsConnected(pid)
+                }
+            })
+        }
+    }, [])
 
     return (
         <View

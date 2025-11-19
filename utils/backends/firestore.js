@@ -6784,20 +6784,29 @@ const SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
 
 export async function checkIfCalendarConnected(projectId) {
     console.log('═══════════════════════════════════════════════════════════')
-    console.log('[Calendar Sync] 🚀 SYNC BUTTON CLICKED')
+    console.log('[Calendar Sync] 🚀 SYNC REQUESTED')
     console.log('[Calendar Sync] projectId:', projectId)
     console.log('[Calendar Sync] Timestamp:', new Date().toISOString())
 
     // Check if this project was recently synced
     const lastSyncTime = calendarSyncCache.get(projectId)
     const timeSinceLastSync = lastSyncTime ? Date.now() - lastSyncTime : null
+    const cooldownRemaining = lastSyncTime ? Math.max(0, SYNC_COOLDOWN_MS - timeSinceLastSync) : 0
+
     console.log('[Calendar Sync] Last sync time:', lastSyncTime ? new Date(lastSyncTime).toISOString() : 'Never')
-    console.log('[Calendar Sync] Time since last sync (ms):', timeSinceLastSync)
-    console.log('[Calendar Sync] Cooldown period (ms):', SYNC_COOLDOWN_MS)
+    console.log(
+        '[Calendar Sync] Time since last sync:',
+        timeSinceLastSync ? `${Math.round(timeSinceLastSync / 1000)}s` : 'N/A'
+    )
+    console.log('[Calendar Sync] Cooldown period:', `${SYNC_COOLDOWN_MS / 1000}s (${SYNC_COOLDOWN_MS / 60000} minutes)`)
 
     if (lastSyncTime && Date.now() - lastSyncTime < SYNC_COOLDOWN_MS) {
-        console.log('[Calendar Sync] ⏸️  SKIPPED - Project synced recently (within cooldown period)')
-        console.log('[Calendar Sync] Time remaining in cooldown:', SYNC_COOLDOWN_MS - timeSinceLastSync, 'ms')
+        console.log('[Calendar Sync] ⏸️  SKIPPED - Still in cooldown period')
+        console.log(
+            '[Calendar Sync] ⏱️  Time remaining in cooldown:',
+            `${Math.round(cooldownRemaining / 1000)}s (${Math.round((cooldownRemaining / 60000) * 10) / 10} min)`
+        )
+        console.log('[Calendar Sync] 💡 Tip: Wait', Math.round(cooldownRemaining / 1000), 'seconds before next sync')
         console.log('═══════════════════════════════════════════════════════════')
         return
     }

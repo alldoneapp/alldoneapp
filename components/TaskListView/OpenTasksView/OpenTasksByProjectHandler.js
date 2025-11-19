@@ -34,6 +34,7 @@ import useEffectDebug from '../../../hooks/useEffectDebug'
 import { cleanDataWhenRemoveWorkstreamMember, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
+import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../../utils/backends/firestore'
 
 export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
@@ -74,8 +75,22 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
         )
     }
 
-    // Removed auto-sync on page load - users should manually trigger sync via the sync button
-    // Auto-syncing was causing race conditions and duplicate task creation/deletion
+    // Auto-sync calendar and gmail on page load
+    // Now safe with server-side sync + cooldown cache
+    useEffect(() => {
+        const { loggedUser } = store.getState()
+        if (currentUserId === loggedUser.uid) {
+            const projectApis = loggedUser.apisConnected?.[projectId]
+            if (projectApis?.calendar) {
+                console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
+                checkIfCalendarConnected(projectId)
+            }
+            if (projectApis?.gmail) {
+                console.log('[OpenTasksByProjectHandler] 📧 Checking gmail sync for project:', projectId)
+                checkIfGmailIsConnected(projectId)
+            }
+        }
+    }, [projectId, currentUserId])
 
     useEffect(() => {
         if (inSelectedProject) {
