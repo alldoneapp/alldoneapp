@@ -6783,61 +6783,84 @@ const calendarSyncCache = new Map()
 const SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
 
 export async function checkIfCalendarConnected(projectId) {
-    if (__DEV__) console.log('[Calendar Sync] Called with projectId:', projectId)
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('[Calendar Sync] 🚀 SYNC BUTTON CLICKED')
+    console.log('[Calendar Sync] projectId:', projectId)
+    console.log('[Calendar Sync] Timestamp:', new Date().toISOString())
 
     // Check if this project was recently synced
     const lastSyncTime = calendarSyncCache.get(projectId)
+    const timeSinceLastSync = lastSyncTime ? Date.now() - lastSyncTime : null
+    console.log('[Calendar Sync] Last sync time:', lastSyncTime ? new Date(lastSyncTime).toISOString() : 'Never')
+    console.log('[Calendar Sync] Time since last sync (ms):', timeSinceLastSync)
+    console.log('[Calendar Sync] Cooldown period (ms):', SYNC_COOLDOWN_MS)
+
     if (lastSyncTime && Date.now() - lastSyncTime < SYNC_COOLDOWN_MS) {
-        if (__DEV__) console.log('[Calendar Sync] Skipping - project synced recently:', projectId)
+        console.log('[Calendar Sync] ⏸️  SKIPPED - Project synced recently (within cooldown period)')
+        console.log('[Calendar Sync] Time remaining in cooldown:', SYNC_COOLDOWN_MS - timeSinceLastSync, 'ms')
+        console.log('═══════════════════════════════════════════════════════════')
         return
     }
 
-    const { apisConnected } = store.getState().loggedUser
-
-    if (__DEV__) {
-        console.log('[Calendar Sync] apisConnected:', apisConnected)
-    }
+    const { apisConnected, uid } = store.getState().loggedUser
+    console.log('[Calendar Sync] User ID:', uid)
+    console.log('[Calendar Sync] APIs connected:', JSON.stringify(apisConnected, null, 2))
 
     if (!apisConnected) {
-        if (__DEV__) console.log('[Calendar Sync] FAILED: No apisConnected')
+        console.log('[Calendar Sync] ❌ FAILED: No apisConnected')
+        console.log('═══════════════════════════════════════════════════════════')
         return
     }
 
     if (!apisConnected[projectId]) {
-        if (__DEV__) {
-            console.log('[Calendar Sync] FAILED: No config for projectId', projectId)
-            console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
-        }
+        console.log('[Calendar Sync] ❌ FAILED: No config for projectId', projectId)
+        console.log('[Calendar Sync] Available projects:', Object.keys(apisConnected))
+        console.log('═══════════════════════════════════════════════════════════')
         return
     }
 
     if (!apisConnected[projectId]?.calendar) {
-        if (__DEV__) {
-            console.log('[Calendar Sync] FAILED: Calendar not connected for project', projectId)
-            console.log('[Calendar Sync] Project config:', apisConnected[projectId])
-        }
+        console.log('[Calendar Sync] ❌ FAILED: Calendar not connected for project', projectId)
+        console.log('[Calendar Sync] Project config:', apisConnected[projectId])
+        console.log('═══════════════════════════════════════════════════════════')
         return
     }
 
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
+    console.log('[Calendar Sync] ✅ Cooldown cache updated for project:', projectId)
 
     try {
-        if (__DEV__) console.log('[Calendar Sync] Calling server-side sync function...')
+        console.log('[Calendar Sync] 📡 Calling server-side sync function...')
+        console.log('[Calendar Sync] Function: syncCalendarEventsSecondGen')
+        console.log('[Calendar Sync] Parameters:', { projectId, daysAhead: 30 })
 
         store.dispatch(startLoadingData())
+        console.log('[Calendar Sync] ⏳ Loading indicator started')
+
+        const startTime = Date.now()
 
         // Call the new server-side sync function
-        await runHttpsCallableFunction('syncCalendarEventsSecondGen', {
+        const result = await runHttpsCallableFunction('syncCalendarEventsSecondGen', {
             projectId,
             daysAhead: 30,
         })
 
-        if (__DEV__) console.log('[Calendar Sync] Successfully synced calendar events via server-side function')
+        const duration = Date.now() - startTime
+        console.log('[Calendar Sync] ✅ Server-side sync completed')
+        console.log('[Calendar Sync] Duration:', duration, 'ms')
+        console.log('[Calendar Sync] Result:', JSON.stringify(result, null, 2))
+
         store.dispatch(stopLoadingData())
+        console.log('[Calendar Sync] ⏹️  Loading indicator stopped')
+        console.log('═══════════════════════════════════════════════════════════')
     } catch (error) {
-        console.error('[Calendar Sync] Error syncing calendar events:', error)
+        console.error('[Calendar Sync] ❌ ERROR syncing calendar events')
+        console.error('[Calendar Sync] Error details:', error)
+        console.error('[Calendar Sync] Error message:', error.message)
+        console.error('[Calendar Sync] Error stack:', error.stack)
         store.dispatch(stopLoadingData())
+        console.log('═══════════════════════════════════════════════════════════')
     }
 }
 

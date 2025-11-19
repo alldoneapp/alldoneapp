@@ -176,19 +176,49 @@ const createTasksMap = tasks => {
 }
 
 const addCalendarEvents = async (events, syncProjectId, userId, email) => {
+    console.log('[addCalendarEvents] ═══════════ START ═══════════')
+    console.log('[addCalendarEvents] Sync Project ID:', syncProjectId)
+    console.log('[addCalendarEvents] User ID:', userId)
+    console.log('[addCalendarEvents] Email:', email)
+    console.log('[addCalendarEvents] Total events received:', events.length)
+
     const user = await getUserData(userId)
-    if (!user) return
+    if (!user) {
+        console.log('[addCalendarEvents] ❌ User not found, aborting')
+        return
+    }
+    console.log('[addCalendarEvents] User found, project IDs:', user.projectIds)
 
     const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true)
+    console.log('[addCalendarEvents] Existing calendar tasks in all projects:', tasks.length)
+
     const tasksMap = createTasksMap(tasks)
+    console.log('[addCalendarEvents] Tasks map created, keys:', Object.keys(tasksMap).length)
 
     const filteredEvents = filterEvents(events, email)
+    console.log('[addCalendarEvents] Events after filtering:', filteredEvents.length)
+    console.log(
+        '[addCalendarEvents] Filtered out:',
+        events.length - filteredEvents.length,
+        'events (cancelled/declined)'
+    )
 
     const promises = []
-    filteredEvents.forEach(event => {
-        promises.push(addOrUpdateCalendarTask(syncProjectId, tasksMap[event.id], event, userId, email))
+    filteredEvents.forEach((event, idx) => {
+        const existingTask = tasksMap[event.id]
+        console.log(`[addCalendarEvents] Event ${idx + 1}/${filteredEvents.length}:`, {
+            id: event.id,
+            summary: event.summary,
+            hasExistingTask: !!existingTask,
+            existingTaskProject: existingTask?.projectId,
+        })
+        promises.push(addOrUpdateCalendarTask(syncProjectId, existingTask, event, userId, email))
     })
+
+    console.log('[addCalendarEvents] Processing', promises.length, 'tasks (add/update)...')
     await Promise.all(promises)
+    console.log('[addCalendarEvents] ✅ All tasks processed')
+    console.log('[addCalendarEvents] ═══════════ END ═══════════')
 }
 
 const checkIfIsInvalidEvent = (events, taskId) => {
@@ -243,28 +273,63 @@ const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks
 }
 
 const removeCalendarTasks = async (userId, dateFormated, events, removeFromAllDates) => {
+    console.log('[removeCalendarTasks] ═══════════ START ═══════════')
+    console.log('[removeCalendarTasks] User ID:', userId)
+    console.log('[removeCalendarTasks] Date formatted:', dateFormated)
+    console.log('[removeCalendarTasks] Events count:', events.length)
+    console.log('[removeCalendarTasks] Remove from all dates:', removeFromAllDates)
+
     const user = await getUserData(userId)
-    if (!user) return
+    if (!user) {
+        console.log('[removeCalendarTasks] ❌ User not found, aborting')
+        return
+    }
+    console.log('[removeCalendarTasks] User found, project IDs:', user.projectIds)
 
     const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, false)
+    console.log('[removeCalendarTasks] Total calendar tasks to check:', tasks.length)
 
     const batch = new BatchWrapper(admin.firestore())
+    let tasksToDelete = 0
 
     tasks.forEach(task => {
         if (!task.noteId) {
             const { projectId, calendarData } = task
             const { dateTime, date } = calendarData.start
+            const taskDateFormatted = moment(dateTime || date).format('DDMMYYYY')
 
-            if (
-                removeFromAllDates ||
-                moment(dateTime || date).format('DDMMYYYY') !== dateFormated ||
-                checkIfIsInvalidEvent(events, task.id)
-            ) {
+            const reasons = []
+            let shouldDelete = false
+
+            if (removeFromAllDates) {
+                reasons.push('removeFromAllDates=true')
+                shouldDelete = true
+            } else if (taskDateFormatted !== dateFormated) {
+                reasons.push(`date mismatch (task:${taskDateFormatted} vs target:${dateFormated})`)
+                shouldDelete = true
+            } else if (checkIfIsInvalidEvent(events, task.id)) {
+                reasons.push('invalid event (not found or declined)')
+                shouldDelete = true
+            }
+
+            if (shouldDelete) {
+                tasksToDelete++
+                console.log(`[removeCalendarTasks] DELETE task ${tasksToDelete}:`, {
+                    id: task.id,
+                    summary: task.name,
+                    projectId,
+                    reasons,
+                })
                 batch.delete(admin.firestore().doc(`items/${projectId}/tasks/${task.id}`))
             }
         }
     })
+
+    console.log('[removeCalendarTasks] Tasks marked for deletion:', tasksToDelete, '/', tasks.length)
+    console.log('[removeCalendarTasks] Committing batch delete...')
     await batch.commit()
+    console.log('[removeCalendarTasks] ✅ Batch delete committed')
+    console.log('[removeCalendarTasks] ═══════════ END ═══════════')
 }
 
 module.exports = { removeCalendarTasks, generateTask, addCalendarEvents }
