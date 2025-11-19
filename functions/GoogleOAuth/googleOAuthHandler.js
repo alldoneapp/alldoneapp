@@ -117,13 +117,42 @@ async function handleOAuthCallback(code, state) {
     }
 
     // Exchange code for tokens
+    console.log('[oauth] Exchanging code for tokens...')
     const oauth2Client = getOAuth2Client()
     const { tokens } = await oauth2Client.getToken(code)
 
+    console.log('[oauth] 🔑 OAuth Tokens received:', {
+        hasAccessToken: !!tokens.access_token,
+        accessTokenLength: tokens.access_token ? tokens.access_token.length : 0,
+        hasRefreshToken: !!tokens.refresh_token,
+        expiryDate: tokens.expiry_date,
+        scopes: tokens.scope,
+        tokenType: tokens.token_type,
+    })
+
+    if (!tokens.access_token) {
+        console.error('[oauth] ❌ No access token received from Google')
+        throw new Error('No access token received from Google')
+    }
+
     // Get user's email from Google
     oauth2Client.setCredentials(tokens)
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client })
+    // We need to explicitly set the access token for the userinfo request
+    // Although setCredentials sets it on the client, the oauth2 service instance might need it explicitly if not sharing the auth client correctly
+    const oauth2 = google.oauth2({
+        version: 'v2',
+        auth: oauth2Client,
+    })
+
+    // The tokens object contains access_token which is what we need
+    console.log('[oauth] Fetching user info from Google...')
     const { data: userInfo } = await oauth2.userinfo.get()
+
+    console.log('[oauth] 👤 Google User Info received:', {
+        email: userInfo.email,
+        id: userInfo.id,
+        verified_email: userInfo.verified_email,
+    })
 
     // Store tokens in Firestore (in user's private subcollection)
     const tokenData = {
