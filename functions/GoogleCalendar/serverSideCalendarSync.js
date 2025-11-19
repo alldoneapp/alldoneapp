@@ -40,6 +40,15 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             throw new Error('Calendar not connected for this project')
         }
 
+        // Get user timezone offset (in minutes)
+        const timezoneOffset =
+            (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+            (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+            (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+            0
+
+        console.log('[serverSideCalendarSync] 🌍 User timezone offset (minutes):', timezoneOffset)
+
         // Get fresh access token (automatically refreshes if needed)
         console.log('[serverSideCalendarSync] 🔑 Getting access token...')
         const accessToken = await getAccessToken(userId)
@@ -56,20 +65,42 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
         console.log('[serverSideCalendarSync] ✅ Calendar API instance created')
 
-        // Calculate time range for events
-        const now = new Date()
-        const timeMin = new Date()
-        timeMin.setHours(0, 0, 0, 0)
+        // Calculate time range for events using user's timezone
+        // Get current UTC time
+        const nowUtc = moment.utc()
+        console.log('[serverSideCalendarSync] Current UTC time:', nowUtc.toISOString())
 
-        const timeMax = new Date()
-        timeMax.setDate(timeMax.getDate() + daysAhead)
-        timeMax.setHours(0, 0, 0, 0)
+        // Convert to user's timezone by adding their offset
+        const nowUserTz = nowUtc.clone().add(timezoneOffset, 'minutes')
+        console.log('[serverSideCalendarSync] Current user time:', nowUserTz.format('YYYY-MM-DD HH:mm:ss'))
+
+        // Start of today in user's timezone
+        const startOfTodayUserTz = nowUserTz.clone().startOf('day')
+        console.log(
+            '[serverSideCalendarSync] Start of today (user TZ):',
+            startOfTodayUserTz.format('YYYY-MM-DD HH:mm:ss')
+        )
+
+        // Convert back to UTC for Google Calendar API
+        const timeMin = startOfTodayUserTz.clone().subtract(timezoneOffset, 'minutes').toDate()
+
+        // End date: daysAhead from start of today in user's timezone
+        const endDateUserTz = startOfTodayUserTz.clone().add(daysAhead, 'days')
+        console.log('[serverSideCalendarSync] End date (user TZ):', endDateUserTz.format('YYYY-MM-DD HH:mm:ss'))
+
+        // Convert back to UTC for Google Calendar API
+        const timeMax = endDateUserTz.clone().subtract(timezoneOffset, 'minutes').toDate()
 
         console.log('[serverSideCalendarSync] 📅 Fetching events from Google Calendar API...')
-        console.log('[serverSideCalendarSync] Time range:', {
+        console.log('[serverSideCalendarSync] Time range (UTC):', {
             timeMin: timeMin.toISOString(),
             timeMax: timeMax.toISOString(),
             daysAhead,
+            timezoneOffset: timezoneOffset + ' minutes',
+        })
+        console.log('[serverSideCalendarSync] Time range (User TZ):', {
+            timeMin: startOfTodayUserTz.format('YYYY-MM-DD HH:mm:ss'),
+            timeMax: endDateUserTz.format('YYYY-MM-DD HH:mm:ss'),
         })
 
         const fetchStartTime = Date.now()
