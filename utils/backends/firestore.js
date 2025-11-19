@@ -6841,14 +6841,55 @@ export async function checkIfCalendarConnected(projectId) {
     calendarSyncCache.set(projectId, Date.now())
 
     try {
+        // Ensure GoogleApi is loaded and initialized before setting token and making API calls
+        await new Promise(resolve => {
+            GoogleApi.onLoad(() => {
+                resolve()
+            })
+        })
+
         // Set server-side token in GoogleApi for immediate use
+        // This must be done AFTER GoogleApi is loaded so gapi.client exists
+        if (__DEV__) console.log('[Calendar Sync] Setting server-side token in GoogleApi...')
         await setServerTokenInGoogleApi(GoogleApi)
 
+        // Verify gapi is ready and calendar API is discovered
+        if (!GoogleApi.gapi?.client?.calendar?.events) {
+            console.error('[Calendar Sync] GoogleApi.gapi.client.calendar.events not available')
+            throw new Error('Google Calendar API not initialized - discovery may not have completed')
+        }
+
         // Now list events using the GoogleApi with server-side token
-        const { result } = await apiCalendar.listTodayEvents(30)
+        // Use GoogleApi.listTodayEvents instead of apiCalendar to ensure we use the same gapi instance
+        if (__DEV__) console.log('[Calendar Sync] Calling GoogleApi.listTodayEvents...')
+        const response = await GoogleApi.listTodayEvents(30)
+
+        if (response === false) {
+            console.error('[Calendar Sync] GoogleApi.listTodayEvents returned false - gapi not loaded')
+            throw new Error('Google Calendar API not loaded')
+        }
+
+        if (__DEV__) {
+            console.log('[Calendar Sync] GoogleApi.listTodayEvents response:', {
+                responseType: typeof response,
+                hasResult: !!response?.result,
+                responseKeys: response ? Object.keys(response) : [],
+            })
+        }
+
+        // GoogleApi.listTodayEvents returns a promise that resolves to { result: {...} }
+        const result = response?.result || response
         const email = GoogleApi.getBasicUserProfile()?.getEmail() || emailToUse
 
-        if (result) {
+        if (__DEV__) {
+            console.log('[Calendar Sync] Processed result:', {
+                hasResult: !!result,
+                itemsCount: result?.items?.length || 0,
+                email,
+            })
+        }
+
+        if (result && result.items) {
             store.dispatch(startLoadingData())
             const promises = []
             if (result.items.length > 0) {
