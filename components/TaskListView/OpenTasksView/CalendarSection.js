@@ -153,7 +153,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         <GoogleCalendar />
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    {showReload && calendarEvents && calendarEvents.length > 0 && (
+                    {showReload && isConnected && (
                         <ReloadCalendar projectId={calendarConnectedProjectId} Promise={checkIfCalendarConnected} />
                     )}
                 </View>

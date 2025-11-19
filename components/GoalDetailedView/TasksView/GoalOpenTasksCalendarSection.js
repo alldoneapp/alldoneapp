@@ -95,7 +95,7 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
                         <GoogleCalendar />
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    {showReload && calendarTasks && calendarTasks.length > 0 && (
+                    {showReload && isConnected && (
                         <ReloadCalendar projectId={calendarConnectedProjectId} Promise={checkIfCalendarConnected} />
                     )}
                 </View>
