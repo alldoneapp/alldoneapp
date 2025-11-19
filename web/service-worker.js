@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.2'
+const SW_VERSION = 'v1.3'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
@@ -16,6 +16,7 @@ self.addEventListener('fetch', function (event) {
         event.request.url.includes('firestore.googleapis.com') ||
         event.request.url.includes('accounts.google.com') ||
         event.request.url.includes('googleapis.com') ||
+        event.request.url.includes('apis.google.com') ||
         event.request.url.includes('googletagmanager.com') ||
         event.request.url.includes('google-analytics.com') ||
         event.request.url.includes('googleusercontent.com') ||
