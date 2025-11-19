@@ -2063,6 +2063,26 @@ exports.removeOldCalendarTasksSecondGen = onCall(
     }
 )
 
+exports.syncCalendarEventsSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { syncCalendarEvents } = require('./GoogleCalendar/serverSideCalendarSync')
+            const { projectId, daysAhead } = data
+            const userId = auth.uid
+            return await syncCalendarEvents(userId, projectId, daysAhead)
+        } else {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
 exports.onCopyProjectSecondGen = onCall(
     {
         timeoutSeconds: 540,

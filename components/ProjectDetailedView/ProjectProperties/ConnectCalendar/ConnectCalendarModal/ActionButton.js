@@ -5,22 +5,15 @@ import moment from 'moment'
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
 import Backend from '../../../../../utils/BackendBridge'
-import GoogleApi from '../../../../../apis/google/GoogleApi'
-import apiCalendar from '../../../../../apis/google/calendar/apiCalendar'
 import { runHttpsCallableFunction } from '../../../../../utils/backends/firestore'
 import { isSomethingConnected } from '../../../../../apis/google/ApiHelper'
 import store from '../../../../../redux/store'
 import { showConfirmPopup } from '../../../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../../../UIComponents/ConfirmPopup'
-import {
-    startServerSideAuth,
-    revokeServerSideAuth,
-    setServerTokenInGoogleApi,
-} from '../../../../../apis/google/GoogleOAuthServerSide'
+import { startServerSideAuth, revokeServerSideAuth } from '../../../../../apis/google/GoogleOAuthServerSide'
 
 export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
-    const userEmail = useSelector(state => state.loggedUser.email)
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const [isLoading, setIsLoading] = useState(false)
 
@@ -28,18 +21,10 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
 
     const loadEvents = async () => {
         try {
-            // Set server-side token in GoogleApi for immediate use
-            await setServerTokenInGoogleApi(GoogleApi)
-
-            // Now list events using the GoogleApi with server-side token
-            const { result } = await apiCalendar.listTodayEvents(30)
-            const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
-
-            runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
-                events: result?.items,
+            // Use the new server-side sync function
+            await runHttpsCallableFunction('syncCalendarEventsSecondGen', {
                 projectId,
-                uid: loggedUserId,
-                email,
+                daysAhead: 30,
             })
         } catch (error) {
             console.error('Error loading calendar events:', error)

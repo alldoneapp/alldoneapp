@@ -6792,10 +6792,10 @@ export async function checkIfCalendarConnected(projectId) {
         return
     }
 
-    const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
+    const { apisConnected } = store.getState().loggedUser
+
     if (__DEV__) {
         console.log('[Calendar Sync] apisConnected:', apisConnected)
-        console.log('[Calendar Sync] userEmail:', userEmail)
     }
 
     if (!apisConnected) {
@@ -6819,118 +6819,24 @@ export async function checkIfCalendarConnected(projectId) {
         return
     }
 
-    // Check for server-side auth instead of client-side
-    try {
-        const authStatus = await hasServerSideAuth()
-        if (!authStatus.hasCredentials) {
-            if (__DEV__) console.log('[Calendar Sync] FAILED: No server-side Google OAuth credentials')
-            return
-        }
-        if (__DEV__) console.log('[Calendar Sync] Server-side auth verified:', authStatus)
-    } catch (error) {
-        if (__DEV__) console.error('[Calendar Sync] FAILED: Error checking server-side auth:', error)
-        return
-    }
-
-    const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
-    if (__DEV__) console.log('[Calendar Sync] Using email:', emailToUse)
-
-    if (__DEV__) console.log('[Calendar Sync] All checks passed, fetching calendar events...')
-
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
 
     try {
-        // Ensure GoogleApi is loaded and initialized before setting token and making API calls
-        await new Promise(resolve => {
-            GoogleApi.onLoad(() => {
-                resolve()
-            })
+        if (__DEV__) console.log('[Calendar Sync] Calling server-side sync function...')
+
+        store.dispatch(startLoadingData())
+
+        // Call the new server-side sync function
+        await runHttpsCallableFunction('syncCalendarEventsSecondGen', {
+            projectId,
+            daysAhead: 30,
         })
 
-        // Set server-side token in GoogleApi for immediate use
-        // This must be done AFTER GoogleApi is loaded so gapi.client exists
-        if (__DEV__) console.log('[Calendar Sync] Setting server-side token in GoogleApi...')
-        await setServerTokenInGoogleApi(GoogleApi)
-
-        // Verify gapi is ready and calendar API is discovered
-        if (!GoogleApi.gapi?.client?.calendar?.events) {
-            console.error('[Calendar Sync] GoogleApi.gapi.client.calendar.events not available')
-            throw new Error('Google Calendar API not initialized - discovery may not have completed')
-        }
-
-        // Now list events using the GoogleApi with server-side token
-        // Use GoogleApi.listTodayEvents instead of apiCalendar to ensure we use the same gapi instance
-        if (__DEV__) console.log('[Calendar Sync] Calling GoogleApi.listTodayEvents...')
-        const response = await GoogleApi.listTodayEvents(30)
-
-        if (response === false) {
-            console.error('[Calendar Sync] GoogleApi.listTodayEvents returned false - gapi not loaded')
-            throw new Error('Google Calendar API not loaded')
-        }
-
-        if (__DEV__) {
-            console.log('[Calendar Sync] GoogleApi.listTodayEvents response:', {
-                responseType: typeof response,
-                hasResult: !!response?.result,
-                responseKeys: response ? Object.keys(response) : [],
-            })
-        }
-
-        // GoogleApi.listTodayEvents returns a promise that resolves to { result: {...} }
-        const result = response?.result || response
-        const email = GoogleApi.getBasicUserProfile()?.getEmail() || emailToUse
-
-        if (__DEV__) {
-            console.log('[Calendar Sync] Processed result:', {
-                hasResult: !!result,
-                itemsCount: result?.items?.length || 0,
-                email,
-            })
-        }
-
-        if (result && result.items) {
-            store.dispatch(startLoadingData())
-            const promises = []
-            if (result.items.length > 0) {
-                promises.push(
-                    runHttpsCallableFunction('addCalendarEventsToTasksSecondGen', {
-                        events: result.items,
-                        projectId,
-                        uid,
-                        email: email,
-                    })
-                )
-            }
-            promises.push(
-                runHttpsCallableFunction('removeOldCalendarTasksSecondGen', {
-                    uid,
-                    dateFormated: moment().format('DDMMYYYY'),
-                    events: result?.items.map(event => {
-                        const userAttendee = event.attendees?.find(item => item.email === email)
-                        const userResponseStatus = userAttendee?.responseStatus
-                        return {
-                            id: event.id,
-                            responseStatus: userResponseStatus,
-                        }
-                    }),
-                    removeFromAllDates: false,
-                })
-            )
-            await Promise.all(promises)
-                .then(() => {
-                    if (__DEV__) console.log('[Calendar Sync] Successfully synced calendar events')
-                    store.dispatch(stopLoadingData())
-                })
-                .catch(e => {
-                    console.error('[Calendar Sync] Error syncing:', e)
-                    store.dispatch(stopLoadingData())
-                })
-        } else {
-            if (__DEV__) console.log('[Calendar Sync] No calendar events returned from Google API')
-        }
+        if (__DEV__) console.log('[Calendar Sync] Successfully synced calendar events via server-side function')
+        store.dispatch(stopLoadingData())
     } catch (error) {
-        console.error('[Calendar Sync] Error fetching calendar events:', error)
+        console.error('[Calendar Sync] Error syncing calendar events:', error)
         store.dispatch(stopLoadingData())
     }
 }
