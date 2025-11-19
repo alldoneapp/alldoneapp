@@ -1,13 +1,10 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { View, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import MyDayOpenTasks from './MyDayTasks/MyDayOpenTasks/MyDayOpenTasks'
 import MyDayWorkflowTasks from './MyDayTasks/MyDayWorkflowTasks/MyDayWorkflowTasks'
 import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
-import GoogleApi from '../../apis/google/GoogleApi'
-import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../utils/backends/firestore'
-import store from '../../redux/store'
 
 export default function MyDayView() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -18,17 +15,8 @@ export default function MyDayView() {
     const inWorkflowSection = taskViewToggleSection === 'Workflow'
     const inDoneSection = taskViewToggleSection === 'Done'
 
-    useEffect(() => {
-        GoogleApi.onLoad(() => {
-            const { apisConnected } = store.getState().loggedUser
-            if (apisConnected) {
-                Object.entries(apisConnected).forEach(([pid, flags]) => {
-                    if (flags?.calendar) checkIfCalendarConnected(pid)
-                    if (flags?.gmail) checkIfGmailIsConnected(pid)
-                })
-            }
-        })
-    }, [])
+    // Removed auto-sync on page load - users should manually trigger sync via the sync button
+    // Auto-syncing was causing race conditions and duplicate task creation/deletion
 
     return (
         <View
