@@ -135,6 +135,7 @@ import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../../components/SidebarMenu/Collapsible/CollapsibleHelper'
 import GoogleApi from '../../apis/google/GoogleApi'
 import apiCalendar from '../../apis/google/calendar/apiCalendar'
+import { setServerTokenInGoogleApi, hasServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { updateQuotaTraffic } from './Premium/premiumFirestore'
 import {
     ESTIMATION_0_MIN,
@@ -6818,34 +6819,35 @@ export async function checkIfCalendarConnected(projectId) {
         return
     }
 
-    if (!GoogleApi.checkAccessGranted()) {
-        if (__DEV__) console.log('[Calendar Sync] FAILED: No Google API access granted')
+    // Check for server-side auth instead of client-side
+    try {
+        const authStatus = await hasServerSideAuth()
+        if (!authStatus.hasCredentials) {
+            if (__DEV__) console.log('[Calendar Sync] FAILED: No server-side Google OAuth credentials')
+            return
+        }
+        if (__DEV__) console.log('[Calendar Sync] Server-side auth verified:', authStatus)
+    } catch (error) {
+        if (__DEV__) console.error('[Calendar Sync] FAILED: Error checking server-side auth:', error)
         return
     }
 
     const emailToUse = apisConnected?.[projectId]?.calendarEmail || userEmail
-    const currentEmail = GoogleApi.getBasicUserProfile()?.getEmail()
-    if (__DEV__) console.log('[Calendar Sync] Email check - current:', currentEmail, 'expected:', emailToUse)
-
-    // Avoid prompting for auth on view load. If the active account
-    // does not match the project's account, skip silent sync.
-    if (currentEmail && currentEmail !== emailToUse) {
-        if (__DEV__)
-            console.log(
-                '[Calendar Sync] FAILED: Email mismatch - current account is',
-                currentEmail,
-                'but need',
-                emailToUse
-            )
-        return
-    }
+    if (__DEV__) console.log('[Calendar Sync] Using email:', emailToUse)
 
     if (__DEV__) console.log('[Calendar Sync] All checks passed, fetching calendar events...')
 
     // Mark this project as synced before starting the sync
     calendarSyncCache.set(projectId, Date.now())
 
-    await Promise.resolve(apiCalendar.listTodayEvents(30)).then(async ({ result }) => {
+    try {
+        // Set server-side token in GoogleApi for immediate use
+        await setServerTokenInGoogleApi(GoogleApi)
+
+        // Now list events using the GoogleApi with server-side token
+        const { result } = await apiCalendar.listTodayEvents(30)
+        const email = GoogleApi.getBasicUserProfile()?.getEmail() || emailToUse
+
         if (result) {
             store.dispatch(startLoadingData())
             const promises = []
@@ -6855,7 +6857,7 @@ export async function checkIfCalendarConnected(projectId) {
                         events: result.items,
                         projectId,
                         uid,
-                        email: emailToUse,
+                        email: email,
                     })
                 )
             }
@@ -6864,7 +6866,7 @@ export async function checkIfCalendarConnected(projectId) {
                     uid,
                     dateFormated: moment().format('DDMMYYYY'),
                     events: result?.items.map(event => {
-                        const userAttendee = event.attendees?.find(item => item.email === emailToUse)
+                        const userAttendee = event.attendees?.find(item => item.email === email)
                         const userResponseStatus = userAttendee?.responseStatus
                         return {
                             id: event.id,
@@ -6886,30 +6888,82 @@ export async function checkIfCalendarConnected(projectId) {
         } else {
             if (__DEV__) console.log('[Calendar Sync] No calendar events returned from Google API')
         }
-    })
+    } catch (error) {
+        console.error('[Calendar Sync] Error fetching calendar events:', error)
+        store.dispatch(stopLoadingData())
+    }
 }
 
 export async function checkIfGmailIsConnected(projectId) {
-    const { uid, apisConnected, email } = store.getState().loggedUser
-    if (apisConnected && apisConnected[projectId]?.gmail && GoogleApi.checkGmailAccessGranted()) {
-        const emailToUse = apisConnected?.[projectId]?.gmailEmail || email
-        // Avoid prompting for auth on view load. If the active account
-        // does not match the project's account, skip silent sync.
-        const currentEmail = GoogleApi.getBasicUserProfile()?.getEmail()
-        if (currentEmail && currentEmail !== emailToUse) {
+    if (__DEV__) console.log('[Gmail Sync] Called with projectId:', projectId)
+
+    const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
+    if (__DEV__) {
+        console.log('[Gmail Sync] apisConnected:', apisConnected)
+        console.log('[Gmail Sync] userEmail:', userEmail)
+    }
+
+    if (!apisConnected) {
+        if (__DEV__) console.log('[Gmail Sync] FAILED: No apisConnected')
+        return
+    }
+
+    if (!apisConnected[projectId]) {
+        if (__DEV__) {
+            console.log('[Gmail Sync] FAILED: No config for projectId', projectId)
+            console.log('[Gmail Sync] Available projects:', Object.keys(apisConnected))
+        }
+        return
+    }
+
+    if (!apisConnected[projectId]?.gmail) {
+        if (__DEV__) {
+            console.log('[Gmail Sync] FAILED: Gmail not connected for project', projectId)
+            console.log('[Gmail Sync] Project config:', apisConnected[projectId])
+        }
+        return
+    }
+
+    // Check for server-side auth instead of client-side
+    try {
+        const authStatus = await hasServerSideAuth()
+        if (!authStatus.hasCredentials) {
+            if (__DEV__) console.log('[Gmail Sync] FAILED: No server-side Google OAuth credentials')
             return
         }
-        await GoogleApi.listGmail()
-            .then(result => {
-                connectToGmail({
-                    projectId,
-                    date: Date.now(),
-                    uid,
-                    unreadMails: result.threadsTotal,
-                    email: emailToUse,
-                })
+        if (__DEV__) console.log('[Gmail Sync] Server-side auth verified:', authStatus)
+    } catch (error) {
+        if (__DEV__) console.error('[Gmail Sync] FAILED: Error checking server-side auth:', error)
+        return
+    }
+
+    const emailToUse = apisConnected?.[projectId]?.gmailEmail || userEmail
+    if (__DEV__) console.log('[Gmail Sync] Using email:', emailToUse)
+
+    if (__DEV__) console.log('[Gmail Sync] All checks passed, fetching Gmail...')
+
+    try {
+        // Set server-side token in GoogleApi for immediate use
+        await setServerTokenInGoogleApi(GoogleApi)
+
+        // Now list Gmail using the GoogleApi with server-side token
+        const result = await GoogleApi.listGmail()
+        const email = GoogleApi.getBasicUserProfile()?.getEmail() || emailToUse
+
+        if (result) {
+            connectToGmail({
+                projectId,
+                date: Date.now(),
+                uid,
+                unreadMails: result.threadsTotal,
+                email: email,
             })
-            .catch(console.error)
+            if (__DEV__) console.log('[Gmail Sync] Successfully synced Gmail:', result.threadsTotal, 'unread threads')
+        } else {
+            if (__DEV__) console.log('[Gmail Sync] No Gmail data returned from Google API')
+        }
+    } catch (error) {
+        console.error('[Gmail Sync] Error fetching Gmail:', error)
     }
 }
 
