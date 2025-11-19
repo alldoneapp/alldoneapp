@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity } from 'react-native'
 import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
@@ -8,6 +8,7 @@ import ChangeNumberTodayTasks from '../../../UIComponents/FloatModals/ChangeNumb
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
 import { setSomedayTaskTriggerPercent } from '../../../../utils/backends/Users/usersFirestore'
+import { selectRandomSomedayTask } from '../../../../utils/backends/Tasks/randomSomedayTask'
 import Icon from '../../../Icon'
 
 export default function SomedayTaskTriggerPercent({ userId, somedayTaskTriggerPercent }) {
@@ -22,7 +23,10 @@ export default function SomedayTaskTriggerPercent({ userId, somedayTaskTriggerPe
 
     return (
         <View style={localStyles.settingRow}>
-            <View style={[localStyles.settingRowSection, localStyles.settingRowLeft]}>
+            <TouchableOpacity
+                style={[localStyles.settingRowSection, localStyles.settingRowLeft]}
+                onPress={() => selectRandomSomedayTask(userId)}
+            >
                 <Icon name={'shuffle'} size={24} color={colors.Text03} style={{ marginHorizontal: 8 }} />
                 {mobileNav ? (
                     <Text style={[styles.body1]} numberOfLines={1}>
@@ -33,7 +37,7 @@ export default function SomedayTaskTriggerPercent({ userId, somedayTaskTriggerPe
                         {translate(`Random someday task`)}
                     </Text>
                 )}
-            </View>
+            </TouchableOpacity>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
                 {!mobileNav && (
                     <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
