@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.1'
+const SW_VERSION = 'v1.2'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
@@ -19,7 +19,8 @@ self.addEventListener('fetch', function (event) {
         event.request.url.includes('googletagmanager.com') ||
         event.request.url.includes('google-analytics.com') ||
         event.request.url.includes('googleusercontent.com') ||
-        event.request.url.includes('doubleclick.net')
+        event.request.url.includes('doubleclick.net') ||
+        event.request.url.includes('giphy.com')
     ) {
         return
     }
