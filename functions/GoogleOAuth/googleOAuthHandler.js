@@ -87,11 +87,30 @@ async function initiateOAuth(userId, projectId) {
     await admin.firestore().collection('googleOAuthStates').doc(state).set(stateDoc)
 
     // Generate authorization URL
+    console.log('[oauth] 🚀 Initiating OAuth flow...')
+    console.log('[oauth] 📋 Requested scopes:', SCOPES)
+    console.log('[oauth] 📋 Scopes count:', SCOPES.length)
+    console.log(
+        '[oauth] 📋 Has userinfo.email scope:',
+        SCOPES.includes('https://www.googleapis.com/auth/userinfo.email')
+    )
+
     const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline', // Required to get refresh token
         scope: SCOPES,
         state: state,
         prompt: 'consent', // Force consent to ensure we get refresh token
+    })
+
+    console.log('[oauth] 🔗 Generated auth URL:', {
+        urlLength: authUrl.length,
+        urlPrefix: authUrl.substring(0, 100) + '...',
+        containsUserinfoEmail: authUrl.includes('userinfo.email'),
+        scopesInUrl:
+            authUrl
+                .match(/scope=([^&]+)/)?.[1]
+                ?.split('%20')
+                .map(decodeURIComponent) || [],
     })
 
     return authUrl
@@ -119,16 +138,25 @@ async function handleOAuthCallback(code, state) {
 
     // Exchange code for tokens
     console.log('[oauth] Exchanging code for tokens...')
+    console.log('[oauth] 📝 Code received:', code ? `${code.substring(0, 20)}...` : 'MISSING')
+    console.log('[oauth] 📝 State received:', state)
+
     const oauth2Client = getOAuth2Client()
     const { tokens } = await oauth2Client.getToken(code)
 
     console.log('[oauth] 🔑 OAuth Tokens received:', {
         hasAccessToken: !!tokens.access_token,
         accessTokenLength: tokens.access_token ? tokens.access_token.length : 0,
+        accessTokenPrefix: tokens.access_token ? tokens.access_token.substring(0, 20) + '...' : null,
         hasRefreshToken: !!tokens.refresh_token,
+        refreshTokenPrefix: tokens.refresh_token ? tokens.refresh_token.substring(0, 20) + '...' : null,
         expiryDate: tokens.expiry_date,
+        expiryDateISO: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
         scopes: tokens.scope,
+        scopesArray: tokens.scope ? tokens.scope.split(' ') : [],
+        hasUserinfoEmailScope: tokens.scope ? tokens.scope.includes('userinfo.email') : false,
         tokenType: tokens.token_type,
+        tokenKeys: Object.keys(tokens),
     })
 
     if (!tokens.access_token) {
@@ -137,7 +165,28 @@ async function handleOAuthCallback(code, state) {
     }
 
     // Get user's email from Google
+    console.log('[oauth] 🔧 Setting credentials on oauth2Client...')
+    console.log('[oauth] 🔧 Credentials being set:', {
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
+        tokenType: tokens.token_type,
+        expiryDate: tokens.expiry_date,
+    })
+
     oauth2Client.setCredentials(tokens)
+
+    console.log('[oauth] ✅ Credentials set. Verifying client state...')
+    const clientCredentials = oauth2Client.credentials
+    console.log('[oauth] 🔍 Client credentials after setCredentials:', {
+        hasAccessToken: !!clientCredentials.access_token,
+        accessTokenPrefix: clientCredentials.access_token
+            ? clientCredentials.access_token.substring(0, 20) + '...'
+            : null,
+        hasRefreshToken: !!clientCredentials.refresh_token,
+        tokenType: clientCredentials.token_type,
+        expiryDate: clientCredentials.expiry_date,
+        credentialKeys: Object.keys(clientCredentials),
+    })
     // We need to explicitly set the access token for the userinfo request
     // Although setCredentials sets it on the client, the oauth2 service instance might need it explicitly if not sharing the auth client correctly
     const oauth2 = google.oauth2({
@@ -149,15 +198,53 @@ async function handleOAuthCallback(code, state) {
     console.log('[oauth] Fetching user info from Google...')
     // Use the oauth2Client to make the request directly to ensure credentials are used
     console.log('[oauth] Requesting user info via oauth2Client...')
-    const userInfoResponse = await oauth2Client.request({
-        url: 'https://www.googleapis.com/oauth2/v2/userinfo',
+    console.log('[oauth] 🌐 Request URL: https://www.googleapis.com/oauth2/v2/userinfo')
+    console.log('[oauth] 🔍 Client credentials before request:', {
+        hasAccessToken: !!oauth2Client.credentials.access_token,
+        accessTokenPrefix: oauth2Client.credentials.access_token
+            ? oauth2Client.credentials.access_token.substring(0, 20) + '...'
+            : null,
+        tokenType: oauth2Client.credentials.token_type,
     })
-    const userInfo = userInfoResponse.data
-    console.log('[oauth] 📥 User Info Raw Response:', {
-        status: userInfoResponse.status,
-        statusText: userInfoResponse.statusText,
-        dataKeys: Object.keys(userInfo),
-    })
+
+    let userInfoResponse
+    let userInfo
+    try {
+        userInfoResponse = await oauth2Client.request({
+            url: 'https://www.googleapis.com/oauth2/v2/userinfo',
+        })
+        userInfo = userInfoResponse.data
+        console.log('[oauth] 📥 User Info Raw Response:', {
+            status: userInfoResponse.status,
+            statusText: userInfoResponse.statusText,
+            dataKeys: Object.keys(userInfo),
+            headers: userInfoResponse.headers ? Object.keys(userInfoResponse.headers) : [],
+        })
+    } catch (error) {
+        console.error('[oauth] ❌ Error fetching user info:', {
+            message: error.message,
+            code: error.code,
+            status: error.status,
+            statusText: error.statusText,
+            response: error.response
+                ? {
+                      status: error.response.status,
+                      statusText: error.response.statusText,
+                      data: error.response.data,
+                      headers: error.response.headers ? Object.keys(error.response.headers) : [],
+                  }
+                : null,
+            config: error.config
+                ? {
+                      url: error.config.url,
+                      method: error.config.method,
+                      headers: error.config.headers ? Object.keys(error.config.headers) : [],
+                      hasAuthHeader: !!error.config.headers?.authorization,
+                  }
+                : null,
+        })
+        throw error
+    }
 
     console.log('[oauth] 👤 Google User Info received:', {
         email: userInfo.email,
