@@ -1,11 +1,29 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.3'
+const SW_VERSION = 'v1.4'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
     console.log('Service Worker installed:', SW_VERSION)
     // Force the waiting service worker to become the active service worker
     self.skipWaiting()
+})
+
+self.addEventListener('activate', function (event) {
+    console.log('Service Worker activated:', SW_VERSION)
+    event.waitUntil(
+        Promise.all([
+            // Clear old caches
+            caches.keys().then(function (cacheNames) {
+                return Promise.all(
+                    cacheNames.map(function (cacheName) {
+                        return caches.delete(cacheName)
+                    })
+                )
+            }),
+            // Take control of all clients immediately
+            self.clients.claim(),
+        ])
+    )
 })
 
 self.addEventListener('fetch', function (event) {
@@ -50,26 +68,4 @@ self.addEventListener('fetch', function (event) {
     )
 })
 
-self.addEventListener('activate', function (event) {
-    console.log('Service Worker activated:', SW_VERSION)
-    event.waitUntil(
-        Promise.all([
-            // Clear old caches
-            caches.keys().then(function (cacheNames) {
-                return Promise.all(
-                    cacheNames
-                        .filter(function (cacheName) {
-                            // Return true if you want to remove this cache,
-                            // but remember that caches are shared across
-                            // the whole origin
-                        })
-                        .map(function (cacheName) {
-                            return caches.delete(cacheName)
-                        })
-                )
-            }),
-            // Take control of all clients immediately
-            self.clients.claim(),
-        ])
-    )
-})
+// Remove the duplicate activate listener at the end
