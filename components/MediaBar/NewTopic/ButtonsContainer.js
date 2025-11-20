@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
 import { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
-import BotButtonInModalWhenAddChats from '../../ChatsView/ChatDV/EditorView/BotOption/BotButtonInModalWhenAddChats'
 
 export default function ButtonsContainer({
     isPrivate,
@@ -44,13 +43,6 @@ export default function ButtonsContainer({
                         forceShowShortcut={true}
                     />
                 </Hotkeys>
-                <BotButtonInModalWhenAddChats
-                    disabled={!text}
-                    botIsActive={botIsActive}
-                    onPress={onToggleBot}
-                    projectId={projectId}
-                    assistantId={assistantId}
-                />
             </View>
             <View style={localStyles.buttonsRight}>
                 <Button
