@@ -719,14 +719,8 @@ export default class Backend {
         return goalsBridge.watchAllDoneGoalsAmounts(projectId, assigneesIdsToShow, goalWatcherKey, callback)
     }
 
-    static async uploadNewGoal(projectId, goal, baseDate, tryToGenerateBotAdvaice, movingGoalToOtherProject) {
-        return await goalsBridge.uploadNewGoal(
-            projectId,
-            goal,
-            baseDate,
-            tryToGenerateBotAdvaice,
-            movingGoalToOtherProject
-        )
+    static async uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject) {
+        return await goalsBridge.uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject)
     }
 
     static deleteGoal(projectId, goal, movingToOtherProjectId) {
@@ -855,15 +849,8 @@ export default class Backend {
         return bridge.registerError(error)
     }
 
-    static uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, callback, tryToGenerateBotAdvaice) {
-        return skillsBridge.uploadNewSkill(
-            projectId,
-            skill,
-            isUpdatingProject,
-            oldProject,
-            callback,
-            tryToGenerateBotAdvaice
-        )
+    static uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, callback) {
+        return skillsBridge.uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, callback)
     }
 
     static updateSkill(projectId, oldSkill, updatedSkill, avoidFollow) {

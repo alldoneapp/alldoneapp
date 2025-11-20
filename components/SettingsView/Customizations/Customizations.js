@@ -6,7 +6,7 @@ import MaxNumberTasksToday from './Properties/MaxNumberTasksToday'
 import MaxUsersInSidebar from './Properties/MaxUsersInSidebar'
 import MaxNumberGoals from './Properties/MaxNumberGoals'
 import MaxNumberChats from './Properties/MaxNumberChats'
-import BotAdvaiceTriggerPercent from './Properties/BotAdvaiceTriggerPercent'
+
 import SomedayTaskTriggerPercent from './Properties/SomedayTaskTriggerPercent'
 import GlobalKarmaPoints from './Properties/GlobalKarmaPoints'
 import DateFormat from './Properties/DateFormat'
@@ -42,10 +42,7 @@ const Customizations = () => {
                     <MaxUsersInSidebar userId={loggedUser.uid} numberUsersSidebar={loggedUser.numberUsersSidebar} />
                     <MaxNumberGoals userId={loggedUser.uid} numberGoalsAllTeams={loggedUser.numberGoalsAllTeams} />
                     <MaxNumberChats userId={loggedUser.uid} numberChatsAllTeams={loggedUser.numberChatsAllTeams} />
-                    <BotAdvaiceTriggerPercent
-                        userId={loggedUser.uid}
-                        botAdvaiceTriggerPercent={loggedUser.botAdvaiceTriggerPercent}
-                    />
+
                     <SomedayTaskTriggerPercent
                         userId={loggedUser.uid}
                         somedayTaskTriggerPercent={loggedUser.somedayTaskTriggerPercent || 10}

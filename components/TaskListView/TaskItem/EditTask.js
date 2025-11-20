@@ -363,9 +363,8 @@ export default function EditTask({
                 },
                 {
                     awaitForTaskCreation: true,
-                    tryToGenerateBotAdvice: false,
+
                     notGenerateMentionTasks: false,
-                    notGenerateUpdates: false,
                 }
             ).then(uploadedTask => onSuccessUploadNewTask(uploadedTask, actionBeforeSave, showSuggested))
 

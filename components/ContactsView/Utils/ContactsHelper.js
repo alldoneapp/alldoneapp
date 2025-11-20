@@ -700,7 +700,7 @@ export const getNewDefaultUser = (customData = {}) => {
         karma: 0,
         timezone: parseInt(momentTz().format('Z')),
         numberTodayTasks: 10,
-        botAdvaiceTriggerPercent: 0,
+
         numberGoalsAllTeams: 5,
         numberChatsAllTeams: 5,
         numberUsersSidebar: 3,

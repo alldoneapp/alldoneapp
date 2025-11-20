@@ -104,7 +104,7 @@ export default function GenerateInvoice({
                 },
                 {
                     awaitForTaskCreation: false,
-                    tryToGenerateBotAdvice: false,
+
                     notGenerateMentionTasks: false,
                     notGenerateUpdates: false,
                 }

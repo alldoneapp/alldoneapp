@@ -111,7 +111,7 @@ import { getUserWorkflow } from '../../../components/ContactsView/Utils/Contacts
 import { updateXpByDoneForAllReviewers, updateXpByDoneTask } from '../../Levels'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
-import { tryToGenerateTopicAdvaice } from '../../assistantHelper'
+
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
 import { getGoalData } from '../Goals/goalsFirestore'
@@ -257,7 +257,6 @@ export async function uploadNewTask(
     task,
     linkBack,
     awaitForTaskCreation,
-    tryToGenerateBotAdvaice,
     notGenerateMentionTasks,
     notGenerateUpdates
 ) {
@@ -374,20 +373,6 @@ export async function uploadNewTask(
         const fullText = taskCopy.extendedName + ' ' + taskCopy.description
         const mentionedUserIds = intersection(project.userIds, getMentionedUsersIdsWhenEditText(fullText, ''))
 
-        if (tryToGenerateBotAdvaice) {
-            const followerIds = uniq([...mentionedUserIds, taskCopy.userId, taskCopy.creatorId])
-            tryToGenerateTopicAdvaice(
-                projectId,
-                taskId,
-                'tasks',
-                taskCopy.isPublicFor,
-                taskCopy.extendedName,
-                followerIds,
-                taskCopy.assistantId,
-                taskCopy.creatorId
-            )
-        }
-
         if (!notGenerateMentionTasks) {
             createGenericTaskWhenMention(
                 projectId,
@@ -429,7 +414,7 @@ export async function uploadNewTask(
     return null
 }
 
-export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpProcess, tryToGenerateBotAdvaice) {
+export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpProcess) {
     const subTask = { ...newSubTask }
 
     if (task && task.name && task.name.trim() !== '') {
@@ -482,20 +467,6 @@ export async function uploadNewSubTask(projectId, task, newSubTask, inFollowUpPr
         const project = ProjectHelper.getProjectById(projectId)
         const fullText = subTask.extendedName + ' ' + subTask.description
         const mentionedUserIds = intersection(project.userIds, getMentionedUsersIdsWhenEditText(fullText, ''))
-
-        if (tryToGenerateBotAdvaice) {
-            const followerIds = uniq([...mentionedUserIds, subTask.userId, subTask.creatorId])
-            tryToGenerateTopicAdvaice(
-                projectId,
-                newTaskId,
-                'tasks',
-                subTask.isPublicFor,
-                subTask.extendedName,
-                followerIds,
-                subTask.assistantId,
-                task.creatorId
-            )
-        }
 
         logEvent('new_task', {
             taskOwnerUid: task.userId,
@@ -591,7 +562,7 @@ export async function createRecurrentTask(projectId, taskId) {
         const subtaskIds = cloneDeep(task.subtaskIds)
         task.subtaskIds = []
 
-        uploadNewTask(projectId, task, null, null, false, false, false).then(newTask => {
+        uploadNewTask(projectId, task, null, null, false, false).then(newTask => {
             if (subtaskIds !== null && subtaskIds.length > 0) {
                 createSubtasksCopies(
                     projectId,
@@ -715,7 +686,7 @@ export function createGenericTaskWhenMention(
                 }
                 genericTask.sortIndex = generateSortIndex()
                 updateEditionData(genericTask)
-                uploadNewTask(projectId, genericTask, null, null, false, true, false)
+                uploadNewTask(projectId, genericTask, null, null, false, false)
             }
         })
     }

@@ -58,7 +58,7 @@ import {
     switchProject,
 } from '../../../redux/actions'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
-import { tryToGenerateTopicAdvaice } from '../../assistantHelper'
+
 import { createGoalAssistantChangedFeed } from './goalUpdates'
 import { createGenericTaskWhenMention } from '../Tasks/tasksFirestore'
 import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
@@ -475,7 +475,7 @@ async function updateGoalData(projectId, goalId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export async function uploadNewGoal(projectId, goal, baseDate, tryToGenerateBotAdvaice, movingGoalToOtherProject) {
+export async function uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject) {
     const { loggedUser } = store.getState()
 
     updateEditionData(goal)
@@ -516,20 +516,6 @@ export async function uploadNewGoal(projectId, goal, baseDate, tryToGenerateBotA
     const goalToStore = { ...goal }
     delete goalToStore.id
     getDb().doc(`goals/${projectId}/items/${goal.id}`).set(goalToStore, { merge: true })
-
-    if (tryToGenerateBotAdvaice) {
-        const followerIds = uniq([...mentionedUserIds, ...goalToStore.assigneesIds, goalToStore.creatorId])
-        tryToGenerateTopicAdvaice(
-            projectId,
-            goal.id,
-            'goals',
-            goal.isPublicFor,
-            goal.extendedName,
-            followerIds,
-            goal.assistantId,
-            goal.creatorId
-        )
-    }
 
     const useNegativeSortIndex = loggedUser.templateProjectIds.includes(projectId)
     updateAllOpenGoalSortIndexs(projectId, goal, useNegativeSortIndex)

@@ -366,7 +366,7 @@ export default function RichCreateTaskModal({
             },
             {
                 awaitForTaskCreation: true,
-                tryToGenerateBotAdvice: false,
+
                 notGenerateMentionTasks: false,
                 notGenerateUpdates: false,
             }
@@ -417,7 +417,7 @@ export default function RichCreateTaskModal({
                 },
                 {
                     awaitForTaskCreation: true,
-                    tryToGenerateBotAdvice: true,
+
                     notGenerateMentionTasks: false,
                     notGenerateUpdates: false,
                 }

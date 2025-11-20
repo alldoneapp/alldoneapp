@@ -703,10 +703,6 @@ export function updateUserTimezone(userId, timezone) {
     getDb().doc(`users/${userId}`).update({ timezone })
 }
 
-export async function setBotAdvaiceTriggerPercent(userId, botAdvaiceTriggerPercent) {
-    getDb().doc(`users/${userId}`).update({ botAdvaiceTriggerPercent })
-}
-
 export async function setSomedayTaskTriggerPercent(userId, somedayTaskTriggerPercent) {
     getDb().doc(`users/${userId}`).update({ somedayTaskTriggerPercent })
 }

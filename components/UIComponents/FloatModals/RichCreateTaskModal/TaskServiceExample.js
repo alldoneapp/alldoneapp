@@ -64,7 +64,7 @@ export function CreateTaskWithTaskService({ projectId, onTaskCreated, ...otherPr
                 },
                 {
                     awaitForTaskCreation: true,
-                    tryToGenerateBotAdvice: true,
+
                     notGenerateMentionTasks: false,
                     notGenerateUpdates: false,
                 }

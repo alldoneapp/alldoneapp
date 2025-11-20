@@ -86,19 +86,6 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                         topicData.isPublicFor,
                         ''
                     )
-
-                    await runHttpsCallableFunction('generateBotAdvaiceSecondGen', {
-                        projectId: topicData.projectId,
-                        objectId: topicData.chatId,
-                        objectType: 'topics',
-                        userIdsToNotify,
-                        topicName: trimmedMessage,
-                        language: window.navigator.language,
-                        isPublicFor: topicData.isPublicFor,
-                        assistantId: assistant.uid,
-                        followerIds: [userId],
-                        userId: userId,
-                    })
                 } catch (error) {
                     console.error('Error triggering assistant reply:', error)
                 }

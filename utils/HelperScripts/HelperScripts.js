@@ -5834,31 +5834,6 @@ async function setTemplateAndGuideDataInProjects(appAdmin) {
     console.log('done')
 }
 
-async function setBotAdvaicePercentInUsers(appAdmin) {
-    const userDocs = (await appAdmin.firestore().collection('users').get()).docs
-    const users = []
-    userDocs.forEach(doc => {
-        const uid = doc.id
-        const user = doc.data()
-        user.uid = uid
-        users.push(user)
-    })
-
-    let promises = []
-
-    for (let i = 0; i < users.length; i++) {
-        console.log(`${i} ${users[i].displayName}`)
-        if (promises.length >= 200) {
-            await Promise.all(promises)
-            console.log('UPDATED')
-            promises = []
-        }
-        promises.push(appAdmin.firestore().doc(`users/${users[i].uid}`).update({ botAdvaiceTriggerPercent: 30 }))
-    }
-    await Promise.all(promises)
-    console.log('done')
-}
-
 /////////////SCRIPTS FROM DELETE USER
 
 async function removeUserDataFromChatComments(appAdmin) {

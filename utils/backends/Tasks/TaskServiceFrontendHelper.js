@@ -56,7 +56,7 @@ function mapToLegacyTaskFormat(params) {
  * @param {string} params.recurrence - Recurrence pattern (optional)
  * @param {Object} options - Additional options
  * @param {boolean} options.awaitForTaskCreation - Wait for completion
- * @param {boolean} options.tryToGenerateBotAdvice - Enable bot advice
+
  * @param {boolean} options.notGenerateMentionTasks - Skip mention task generation
  * @param {boolean} options.notGenerateUpdates - Skip feed updates
  * @returns {Promise<Object>} Created task result
@@ -66,7 +66,7 @@ export async function createTaskWithService(params, options = {}) {
 
     const {
         awaitForTaskCreation = false,
-        tryToGenerateBotAdvice = false,
+
         notGenerateMentionTasks = false,
         notGenerateUpdates = false,
     } = options
@@ -80,7 +80,7 @@ export async function createTaskWithService(params, options = {}) {
         taskObject,
         linkBack,
         awaitForTaskCreation,
-        tryToGenerateBotAdvice,
+
         notGenerateMentionTasks,
         notGenerateUpdates
     )

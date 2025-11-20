@@ -1406,49 +1406,6 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
     }
 )
 
-exports.generateBotAdvaiceSecondGen = onCall(
-    {
-        timeoutSeconds: 540,
-        memory: '1GiB', // Increased for better performance
-        minInstances: 1, // Keep 1 instance warm
-        maxInstances: 100,
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (auth) {
-            const { generateBotAdvaiceForTopic } = require('./Assistant/assistantAdvaiceForTopic')
-            const {
-                projectId,
-                objectId,
-                objectType,
-                userIdsToNotify,
-                topicName,
-                language,
-                isPublicFor,
-                assistantId,
-                followerIds,
-                userId,
-            } = data
-            return await generateBotAdvaiceForTopic(
-                projectId,
-                objectId,
-                objectType,
-                userIdsToNotify,
-                topicName,
-                language,
-                isPublicFor,
-                assistantId,
-                followerIds,
-                userId
-            )
-        } else {
-            throw new HttpsError('permission-denied', 'You cannot do that ;)')
-        }
-    }
-)
-
 exports.generateBotDailyTopicCommentSecondGen = onCall(
     {
         timeoutSeconds: 540,

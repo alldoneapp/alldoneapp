@@ -27,7 +27,7 @@ import {
 } from '../../ModalsManager/modalsManager'
 import { getId, runHttpsCallableFunction } from '../../../utils/backends/firestore'
 import { generateUserIdsToNotifyForNewComments } from '../../../utils/assistantHelper'
-import BotButtonInModalWhenAddChats from '../../ChatsView/ChatDV/EditorView/BotOption/BotButtonInModalWhenAddChats'
+
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { updateChatAssistant } from '../../../utils/backends/Chats/chatsFirestore'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
@@ -44,7 +44,7 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
     const [topicColor, setTopicColor] = useState('#FFFFFF')
     const [editor, setEditor] = useState(null)
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
-    const [botIsActive, setBotIsActive] = useState(false)
+
     const editorOpsRef = useRef([])
     const topicObject = {
         isPrivate: topicPrivacy,
@@ -65,10 +65,6 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
 
     const onChangeText = text => {
         setText(text)
-    }
-
-    const onToggleBot = () => {
-        setBotIsActive(state => !state)
     }
 
     const setPrivacy = (isPrivate, isPublicFor) => {
@@ -102,23 +98,6 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
                     STAYWARD_COMMENT,
                     loggedUser.uid
                 ).then(async chat => {
-                    if (botIsActive) {
-                        if (!project.isTemplate) {
-                            updateChatAssistant(projectId, chatId, assistantId)
-                            runHttpsCallableFunction('generateBotAdvaiceSecondGen', {
-                                projectId,
-                                objectId: chatId,
-                                objectType: 'topics',
-                                userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, publicFor, ''),
-                                topicName: title,
-                                language: window.navigator.language,
-                                isPublicFor: publicFor,
-                                assistantId,
-                                followerIds: null,
-                                userId: loggedUser.uid,
-                            })
-                        }
-                    }
                     dispatch(stopLoadingData())
                     selectItemToMention(chat, MENTION_MODAL_TOPICS_TAB, projectId)
                 })
@@ -188,13 +167,6 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
                         disabled={!cleanedText || sendingData}
                     />
                     <HighlightWrapper object={topicObject} setColor={setColor} disabled={!cleanedText || sendingData} />
-                    <BotButtonInModalWhenAddChats
-                        disabled={!cleanedText || sendingData}
-                        botIsActive={botIsActive}
-                        onPress={onToggleBot}
-                        projectId={projectId}
-                        assistantId={assistantId}
-                    />
                 </View>
                 <View style={localStyles.buttonsRight}>
                     <PlusButton onPress={() => addTopic()} disabled={!cleanedText || sendingData} modalId={modalId} />

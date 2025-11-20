@@ -21,7 +21,7 @@ import { DV_TAB_ROOT_CHATS } from '../../utils/TabNavigationConstants'
 import StickyButton from '../UIControls/StickyButton'
 import { translate } from '../../i18n/TranslationService'
 import { generateUserIdsToNotifyForNewComments } from '../../utils/assistantHelper'
-import BotButtonWhenAddChats from './ChatDV/EditorView/BotOption/BotButtonWhenAddChats'
+
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../redux/store'
 import {
@@ -44,7 +44,6 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
     const [hasStar, setHasStar] = useState(chat.hasStar)
     const [stickyData, setStickyData] = useState(chat.stickyData)
     const [showButtonSpace, setShowButtonSpace] = useState(true)
-    const [botIsActive, setBotIsActive] = useState(false)
 
     const tmpInputTextChat = useSelector(state => state.tmpInputTextChat)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -91,27 +90,6 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                         STAYWARD_COMMENT,
                         loggedUser.uid
                     ).then(async () => {
-                        if (botIsActive) {
-                            const project = ProjectHelper.getProjectById(projectId)
-                            if (!project.isTemplate) {
-                                const { defaultAssistant } = store.getState()
-                                const assistantId = project.assistantId || defaultAssistant.uid
-                                updateChatAssistant(projectId, chatId, assistantId)
-                                runHttpsCallableFunction('generateBotAdvaiceSecondGen', {
-                                    projectId,
-                                    objectId: chatId,
-                                    objectType: 'topics',
-                                    userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, ''),
-                                    topicName: title,
-                                    language: window.navigator.language,
-                                    isPublicFor,
-                                    assistantId,
-                                    followerIds: null,
-                                    userId: loggedUser.uid,
-                                })
-                                dispatch([setTriggerBotSpinner(true), setAssistantEnabled(true)])
-                            }
-                        }
                         const url = `/projects/${projectId}/chats/${chatId}/chat`
                         URLTrigger.processUrl(NavigationService, url)
                     })
@@ -127,10 +105,6 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
         } else {
             onCancelAction()
         }
-    }
-
-    const onToggleBot = () => {
-        setBotIsActive(state => !state)
     }
 
     const getInitialText = () => {
@@ -289,16 +263,6 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                         saveStickyBeforeSaveNote={setStickyChatData}
                         isChat={true}
                     />
-                    {formType === 'new' && (
-                        <BotButtonWhenAddChats
-                            botIsActive={botIsActive}
-                            disabled={!chatChanged}
-                            onPress={onToggleBot}
-                            containerStyle={{ marginRight: smallScreenNavigation ? 8 : 4 }}
-                            projectId={projectId}
-                            assistantId={chat.assistantId}
-                        />
-                    )}
                 </View>
 
                 <View style={[localStyles.buttonSection, localStyles.buttonSectionRight]}>

@@ -426,7 +426,7 @@ export default class TaskEditionMode extends Component {
                       },
                       {
                           awaitForTaskCreation: true,
-                          tryToGenerateBotAdvice: false,
+
                           notGenerateMentionTasks: false,
                           notGenerateUpdates: false,
                       }
@@ -442,7 +442,7 @@ export default class TaskEditionMode extends Component {
                 },
                 {
                     awaitForTaskCreation: true,
-                    tryToGenerateBotAdvice: false,
+
                     notGenerateMentionTasks: false,
                     notGenerateUpdates: false,
                 }

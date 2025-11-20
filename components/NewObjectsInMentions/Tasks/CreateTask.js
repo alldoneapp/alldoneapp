@@ -135,7 +135,7 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
                 },
                 {
                     awaitForTaskCreation: true,
-                    tryToGenerateBotAdvice: false,
+
                     notGenerateMentionTasks: false,
                     notGenerateUpdates: false,
                 }

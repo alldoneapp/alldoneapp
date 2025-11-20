@@ -29,7 +29,7 @@ import {
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
-import { tryToGenerateTopicAdvaice } from '../../assistantHelper'
+
 import { createGenericTaskWhenMention, setTaskNote } from '../Tasks/tasksFirestore'
 import TasksHelper, { GENERIC_NOTE_TYPE } from '../../../components/TaskListView/Utils/TasksHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
@@ -77,7 +77,7 @@ async function updateNoteData(projectId, noteId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export async function uploadNewNote(projectId, noteData, tryToGenerateBotAdvaice) {
+export async function uploadNewNote(projectId, noteData) {
     try {
         await updateEditionData(noteData)
 
@@ -129,27 +129,6 @@ export async function uploadNewNote(projectId, noteData, tryToGenerateBotAdvaice
             project.userIds,
             getMentionedUsersIdsWhenEditText(noteDataCopy.extendedTitle, '')
         )
-
-        if (tryToGenerateBotAdvaice) {
-            const followerIds = uniq([
-                ...mentionedUserIds,
-                ...noteDataCopy.isVisibleInFollowedFor,
-                noteDataCopy.userId,
-                noteDataCopy.creatorId,
-            ])
-            promises.push(
-                tryToGenerateTopicAdvaice(
-                    projectId,
-                    noteId,
-                    'notes',
-                    noteDataCopy.isPublicFor,
-                    noteDataCopy.extendedTitle,
-                    followerIds,
-                    noteDataCopy.assistantId,
-                    noteDataCopy.creatorId
-                )
-            )
-        }
 
         promises.push(
             createGenericTaskWhenMention(

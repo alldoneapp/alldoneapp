@@ -30,7 +30,7 @@ import {
     updateSkillFeedsChain,
 } from './skillUpdates'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
-import { tryToGenerateTopicAdvaice } from '../../assistantHelper'
+
 import { createGenericTaskWhenMention } from '../Tasks/tasksFirestore'
 import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import {
@@ -97,7 +97,7 @@ async function updateSkillData(projectId, skillId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export function uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, callback, tryToGenerateBotAdvaice) {
+export function uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, callback) {
     updateEditionData(skill)
 
     skill.id = skill.id ? skill.id : getId()
@@ -122,20 +122,6 @@ export function uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, 
     const project = ProjectHelper.getProjectById(projectId)
     const fullText = skill.extendedTitle + ' ' + skill.description
     const mentionedUserIds = intersection(project.userIds, getMentionedUsersIdsWhenEditText(fullText, ''))
-
-    if (tryToGenerateBotAdvaice) {
-        const followerIds = uniq([...mentionedUserIds, skill.userId])
-        tryToGenerateTopicAdvaice(
-            projectId,
-            skill.id,
-            'skills',
-            skillToStore.isPublicFor,
-            skillToStore.extendedName,
-            followerIds,
-            skill.assistantId,
-            skill.userId
-        )
-    }
 
     createGenericTaskWhenMention(projectId, skill.id, mentionedUserIds, GENERIC_SKILL_TYPE, 'skills', skill.assistantId)
 
@@ -186,8 +172,7 @@ export function updateSkillProject(oldProject, newProject, skill, callback) {
         },
         true,
         oldProject,
-        callback,
-        false
+        callback
     )
 }
 

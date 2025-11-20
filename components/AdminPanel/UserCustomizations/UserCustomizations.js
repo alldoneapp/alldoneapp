@@ -7,7 +7,7 @@ import MaxNumberTasksToday from '../../SettingsView/Customizations/Properties/Ma
 import MaxUsersInSidebar from '../../SettingsView/Customizations/Properties/MaxUsersInSidebar'
 import MaxNumberGoals from '../../SettingsView/Customizations/Properties/MaxNumberGoals'
 import MaxNumberChats from '../../SettingsView/Customizations/Properties/MaxNumberChats'
-import BotAdvaiceTriggerPercent from '../../SettingsView/Customizations/Properties/BotAdvaiceTriggerPercent'
+
 import DateFormat from '../../SettingsView/Customizations/Properties/DateFormat'
 import NotificationEmail from '../../SettingsView/Customizations/Properties/NotificationEmail'
 import Theme from '../../SettingsView/Customizations/Properties/Theme'
@@ -53,10 +53,6 @@ export default function UserCustomizations() {
                             <MaxUsersInSidebar userId={user.uid} numberUsersSidebar={user.numberUsersSidebar} />
                             <MaxNumberGoals userId={user.uid} numberGoalsAllTeams={user.numberGoalsAllTeams} />
                             <MaxNumberChats userId={user.uid} numberChatsAllTeams={user.numberChatsAllTeams} />
-                            <BotAdvaiceTriggerPercent
-                                userId={user.uid}
-                                botAdvaiceTriggerPercent={user.botAdvaiceTriggerPercent}
-                            />
                         </View>
 
                         <View style={{ flex: 1 }}>
