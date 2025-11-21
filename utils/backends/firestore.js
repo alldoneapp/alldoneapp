@@ -6778,7 +6778,8 @@ export async function createNoteInObject(
 
 // Track recently synced projects to prevent redundant calls
 const calendarSyncCache = new Map()
-const SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
+const gmailSyncCache = new Map()
+const SYNC_COOLDOWN_MS = 1 * 60 * 1000 // 1 minute
 
 export async function checkIfCalendarConnected(projectId) {
     console.log('═══════════════════════════════════════════════════════════')
@@ -6874,6 +6875,13 @@ export async function checkIfCalendarConnected(projectId) {
 export async function checkIfGmailIsConnected(projectId) {
     if (__DEV__) console.log('[Gmail Sync] Called with projectId:', projectId)
 
+    // Check if this project was recently synced
+    const lastSyncTime = gmailSyncCache.get(projectId)
+    if (lastSyncTime && Date.now() - lastSyncTime < SYNC_COOLDOWN_MS) {
+        if (__DEV__) console.log('[Gmail Sync] SKIPPED - Still in cooldown period')
+        return
+    }
+
     const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
     if (__DEV__) {
         console.log('[Gmail Sync] apisConnected:', apisConnected)
@@ -6903,7 +6911,7 @@ export async function checkIfGmailIsConnected(projectId) {
 
     // Check for server-side auth instead of client-side
     try {
-        const authStatus = await hasServerSideAuth()
+        const authStatus = await hasServerSideAuth(projectId)
         if (!authStatus.hasCredentials) {
             if (__DEV__) console.log('[Gmail Sync] FAILED: No server-side Google OAuth credentials')
             return
@@ -6919,9 +6927,12 @@ export async function checkIfGmailIsConnected(projectId) {
 
     if (__DEV__) console.log('[Gmail Sync] All checks passed, fetching Gmail...')
 
+    // Mark this project as synced before starting the sync
+    gmailSyncCache.set(projectId, Date.now())
+
     try {
         // Set server-side token in GoogleApi for immediate use
-        await setServerTokenInGoogleApi(GoogleApi)
+        await setServerTokenInGoogleApi(GoogleApi, projectId)
 
         // Now list Gmail using the GoogleApi with server-side token
         const result = await GoogleApi.listGmail()
