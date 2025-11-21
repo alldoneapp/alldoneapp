@@ -51,7 +51,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
         // Get fresh access token (automatically refreshes if needed)
         console.log('[serverSideCalendarSync] 🔑 Getting access token...')
-        const accessToken = await getAccessToken(userId)
+        const accessToken = await getAccessToken(userId, projectId)
         console.log('[serverSideCalendarSync] ✅ Access token obtained:', accessToken.substring(0, 20) + '...')
 
         // Create authenticated OAuth2 client
@@ -144,8 +144,19 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             .collection('users')
             .doc(userId)
             .collection('private')
-            .doc('googleAuth')
+            .doc(`googleAuth_${projectId}`)
             .get()
+
+        // Fallback to global if not found
+        if (!tokenDoc.exists) {
+            tokenDoc = await admin
+                .firestore()
+                .collection('users')
+                .doc(userId)
+                .collection('private')
+                .doc('googleAuth')
+                .get()
+        }
 
         const userEmail = tokenDoc.exists ? tokenDoc.data().email : null
         if (!userEmail) {

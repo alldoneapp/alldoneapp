@@ -263,7 +263,13 @@ async function handleOAuthCallback(code, state) {
         lastUsed: admin.firestore.Timestamp.now(),
     }
 
-    await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').set(tokenData)
+    await admin
+        .firestore()
+        .collection('users')
+        .doc(userId)
+        .collection('private')
+        .doc(`googleAuth_${projectId}`)
+        .set(tokenData)
 
     // Update user's apisConnected flag
     const userRef = admin.firestore().collection('users').doc(userId)
@@ -287,14 +293,24 @@ async function handleOAuthCallback(code, state) {
  * Get a fresh access token for the user
  * Automatically refreshes if expired
  */
-async function getAccessToken(userId) {
-    const tokenDoc = await admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('private')
-        .doc('googleAuth')
-        .get()
+async function getAccessToken(userId, projectId) {
+    let tokenDoc = null
+
+    // Try to get project-specific token first
+    if (projectId) {
+        tokenDoc = await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}`)
+            .get()
+    }
+
+    // Fallback to global token if no project specific token or no projectId provided
+    if (!tokenDoc || !tokenDoc.exists) {
+        tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
+    }
 
     if (!tokenDoc.exists) {
         throw new Error('User not authenticated with Google')
@@ -327,7 +343,23 @@ async function getAccessToken(userId) {
         }
     }
 
-    await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').update(updateData)
+    if (projectId && tokenDoc.ref.id === `googleAuth_${projectId}`) {
+        await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}`)
+            .update(updateData)
+    } else {
+        await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc('googleAuth')
+            .update(updateData)
+    }
 
     return token
 }
@@ -336,13 +368,19 @@ async function getAccessToken(userId) {
  * Revoke Google OAuth access and delete stored tokens
  */
 async function revokeAccess(userId, projectId) {
-    const tokenDoc = await admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('private')
-        .doc('googleAuth')
-        .get()
+    let tokenDoc = null
+    let docRef = null
+
+    if (projectId) {
+        docRef = admin.firestore().collection('users').doc(userId).collection('private').doc(`googleAuth_${projectId}`)
+        tokenDoc = await docRef.get()
+    }
+
+    // Fallback to global if not found specific
+    if (!tokenDoc || !tokenDoc.exists) {
+        docRef = admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth')
+        tokenDoc = await docRef.get()
+    }
 
     if (!tokenDoc.exists) {
         return { success: true, message: 'No tokens to revoke' }
@@ -362,7 +400,7 @@ async function revokeAccess(userId, projectId) {
     }
 
     // Delete stored tokens
-    await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').delete()
+    await docRef.delete()
 
     // Update user's apisConnected flags
     if (projectId) {
@@ -398,14 +436,22 @@ async function revokeAccess(userId, projectId) {
 /**
  * Check if user has valid Google OAuth credentials
  */
-async function hasValidCredentials(userId) {
-    const tokenDoc = await admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('private')
-        .doc('googleAuth')
-        .get()
+async function hasValidCredentials(userId, projectId) {
+    let tokenDoc = null
+
+    if (projectId) {
+        tokenDoc = await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}`)
+            .get()
+    }
+
+    if (!tokenDoc || !tokenDoc.exists) {
+        tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
+    }
 
     if (!tokenDoc.exists) {
         return false

@@ -2554,7 +2554,8 @@ exports.googleOAuthGetToken = onCall(
 
         try {
             const { getAccessToken } = require('./GoogleOAuth/googleOAuthHandler')
-            const accessToken = await getAccessToken(auth.uid)
+            const { projectId } = request.data || {}
+            const accessToken = await getAccessToken(auth.uid, projectId)
             return { accessToken }
         } catch (error) {
             console.error('Error getting access token:', error)
@@ -2608,7 +2609,8 @@ exports.googleOAuthCheckCredentials = onCall(
 
         try {
             const { hasValidCredentials } = require('./GoogleOAuth/googleOAuthHandler')
-            const hasCredentials = await hasValidCredentials(auth.uid)
+            const { projectId } = request.data || {}
+            const hasCredentials = await hasValidCredentials(auth.uid, projectId)
             return { hasCredentials }
         } catch (error) {
             console.error('Error checking credentials:', error)
