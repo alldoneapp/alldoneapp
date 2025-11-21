@@ -129,9 +129,9 @@ export async function startServerSideAuth(projectId: string): Promise<void> {
  *
  * @returns Promise with authentication status
  */
-export async function hasServerSideAuth(): Promise<ServerSideAuthStatus> {
+export async function hasServerSideAuth(projectId?: string): Promise<ServerSideAuthStatus> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthCheckCredentials', {})
+        const result = await runHttpsCallableFunction('googleOAuthCheckCredentials', { projectId })
         return { hasCredentials: result.hasCredentials }
     } catch (error) {
         console.error('Error checking credentials:', error)
@@ -146,9 +146,9 @@ export async function hasServerSideAuth(): Promise<ServerSideAuthStatus> {
  * @returns Promise with access token
  * @throws Error if user is not authenticated
  */
-export async function getServerSideToken(): Promise<string> {
+export async function getServerSideToken(projectId?: string): Promise<string> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthGetToken', {})
+        const result = await runHttpsCallableFunction('googleOAuthGetToken', { projectId })
         return result.accessToken
     } catch (error) {
         console.error('Error getting access token:', error)
@@ -180,9 +180,9 @@ export async function revokeServerSideAuth(projectId?: string): Promise<RevokeRe
  * @param googleApi - The GoogleApi instance
  * @returns Promise that resolves when token is set
  */
-export async function setServerTokenInGoogleApi(googleApi: any): Promise<void> {
+export async function setServerTokenInGoogleApi(googleApi: any, projectId?: string): Promise<void> {
     try {
-        const accessToken = await getServerSideToken()
+        const accessToken = await getServerSideToken(projectId)
 
         // Set the token in gapi client if available
         if (googleApi.gapi?.client) {

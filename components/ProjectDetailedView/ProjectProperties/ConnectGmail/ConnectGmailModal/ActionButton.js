@@ -24,7 +24,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const loadGmailData = async () => {
         try {
             // Set server-side token in GoogleApi for immediate use
-            await setServerTokenInGoogleApi(GoogleApi)
+            await setServerTokenInGoogleApi(GoogleApi, projectId)
 
             // Now get Gmail data using the GoogleApi with server-side token
             const result = await GoogleApi.listGmail()

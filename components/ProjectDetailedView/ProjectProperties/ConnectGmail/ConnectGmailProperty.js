@@ -16,10 +16,10 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
     useEffect(() => {
         const checkServerAuth = async () => {
             try {
-                const authStatus = await hasServerSideAuth()
+                const authStatus = await hasServerSideAuth(projectId)
                 if (authStatus.hasCredentials && isConnected) {
                     // Load the server-side token into GoogleApi
-                    await setServerTokenInGoogleApi(GoogleApi)
+                    await setServerTokenInGoogleApi(GoogleApi, projectId)
                     setIsSignedIn(true)
                 } else {
                     setIsSignedIn(false)
