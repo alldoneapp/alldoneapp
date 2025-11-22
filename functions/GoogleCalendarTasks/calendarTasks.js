@@ -189,8 +189,8 @@ const addCalendarEvents = async (events, syncProjectId, userId, email) => {
     }
     console.log('[addCalendarEvents] User found, project IDs:', user.projectIds)
 
-    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true)
-    console.log('[addCalendarEvents] Existing calendar tasks in all projects:', tasks.length)
+    const tasks = await getCalendarTasksInProject(syncProjectId, userId)
+    console.log('[addCalendarEvents] Existing calendar tasks in project:', tasks.length)
 
     const tasksMap = createTasksMap(tasks)
     console.log('[addCalendarEvents] Tasks map created, keys:', Object.keys(tasksMap).length)
@@ -272,9 +272,10 @@ const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks
     return tasks
 }
 
-const removeCalendarTasks = async (userId, dateFormated, events, removeFromAllDates) => {
+const removeCalendarTasks = async (userId, projectId, dateFormated, events, removeFromAllDates) => {
     console.log('[removeCalendarTasks] ═══════════ START ═══════════')
     console.log('[removeCalendarTasks] User ID:', userId)
+    console.log('[removeCalendarTasks] Project ID:', projectId)
     console.log('[removeCalendarTasks] Date formatted:', dateFormated)
     console.log('[removeCalendarTasks] Events count:', events.length)
     console.log('[removeCalendarTasks] Remove from all dates:', removeFromAllDates)
@@ -284,10 +285,9 @@ const removeCalendarTasks = async (userId, dateFormated, events, removeFromAllDa
         console.log('[removeCalendarTasks] ❌ User not found, aborting')
         return
     }
-    console.log('[removeCalendarTasks] User found, project IDs:', user.projectIds)
 
-    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, false)
-    console.log('[removeCalendarTasks] Total calendar tasks to check:', tasks.length)
+    const tasks = await getCalendarTasksInProject(projectId, userId)
+    console.log('[removeCalendarTasks] Total calendar tasks to check in project:', tasks.length)
 
     const batch = new BatchWrapper(admin.firestore())
     let tasksToDelete = 0

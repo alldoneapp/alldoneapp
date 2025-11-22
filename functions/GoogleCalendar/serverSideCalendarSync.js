@@ -190,7 +190,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
         const removeStartTime = Date.now()
 
-        await removeCalendarTasks(userId, todayFormatted, simplifiedEvents, false)
+        await removeCalendarTasks(userId, projectId, todayFormatted, simplifiedEvents, false)
 
         const removeDuration = Date.now() - removeStartTime
         console.log(`[serverSideCalendarSync] ✅ Remove tasks completed in ${removeDuration}ms`)

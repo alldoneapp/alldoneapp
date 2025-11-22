@@ -6779,6 +6779,8 @@ export async function createNoteInObject(
 // Track recently synced projects to prevent redundant calls
 const calendarSyncCache = new Map()
 const gmailSyncCache = new Map()
+// Mutex for Gmail sync to prevent race conditions with the singleton GoogleApi
+let gmailSyncLock = Promise.resolve()
 const SYNC_COOLDOWN_MS = 1 * 60 * 1000 // 1 minute
 
 export async function checkIfCalendarConnected(projectId) {
@@ -6930,6 +6932,12 @@ export async function checkIfGmailIsConnected(projectId) {
     // Mark this project as synced before starting the sync
     gmailSyncCache.set(projectId, Date.now())
 
+    // Acquire lock
+    const currentLock = gmailSyncLock
+    let releaseLock
+    gmailSyncLock = new Promise(resolve => (releaseLock = resolve))
+    await currentLock
+
     try {
         // Set server-side token in GoogleApi for immediate use
         await setServerTokenInGoogleApi(GoogleApi, projectId)
@@ -6952,6 +6960,8 @@ export async function checkIfGmailIsConnected(projectId) {
         }
     } catch (error) {
         console.error('[Gmail Sync] Error fetching Gmail:', error)
+    } finally {
+        releaseLock()
     }
 }
 
