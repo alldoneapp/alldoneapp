@@ -189,7 +189,7 @@ const addCalendarEvents = async (events, syncProjectId, userId, email) => {
     }
     console.log('[addCalendarEvents] User found, project IDs:', user.projectIds)
 
-    const tasks = await getCalendarTasksInProject(syncProjectId, userId)
+    const tasks = await getCalendarTasksInProject(syncProjectId, userId, true)
     console.log('[addCalendarEvents] Existing calendar tasks in project:', tasks.length)
 
     const tasksMap = createTasksMap(tasks)
@@ -252,9 +252,18 @@ const getTodayDoneCalendarTasksInProject = async (projectId, userId) => {
     return convertDocsInTasks(projectId, tasksDocs)
 }
 
-const getCalendarTasksInProject = async (projectId, userId) => {
-    const tasksDocs = await getTasksBaseQuery(projectId, userId, false).get()
-    return convertDocsInTasks(projectId, tasksDocs)
+const getCalendarTasksInProject = async (projectId, userId, includeDone = false) => {
+    const promises = [getTasksBaseQuery(projectId, userId, false).get()]
+    if (includeDone) {
+        promises.push(getTasksBaseQuery(projectId, userId, true).get())
+    }
+
+    const results = await Promise.all(promises)
+    const tasks = []
+    results.forEach(snapshot => {
+        tasks.push(...convertDocsInTasks(projectId, snapshot))
+    })
+    return tasks
 }
 
 const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks) => {
