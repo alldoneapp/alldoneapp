@@ -17,6 +17,16 @@ export default function OptionButtons({ projectId, options, assistant }) {
         <>
             {options.map(({ id, type, text, icon, action, task }) => {
                 const isDisabled = isExecuting === task?.name
+                const lastClickTimeRef = React.useRef(0)
+
+                const handlePress = () => {
+                    const now = Date.now()
+                    if (now - lastClickTimeRef.current > 1000) {
+                        lastClickTimeRef.current = now
+                        action()
+                    }
+                }
+
                 return isTaskWithPromptAndVariables(type, task) ? (
                     <OptionButtonWrapper
                         key={id}
@@ -33,7 +43,7 @@ export default function OptionButtons({ projectId, options, assistant }) {
                         text={text}
                         icon={icon}
                         containerStyle={{ marginHorizontal: 8, marginBottom: 8 }}
-                        onPress={action}
+                        onPress={handlePress}
                         disabled={isDisabled}
                     />
                 )
