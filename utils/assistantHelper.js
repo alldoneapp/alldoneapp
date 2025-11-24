@@ -144,12 +144,18 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
             loggedUser.uid
         )
 
+        // Enable assistant BEFORE creating the message so the trigger condition is met
+        if (enableAssistant) {
+            store.dispatch(setAssistantEnabled(true))
+            console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
+        }
+
         const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
         if (trimmedMessage) {
             await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
         }
 
-        const postCreateActions = [stopLoadingData(), setAssistantEnabled(enableAssistant)]
+        const postCreateActions = [stopLoadingData()]
         if (enableAssistant && trimmedMessage) {
             postCreateActions.push(setTriggerBotSpinner(true))
         }

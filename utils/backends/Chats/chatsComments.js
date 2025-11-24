@@ -572,6 +572,14 @@ export async function createObjectMessage(
 
         await Promise.all(promises).then(() => {
             // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
+            console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
+                editingCommentId,
+                assistantEnabled,
+                isWebhookTask,
+                skipAssistantTrigger,
+                objectType,
+                hasTaskMetadata: !!object?.taskMetadata,
+            })
             if (!editingCommentId && assistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
                 const clientSubmissionTime = Date.now()
                 const clientSubmissionTimestamp = new Date().toISOString()
