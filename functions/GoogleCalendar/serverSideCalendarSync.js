@@ -139,16 +139,51 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
         // Get user email from stored token data
         console.log('[serverSideCalendarSync] 📧 Getting user email...')
-        const tokenDoc = await admin
+        console.log('[serverSideCalendarSync] 🔍 Looking up token for userId:', userId, 'projectId:', projectId)
+
+        // 1. Try service-specific token (new format)
+        console.log(
+            '[serverSideCalendarSync] 🔍 Attempting to fetch service-specific token: googleAuth_' +
+                projectId +
+                '_calendar'
+        )
+        let tokenDoc = await admin
             .firestore()
             .collection('users')
             .doc(userId)
             .collection('private')
-            .doc(`googleAuth_${projectId}`)
+            .doc(`googleAuth_${projectId}_calendar`)
             .get()
 
-        // Fallback to global if not found
+        let tokenSource = null
+        if (tokenDoc.exists) {
+            tokenSource = 'service-specific (googleAuth_' + projectId + '_calendar)'
+            console.log('[serverSideCalendarSync] ✅ Found service-specific token')
+        }
+
+        // 2. Fallback to legacy project token
         if (!tokenDoc.exists) {
+            console.log(
+                '[serverSideCalendarSync] ⚠️ Service-specific token not found, trying legacy project token: googleAuth_' +
+                    projectId
+            )
+            tokenDoc = await admin
+                .firestore()
+                .collection('users')
+                .doc(userId)
+                .collection('private')
+                .doc(`googleAuth_${projectId}`)
+                .get()
+
+            if (tokenDoc.exists) {
+                tokenSource = 'legacy project (googleAuth_' + projectId + ')'
+                console.log('[serverSideCalendarSync] ✅ Found legacy project token')
+            }
+        }
+
+        // 3. Fallback to global token
+        if (!tokenDoc.exists) {
+            console.log('[serverSideCalendarSync] ⚠️ Legacy project token not found, trying global token: googleAuth')
             tokenDoc = await admin
                 .firestore()
                 .collection('users')
@@ -156,7 +191,19 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
                 .collection('private')
                 .doc('googleAuth')
                 .get()
+
+            if (tokenDoc.exists) {
+                tokenSource = 'global (googleAuth)'
+                console.log('[serverSideCalendarSync] ✅ Found global token')
+            }
         }
+
+        if (!tokenDoc.exists) {
+            console.log('[serverSideCalendarSync] ❌ No token found in any location')
+            throw new Error('No Google OAuth token found for user')
+        }
+
+        console.log('[serverSideCalendarSync] 🎯 Using token from:', tokenSource)
 
         const userEmail = tokenDoc.exists ? tokenDoc.data().email : null
         if (!userEmail) {

@@ -106,6 +106,8 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             buttonStyle={{ alignSelf: 'center' }}
             onPress={onPress}
             disabled={isLoading}
+            processing={isLoading}
+            processingTitle={translate(isConnectedAndSignedIn ? 'Disconnecting...' : 'Connecting...')}
         />
     )
 }
