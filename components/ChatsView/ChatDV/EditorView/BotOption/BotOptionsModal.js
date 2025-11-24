@@ -49,7 +49,7 @@ export default function BotOptionsModal({
         setAssistantId?.(selectedAssistantId)
         if (objectType === 'tasks') {
             setTaskAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (objectType === 'chats') {
+        } else if (objectType === 'chats' || objectType === 'topics') {
             updateChatAssistant(projectId, objectId, selectedAssistantId)
         } else if (objectType === 'notes') {
             setNoteAssistant(projectId, objectId, selectedAssistantId, true)
