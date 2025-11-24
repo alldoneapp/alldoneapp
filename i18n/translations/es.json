@@ -1086,6 +1086,8 @@
     "Connection failed": "Conexión fallida",
     "Failed to connect calendar. Please try again.": "No se pudo conectar el calendario. Por favor, inténtelo de nuevo.",
     "Failed to connect Gmail. Please try again.": "No se pudo conectar Gmail. Por favor, inténtelo de nuevo.",
+    "Connecting...": "Conectando...",
+    "Disconnecting...": "Desconectando...",
     "Delete Project": "Eliminar Proyecto",
     "No members yet": "Aún no hay miembros",
     "Number members": "%{number} miembros",

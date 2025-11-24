@@ -744,6 +744,8 @@
     "Connection failed": "Verbindung fehlgeschlagen",
     "Failed to connect calendar. Please try again.": "Kalender konnte nicht verbunden werden. Bitte versuchen Sie es erneut.",
     "Failed to connect Gmail. Please try again.": "Gmail konnte nicht verbunden werden. Bitte versuchen Sie es erneut.",
+    "Connecting...": "Verbinden...",
+    "Disconnecting...": "Trennen...",
     "Picture": "Bild",
     "Invite": "Einladung",
     "Add Person": "Person hinzufügen",

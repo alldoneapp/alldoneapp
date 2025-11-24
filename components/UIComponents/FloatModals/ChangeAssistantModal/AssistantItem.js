@@ -21,9 +21,9 @@ export default function AssistantItem({
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { displayName, description, photoURL50, uid } = assistant
 
-    // For the "default project assistant" option, check if currentAssistantId is empty/null
+    // For the "default project assistant" option, check if current matches the default project assistant
     const selected = isDefaultProjectOption
-        ? !currentAssistantId || currentAssistantId === ''
+        ? currentAssistantId === assistant.uid
         : assistant.uid === currentAssistantId ||
           assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
 

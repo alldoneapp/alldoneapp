@@ -1088,6 +1088,8 @@
     "Connection failed": "Connection failed",
     "Failed to connect calendar. Please try again.": "Failed to connect calendar. Please try again.",
     "Failed to connect Gmail. Please try again.": "Failed to connect Gmail. Please try again.",
+    "Connecting...": "Connecting...",
+    "Disconnecting...": "Disconnecting...",
     "Delete Project": "Delete Project",
     "No members yet": "No members yet",
     "Number members": "%{number} members",
