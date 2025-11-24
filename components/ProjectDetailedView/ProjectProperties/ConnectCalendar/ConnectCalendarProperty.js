@@ -16,10 +16,10 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
     useEffect(() => {
         const checkServerAuth = async () => {
             try {
-                const authStatus = await hasServerSideAuth(projectId)
+                const authStatus = await hasServerSideAuth(projectId, 'calendar')
                 if (authStatus.hasCredentials && isConnected) {
                     // Load the server-side token into GoogleApi
-                    await setServerTokenInGoogleApi(GoogleApi, projectId)
+                    await setServerTokenInGoogleApi(GoogleApi, projectId, 'calendar')
                     setIsSignedIn(true)
                 } else {
                     setIsSignedIn(false)
