@@ -33,7 +33,10 @@ import {
     removeFormatTagsFromText,
     shrinkTagText,
 } from '../../../functions/Utils/parseTextUtils'
-import { getAssistantInProject } from '../../../components/AdminPanel/Assistants/assistantsHelper'
+import {
+    getAssistantInProject,
+    getAssistantInProjectObject,
+} from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { setUserAssistant, updateUserLastCommentData } from '../Users/usersFirestore'
 import { setContactAssistant, updateContactLastCommentData } from '../Contacts/contactsFirestore'
 import { getLinkedParentChatUrl } from '../../../components/ChatsView/Utils/ChatHelper'
@@ -241,7 +244,7 @@ export const getParentObjectName = async (projectId, objectId, objectType) => {
 }
 
 const updateParentObjectAssistantIfNeeded = (projectId, assistantId, objectId, objectType) => {
-    if (!assistantId || !getAssistantInProject(projectId, assistantId)) {
+    if (!assistantId || !getAssistantInProjectObject(projectId, assistantId)) {
         const { defaultAssistant } = store.getState()
         const needGenerateUpdate = !!assistantId
 
