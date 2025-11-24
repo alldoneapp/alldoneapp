@@ -98,6 +98,11 @@ export function updateChatTitle(projectId, chat, newChatTitle) {
 }
 
 export async function updateChatAssistant(projectId, chatId, assistantId) {
+    console.log('[chatsFirestore] updateChatAssistant called:', {
+        projectId,
+        chatId,
+        assistantId,
+    })
     updateChatData(projectId, chatId, { assistantId }, null)
 }
 

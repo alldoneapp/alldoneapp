@@ -27,9 +27,27 @@ export default function AssistantItem({
         : assistant.uid === currentAssistantId ||
           assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
 
+    console.log('[AssistantItem] Selection state:', {
+        isDefaultProjectOption,
+        assistantUid: assistant.uid,
+        assistantName: displayName,
+        currentAssistantId,
+        selected,
+        checkResult: isDefaultProjectOption ? `${currentAssistantId} === ${assistant.uid}` : 'regular check',
+    })
+
     const selectOption = () => {
         // If it's the default project option, resolve the actual assistant ID from default project
         const assistantIdToSet = isDefaultProjectOption ? assistant.uid : uid
+
+        console.log('[AssistantItem] Selecting assistant:', {
+            isDefaultProjectOption,
+            assistantName: displayName,
+            assistantIdToSet,
+            previousAssistantId: currentAssistantId,
+            willUpdate: isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId,
+        })
+
         if (isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId) {
             updateAssistant(assistantIdToSet)
         }

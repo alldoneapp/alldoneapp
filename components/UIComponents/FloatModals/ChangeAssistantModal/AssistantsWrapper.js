@@ -32,9 +32,22 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
 
     const updateAssistant = assistantId => {
         // assistantId now contains the actual assistant ID (resolved from default project if needed)
+        console.log('[AssistantsWrapper] updateAssistant called:', {
+            objectType,
+            projectId,
+            objectId,
+            assistantId,
+            previousAssistantId: currentAssistantId,
+        })
+
         if (objectType === 'tasks') {
             setTaskAssistant(projectId, objectId, assistantId, !!currentAssistantId)
         } else if (objectType === 'chats') {
+            console.log('[AssistantsWrapper] Calling updateChatAssistant with:', {
+                projectId,
+                objectId,
+                assistantId,
+            })
             updateChatAssistant(projectId, objectId, assistantId)
         } else if (objectType === 'notes') {
             setNoteAssistant(projectId, objectId, assistantId, !!currentAssistantId)
