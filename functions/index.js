@@ -1244,6 +1244,7 @@ exports.askToBotSecondGen = onCall(
             })
 
             const askToOpenAIBotStart = Date.now()
+            console.log('🚀 [TIMING] Invoking askToOpenAIBot now...')
             const result = await askToOpenAIBot(
                 userId,
                 messageId,
@@ -2377,11 +2378,11 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId } = data
+        const { projectId, service } = data
         const userId = auth.uid
 
         try {
-            const authUrl = await initiateOAuth(userId, projectId)
+            const authUrl = await initiateOAuth(userId, projectId, service)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)

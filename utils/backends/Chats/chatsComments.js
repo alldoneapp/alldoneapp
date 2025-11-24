@@ -599,11 +599,11 @@ export async function createObjectMessage(
                     assistantId,
                     followerIds,
                 })
-                    .then(() => {
+                    .then(result => {
                         const clientCallCompleteTime = Date.now()
                         const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
                         const networkLatency = functionCallStartTime - clientSubmissionTime
-                        console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated', {
+                        console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
                             timestamp: new Date().toISOString(),
                             submissionTime: clientSubmissionTime,
                             submissionTimeISO: clientSubmissionTimestamp,
@@ -612,6 +612,7 @@ export async function createObjectMessage(
                             timeSinceSubmission: `${totalClientToServerTime}ms`,
                             networkLatency: `${networkLatency}ms`,
                             backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
+                            result,
                         })
                     })
                     .catch(error => {

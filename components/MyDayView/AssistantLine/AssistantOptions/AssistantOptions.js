@@ -58,15 +58,29 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         const trimmedMessage = message.trim()
         if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
 
+        console.log('🚀 [AssistantOptions] handleSendMessage triggered', {
+            messageLength: trimmedMessage.length,
+            assistantId: assistant.uid,
+            assistantName: assistant.displayName,
+            projectId: assistantProject?.id,
+        })
+
         isSendingRef.current = true
         setIsSending(true)
         try {
+            console.log('🚀 [AssistantOptions] Calling createBotQuickTopic...')
             const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
                 skipNavigation: true,
                 enableAssistant: true,
             })
 
+            console.log('✅ [AssistantOptions] createBotQuickTopic returned', {
+                topicData,
+                hasProjectId: !!topicData?.projectId,
+            })
+
             if (!topicData) {
+                console.warn('⚠️ [AssistantOptions] createBotQuickTopic returned null/undefined')
                 isSendingRef.current = false
                 setIsSending(false)
                 return
@@ -81,17 +95,21 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             // Continue executing the task in the background without blocking the input
             if (topicData.projectId && !assistantProject?.isTemplate) {
                 try {
+                    console.log('🚀 [AssistantOptions] Generating user IDs to notify...')
                     const userIdsToNotify = generateUserIdsToNotifyForNewComments(
                         topicData.projectId,
                         topicData.isPublicFor,
                         ''
                     )
+                    console.log('✅ [AssistantOptions] User IDs to notify generated', {
+                        count: userIdsToNotify.length,
+                    })
                 } catch (error) {
-                    console.error('Error triggering assistant reply:', error)
+                    console.error('❌ [AssistantOptions] Error triggering assistant reply:', error)
                 }
             }
         } catch (error) {
-            console.error('Error sending assistant quick message:', error)
+            console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
             isSendingRef.current = false
             setIsSending(false)
         }

@@ -1804,7 +1804,9 @@ async function storeChunks(
         // Track time-to-first-token from function start (use global if available)
         const timeToFirstTokenStart = globalFunctionStartTime || streamProcessStart
 
+        console.log('🚀 [TIMING] About to enter stream loop in storeChunks')
         for await (const chunk of stream) {
+            console.log('📦 [TIMING] Received stream chunk in storeChunks')
             chunkCount++
             const chunkTime = Date.now()
 

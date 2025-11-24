@@ -213,6 +213,9 @@ async function askToOpenAIBotOptimized(
             error: error.message,
             stack: error.stack,
             duration: `${errorDuration}ms`,
+            userId,
+            projectId,
+            assistantId,
         })
         throw error
     }
