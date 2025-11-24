@@ -2515,7 +2515,7 @@ const primeDefaultAssistantCache = async () => {
 
 primeDefaultAssistantCache()
 
-async function getAssistantForChat(projectId, assistantId) {
+async function getAssistantForChat(projectId, assistantId, userId = null) {
     const fetchStart = Date.now()
     const now = Date.now()
     const cacheKey = getAssistantProjectCacheKey(projectId, assistantId)
@@ -2564,6 +2564,22 @@ async function getAssistantForChat(projectId, assistantId) {
             foundInGlobal: !!globalAssistant,
             foundInProject: !!projectAssistant,
         })
+
+        // If not found, check user's default project (for cross-project assistant use)
+        if (!assistant && userId) {
+            const userDoc = await db.doc(`users/${userId}`).get()
+            const defaultProjectId = userDoc.exists ? userDoc.data().defaultProjectId : null
+            if (defaultProjectId && defaultProjectId !== projectId) {
+                const defaultProjectDoc = await db.doc(`assistants/${defaultProjectId}/items/${assistantId}`).get()
+                if (defaultProjectDoc.exists) {
+                    assistant = { ...defaultProjectDoc.data(), uid: defaultProjectDoc.id }
+                    console.log('⚙️ ASSISTANT SETTINGS: Found assistant in user default project', {
+                        defaultProjectId,
+                        assistantId,
+                    })
+                }
+            }
+        }
     }
     if (!assistant) {
         const defaultStart = Date.now()
