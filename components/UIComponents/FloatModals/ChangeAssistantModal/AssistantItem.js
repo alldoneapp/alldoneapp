@@ -28,8 +28,8 @@ export default function AssistantItem({
           assistant.uid === getAssistantInProjectObject(projectId, currentAssistantId).uid
 
     const selectOption = () => {
-        // If it's the default project option, pass null to clear the assistantId
-        const assistantIdToSet = isDefaultProjectOption ? null : uid
+        // If it's the default project option, resolve the actual assistant ID from default project
+        const assistantIdToSet = isDefaultProjectOption ? assistant.uid : uid
         if (isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId) {
             updateAssistant(assistantIdToSet)
         }

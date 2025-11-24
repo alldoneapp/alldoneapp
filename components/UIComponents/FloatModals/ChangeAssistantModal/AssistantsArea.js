@@ -34,9 +34,9 @@ export default function AssistantsArea({ closeModal, projectId, updateAssistant,
                     key={'default-project-assistant'}
                     projectId={projectId}
                     assistant={{
-                        uid: null, // null means "use default project's assistant"
-                        displayName: translate('Assistant from default project'),
-                        description: translate('Uses the assistant from your default project'),
+                        uid: defaultProjectAssistant.uid,
+                        displayName: defaultProjectAssistant.displayName,
+                        description: translate('From your default project'),
                         photoURL50: defaultProjectAssistant.photoURL50,
                     }}
                     updateAssistant={updateAssistant}

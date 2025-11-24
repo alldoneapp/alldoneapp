@@ -31,7 +31,7 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
     }
 
     const updateAssistant = assistantId => {
-        // assistantId can be null to clear the assistant (for "use default project assistant" option)
+        // assistantId now contains the actual assistant ID (resolved from default project if needed)
         if (objectType === 'tasks') {
             setTaskAssistant(projectId, objectId, assistantId, !!currentAssistantId)
         } else if (objectType === 'chats') {
