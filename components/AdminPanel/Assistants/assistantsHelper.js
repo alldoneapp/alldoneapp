@@ -134,6 +134,14 @@ export const getAssistantInProjectObject = (projectId, objectAssistantId) => {
         // If not a global assistant or not in project, check project assistants
         const assistant = getAssistantInProject(projectId, objectAssistantId)
         if (assistant) return assistant
+
+        // Also check default project assistants (for cross-project use)
+        const { loggedUser } = store.getState()
+        const defaultProjectId = loggedUser?.defaultProjectId
+        if (defaultProjectId && defaultProjectId !== projectId) {
+            const defaultProjectAssistant = getAssistantInProject(defaultProjectId, objectAssistantId)
+            if (defaultProjectAssistant) return defaultProjectAssistant
+        }
     }
 
     return getDefaultAssistantInProjectById(projectId)
