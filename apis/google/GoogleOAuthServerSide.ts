@@ -31,16 +31,19 @@ export interface RevokeResult {
     message: string
 }
 
+export type GoogleService = 'calendar' | 'gmail'
+
 /**
  * Initiate server-side OAuth flow for Google Calendar and Gmail
  * Opens a popup window for Google authentication
  *
  * @param projectId - The project ID to connect the calendar to
+ * @param service - The service to connect ('calendar' or 'gmail')
  * @returns Promise that resolves when OAuth is complete
  */
-export async function startServerSideAuth(projectId: string): Promise<void> {
+export async function startServerSideAuth(projectId: string, service?: GoogleService): Promise<void> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthInitiate', { projectId })
+        const result = await runHttpsCallableFunction('googleOAuthInitiate', { projectId, service })
         const { authUrl } = result
 
         // Open OAuth URL in a popup window
@@ -96,7 +99,7 @@ export async function startServerSideAuth(projectId: string): Promise<void> {
                     clearTimeout(timeout)
 
                     // Verify if auth succeeded by checking credentials
-                    hasServerSideAuth()
+                    hasServerSideAuth(projectId, service)
                         .then(status => {
                             if (status.hasCredentials) {
                                 resolve()
@@ -129,9 +132,9 @@ export async function startServerSideAuth(projectId: string): Promise<void> {
  *
  * @returns Promise with authentication status
  */
-export async function hasServerSideAuth(projectId?: string): Promise<ServerSideAuthStatus> {
+export async function hasServerSideAuth(projectId?: string, service?: GoogleService): Promise<ServerSideAuthStatus> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthCheckCredentials', { projectId })
+        const result = await runHttpsCallableFunction('googleOAuthCheckCredentials', { projectId, service })
         return { hasCredentials: result.hasCredentials }
     } catch (error) {
         console.error('Error checking credentials:', error)
@@ -146,9 +149,9 @@ export async function hasServerSideAuth(projectId?: string): Promise<ServerSideA
  * @returns Promise with access token
  * @throws Error if user is not authenticated
  */
-export async function getServerSideToken(projectId?: string): Promise<string> {
+export async function getServerSideToken(projectId?: string, service?: GoogleService): Promise<string> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthGetToken', { projectId })
+        const result = await runHttpsCallableFunction('googleOAuthGetToken', { projectId, service })
         return result.accessToken
     } catch (error) {
         console.error('Error getting access token:', error)
@@ -163,9 +166,9 @@ export async function getServerSideToken(projectId?: string): Promise<string> {
  * @param projectId - Optional project ID to disconnect from (if null, disconnects all)
  * @returns Promise with revoke result
  */
-export async function revokeServerSideAuth(projectId?: string): Promise<RevokeResult> {
+export async function revokeServerSideAuth(projectId?: string, service?: GoogleService): Promise<RevokeResult> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthRevoke', { projectId })
+        const result = await runHttpsCallableFunction('googleOAuthRevoke', { projectId, service })
         return result
     } catch (error) {
         console.error('Error revoking access:', error)
@@ -180,17 +183,34 @@ export async function revokeServerSideAuth(projectId?: string): Promise<RevokeRe
  * @param googleApi - The GoogleApi instance
  * @returns Promise that resolves when token is set
  */
-export async function setServerTokenInGoogleApi(googleApi: any, projectId?: string): Promise<void> {
+export async function setServerTokenInGoogleApi(
+    googleApi: any,
+    projectId?: string,
+    service?: GoogleService
+): Promise<void> {
     try {
-        const accessToken = await getServerSideToken(projectId)
+        const accessToken = await getServerSideToken(projectId, service)
 
         // Set the token in gapi client if available
         if (googleApi.gapi?.client) {
+            // Determine scopes based on service
+            let scopes = ''
+            if (service === 'calendar') {
+                scopes =
+                    'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
+            } else if (service === 'gmail') {
+                scopes =
+                    'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/userinfo.email'
+            } else {
+                // Fallback to all scopes
+                scopes =
+                    'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels'
+            }
+
             googleApi.gapi.client.setToken({
                 access_token: accessToken,
                 // Add the scopes so checkAccessGranted works
-                scope:
-                    'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels',
+                scope: scopes,
             })
 
             // Fetch user profile

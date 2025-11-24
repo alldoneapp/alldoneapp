@@ -51,7 +51,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
         // Get fresh access token (automatically refreshes if needed)
         console.log('[serverSideCalendarSync] 🔑 Getting access token...')
-        const accessToken = await getAccessToken(userId, projectId)
+        const accessToken = await getAccessToken(userId, projectId, 'calendar')
         console.log('[serverSideCalendarSync] ✅ Access token obtained:', accessToken.substring(0, 20) + '...')
 
         // Create authenticated OAuth2 client

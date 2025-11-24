@@ -60,9 +60,14 @@ function getOAuth2Client() {
     return new google.auth.OAuth2(clientId, clientSecret, redirectUri)
 }
 
-// Scopes required for Calendar and Gmail
-const SCOPES = [
+// Scopes required for Calendar
+const CALENDAR_SCOPES = [
     'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/userinfo.email',
+]
+
+// Scopes required for Gmail
+const GMAIL_SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.labels',
     'https://www.googleapis.com/auth/userinfo.email',
@@ -71,15 +76,39 @@ const SCOPES = [
 /**
  * Initiate OAuth flow
  * Returns the authorization URL to redirect the user to
+ * @param {string} userId - The user ID
+ * @param {string} projectId - The project ID
+ * @param {string} service - 'calendar' or 'gmail' (optional, defaults to both for backward compatibility if needed, but we should enforce it)
  */
-async function initiateOAuth(userId, projectId) {
+async function initiateOAuth(userId, projectId, service) {
     const oauth2Client = getOAuth2Client()
 
+    // Determine scopes based on service
+    let scopes = []
+    if (service === 'calendar') {
+        scopes = CALENDAR_SCOPES
+    } else if (service === 'gmail') {
+        scopes = GMAIL_SCOPES
+    } else {
+        // Fallback or error? Let's default to combined for safety if not specified,
+        // but the goal is separation.
+        // For now, if no service specified, we might want to throw error or default to calendar?
+        // Let's assume service is required for the new flow.
+        if (!service) {
+            console.warn('[oauth] No service specified, defaulting to Calendar scopes')
+            scopes = CALENDAR_SCOPES
+        } else {
+            throw new Error(`Invalid service specified: ${service}`)
+        }
+    }
+
     // Store state in Firestore to verify callback
-    const state = `${userId}:${projectId}:${Date.now()}`
+    // We include the service in the state so we know what we are connecting
+    const state = `${userId}:${projectId}:${service || 'calendar'}:${Date.now()}`
     const stateDoc = {
         userId,
         projectId,
+        service: service || 'calendar',
         createdAt: admin.firestore.Timestamp.now(),
         expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)), // 10 minutes
     }
@@ -88,29 +117,14 @@ async function initiateOAuth(userId, projectId) {
 
     // Generate authorization URL
     console.log('[oauth] 🚀 Initiating OAuth flow...')
-    console.log('[oauth] 📋 Requested scopes:', SCOPES)
-    console.log('[oauth] 📋 Scopes count:', SCOPES.length)
-    console.log(
-        '[oauth] 📋 Has userinfo.email scope:',
-        SCOPES.includes('https://www.googleapis.com/auth/userinfo.email')
-    )
+    console.log('[oauth] 📋 Service:', service)
+    console.log('[oauth] 📋 Requested scopes:', scopes)
 
     const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline', // Required to get refresh token
-        scope: SCOPES,
+        scope: scopes,
         state: state,
         prompt: 'consent', // Force consent to ensure we get refresh token
-    })
-
-    console.log('[oauth] 🔗 Generated auth URL:', {
-        urlLength: authUrl.length,
-        urlPrefix: authUrl.substring(0, 100) + '...',
-        containsUserinfoEmail: authUrl.includes('userinfo.email'),
-        scopesInUrl:
-            authUrl
-                .match(/scope=([^&]+)/)?.[1]
-                ?.split('%20')
-                .map(decodeURIComponent) || [],
     })
 
     return authUrl
@@ -128,7 +142,7 @@ async function handleOAuthCallback(code, state) {
         throw new Error('Invalid or expired state parameter')
     }
 
-    const { userId, projectId, expiresAt } = stateDoc.data()
+    const { userId, projectId, service, expiresAt } = stateDoc.data()
 
     // Check if state is expired
     if (expiresAt.toDate() < new Date()) {
@@ -138,26 +152,10 @@ async function handleOAuthCallback(code, state) {
 
     // Exchange code for tokens
     console.log('[oauth] Exchanging code for tokens...')
-    console.log('[oauth] 📝 Code received:', code ? `${code.substring(0, 20)}...` : 'MISSING')
-    console.log('[oauth] 📝 State received:', state)
+    console.log('[oauth] 📝 Service:', service)
 
     const oauth2Client = getOAuth2Client()
     const { tokens } = await oauth2Client.getToken(code)
-
-    console.log('[oauth] 🔑 OAuth Tokens received:', {
-        hasAccessToken: !!tokens.access_token,
-        accessTokenLength: tokens.access_token ? tokens.access_token.length : 0,
-        accessTokenPrefix: tokens.access_token ? tokens.access_token.substring(0, 20) + '...' : null,
-        hasRefreshToken: !!tokens.refresh_token,
-        refreshTokenPrefix: tokens.refresh_token ? tokens.refresh_token.substring(0, 20) + '...' : null,
-        expiryDate: tokens.expiry_date,
-        expiryDateISO: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
-        scopes: tokens.scope,
-        scopesArray: tokens.scope ? tokens.scope.split(' ') : [],
-        hasUserinfoEmailScope: tokens.scope ? tokens.scope.includes('userinfo.email') : false,
-        tokenType: tokens.token_type,
-        tokenKeys: Object.keys(tokens),
-    })
 
     if (!tokens.access_token) {
         console.error('[oauth] ❌ No access token received from Google')
@@ -165,46 +163,12 @@ async function handleOAuthCallback(code, state) {
     }
 
     // Get user's email from Google
-    console.log('[oauth] 🔧 Setting credentials on oauth2Client...')
-    console.log('[oauth] 🔧 Credentials being set:', {
-        hasAccessToken: !!tokens.access_token,
-        hasRefreshToken: !!tokens.refresh_token,
-        tokenType: tokens.token_type,
-        expiryDate: tokens.expiry_date,
-    })
-
     oauth2Client.setCredentials(tokens)
 
-    console.log('[oauth] ✅ Credentials set. Verifying client state...')
-    const clientCredentials = oauth2Client.credentials
-    console.log('[oauth] 🔍 Client credentials after setCredentials:', {
-        hasAccessToken: !!clientCredentials.access_token,
-        accessTokenPrefix: clientCredentials.access_token
-            ? clientCredentials.access_token.substring(0, 20) + '...'
-            : null,
-        hasRefreshToken: !!clientCredentials.refresh_token,
-        tokenType: clientCredentials.token_type,
-        expiryDate: clientCredentials.expiry_date,
-        credentialKeys: Object.keys(clientCredentials),
-    })
     // We need to explicitly set the access token for the userinfo request
-    // Although setCredentials sets it on the client, the oauth2 service instance might need it explicitly if not sharing the auth client correctly
     const oauth2 = google.oauth2({
         version: 'v2',
         auth: oauth2Client,
-    })
-
-    // The tokens object contains access_token which is what we need
-    console.log('[oauth] Fetching user info from Google...')
-    // Use the oauth2Client to make the request directly to ensure credentials are used
-    console.log('[oauth] Requesting user info via oauth2Client...')
-    console.log('[oauth] 🌐 Request URL: https://www.googleapis.com/oauth2/v2/userinfo')
-    console.log('[oauth] 🔍 Client credentials before request:', {
-        hasAccessToken: !!oauth2Client.credentials.access_token,
-        accessTokenPrefix: oauth2Client.credentials.access_token
-            ? oauth2Client.credentials.access_token.substring(0, 20) + '...'
-            : null,
-        tokenType: oauth2Client.credentials.token_type,
     })
 
     let userInfoResponse
@@ -214,70 +178,45 @@ async function handleOAuthCallback(code, state) {
             url: 'https://www.googleapis.com/oauth2/v2/userinfo',
         })
         userInfo = userInfoResponse.data
-        console.log('[oauth] 📥 User Info Raw Response:', {
-            status: userInfoResponse.status,
-            statusText: userInfoResponse.statusText,
-            dataKeys: Object.keys(userInfo),
-            headers: userInfoResponse.headers ? Object.keys(userInfoResponse.headers) : [],
-        })
     } catch (error) {
-        console.error('[oauth] ❌ Error fetching user info:', {
-            message: error.message,
-            code: error.code,
-            status: error.status,
-            statusText: error.statusText,
-            response: error.response
-                ? {
-                      status: error.response.status,
-                      statusText: error.response.statusText,
-                      data: error.response.data,
-                      headers: error.response.headers ? Object.keys(error.response.headers) : [],
-                  }
-                : null,
-            config: error.config
-                ? {
-                      url: error.config.url,
-                      method: error.config.method,
-                      headers: error.config.headers ? Object.keys(error.config.headers) : [],
-                      hasAuthHeader: !!error.config.headers?.authorization,
-                  }
-                : null,
-        })
+        console.error('[oauth] ❌ Error fetching user info:', error)
         throw error
     }
 
     console.log('[oauth] 👤 Google User Info received:', {
         email: userInfo.email,
         id: userInfo.id,
-        verified_email: userInfo.verified_email,
     })
 
     // Store tokens in Firestore (in user's private subcollection)
+    // Use service-specific document ID
+    const tokenDocId = `googleAuth_${projectId}_${service}`
+
     const tokenData = {
         refreshToken: tokens.refresh_token,
         accessToken: tokens.access_token,
         tokenExpiry: tokens.expiry_date ? admin.firestore.Timestamp.fromMillis(tokens.expiry_date) : null,
-        scopes: SCOPES,
+        scopes: tokens.scope ? tokens.scope.split(' ') : [],
         email: userInfo.email,
         createdAt: admin.firestore.Timestamp.now(),
         lastUsed: admin.firestore.Timestamp.now(),
+        service: service,
     }
 
-    await admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('private')
-        .doc(`googleAuth_${projectId}`)
-        .set(tokenData)
+    await admin.firestore().collection('users').doc(userId).collection('private').doc(tokenDocId).set(tokenData)
 
     // Update user's apisConnected flag
     const userRef = admin.firestore().collection('users').doc(userId)
-    await userRef.update({
-        [`apisConnected.${projectId}.calendar`]: true,
-        [`apisConnected.${projectId}.gmail`]: true,
-        [`apisConnected.${projectId}.calendarEmail`]: userInfo.email,
-    })
+
+    const updateData = {}
+    if (service === 'calendar') {
+        updateData[`apisConnected.${projectId}.calendar`] = true
+        updateData[`apisConnected.${projectId}.calendarEmail`] = userInfo.email
+    } else if (service === 'gmail') {
+        updateData[`apisConnected.${projectId}.gmail`] = true
+    }
+
+    await userRef.update(updateData)
 
     // Clean up state
     await admin.firestore().collection('googleOAuthStates').doc(state).delete()
@@ -285,6 +224,7 @@ async function handleOAuthCallback(code, state) {
     return {
         userId,
         projectId,
+        service,
         email: userInfo.email,
     }
 }
@@ -292,28 +232,56 @@ async function handleOAuthCallback(code, state) {
 /**
  * Get a fresh access token for the user
  * Automatically refreshes if expired
+ * @param {string} userId
+ * @param {string} projectId
+ * @param {string} service - 'calendar' or 'gmail'
  */
-async function getAccessToken(userId, projectId) {
+async function getAccessToken(userId, projectId, service) {
     let tokenDoc = null
+    let docRef = null
 
-    // Try to get project-specific token first
-    if (projectId) {
-        tokenDoc = await admin
+    // 1. Try service-specific token
+    if (projectId && service) {
+        docRef = admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}_${service}`)
+        tokenDoc = await docRef.get()
+    }
+
+    // 2. Fallback to legacy project-specific token (combined)
+    if ((!tokenDoc || !tokenDoc.exists) && projectId) {
+        // Only fallback if we are looking for a project-specific token
+        // We check the legacy doc `googleAuth_${projectId}`
+        const legacyDocRef = admin
             .firestore()
             .collection('users')
             .doc(userId)
             .collection('private')
             .doc(`googleAuth_${projectId}`)
-            .get()
+        const legacyDoc = await legacyDocRef.get()
+
+        if (legacyDoc.exists) {
+            tokenDoc = legacyDoc
+            docRef = legacyDocRef
+        }
     }
 
-    // Fallback to global token if no project specific token or no projectId provided
+    // 3. Fallback to global token (legacy)
     if (!tokenDoc || !tokenDoc.exists) {
-        tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
+        const globalDocRef = admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth')
+        const globalDoc = await globalDocRef.get()
+
+        if (globalDoc.exists) {
+            tokenDoc = globalDoc
+            docRef = globalDocRef
+        }
     }
 
-    if (!tokenDoc.exists) {
-        throw new Error('User not authenticated with Google')
+    if (!tokenDoc || !tokenDoc.exists) {
+        throw new Error(`User not authenticated with Google for ${service || 'any service'}`)
     }
 
     const tokenData = tokenDoc.data()
@@ -343,23 +311,7 @@ async function getAccessToken(userId, projectId) {
         }
     }
 
-    if (projectId && tokenDoc.ref.id === `googleAuth_${projectId}`) {
-        await admin
-            .firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('private')
-            .doc(`googleAuth_${projectId}`)
-            .update(updateData)
-    } else {
-        await admin
-            .firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('private')
-            .doc('googleAuth')
-            .update(updateData)
-    }
+    await docRef.update(updateData)
 
     return token
 }
@@ -367,23 +319,57 @@ async function getAccessToken(userId, projectId) {
 /**
  * Revoke Google OAuth access and delete stored tokens
  */
-async function revokeAccess(userId, projectId) {
+async function revokeAccess(userId, projectId, service) {
     let tokenDoc = null
     let docRef = null
 
-    if (projectId) {
-        docRef = admin.firestore().collection('users').doc(userId).collection('private').doc(`googleAuth_${projectId}`)
+    // 1. Try service-specific token
+    if (projectId && service) {
+        docRef = admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}_${service}`)
         tokenDoc = await docRef.get()
     }
 
-    // Fallback to global if not found specific
+    // If not found, check if we have a legacy token that covers this
+    // Note: If we have a legacy token, revoking it will disconnect BOTH services if they share it.
+    // This is a known limitation of migrating from combined to separate.
+    // However, if the user connects separately, they get separate tokens.
+
     if (!tokenDoc || !tokenDoc.exists) {
-        docRef = admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth')
-        tokenDoc = await docRef.get()
+        // Check legacy project token
+        if (projectId) {
+            const legacyDocRef = admin
+                .firestore()
+                .collection('users')
+                .doc(userId)
+                .collection('private')
+                .doc(`googleAuth_${projectId}`)
+            const legacyDoc = await legacyDocRef.get()
+            if (legacyDoc.exists) {
+                docRef = legacyDocRef
+                tokenDoc = legacyDoc
+            }
+        }
     }
 
-    if (!tokenDoc.exists) {
-        return { success: true, message: 'No tokens to revoke' }
+    if (!tokenDoc || !tokenDoc.exists) {
+        // Just update the flag to false if no token found, to be safe
+        const userRef = admin.firestore().collection('users').doc(userId)
+        const updateData = {}
+        if (service === 'calendar') {
+            updateData[`apisConnected.${projectId}.calendar`] = false
+            updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+        } else if (service === 'gmail') {
+            updateData[`apisConnected.${projectId}.gmail`] = false
+        }
+        if (Object.keys(updateData).length > 0) {
+            await userRef.update(updateData)
+        }
+        return { success: true, message: 'No tokens found, but connection flags cleared' }
     }
 
     const tokenData = tokenDoc.data()
@@ -403,31 +389,31 @@ async function revokeAccess(userId, projectId) {
     await docRef.delete()
 
     // Update user's apisConnected flags
-    if (projectId) {
-        const userRef = admin.firestore().collection('users').doc(userId)
-        await userRef.update({
-            [`apisConnected.${projectId}.calendar`]: false,
-            [`apisConnected.${projectId}.gmail`]: false,
-            [`apisConnected.${projectId}.calendarEmail`]: admin.firestore.FieldValue.delete(),
-        })
+    const userRef = admin.firestore().collection('users').doc(userId)
+    const updateData = {}
+
+    // If we deleted a legacy token, we must disconnect BOTH because we lost the token for both
+    // If we deleted a service-specific token, we only disconnect that service
+
+    const isLegacyToken = docRef.id === `googleAuth_${projectId}` || docRef.id === 'googleAuth'
+
+    if (isLegacyToken) {
+        // Disconnect both for this project
+        updateData[`apisConnected.${projectId}.calendar`] = false
+        updateData[`apisConnected.${projectId}.gmail`] = false
+        updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
     } else {
-        // If no projectId provided, remove all calendar connections
-        const userDoc = await admin.firestore().collection('users').doc(userId).get()
-        const userData = userDoc.data()
-        const apisConnected = userData.apisConnected || {}
-
-        const updates = {}
-        Object.keys(apisConnected).forEach(pid => {
-            if (apisConnected[pid].calendar || apisConnected[pid].gmail) {
-                updates[`apisConnected.${pid}.calendar`] = false
-                updates[`apisConnected.${pid}.gmail`] = false
-                updates[`apisConnected.${pid}.calendarEmail`] = admin.firestore.FieldValue.delete()
-            }
-        })
-
-        if (Object.keys(updates).length > 0) {
-            await admin.firestore().collection('users').doc(userId).update(updates)
+        // Service specific
+        if (service === 'calendar') {
+            updateData[`apisConnected.${projectId}.calendar`] = false
+            updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+        } else if (service === 'gmail') {
+            updateData[`apisConnected.${projectId}.gmail`] = false
         }
+    }
+
+    if (Object.keys(updateData).length > 0) {
+        await userRef.update(updateData)
     }
 
     return { success: true, message: 'Access revoked successfully' }
@@ -436,9 +422,23 @@ async function revokeAccess(userId, projectId) {
 /**
  * Check if user has valid Google OAuth credentials
  */
-async function hasValidCredentials(userId, projectId) {
+async function hasValidCredentials(userId, projectId, service) {
     let tokenDoc = null
 
+    // 1. Check service specific
+    if (projectId && service) {
+        tokenDoc = await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}_${service}`)
+            .get()
+    }
+
+    if (tokenDoc && tokenDoc.exists) return true
+
+    // 2. Check legacy project
     if (projectId) {
         tokenDoc = await admin
             .firestore()
@@ -449,16 +449,14 @@ async function hasValidCredentials(userId, projectId) {
             .get()
     }
 
-    if (!tokenDoc || !tokenDoc.exists) {
-        tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
-    }
+    if (tokenDoc && tokenDoc.exists) return true
 
-    if (!tokenDoc.exists) {
-        return false
-    }
+    // 3. Check global
+    tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
 
-    const tokenData = tokenDoc.data()
-    return !!tokenData.refreshToken
+    if (tokenDoc && tokenDoc.exists) return true
+
+    return false
 }
 
 module.exports = {

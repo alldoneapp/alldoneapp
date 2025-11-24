@@ -6913,7 +6913,7 @@ export async function checkIfGmailIsConnected(projectId) {
 
     // Check for server-side auth instead of client-side
     try {
-        const authStatus = await hasServerSideAuth(projectId)
+        const authStatus = await hasServerSideAuth(projectId, 'gmail')
         if (!authStatus.hasCredentials) {
             if (__DEV__) console.log('[Gmail Sync] FAILED: No server-side Google OAuth credentials')
             return
@@ -6940,7 +6940,7 @@ export async function checkIfGmailIsConnected(projectId) {
 
     try {
         // Set server-side token in GoogleApi for immediate use
-        await setServerTokenInGoogleApi(GoogleApi, projectId)
+        await setServerTokenInGoogleApi(GoogleApi, projectId, 'gmail')
 
         // Now list Gmail using the GoogleApi with server-side token
         const result = await GoogleApi.listGmail()

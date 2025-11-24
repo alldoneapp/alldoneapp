@@ -60,7 +60,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const connectServerSide = async () => {
         try {
             // Start server-side OAuth flow
-            await startServerSideAuth(projectId)
+            await startServerSideAuth(projectId, 'calendar')
 
             // OAuth callback will have updated apisConnected in Firestore
             // Load calendar events
@@ -87,7 +87,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const disconnect = async () => {
         try {
             // Revoke server-side OAuth credentials
-            await revokeServerSideAuth(projectId)
+            await revokeServerSideAuth(projectId, 'calendar')
 
             // Remove calendar tasks
             removeOpenEvents()
