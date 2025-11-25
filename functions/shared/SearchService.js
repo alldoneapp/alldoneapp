@@ -1250,7 +1250,29 @@ class SearchService {
         await this.ensureInitialized()
 
         try {
-            const searchResult = await this.findNoteForUpdate(userId, searchCriteria, options)
+            let searchResult = await this.findNoteForUpdate(userId, searchCriteria, options)
+
+            // Fallback: If no project name was specified and we defaulted to current project (projectId is set),
+            // try searching globally (all projects) before giving up.
+            if (searchResult.decision === 'no_matches' && !searchCriteria.projectName && searchCriteria.projectId) {
+                console.log('SearchService: Initial search in specific project failed. Retrying with global search...')
+
+                const globalCriteria = {
+                    ...searchCriteria,
+                    projectId: undefined,
+                    projectName: undefined,
+                }
+
+                const globalSearchResult = await this.findNoteForUpdate(userId, globalCriteria, options)
+
+                if (globalSearchResult.decision !== 'no_matches') {
+                    console.log('SearchService: Global search fallback succeeded', {
+                        noteId: globalSearchResult.selectedMatch?.note?.id,
+                        projectId: globalSearchResult.selectedMatch?.projectId,
+                    })
+                    searchResult = globalSearchResult
+                }
+            }
 
             switch (searchResult.decision) {
                 case 'no_matches':

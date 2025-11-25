@@ -1370,62 +1370,62 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
         }
 
-        case 'update_task': {
-            console.log('📝 UPDATE_TASK TOOL: Starting task update', {
-                creatorId,
-                projectId,
-                toolArgs,
-                isBulkUpdate: toolArgs.updateAll || false,
-            })
-
-            const db = admin.firestore()
-
-            // Initialize TaskUpdateService if not already done
-            if (!this.taskUpdateService) {
-                const TaskUpdateService = require('../shared/TaskUpdateService')
-                const moment = require('moment-timezone')
-                this.taskUpdateService = new TaskUpdateService({
-                    database: db,
-                    moment: moment,
-                    isCloudFunction: true,
-                })
-                await this.taskUpdateService.initialize()
-            }
-
-            // Use shared service for find and update
-            // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
-            try {
-                const result = await this.taskUpdateService.findAndUpdateTask(
+        case 'update_task':
+            {
+                console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                     creatorId,
-                    toolArgs, // searchCriteria (includes projectId for filtering)
-                    toolArgs, // updateFields (includes estimation, completed, focus, etc.)
-                    {
-                        autoSelectOnHighConfidence: true,
-                        highConfidenceThreshold: 800,
-                        dominanceMargin: 300,
-                        maxOptionsToShow: 5,
-                        updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
-                    }
-                )
-
-                console.log('📝 UPDATE_TASK TOOL: Result', {
-                    success: result.success,
-                    message: result.message,
-                    isBulkUpdate: !!result.updated,
-                    tasksUpdated: result.updated?.length || 1,
+                    projectId,
+                    toolArgs,
+                    isBulkUpdate: toolArgs.updateAll || false,
                 })
 
-                return result
-            } catch (error) {
-                console.error('📝 UPDATE_TASK TOOL: Task update failed', {
-                    error: error.message,
-                    stack: error.stack,
-                })
-                throw error
+                const db = admin.firestore()
+
+                // Initialize TaskUpdateService if not already done
+                if (!this.taskUpdateService) {
+                    const TaskUpdateService = require('../shared/TaskUpdateService')
+                    const moment = require('moment-timezone')
+                    this.taskUpdateService = new TaskUpdateService({
+                        database: db,
+                        moment: moment,
+                        isCloudFunction: true,
+                    })
+                    await this.taskUpdateService.initialize()
+                }
+
+                // Use shared service for find and update
+                // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
+                try {
+                    const result = await this.taskUpdateService.findAndUpdateTask(
+                        creatorId,
+                        toolArgs, // searchCriteria (includes projectId for filtering)
+                        toolArgs, // updateFields (includes estimation, completed, focus, etc.)
+                        {
+                            autoSelectOnHighConfidence: true,
+                            highConfidenceThreshold: 800,
+                            dominanceMargin: 300,
+                            maxOptionsToShow: 5,
+                            updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
+                        }
+                    )
+
+                    console.log('📝 UPDATE_TASK TOOL: Result', {
+                        success: result.success,
+                        message: result.message,
+                        isBulkUpdate: !!result.updated,
+                        tasksUpdated: result.updated?.length || 1,
+                    })
+
+                    return result
+                } catch (error) {
+                    console.error('📝 UPDATE_TASK TOOL: Task update failed', {
+                        error: error.message,
+                        stack: error.stack,
+                    })
+                    throw error
+                }
             }
-        }
 
-        case 'update_note': {
             const { NoteService } = require('../shared/NoteService')
             const { SearchService } = require('../shared/SearchService')
             const { UserHelper } = require('../shared/UserHelper')
@@ -1445,8 +1445,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
 
             // Step 1: Note Discovery - get final result from SearchService
-            // Pass all available search criteria for best matching
-            const searchResult = await cachedSearchService.findNoteForUpdateWithResults(creatorId, {
+            let searchResult = await cachedSearchService.findNoteForUpdateWithResults(creatorId, {
                 noteTitle: toolArgs.noteTitle,
                 noteId: toolArgs.noteId, // Optional direct lookup
                 projectName: toolArgs.projectName, // Optional project filter
@@ -1456,33 +1455,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             // Handle search failure - match MCP behavior
             if (!searchResult.success) {
                 if (searchResult.error === 'NO_MATCHES') {
-                    // Fallback: If no project name was specified and we defaulted to current project,
-                    // try searching globally (all projects) before giving up.
-                    if (!toolArgs.projectName) {
-                        console.log(
-                            'update_note: Initial search in current project failed. Retrying with global search...'
-                        )
-                        const globalSearchResult = await cachedSearchService.findNoteForUpdateWithResults(creatorId, {
-                            noteTitle: toolArgs.noteTitle,
-                            noteId: toolArgs.noteId,
-                            projectName: undefined, // Explicitly undefined to search all projects
-                            projectId: undefined, // Explicitly undefined to search all projects
-                        })
-
-                        if (globalSearchResult.success) {
-                            console.log('update_note: Global search fallback succeeded', {
-                                noteId: globalSearchResult.selectedNote.id,
-                                projectId: globalSearchResult.projectId,
-                            })
-                            // Use the global search result
-                            searchResult = globalSearchResult
-                        } else {
-                            // If global search also fails, throw the original error (or the new one)
-                            throw new Error(searchResult.message)
-                        }
-                    } else {
-                        throw new Error(searchResult.message)
-                    }
+                    throw new Error(searchResult.message)
                 } else if (searchResult.error === 'MULTIPLE_MATCHES') {
                     // Return match info to LLM instead of throwing (MCP pattern)
                     return {
@@ -1565,7 +1538,6 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 console.error('NoteService update failed:', error)
                 throw new Error(`Failed to update note: ${error.message}`)
             }
-        }
 
         case 'search': {
             console.log('🔍 SEARCH TOOL: Starting search execution', {
