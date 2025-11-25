@@ -810,13 +810,17 @@ class NoteService {
     async getBucketName() {
         let bucketName = this.options.storageBucket || process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
 
+        if (bucketName) {
+            console.log('NoteService: Got bucket name from options/env:', bucketName)
+        }
+
         // Fallback to get bucket name using the same logic as createNote
         if (!bucketName) {
             try {
                 const envHelper = require('../envFunctionsHelper')
                 const envFunctions = envHelper.getEnvFunctions()
                 bucketName = envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                console.log('NoteService: Got bucket name from envFunctionsHelper:', bucketName)
+                if (bucketName) console.log('NoteService: Got bucket name from envFunctionsHelper:', bucketName)
             } catch (envHelperError) {
                 console.log('NoteService: Failed to get from envFunctionsHelper:', envHelperError.message)
             }
@@ -827,20 +831,39 @@ class NoteService {
             try {
                 const { defineString } = require('firebase-functions/params')
                 bucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
-                console.log('NoteService: Got bucket name from Firebase Functions parameter:', bucketName)
+                if (bucketName)
+                    console.log('NoteService: Got bucket name from Firebase Functions parameter:', bucketName)
             } catch (paramError) {
                 console.log('NoteService: Firebase Functions parameter failed:', paramError.message)
             }
         }
 
         if (!bucketName) {
-            // Smart fallback based on project ID
-            const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+            // Smart fallback based on project ID with robust detection
+            let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+
+            if (!projectId) {
+                try {
+                    const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+                    if (cfg && cfg.projectId) projectId = cfg.projectId
+                } catch (_) {}
+            }
+
+            // Try to get from admin app if available
+            if (!projectId && typeof require !== 'undefined') {
+                try {
+                    const admin = require('firebase-admin')
+                    projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+                } catch (_) {}
+            }
+
+            console.log('NoteService: Detected project ID for fallback:', projectId)
+
             if (projectId === 'alldonealeph') {
                 bucketName = 'notescontentprod'
                 console.log('NoteService: Detected production project, using bucket:', bucketName)
             } else if (projectId === 'alldonestaging') {
-                bucketName = 'notescontentdev'
+                bucketName = 'notescontentstaging'
                 console.log('NoteService: Detected staging project, using bucket:', bucketName)
             } else {
                 bucketName = 'notescontentdev' // Final fallback
