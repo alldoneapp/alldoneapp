@@ -295,7 +295,41 @@ async function getAccessToken(userId, projectId, service) {
     })
 
     // Get access token (will auto-refresh if expired)
-    const { token } = await oauth2Client.getAccessToken()
+    let token
+    try {
+        const response = await oauth2Client.getAccessToken()
+        token = response.token
+    } catch (error) {
+        // Handle invalid_grant (refresh token revoked or expired)
+        if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
+            console.warn(
+                `[oauth] ⚠️ Invalid grant for user ${userId} (project: ${projectId}, service: ${service}). Removing invalid token.`
+            )
+
+            // Delete the invalid token to prevent infinite loops
+            await docRef.delete()
+
+            // Also update the user's apisConnected flag to false
+            const userRef = admin.firestore().collection('users').doc(userId)
+            const updateData = {}
+            if (service === 'calendar') {
+                updateData[`apisConnected.${projectId}.calendar`] = false
+            } else if (service === 'gmail') {
+                updateData[`apisConnected.${projectId}.gmail`] = false
+            } else if (projectId) {
+                // Legacy fallback
+                updateData[`apisConnected.${projectId}.calendar`] = false
+                updateData[`apisConnected.${projectId}.gmail`] = false
+            }
+
+            if (Object.keys(updateData).length > 0) {
+                await userRef.update(updateData)
+            }
+
+            throw new Error('Google OAuth token is invalid or revoked. Please reconnect.')
+        }
+        throw error
+    }
 
     // Update last used timestamp and potentially new access token
     const updateData = {

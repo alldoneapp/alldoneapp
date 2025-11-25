@@ -2443,7 +2443,7 @@ exports.googleOAuthCallback = onRequest(
 exports.googleOAuthGetToken = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MB',
         region: 'europe-west1',
         cors: true,
     },
