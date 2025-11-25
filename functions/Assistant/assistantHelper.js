@@ -1450,7 +1450,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 noteTitle: toolArgs.noteTitle,
                 noteId: toolArgs.noteId, // Optional direct lookup
                 projectName: toolArgs.projectName, // Optional project filter
-                projectId: projectId, // Use current context project as default
+                projectId: toolArgs.projectName ? undefined : projectId, // Use current context project as default ONLY if no project name specified
             })
 
             // Handle search failure - match MCP behavior
