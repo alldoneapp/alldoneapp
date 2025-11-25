@@ -1489,6 +1489,16 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
+                // Get storage bucket from params (standard for Cloud Functions)
+                let storageBucket = null
+                try {
+                    const { defineString } = require('firebase-functions/params')
+                    storageBucket = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
+                    console.log('Assistant: Using storage bucket from params:', storageBucket)
+                } catch (e) {
+                    console.warn('Assistant: Failed to get storage bucket param:', e.message)
+                }
+
                 cachedNoteService = new NoteService({
                     database: db,
                     moment: moment,
@@ -1496,6 +1506,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     enableFeeds: true,
                     enableValidation: false, // Skip validation since we already validated
                     isCloudFunction: true,
+                    storageBucket: storageBucket,
                 })
                 await cachedNoteService.initialize()
             }

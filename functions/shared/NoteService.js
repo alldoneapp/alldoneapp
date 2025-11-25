@@ -808,7 +808,7 @@ class NoteService {
      * Get the correct notes storage bucket name using the same logic as other Firebase Functions
      */
     async getBucketName() {
-        let bucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+        let bucketName = this.options.storageBucket || process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
 
         // Fallback to get bucket name using the same logic as createNote
         if (!bucketName) {
