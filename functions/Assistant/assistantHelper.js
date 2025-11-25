@@ -1445,12 +1445,20 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
 
             // Step 1: Note Discovery - get final result from SearchService
-            let searchResult = await cachedSearchService.findNoteForUpdateWithResults(creatorId, {
-                noteTitle: toolArgs.noteTitle,
-                noteId: toolArgs.noteId, // Optional direct lookup
-                projectName: toolArgs.projectName, // Optional project filter
-                projectId: toolArgs.projectName ? undefined : projectId, // Use current context project as default ONLY if no project name specified
-            })
+            let searchResult = await cachedSearchService.findNoteForUpdateWithResults(
+                creatorId,
+                {
+                    noteTitle: toolArgs.noteTitle,
+                    noteId: toolArgs.noteId, // Optional direct lookup
+                    projectName: toolArgs.projectName, // Optional project filter
+                    projectId: toolArgs.projectName ? undefined : projectId, // Use current context project as default ONLY if no project name specified
+                },
+                {
+                    // Tune confidence for internal assistant to be more aggressive
+                    highConfidenceThreshold: 600, // Lower from default 800
+                    dominanceMargin: 200, // Lower from default 300
+                }
+            )
 
             // Handle search failure - match MCP behavior
             if (!searchResult.success) {
@@ -1885,10 +1893,12 @@ async function storeChunks(
 
                 while (currentToolCalls && currentToolCalls.length > 0 && toolCallIteration < MAX_TOOL_ITERATIONS) {
                     toolCallIteration++
-                    console.log('🔧 NATIVE TOOL CALL: Starting tool call iteration #' + toolCallIteration, {
-                        toolCallsCount: currentToolCalls.length,
-                        maxIterations: MAX_TOOL_ITERATIONS,
-                    })
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Starting tool call iteration #' + toolCallIteration, {
+                            toolCallsCount: currentToolCalls.length,
+                            maxIterations: MAX_TOOL_ITERATIONS,
+                        })
+                    }
 
                     // Process first tool call (OpenAI typically sends one at a time)
                     const toolCall = currentToolCalls[0]
@@ -1899,7 +1909,9 @@ async function storeChunks(
                     let toolArgs = {}
                     try {
                         toolArgs = JSON.parse(toolCall.function.arguments)
-                        console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
+                        if (ENABLE_DETAILED_LOGGING) {
+                            console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
+                        }
                     } catch (e) {
                         console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
                         commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
@@ -1913,7 +1925,9 @@ async function storeChunks(
                     const allowed = Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes(toolName)
 
                     if (!allowed) {
-                        console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
+                        if (ENABLE_DETAILED_LOGGING) {
+                            console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
+                        }
                         await flushPendingUpdate() // Flush any pending updates first
                         commentText += `\n\nTool not permitted: ${toolName}`
                         await commentRef.update({ commentText, isLoading: false })
@@ -1927,12 +1941,16 @@ async function storeChunks(
                     commentText += `\n\n${loadingMessage}`
                     await commentRef.update({ commentText, isLoading: true })
 
-                    console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
+                    }
 
                     // Execute tool and get result
                     let toolResult
                     try {
-                        console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
+                        if (ENABLE_DETAILED_LOGGING) {
+                            console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
+                        }
                         toolResult = await executeToolNatively(
                             toolName,
                             toolArgs,
@@ -1942,13 +1960,15 @@ async function storeChunks(
                             userContext
                         )
                         const toolResultString = JSON.stringify(toolResult, null, 2)
-                        console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
-                            toolName,
-                            resultLength: toolResultString.length,
-                            resultPreview: toolResultString.substring(0, 500),
-                            fullResult:
-                                toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
-                        })
+                        if (ENABLE_DETAILED_LOGGING) {
+                            console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
+                                toolName,
+                                resultLength: toolResultString.length,
+                                resultPreview: toolResultString.substring(0, 500),
+                                fullResult:
+                                    toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
+                            })
+                        }
                     } catch (error) {
                         console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
                             toolName,
@@ -1968,10 +1988,12 @@ async function storeChunks(
 
                     // Collect all assistant content before tool call
                     const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
-                    console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
-                        assistantMessageContentLength: assistantMessageContent.length,
-                        assistantMessageContent: assistantMessageContent.substring(0, 200),
-                    })
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
+                            assistantMessageContentLength: assistantMessageContent.length,
+                            assistantMessageContent: assistantMessageContent.substring(0, 200),
+                        })
+                    }
 
                     // Build updated conversation with plain objects
                     const updatedConversation = [
@@ -2002,41 +2024,47 @@ async function storeChunks(
                         },
                     ]
 
-                    console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
-                        conversationLength: updatedConversation.length,
-                        originalHistoryLength: currentConversation.length,
-                        toolResultLength: JSON.stringify(toolResult).length,
-                        toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
-                        iteration: toolCallIteration,
-                        lastThreeMessages: updatedConversation.slice(-3).map(m => ({
-                            role: m.role,
-                            hasContent: !!m.content,
-                            contentLength: m.content?.length,
-                            contentPreview: m.content?.substring(0, 150),
-                            hasToolCalls: !!m.tool_calls,
-                            toolCallsCount: m.tool_calls?.length,
-                            hasToolCallId: !!m.tool_call_id,
-                        })),
-                    })
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
+                            conversationLength: updatedConversation.length,
+                            originalHistoryLength: currentConversation.length,
+                            toolResultLength: JSON.stringify(toolResult).length,
+                            toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
+                            iteration: toolCallIteration,
+                            lastThreeMessages: updatedConversation.slice(-3).map(m => ({
+                                role: m.role,
+                                hasContent: !!m.content,
+                                contentLength: m.content?.length,
+                                contentPreview: m.content?.substring(0, 150),
+                                hasToolCalls: !!m.tool_calls,
+                                toolCallsCount: m.tool_calls?.length,
+                                hasToolCallId: !!m.tool_call_id,
+                            })),
+                        })
+                    }
 
                     // Update currentConversation for next iteration
                     currentConversation = updatedConversation
 
                     // Resume stream with updated conversation
-                    console.log('🔧 NATIVE TOOL CALL: Calling interactWithChatStream with updated conversation', {
-                        modelKey,
-                        temperatureKey,
-                        allowedToolsCount: allowedTools?.length,
-                        allowedTools,
-                        iteration: toolCallIteration,
-                    })
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Calling interactWithChatStream with updated conversation', {
+                            modelKey,
+                            temperatureKey,
+                            allowedToolsCount: allowedTools?.length,
+                            allowedTools,
+                            iteration: toolCallIteration,
+                        })
+                    }
                     const newStream = await interactWithChatStream(
                         updatedConversation,
                         modelKey,
                         temperatureKey,
                         allowedTools
                     )
-                    console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
+                    }
 
                     // Remove loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
@@ -2044,7 +2072,9 @@ async function storeChunks(
                     await commentRef.update({ commentText, isLoading: false })
 
                     // Process the new stream - replace the current stream
-                    console.log('🔧 NATIVE TOOL CALL: Starting to process resumed stream chunks')
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Starting to process resumed stream chunks')
+                    }
 
                     // Process all chunks from the new stream
                     let resumedChunkCount = 0
@@ -2066,20 +2096,24 @@ async function storeChunks(
 
                         // Check if this chunk contains new tool calls (multi-step reasoning)
                         if (newChunk.additional_kwargs?.tool_calls) {
-                            console.log('🔧 NATIVE TOOL CALL: RESUMED STREAM CONTAINS ADDITIONAL TOOL CALLS!', {
-                                ...logData,
-                                toolCallsCount: newChunk.additional_kwargs.tool_calls.length,
-                                toolCalls: newChunk.additional_kwargs.tool_calls.map(tc => ({
-                                    id: tc.id,
-                                    name: tc.function?.name,
-                                    args: tc.function?.arguments,
-                                })),
-                            })
+                            if (ENABLE_DETAILED_LOGGING) {
+                                console.log('🔧 NATIVE TOOL CALL: RESUMED STREAM CONTAINS ADDITIONAL TOOL CALLS!', {
+                                    ...logData,
+                                    toolCallsCount: newChunk.additional_kwargs.tool_calls.length,
+                                    toolCalls: newChunk.additional_kwargs.tool_calls.map(tc => ({
+                                        id: tc.id,
+                                        name: tc.function?.name,
+                                        args: tc.function?.arguments,
+                                    })),
+                                })
+                            }
                             // Store the tool calls to execute in next iteration
                             nextToolCalls = newChunk.additional_kwargs.tool_calls
                             // Don't break yet - let the stream finish
                         } else {
-                            console.log('🔧 NATIVE TOOL CALL: Resumed stream chunk #' + resumedChunkCount, logData)
+                            if (ENABLE_DETAILED_LOGGING) {
+                                console.log('🔧 NATIVE TOOL CALL: Resumed stream chunk #' + resumedChunkCount, logData)
+                            }
                         }
 
                         if (newChunk.content) {
@@ -2087,42 +2121,50 @@ async function storeChunks(
                             commentText += newChunk.content
                             // Use batched updates for resumed stream chunks too
                             await scheduleUpdate({ commentText }, false)
-                            console.log('🔧 NATIVE TOOL CALL: Scheduled comment update with new content', {
-                                iteration: toolCallIteration,
-                                chunkNumber: resumedChunkCount,
-                                addedContentLength: newChunk.content.length,
-                                totalContentReceived,
-                                currentCommentLength: commentText.length,
-                            })
+                            if (ENABLE_DETAILED_LOGGING) {
+                                console.log('🔧 NATIVE TOOL CALL: Scheduled comment update with new content', {
+                                    iteration: toolCallIteration,
+                                    chunkNumber: resumedChunkCount,
+                                    addedContentLength: newChunk.content.length,
+                                    totalContentReceived,
+                                    currentCommentLength: commentText.length,
+                                })
+                            }
                         }
                     }
 
                     // Flush any pending updates from resumed stream
                     await flushPendingUpdate()
 
-                    console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
-                        iteration: toolCallIteration,
-                        totalResumedChunks: resumedChunkCount,
-                        totalContentReceived,
-                        finalCommentLength: commentText.length,
-                        finalCommentPreview: commentText.substring(0, 500),
-                        hasNextToolCalls: !!nextToolCalls,
-                        nextToolCallsCount: nextToolCalls?.length || 0,
-                    })
+                    if (ENABLE_DETAILED_LOGGING) {
+                        console.log('🔧 NATIVE TOOL CALL: Finished processing resumed stream', {
+                            iteration: toolCallIteration,
+                            totalResumedChunks: resumedChunkCount,
+                            totalContentReceived,
+                            finalCommentLength: commentText.length,
+                            finalCommentPreview: commentText.substring(0, 500),
+                            hasNextToolCalls: !!nextToolCalls,
+                            nextToolCallsCount: nextToolCalls?.length || 0,
+                        })
+                    }
 
                     // Check if we need to execute more tool calls
                     if (nextToolCalls && nextToolCalls.length > 0) {
-                        console.log('🔧 NATIVE TOOL CALL: Continuing to next iteration with new tool calls', {
-                            nextIteration: toolCallIteration + 1,
-                            toolCallsCount: nextToolCalls.length,
-                        })
+                        if (ENABLE_DETAILED_LOGGING) {
+                            console.log('🔧 NATIVE TOOL CALL: Continuing to next iteration with new tool calls', {
+                                nextIteration: toolCallIteration + 1,
+                                toolCallsCount: nextToolCalls.length,
+                            })
+                        }
                         currentToolCalls = nextToolCalls
                         // Continue the while loop
                     } else {
                         // No more tool calls, we're done
-                        console.log('🔧 NATIVE TOOL CALL: No more tool calls, exiting loop', {
-                            totalIterations: toolCallIteration,
-                        })
+                        if (ENABLE_DETAILED_LOGGING) {
+                            console.log('🔧 NATIVE TOOL CALL: No more tool calls, exiting loop', {
+                                totalIterations: toolCallIteration,
+                            })
+                        }
                         currentToolCalls = null
                         // Exit the while loop
                     }
