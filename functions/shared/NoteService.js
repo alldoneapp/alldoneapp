@@ -808,10 +808,43 @@ class NoteService {
      * Get the correct notes storage bucket name using the same logic as other Firebase Functions
      */
     async getBucketName() {
-        let bucketName = this.options.storageBucket || process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
+        let bucketName =
+            this.options.storageBucket ||
+            process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
+            process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD
 
         if (bucketName) {
             console.log('NoteService: Got bucket name from options/env:', bucketName)
+
+            // Validate bucket name matches current project environment
+            let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+            if (!projectId) {
+                try {
+                    const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+                    if (cfg && cfg.projectId) projectId = cfg.projectId
+                } catch (_) {}
+            }
+            if (!projectId && typeof require !== 'undefined') {
+                try {
+                    const admin = require('firebase-admin')
+                    projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+                } catch (_) {}
+            }
+
+            // Validate bucket matches project
+            const expectedBucket =
+                projectId === 'alldonealeph'
+                    ? 'notescontentprod'
+                    : projectId === 'alldonestaging'
+                    ? 'notescontentstaging'
+                    : 'notescontentdev'
+
+            if (bucketName !== expectedBucket) {
+                console.warn(
+                    `NoteService: Bucket mismatch detected! Got "${bucketName}" but project "${projectId}" expects "${expectedBucket}". Ignoring misconfigured value.`
+                )
+                bucketName = null // Force fallback to correct bucket
+            }
         }
 
         // Fallback to get bucket name using the same logic as createNote
