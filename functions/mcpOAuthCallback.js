@@ -14,7 +14,7 @@ if (!admin.apps.length) {
 
 const oauthHandler = new CloudOAuthHandler()
 
-// Helper functions for client authentication management
+// Helper functions for client authentication management!
 function getClientId(req) {
     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown'
     const userAgent = req.headers['user-agent'] || 'unknown'
