@@ -244,7 +244,7 @@ const toolSchemas = {
                     content: {
                         type: 'string',
                         description:
-                            'New content to prepend to the note with date stamp (optional, markdown supported)',
+                            'New content to prepend to the note (date stamp will be added automatically, markdown supported)',
                     },
                     title: {
                         type: 'string',
