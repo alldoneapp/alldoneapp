@@ -834,8 +834,18 @@ class NoteService {
         }
 
         if (!bucketName) {
-            bucketName = 'notescontentdev' // Final fallback
-            console.warn('NoteService: Using fallback bucket name:', bucketName)
+            // Smart fallback based on project ID
+            const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+            if (projectId === 'alldonealeph') {
+                bucketName = 'notescontentprod'
+                console.log('NoteService: Detected production project, using bucket:', bucketName)
+            } else if (projectId === 'alldonestaging') {
+                bucketName = 'notescontentdev'
+                console.log('NoteService: Detected staging project, using bucket:', bucketName)
+            } else {
+                bucketName = 'notescontentdev' // Final fallback
+                console.warn('NoteService: Using fallback bucket name:', bucketName)
+            }
         }
 
         return bucketName
