@@ -1456,7 +1456,33 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             // Handle search failure - match MCP behavior
             if (!searchResult.success) {
                 if (searchResult.error === 'NO_MATCHES') {
-                    throw new Error(searchResult.message)
+                    // Fallback: If no project name was specified and we defaulted to current project,
+                    // try searching globally (all projects) before giving up.
+                    if (!toolArgs.projectName) {
+                        console.log(
+                            'update_note: Initial search in current project failed. Retrying with global search...'
+                        )
+                        const globalSearchResult = await cachedSearchService.findNoteForUpdateWithResults(creatorId, {
+                            noteTitle: toolArgs.noteTitle,
+                            noteId: toolArgs.noteId,
+                            projectName: undefined, // Explicitly undefined to search all projects
+                            projectId: undefined, // Explicitly undefined to search all projects
+                        })
+
+                        if (globalSearchResult.success) {
+                            console.log('update_note: Global search fallback succeeded', {
+                                noteId: globalSearchResult.selectedNote.id,
+                                projectId: globalSearchResult.projectId,
+                            })
+                            // Use the global search result
+                            searchResult = globalSearchResult
+                        } else {
+                            // If global search also fails, throw the original error (or the new one)
+                            throw new Error(searchResult.message)
+                        }
+                    } else {
+                        throw new Error(searchResult.message)
+                    }
                 } else if (searchResult.error === 'MULTIPLE_MATCHES') {
                     // Return match info to LLM instead of throwing (MCP pattern)
                     return {
