@@ -157,7 +157,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                 setAmountOfNewCommentsToHighligth(0)
             }
         }
-    }, [isAnonymous])
+    }, [isAnonymous, chat.id, projectId, chat.type])
 
     useEffect(() => {
         let interval
@@ -174,9 +174,10 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
 
     useEffect(() => {
         return () => {
-            dispatch([setActiveChatMessageId(''), setAssistantEnabled(false)])
+            dispatch(setActiveChatMessageId(''))
+            dispatch(setAssistantEnabled(false))
         }
-    }, [])
+    }, [chat.id])
 
     useEffect(() => {
         if (!showingEarlier) {
