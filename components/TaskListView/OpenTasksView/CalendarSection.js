@@ -22,7 +22,6 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
     const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
 
     const openLink = () => {
         return window.open(
@@ -75,49 +74,50 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
         .add(ALL_DAY_EVENT_DURATION_IN_HOURS, 'hours')
         .valueOf()
 
-    // Get the calendar-connected project ID from the calendar task data
-    // For syncing, we need the project with calendar API connection, not where task currently lives
-    const getCalendarConnectedProjectId = () => {
-        const firstTask = calendarEvents?.[0]?.[1]?.[0]
-        if (!firstTask?.calendarData) {
-            if (__DEV__) console.log('[CalendarSection] No calendar task data, using current projectId:', projectId)
-            return projectId
-        }
+    // Get all unique calendar-connected project IDs from the calendar task data
+    const getCalendarConnectedProjectIds = () => {
+        const uniqueProjectIds = new Set()
 
-        if (__DEV__) console.log('[CalendarSection] First calendar task data:', firstTask.calendarData)
+        // Iterate through all goals/tasks to find source projects
+        calendarEvents.forEach(goalData => {
+            const tasks = goalData[1]
+            tasks.forEach(task => {
+                if (!task.calendarData) return
 
-        // Use originalProjectId if available (the project where calendar was first connected)
-        // This is the project with the API connection, which we need for syncing
-        if (firstTask.calendarData.originalProjectId) {
-            if (__DEV__)
-                console.log('[CalendarSection] Using originalProjectId:', firstTask.calendarData.originalProjectId)
-            return firstTask.calendarData.originalProjectId
-        }
-
-        // Fallback: find which project is connected to this calendar email
-        const calendarEmail = firstTask.calendarData.email
-        if (__DEV__) console.log('[CalendarSection] Looking for project with calendar email:', calendarEmail)
-        if (apisConnected && calendarEmail) {
-            for (const [projId, apis] of Object.entries(apisConnected)) {
-                if (apis.calendar && apis.calendarEmail === calendarEmail) {
-                    if (__DEV__) console.log('[CalendarSection] Found matching project:', projId)
-                    return projId
+                // Priority 1: originalProjectId
+                if (task.calendarData.originalProjectId) {
+                    uniqueProjectIds.add(task.calendarData.originalProjectId)
+                    return
                 }
-            }
+
+                // Priority 2: Find project by calendar email
+                const calendarEmail = task.calendarData.email
+                if (apisConnected && calendarEmail) {
+                    for (const [projId, apis] of Object.entries(apisConnected)) {
+                        if (apis.calendar && apis.calendarEmail === calendarEmail) {
+                            uniqueProjectIds.add(projId)
+                            return
+                        }
+                    }
+                }
+            })
+        })
+
+        // If no specific projects found, default to current project
+        if (uniqueProjectIds.size === 0) {
+            uniqueProjectIds.add(projectId)
         }
 
-        if (__DEV__) console.log('[CalendarSection] No matching project found, using current projectId:', projectId)
-        return projectId
+        return Array.from(uniqueProjectIds)
     }
 
-    const calendarConnectedProjectId = getCalendarConnectedProjectId()
-    if (__DEV__) {
-        console.log(
-            '[CalendarSection] Final calendarConnectedProjectId:',
-            calendarConnectedProjectId,
-            'Current projectId:',
-            projectId
-        )
+    const calendarConnectedProjectIds = getCalendarConnectedProjectIds()
+    const connectedProjectIds = calendarConnectedProjectIds.filter(pid => apisConnected?.[pid]?.calendar)
+    const hasConnectedCalendars = connectedProjectIds.length > 0
+
+    const syncAllCalendars = async projectIds => {
+        if (__DEV__) console.log('[CalendarSection] Syncing calendars for projects:', projectIds)
+        return Promise.all(projectIds.map(pid => checkIfCalendarConnected(pid)))
     }
 
     return (
@@ -128,8 +128,8 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         <GoogleCalendar />
                         <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    {isConnected && (
-                        <ReloadCalendar projectId={calendarConnectedProjectId} Promise={checkIfCalendarConnected} />
+                    {hasConnectedCalendars && (
+                        <ReloadCalendar projectId={connectedProjectIds} Promise={syncAllCalendars} />
                     )}
                 </View>
             </View>
