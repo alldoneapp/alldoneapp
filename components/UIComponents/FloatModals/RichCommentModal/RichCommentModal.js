@@ -106,6 +106,7 @@ export default function RichCommentModal({
     }, [externalAssistantId])
 
     useEffect(() => {
+        dispatch(setAssistantEnabled(false))
         return () => {
             dispatch(setAssistantEnabled(false))
         }
