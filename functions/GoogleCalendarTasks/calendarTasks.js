@@ -283,10 +283,11 @@ const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks
     return tasks
 }
 
-const removeCalendarTasks = async (userId, projectId, dateFormated, events, removeFromAllDates) => {
+const removeCalendarTasks = async (userId, projectId, dateFormated, events, removeFromAllDates, email) => {
     console.log('[removeCalendarTasks] ═══════════ START ═══════════')
     console.log('[removeCalendarTasks] User ID:', userId)
     console.log('[removeCalendarTasks] Project ID:', projectId)
+    console.log('[removeCalendarTasks] Calendar Email:', email)
     console.log('[removeCalendarTasks] Date formatted:', dateFormated)
     console.log('[removeCalendarTasks] Events count:', events.length)
     console.log('[removeCalendarTasks] Remove from all dates:', removeFromAllDates)
@@ -307,6 +308,12 @@ const removeCalendarTasks = async (userId, projectId, dateFormated, events, remo
 
     tasks.forEach(task => {
         if (!task.noteId) {
+            // Only consider tasks from the current calendar account
+            // This prevents deleting tasks from other calendar accounts when syncing across projects
+            if (email && task.calendarData && task.calendarData.email !== email) {
+                return // Skip this task, it belongs to a different calendar account
+            }
+
             const { projectId, calendarData } = task
             const { dateTime, date } = calendarData.start
             const taskDateFormatted = moment(dateTime || date).format('DDMMYYYY')
@@ -331,6 +338,7 @@ const removeCalendarTasks = async (userId, projectId, dateFormated, events, remo
                     id: task.id,
                     summary: task.name,
                     projectId,
+                    email: task.calendarData?.email,
                     reasons,
                 })
                 batch.delete(admin.firestore().doc(`items/${projectId}/tasks/${task.id}`))

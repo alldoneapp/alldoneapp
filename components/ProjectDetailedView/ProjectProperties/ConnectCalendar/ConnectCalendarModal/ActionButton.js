@@ -33,7 +33,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
 
     const removeOpenEvents = () => {
         runHttpsCallableFunction('removeOldCalendarTasksSecondGen', {
-            uid: loggedUserId,
+            projectId: projectId,
             dateFormated: moment().format('DDMMYYYY'),
             events: [],
             removeFromAllDates: true,

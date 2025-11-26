@@ -2013,8 +2013,16 @@ exports.removeOldCalendarTasksSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const { removeCalendarTasks } = require('./GoogleCalendarTasks/calendarTasks')
-            const { uid, dateFormated, events, removeFromAllDates } = data
-            await removeCalendarTasks(uid, dateFormated, events, removeFromAllDates).catch(console.error)
+            const { projectId, dateFormated, events, removeFromAllDates } = data
+            const userId = auth.uid
+
+            // Get user email from API connections
+            const userDoc = await admin.firestore().collection('users').doc(userId).get()
+            const userEmail = userDoc.exists ? userDoc.data().apisConnected?.[projectId]?.calendarEmail : null
+
+            await removeCalendarTasks(userId, projectId, dateFormated, events, removeFromAllDates, userEmail).catch(
+                console.error
+            )
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
