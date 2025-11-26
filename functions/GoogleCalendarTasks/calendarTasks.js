@@ -189,8 +189,10 @@ const addCalendarEvents = async (events, syncProjectId, userId, email) => {
     }
     console.log('[addCalendarEvents] User found, project IDs:', user.projectIds)
 
-    const tasks = await getCalendarTasksInProject(syncProjectId, userId, true)
-    console.log('[addCalendarEvents] Existing calendar tasks in project:', tasks.length)
+    // Search across ALL user projects to find existing calendar tasks
+    // This prevents duplicates when users manually move tasks between projects
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true)
+    console.log('[addCalendarEvents] Existing calendar tasks across all projects:', tasks.length)
 
     const tasksMap = createTasksMap(tasks)
     console.log('[addCalendarEvents] Tasks map created, keys:', Object.keys(tasksMap).length)
@@ -295,8 +297,10 @@ const removeCalendarTasks = async (userId, projectId, dateFormated, events, remo
         return
     }
 
-    const tasks = await getCalendarTasksInProject(projectId, userId)
-    console.log('[removeCalendarTasks] Total calendar tasks to check in project:', tasks.length)
+    // Search across ALL user projects to find calendar tasks to potentially remove
+    // This ensures we find and clean up tasks even if they were manually moved
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, false)
+    console.log('[removeCalendarTasks] Total calendar tasks to check across all projects:', tasks.length)
 
     const batch = new BatchWrapper(admin.firestore())
     let tasksToDelete = 0
