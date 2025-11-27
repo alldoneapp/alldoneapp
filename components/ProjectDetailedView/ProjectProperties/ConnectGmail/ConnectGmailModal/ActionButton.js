@@ -106,7 +106,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             onPress={onPress}
             disabled={isLoading}
             processing={isLoading}
-            processingTitle={translate(isConnectedAndSignedIn ? 'Disconnecting...' : 'Connecting...')}
+            processingTitle={translate(isConnectedAndSignedIn ? 'google_api_disconnecting' : 'google_api_connecting')}
         />
     )
 }
