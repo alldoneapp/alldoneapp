@@ -762,18 +762,18 @@ async function getTaskFollowerIds(projectId, taskId, task) {
             followerIds,
         })
 
-        // Always include activator user ID (the user who scheduled the recurring task)
+        // Always include activator user ID (the user who scheduled/triggered the recurring task)
         // This is the most important person to notify
         if (task.activatorUserId && !followerIds.includes(task.activatorUserId)) {
             console.log('Adding activator user ID to follower IDs:', { activatorUserId: task.activatorUserId })
             followerIds.push(task.activatorUserId)
         }
 
-        // Always include task creator
-        if (task.creatorUserId && !followerIds.includes(task.creatorUserId)) {
-            console.log('Adding creator user ID to follower IDs:', { creatorUserId: task.creatorUserId })
-            followerIds.push(task.creatorUserId)
-        }
+        // Creator is NOT automatically included - they only get notified if they:
+        // 1. Are the activator (handled above)
+        // 2. Are explicitly in the chatFollowers collection
+        // 3. Are assigned to the task (via task.userIds)
+        // This prevents User A from getting notifications when User B triggers their assistant
 
         // Include all assigned users
         if (task.userIds && Array.isArray(task.userIds)) {

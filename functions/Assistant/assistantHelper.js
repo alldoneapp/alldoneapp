@@ -893,12 +893,13 @@ const getCurrentFollowerIds = async (followerIds, projectId, objectType, objectI
             return []
         }
 
-        console.log('Found task creator and using that as follower:', {
+        console.log('Found task creator and using that as fallback for legacy tasks:', {
             taskId: chat.taskId,
             creatorUserId: task.creatorUserId,
         })
 
         // Return array with just the creator ID
+        // NOTE: This is a fallback for legacy scenarios. Normally activatorUserId should be used.
         return [task.creatorUserId]
     } catch (error) {
         console.error('Error in getCurrentFollowerIds:', {

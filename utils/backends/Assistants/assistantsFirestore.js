@@ -469,6 +469,7 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
                 const { loggedUser } = store.getState()
                 if (loggedUser?.uid) {
                     taskToStore.creatorUserId = loggedUser.uid
+                    taskToStore.activatorUserId = loggedUser.uid
                 }
             }
 
@@ -499,6 +500,7 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
                 const { loggedUser } = store.getState()
                 if (loggedUser?.uid) {
                     taskToStore.creatorUserId = loggedUser.uid
+                    taskToStore.activatorUserId = loggedUser.uid
                 }
             }
 
@@ -724,6 +726,7 @@ export async function copyPreConfigTasksToNewAssistant(
             if (!targetIsGlobal) {
                 taskCopy.activatedInProjectId = targetProjectId
                 taskCopy.lastExecuted = null
+                taskCopy.activatorUserId = currentUserId
             }
 
             console.log('Copying task:', task.title || task.name, 'with new ID:', newTaskId)
