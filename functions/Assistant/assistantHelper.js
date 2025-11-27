@@ -1813,7 +1813,6 @@ async function storeChunks(
 
         console.log('🚀 [TIMING] About to enter stream loop in storeChunks')
         for await (const chunk of stream) {
-            console.log('📦 [TIMING] Received stream chunk in storeChunks')
             chunkCount++
             const chunkTime = Date.now()
 
