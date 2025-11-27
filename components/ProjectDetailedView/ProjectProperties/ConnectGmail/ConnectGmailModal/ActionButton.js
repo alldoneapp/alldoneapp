@@ -38,7 +38,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
                 email,
             })
         } catch (error) {
-            console.error('Error loading Gmail data:', error)
+            console.error('[ConnectGmail] Error loading Gmail data:', error)
         }
     }
 
@@ -53,7 +53,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
                 await connectServerSide()
             }
         } catch (error) {
-            console.error('Error in Gmail connection:', error)
+            console.error('[ConnectGmail] Error in Gmail connection:', error)
         } finally {
             setIsLoading(false)
         }
@@ -71,7 +71,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             closePopover()
             setIsSignedIn(true)
         } catch (error) {
-            console.error('Error connecting Gmail:', error)
+            console.error('[ConnectGmail] Error connecting Gmail:', error)
             store.dispatch(
                 showConfirmPopup({
                     trigger: CONFIRM_POPUP_TRIGGER_INFO,
@@ -94,7 +94,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             closePopover()
             setIsSignedIn(false)
         } catch (error) {
-            console.error('Error disconnecting Gmail:', error)
+            console.error('[ConnectGmail] Error disconnecting Gmail:', error)
         }
     }
 

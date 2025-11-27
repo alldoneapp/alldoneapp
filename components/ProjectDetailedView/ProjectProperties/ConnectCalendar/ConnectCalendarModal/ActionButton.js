@@ -27,7 +27,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
                 daysAhead: 30,
             })
         } catch (error) {
-            console.error('Error loading calendar events:', error)
+            console.error('[ConnectCalendar] Error loading calendar events:', error)
         }
     }
 
@@ -51,7 +51,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
                 await connectServerSide()
             }
         } catch (error) {
-            console.error('Error in calendar connection:', error)
+            console.error('[ConnectCalendar] Error in calendar connection:', error)
         } finally {
             setIsLoading(false)
         }
@@ -69,7 +69,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             closePopover()
             setIsSignedIn(true)
         } catch (error) {
-            console.error('Error connecting calendar:', error)
+            console.error('[ConnectCalendar] Error connecting calendar:', error)
             store.dispatch(
                 showConfirmPopup({
                     trigger: CONFIRM_POPUP_TRIGGER_INFO,
@@ -95,7 +95,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             closePopover()
             setIsSignedIn(false)
         } catch (error) {
-            console.error('Error disconnecting calendar:', error)
+            console.error('[ConnectCalendar] Error disconnecting calendar:', error)
         }
     }
 

@@ -25,7 +25,7 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
                     setIsSignedIn(false)
                 }
             } catch (error) {
-                console.error('Error checking server auth:', error)
+                console.error('[ConnectCalendar] Error checking server auth:', error)
                 setIsSignedIn(false)
             }
         }

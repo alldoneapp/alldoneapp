@@ -25,7 +25,7 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
                     setIsSignedIn(false)
                 }
             } catch (error) {
-                console.error('Error checking server auth:', error)
+                console.error('[ConnectGmail] Error checking server auth:', error)
                 setIsSignedIn(false)
             }
         }

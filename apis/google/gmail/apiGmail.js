@@ -49,10 +49,10 @@ class ApiGmail {
                 })
                 return res.result
             } catch (e) {
-                console.error(e)
+                console.error('[Gmail API] Error fetching Gmail labels:', e)
             }
         } else {
-            console.log('Error: this.gapi not loaded')
+            console.error('[Gmail API] GAPI not loaded')
         }
     }
 }
@@ -61,6 +61,6 @@ let apiGmail
 try {
     apiGmail = new ApiGmail(config)
 } catch (e) {
-    console.log(e)
+    console.error('[Gmail API] Error initializing:', e)
 }
 export default apiGmail
