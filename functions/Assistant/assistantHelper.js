@@ -20,7 +20,7 @@ const {
     updateAssistantLastCommentData,
 } = require('../Firestore/assistantsFirestore')
 const { updateContactLastCommentData } = require('../Firestore/contactsFirestore')
-const { updateUserLastCommentData } = require('../Users/usersFirestore')
+const { updateUserLastCommentData, getUserData } = require('../Users/usersFirestore')
 const { updateSkillLastCommentData } = require('../Skills/skillsFirestore')
 const { updateTaskLastCommentData } = require('../Tasks/tasksFirestoreCloud')
 const { updateGoalLastCommentData } = require('../Goals/goalsFirestore')
@@ -2722,6 +2722,11 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
 function addBaseInstructions(messages, name, language, instructions, allowedTools = [], userTimezoneOffset = null) {
     // messages.push(['system', `Your responses must be limited to ${COMPLETION_MAX_TOKENS} tokens.`])
     messages.push(['system', `You are an AI assistant  and your name is: "${parseTextForUseLiKePrompt(name || '')}"`])
+    // Prevent AI from summarizing/referencing previous conversation before answering
+    messages.push([
+        'system',
+        "Do not summarize, reference, or acknowledge previous messages in the conversation. Respond directly to the user's latest message without preamble.",
+    ])
     // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
     messages.push(['system', `Speak in the same language the user speaks')}`])
 
@@ -2802,22 +2807,54 @@ async function getOptimizedContextMessages(
 
     const [commentDocs, notesContext] = await Promise.all(parallelPromises)
 
-    // Process messages
-    const messages = []
+    // First pass: collect messages and unique user IDs
+    const rawMessages = []
+    const userIds = new Set()
     let amountOfCommentsInContext = 0
 
     for (let i = 0; i < commentDocs.length; i++) {
         if (amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
             const messageData = commentDocs[i].data()
-            const { commentText, fromAssistant } = messageData
+            const { commentText, fromAssistant, creatorId, lastChangeDate, created } = messageData
             if (commentText) {
-                const role = fromAssistant ? 'assistant' : 'user'
-                // Use parseTextForUseLiKePrompt for consistency with original implementation
-                messages.push([role, parseTextForUseLiKePrompt(commentText)])
+                rawMessages.push({
+                    commentText,
+                    fromAssistant,
+                    creatorId,
+                    timestamp: lastChangeDate || created,
+                })
+                if (!fromAssistant && creatorId) {
+                    userIds.add(creatorId)
+                }
             }
             amountOfCommentsInContext++
             if (amountOfCommentsInContext === 5) break // Reduced from 3 to 5 for better context
         }
+    }
+
+    // Fetch user data for all unique user IDs in parallel
+    const userIdArray = Array.from(userIds)
+    const userDataPromises = userIdArray.map(id => getUserData(id).catch(() => null))
+    const userData = await Promise.all(userDataPromises)
+    const userMap = {}
+    userIdArray.forEach((id, index) => {
+        if (userData[index]) {
+            userMap[id] = userData[index].displayName || 'User'
+        }
+    })
+
+    // Format messages with timestamps and user names
+    const messages = []
+    for (const msg of rawMessages) {
+        const role = msg.fromAssistant ? 'assistant' : 'user'
+        const timestamp = msg.timestamp ? moment(msg.timestamp).format('YYYY-MM-DD HH:mm') : ''
+        const userName = msg.fromAssistant ? assistantName : userMap[msg.creatorId] || 'User'
+
+        // Format: [timestamp - Name]: message content
+        const prefix = timestamp ? `[${timestamp} - ${userName}]: ` : `[${userName}]: `
+        const formattedContent = prefix + parseTextForUseLiKePrompt(msg.commentText)
+
+        messages.push([role, formattedContent])
     }
 
     // Add base instructions

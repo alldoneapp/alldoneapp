@@ -52,6 +52,9 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             `[serverSideCalendarSync] Timezone: ${timezone}, Offset: ${timezoneOffset}, User: ${userId}, Project: ${projectId}`
         )
 
+        // Get fresh access token (automatically refreshes if needed)
+        const accessToken = await getAccessToken(userId, projectId, 'calendar')
+
         // Create authenticated OAuth2 client
         const oauth2Client = getOAuth2Client()
         oauth2Client.setCredentials({
@@ -62,14 +65,23 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
 
         // Calculate time range for events using user's timezone
-        const nowUtc = moment.utc()
-        const nowUserTz = nowUtc.clone().add(timezoneOffset, 'minutes')
-        const startOfTodayUserTz = nowUserTz.clone().startOf('day')
-        const timeMin = startOfTodayUserTz.clone().subtract(timezoneOffset, 'minutes').toDate()
+        // Calculate time range for events using user's timezone
+        let startOfTodayUserTz
+        try {
+            if (typeof timezone === 'string') {
+                startOfTodayUserTz = moment.tz(timezone).startOf('day')
+            } else {
+                // Numeric offset or default 0
+                startOfTodayUserTz = moment().utcOffset(timezoneOffset).startOf('day')
+            }
+        } catch (e) {
+            console.error(`[serverSideCalendarSync] Error parsing timezone '${timezone}':`, e)
+            // Fallback to UTC if timezone parsing fails
+            startOfTodayUserTz = moment.utc().startOf('day')
+        }
 
-        // End date: Start of tomorrow in user's timezone (sync only TODAY's events)
-        const endDateUserTz = startOfTodayUserTz.clone().add(1, 'day')
-        const timeMax = endDateUserTz.clone().subtract(timezoneOffset, 'minutes').subtract(1, 'seconds').toDate()
+        const timeMin = startOfTodayUserTz.toDate()
+        const timeMax = startOfTodayUserTz.clone().endOf('day').toDate()
 
         console.log(
             `[serverSideCalendarSync] Fetch Window - Min: ${timeMin.toISOString()}, Max: ${timeMax.toISOString()}`

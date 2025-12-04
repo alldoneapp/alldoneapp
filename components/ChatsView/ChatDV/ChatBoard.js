@@ -38,8 +38,6 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 
-const ASSISTANT_STATUS_MESSAGES = ['Processing...', 'Thinking...']
-
 export default function ChatBoard({ projectId, chat, parentObject, assistantId, chatTitle, members, objectType }) {
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
@@ -123,10 +121,11 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
         if (!isAssistantMessage) return
 
         const trimmedText = (lastMessage?.commentText || '').trim()
-        const isStatusMessage = ASSISTANT_STATUS_MESSAGES.includes(trimmedText)
         const isEmpty = trimmedText === ''
 
-        if (isStatusMessage || lastMessage?.isLoading || isEmpty) return
+        // Hide placeholder when any assistant message appears (including status messages like "Processing...")
+        // Status messages are rendered via MessageItem, so we don't need the placeholder anymore
+        if (lastMessage?.isLoading || isEmpty) return
 
         setWaitingForBotAnswer(false)
     }, [messages])

@@ -283,12 +283,6 @@ const removeCalendarTasks = async (
     const batch = new BatchWrapper(admin.firestore())
     let tasksToDelete = 0
 
-    if (tasksToDelete > 0) {
-        console.log(`[removeCalendarTasks] Removing ${tasksToDelete} tasks`)
-    } else {
-        console.log(`[removeCalendarTasks] No tasks to remove. Checked ${tasks.length} tasks.`)
-    }
-
     tasks.forEach(task => {
         if (!task.noteId) {
             // Only consider tasks from the current calendar account
@@ -327,6 +321,12 @@ const removeCalendarTasks = async (
             }
         }
     })
+
+    if (tasksToDelete > 0) {
+        console.log(`[removeCalendarTasks] Removing ${tasksToDelete} tasks`)
+    } else {
+        console.log(`[removeCalendarTasks] No tasks to remove. Checked ${tasks.length} tasks.`)
+    }
 
     await batch.commit()
 }
