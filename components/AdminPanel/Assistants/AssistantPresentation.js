@@ -98,7 +98,7 @@ export default function AssistantPresentation({ projectId, assistant, onAssistan
                         commentsData={assistant.commentsData}
                     />
                 )}
-                {assistant.noteIdsByProject[projectId] && (
+                {!!assistant.noteIdsByProject[projectId] && (
                     <ObjectNoteTag
                         objectId={assistant.uid}
                         objectType="assistants"

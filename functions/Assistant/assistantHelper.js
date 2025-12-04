@@ -333,7 +333,7 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey)
+    const model = getModel(modelKey) || 'gpt-5.1' // Fallback to gpt-5.1 if undefined
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
