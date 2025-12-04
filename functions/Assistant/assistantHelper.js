@@ -627,7 +627,8 @@ function formatMessage(objectType, message, assistantId) {
     const now = Date.now()
     const comment = {
         commentText: message,
-        lastChangeDate: now,
+        // Use Firestore Timestamp to match user messages format (enables proper ordering)
+        lastChangeDate: admin.firestore.Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,

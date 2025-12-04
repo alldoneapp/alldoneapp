@@ -292,6 +292,7 @@ const removeCalendarTasks = async (
             }
 
             const { projectId, calendarData } = task
+            const { dateTime, date } = calendarData.start
             const taskMoment = moment(dateTime || date)
                 .utcOffset(timezoneOffset)
                 .startOf('day')
