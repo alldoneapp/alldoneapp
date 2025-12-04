@@ -3,7 +3,7 @@ const { google } = require('googleapis')
 const admin = require('firebase-admin')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { addCalendarEvents, removeCalendarTasks } = require('../GoogleCalendarTasks/calendarTasks')
-const moment = require('moment')
+const moment = require('moment-timezone')
 
 /**
  * Server-side calendar sync function
@@ -31,15 +31,26 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             throw new Error('Calendar not connected for this project')
         }
 
-        // Get user timezone offset (in minutes)
-        const timezoneOffset =
+        // Get user timezone (string or offset)
+        const timezone =
             (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
             (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
             (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
             0
 
-        // Get fresh access token (automatically refreshes if needed)
-        const accessToken = await getAccessToken(userId, projectId, 'calendar')
+        // Calculate timezone offset in minutes
+        let timezoneOffset = 0
+        if (typeof timezone === 'string') {
+            // It's an IANA timezone string (e.g., "Europe/Berlin")
+            timezoneOffset = moment.tz(timezone).utcOffset()
+        } else if (typeof timezone === 'number') {
+            // It's already an offset in minutes
+            timezoneOffset = timezone
+        }
+
+        console.log(
+            `[serverSideCalendarSync] Timezone: ${timezone}, Offset: ${timezoneOffset}, User: ${userId}, Project: ${projectId}`
+        )
 
         // Create authenticated OAuth2 client
         const oauth2Client = getOAuth2Client()
@@ -59,6 +70,10 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         // End date: Start of tomorrow in user's timezone (sync only TODAY's events)
         const endDateUserTz = startOfTodayUserTz.clone().add(1, 'day')
         const timeMax = endDateUserTz.clone().subtract(timezoneOffset, 'minutes').subtract(1, 'seconds').toDate()
+
+        console.log(
+            `[serverSideCalendarSync] Fetch Window - Min: ${timeMin.toISOString()}, Max: ${timeMax.toISOString()}`
+        )
 
         const fetchStartTime = Date.now()
 
@@ -132,6 +147,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         })
 
         const todayFormatted = startOfTodayUserTz.format('DDMMYYYY')
+        console.log(`[serverSideCalendarSync] todayFormatted: ${todayFormatted}`)
         await removeCalendarTasks(userId, projectId, todayFormatted, simplifiedEvents, false, userEmail, timezoneOffset)
 
         const totalDuration = Date.now() - fetchStartTime

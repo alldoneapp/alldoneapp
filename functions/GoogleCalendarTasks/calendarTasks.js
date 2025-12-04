@@ -283,6 +283,12 @@ const removeCalendarTasks = async (
     const batch = new BatchWrapper(admin.firestore())
     let tasksToDelete = 0
 
+    if (tasksToDelete > 0) {
+        console.log(`[removeCalendarTasks] Removing ${tasksToDelete} tasks`)
+    } else {
+        console.log(`[removeCalendarTasks] No tasks to remove. Checked ${tasks.length} tasks.`)
+    }
+
     tasks.forEach(task => {
         if (!task.noteId) {
             // Only consider tasks from the current calendar account
@@ -298,25 +304,30 @@ const removeCalendarTasks = async (
                 .format('DDMMYYYY')
 
             let shouldDelete = false
+            let deleteReason = ''
 
             if (removeFromAllDates) {
                 shouldDelete = true
+                deleteReason = 'removeFromAllDates is true'
             } else if (taskDateFormatted === dateFormated) {
                 if (checkIfIsInvalidEvent(events, task.id)) {
                     shouldDelete = true
+                    deleteReason = 'Task is invalid/declined'
                 }
+            } else {
+                // console.log(`[removeCalendarTasks] Skipping task ${task.id} - Date mismatch: ${taskDateFormatted} !== ${dateFormated}`)
             }
 
             if (shouldDelete) {
+                console.log(
+                    `[removeCalendarTasks] Deleting task ${task.id} (${task.name}) - Reason: ${deleteReason} - Date: ${taskDateFormatted}`
+                )
                 tasksToDelete++
                 batch.delete(admin.firestore().doc(`items/${projectId}/tasks/${task.id}`))
             }
         }
     })
 
-    if (tasksToDelete > 0) {
-        console.log(`[removeCalendarTasks] Removing ${tasksToDelete} tasks`)
-    }
     await batch.commit()
 }
 
