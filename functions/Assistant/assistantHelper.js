@@ -627,7 +627,7 @@ function formatMessage(objectType, message, assistantId) {
     const now = Date.now()
     const comment = {
         commentText: message,
-        lastChangeDate: now,
+        lastChangeDate: admin.firestore.Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -2728,7 +2728,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
         "Respond directly to the user's latest message without preamble and do not repeat the timestamp and names of the previous messages which are only given for your context.",
     ])
     // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
-    messages.push(['system', `Speak in the same language the user speaks')}`])
+    messages.push(['system', `Speak in the same language the user speaks`])
 
     // Generate current date/time in user's timezone if available
     let currentDateTime

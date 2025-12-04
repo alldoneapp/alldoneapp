@@ -48,7 +48,7 @@ async function createInitialStatusMessage(
         creatorId: assistantId,
         commentText: statusMessage,
         commentType: 'STAYWARD_COMMENT',
-        lastChangeDate: now,
+        lastChangeDate: admin.firestore.Timestamp.now(),
         created: now,
         originalContent: statusMessage,
         fromAssistant: true,

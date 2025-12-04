@@ -485,7 +485,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                 creatorId: task.userId || task.creatorUserId,
                 commentText: prompt,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: Date.now(),
+                lastChangeDate: admin.firestore.Timestamp.now(),
                 created: Date.now(),
                 originalContent: prompt,
             }
