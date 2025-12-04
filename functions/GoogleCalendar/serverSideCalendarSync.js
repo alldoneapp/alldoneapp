@@ -58,7 +58,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
         // End date: Start of tomorrow in user's timezone (sync only TODAY's events)
         const endDateUserTz = startOfTodayUserTz.clone().add(1, 'day')
-        const timeMax = endDateUserTz.clone().subtract(timezoneOffset, 'minutes').toDate()
+        const timeMax = endDateUserTz.clone().subtract(timezoneOffset, 'minutes').subtract(1, 'seconds').toDate()
 
         const fetchStartTime = Date.now()
 
@@ -131,8 +131,8 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             }
         })
 
-        const todayFormatted = moment().format('DDMMYYYY')
-        await removeCalendarTasks(userId, projectId, todayFormatted, simplifiedEvents, false, userEmail)
+        const todayFormatted = startOfTodayUserTz.format('DDMMYYYY')
+        await removeCalendarTasks(userId, projectId, todayFormatted, simplifiedEvents, false, userEmail, timezoneOffset)
 
         const totalDuration = Date.now() - fetchStartTime
         console.log(

@@ -262,7 +262,15 @@ const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks
     return tasks
 }
 
-const removeCalendarTasks = async (userId, projectId, dateFormated, events, removeFromAllDates, email) => {
+const removeCalendarTasks = async (
+    userId,
+    projectId,
+    dateFormated,
+    events,
+    removeFromAllDates,
+    email,
+    timezoneOffset = 0
+) => {
     const user = await getUserData(userId)
     if (!user) {
         return
@@ -285,16 +293,18 @@ const removeCalendarTasks = async (userId, projectId, dateFormated, events, remo
 
             const { projectId, calendarData } = task
             const { dateTime, date } = calendarData.start
-            const taskDateFormatted = moment(dateTime || date).format('DDMMYYYY')
+            const taskDateFormatted = moment(dateTime || date)
+                .utcOffset(timezoneOffset)
+                .format('DDMMYYYY')
 
             let shouldDelete = false
 
             if (removeFromAllDates) {
                 shouldDelete = true
-            } else if (taskDateFormatted !== dateFormated) {
-                shouldDelete = true
-            } else if (checkIfIsInvalidEvent(events, task.id)) {
-                shouldDelete = true
+            } else if (taskDateFormatted === dateFormated) {
+                if (checkIfIsInvalidEvent(events, task.id)) {
+                    shouldDelete = true
+                }
             }
 
             if (shouldDelete) {
