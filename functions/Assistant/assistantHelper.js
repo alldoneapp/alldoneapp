@@ -627,8 +627,7 @@ function formatMessage(objectType, message, assistantId) {
     const now = Date.now()
     const comment = {
         commentText: message,
-        // Use Firestore Timestamp to match user messages format (enables proper ordering)
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: now,
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -2726,7 +2725,7 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     // Prevent AI from summarizing/referencing previous conversation before answering
     messages.push([
         'system',
-        "Do not summarize, reference, or acknowledge previous messages in the conversation. Respond directly to the user's latest message without preamble.",
+        "Respond directly to the user's latest message without preamble and do not repeat the timestamp and names of the previous messages which are only given for your context.",
     ])
     // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
     messages.push(['system', `Speak in the same language the user speaks')}`])
@@ -2871,20 +2870,8 @@ async function getOptimizedContextMessages(
         // Handle different timestamp formats (Firestore Timestamp vs number)
         let timestamp = ''
         if (msg.timestamp) {
-            let timestampMs
-            // Firestore Timestamp has _seconds or seconds property
-            if (msg.timestamp._seconds !== undefined) {
-                timestampMs = msg.timestamp._seconds * 1000
-            } else if (msg.timestamp.seconds !== undefined) {
-                timestampMs = msg.timestamp.seconds * 1000
-            } else if (typeof msg.timestamp.toMillis === 'function') {
-                timestampMs = msg.timestamp.toMillis()
-            } else if (typeof msg.timestamp.toDate === 'function') {
-                timestampMs = msg.timestamp.toDate().getTime()
-            } else {
-                // Assume it's already a number (milliseconds)
-                timestampMs = msg.timestamp
-            }
+            // Firestore Timestamp has toMillis() method, plain numbers don't
+            const timestampMs = typeof msg.timestamp.toMillis === 'function' ? msg.timestamp.toMillis() : msg.timestamp
             timestamp = moment(timestampMs).format('YYYY-MM-DD HH:mm')
         }
 
