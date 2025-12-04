@@ -103,6 +103,13 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         const fetchDuration = Date.now() - fetchStartTime
         const events = response.data.items || []
         console.log(`[serverSideCalendarSync] Fetched ${events.length} events in ${fetchDuration}ms`)
+        events.forEach(e => {
+            console.log(
+                `[serverSideCalendarSync] Event: ${e.summary} | Start: ${e.start.dateTime || e.start.date} | Status: ${
+                    e.status
+                }`
+            )
+        })
 
         // Get user email from stored token data
         // 1. Try service-specific token (new format)

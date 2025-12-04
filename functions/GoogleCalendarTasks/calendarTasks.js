@@ -307,9 +307,15 @@ const removeCalendarTasks = async (
                 if (checkIfIsInvalidEvent(events, task.id)) {
                     shouldDelete = true
                     deleteReason = 'Task is invalid/declined'
+                } else {
+                    console.log(
+                        `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Date match but valid event`
+                    )
                 }
             } else {
-                // console.log(`[removeCalendarTasks] Skipping task ${task.id} - Date mismatch: ${taskDateFormatted} !== ${dateFormated}`)
+                console.log(
+                    `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Date mismatch: ${taskDateFormatted} !== ${dateFormated}`
+                )
             }
 
             if (shouldDelete) {
