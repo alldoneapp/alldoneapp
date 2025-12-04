@@ -220,7 +220,7 @@ deploy:cloud:functions:staging:
         - npm run setup_functions
     script:
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
-        - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
+        - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
     only:
         refs:
@@ -258,7 +258,7 @@ deploy:cloud:functions:production:
         - npm run setup_functions
     script:
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
-        - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
+        - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
     only:
         refs:
