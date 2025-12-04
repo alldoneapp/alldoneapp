@@ -121,7 +121,7 @@ export default function AssistantsArea({ closeModal, project }) {
             {assistantsByProjectArray.map(data => {
                 const { project, assistants } = data
                 return (
-                    <View>
+                    <View key={project.id}>
                         <ProjectHeader
                             project={project}
                             amount={assistants.length}

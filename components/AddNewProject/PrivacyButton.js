@@ -12,10 +12,20 @@ import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 export default function PrivacyButton({ value, setPrivacy, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
 
+    const isMounted = React.useRef(true)
+
+    React.useEffect(() => {
+        return () => {
+            isMounted.current = false
+        }
+    }, [])
+
     const hideModal = () => {
         setTimeout(() => {
-            setIsOpen(false)
-            store.dispatch(hideFloatPopup())
+            if (isMounted.current) {
+                setIsOpen(false)
+                store.dispatch(hideFloatPopup())
+            }
         })
     }
 

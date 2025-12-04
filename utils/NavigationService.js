@@ -11,7 +11,9 @@ function navigate(routeName, params) {
         index: 0,
         actions: [NavigationActions.navigate({ routeName, params })],
     })
-    _navigator.dispatch(resetAction)
+    if (_navigator) {
+        _navigator.dispatch(resetAction)
+    }
 }
 
 export default {
