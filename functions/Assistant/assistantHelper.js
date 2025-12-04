@@ -2784,6 +2784,8 @@ async function getOptimizedContextMessages(
             .limit(10) // Reduced from 50 to improve speed
             .get()
             .then(snapshot => snapshot.docs),
+        // Fetch chat/object data to get the topic name
+        getChat(projectId, objectId).catch(() => null),
     ]
 
     // If we need notes context, fetch the specific message in parallel
@@ -2805,7 +2807,7 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
-    const [commentDocs, notesContext] = await Promise.all(parallelPromises)
+    const [commentDocs, chatData, notesContext] = await Promise.all(parallelPromises)
 
     // First pass: collect messages and unique user IDs
     const rawMessages = []
@@ -2816,6 +2818,18 @@ async function getOptimizedContextMessages(
         if (amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
             const messageData = commentDocs[i].data()
             const { commentText, fromAssistant, creatorId, lastChangeDate, created } = messageData
+
+            // Debug logging to understand message structure
+            console.log(`📝 Context message #${amountOfCommentsInContext}:`, {
+                docId: commentDocs[i].id,
+                fromAssistant,
+                creatorId,
+                hasCommentText: !!commentText,
+                commentTextPreview: commentText ? commentText.substring(0, 50) : '(empty)',
+                lastChangeDate: lastChangeDate,
+                created: created,
+            })
+
             if (commentText) {
                 rawMessages.push({
                     commentText,
@@ -2832,6 +2846,11 @@ async function getOptimizedContextMessages(
         }
     }
 
+    console.log(`📝 Total raw messages collected: ${rawMessages.length}, fromAssistant breakdown:`, {
+        assistantMessages: rawMessages.filter(m => m.fromAssistant).length,
+        userMessages: rawMessages.filter(m => !m.fromAssistant).length,
+    })
+
     // Fetch user data for all unique user IDs in parallel
     const userIdArray = Array.from(userIds)
     const userDataPromises = userIdArray.map(id => getUserData(id).catch(() => null))
@@ -2847,7 +2866,27 @@ async function getOptimizedContextMessages(
     const messages = []
     for (const msg of rawMessages) {
         const role = msg.fromAssistant ? 'assistant' : 'user'
-        const timestamp = msg.timestamp ? moment(msg.timestamp).format('YYYY-MM-DD HH:mm') : ''
+
+        // Handle different timestamp formats (Firestore Timestamp vs number)
+        let timestamp = ''
+        if (msg.timestamp) {
+            let timestampMs
+            // Firestore Timestamp has _seconds or seconds property
+            if (msg.timestamp._seconds !== undefined) {
+                timestampMs = msg.timestamp._seconds * 1000
+            } else if (msg.timestamp.seconds !== undefined) {
+                timestampMs = msg.timestamp.seconds * 1000
+            } else if (typeof msg.timestamp.toMillis === 'function') {
+                timestampMs = msg.timestamp.toMillis()
+            } else if (typeof msg.timestamp.toDate === 'function') {
+                timestampMs = msg.timestamp.toDate().getTime()
+            } else {
+                // Assume it's already a number (milliseconds)
+                timestampMs = msg.timestamp
+            }
+            timestamp = moment(timestampMs).format('YYYY-MM-DD HH:mm')
+        }
+
         const userName = msg.fromAssistant ? assistantName : userMap[msg.creatorId] || 'User'
 
         // Format: [timestamp - Name]: message content
@@ -2859,6 +2898,15 @@ async function getOptimizedContextMessages(
 
     // Add base instructions
     addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset)
+
+    // Add topic/context information if available
+    if (chatData && chatData.title) {
+        const objectTypeLabel = objectType === 'topics' ? 'chat' : objectType.replace(/s$/, '') // tasks -> task, notes -> note
+        messages.push([
+            'system',
+            `This conversation is about a ${objectTypeLabel} titled: "${parseTextForUseLiKePrompt(chatData.title)}"`,
+        ])
+    }
 
     const reversedMessages = messages.reverse()
 
