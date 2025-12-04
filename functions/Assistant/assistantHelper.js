@@ -20,7 +20,7 @@ const {
     updateAssistantLastCommentData,
 } = require('../Firestore/assistantsFirestore')
 const { updateContactLastCommentData } = require('../Firestore/contactsFirestore')
-const { updateUserLastCommentData, getUserData } = require('../Users/usersFirestore')
+const { updateUserLastCommentData } = require('../Users/usersFirestore')
 const { updateSkillLastCommentData } = require('../Skills/skillsFirestore')
 const { updateTaskLastCommentData } = require('../Tasks/tasksFirestoreCloud')
 const { updateGoalLastCommentData } = require('../Goals/goalsFirestore')
@@ -2809,79 +2809,22 @@ async function getOptimizedContextMessages(
 
     const [commentDocs, chatData, notesContext] = await Promise.all(parallelPromises)
 
-    // First pass: collect messages and unique user IDs
-    const rawMessages = []
-    const userIds = new Set()
+    // Collect messages from conversation history
+    const messages = []
     let amountOfCommentsInContext = 0
 
     for (let i = 0; i < commentDocs.length; i++) {
         if (amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
             const messageData = commentDocs[i].data()
-            const { commentText, fromAssistant, creatorId, lastChangeDate, created } = messageData
-
-            // Debug logging to understand message structure
-            console.log(`📝 Context message #${amountOfCommentsInContext}:`, {
-                docId: commentDocs[i].id,
-                fromAssistant,
-                creatorId,
-                hasCommentText: !!commentText,
-                commentTextPreview: commentText ? commentText.substring(0, 50) : '(empty)',
-                lastChangeDate: lastChangeDate,
-                created: created,
-            })
+            const { commentText, fromAssistant } = messageData
 
             if (commentText) {
-                rawMessages.push({
-                    commentText,
-                    fromAssistant,
-                    creatorId,
-                    timestamp: lastChangeDate || created,
-                })
-                if (!fromAssistant && creatorId) {
-                    userIds.add(creatorId)
-                }
+                const role = fromAssistant ? 'assistant' : 'user'
+                messages.push([role, parseTextForUseLiKePrompt(commentText)])
             }
             amountOfCommentsInContext++
-            if (amountOfCommentsInContext === 5) break // Reduced from 3 to 5 for better context
+            if (amountOfCommentsInContext === 5) break
         }
-    }
-
-    console.log(`📝 Total raw messages collected: ${rawMessages.length}, fromAssistant breakdown:`, {
-        assistantMessages: rawMessages.filter(m => m.fromAssistant).length,
-        userMessages: rawMessages.filter(m => !m.fromAssistant).length,
-    })
-
-    // Fetch user data for all unique user IDs in parallel
-    const userIdArray = Array.from(userIds)
-    const userDataPromises = userIdArray.map(id => getUserData(id).catch(() => null))
-    const userData = await Promise.all(userDataPromises)
-    const userMap = {}
-    userIdArray.forEach((id, index) => {
-        if (userData[index]) {
-            userMap[id] = userData[index].displayName || 'User'
-        }
-    })
-
-    // Format messages with timestamps and user names
-    const messages = []
-    for (const msg of rawMessages) {
-        const role = msg.fromAssistant ? 'assistant' : 'user'
-
-        // Handle different timestamp formats (Firestore Timestamp vs number)
-        let timestamp = ''
-        if (msg.timestamp) {
-            // Firestore Timestamp has toMillis() method, plain numbers don't
-            const timestampMs = typeof msg.timestamp.toMillis === 'function' ? msg.timestamp.toMillis() : msg.timestamp
-            timestamp = moment(timestampMs).format('YYYY-MM-DD HH:mm')
-        }
-
-        const userName = msg.fromAssistant ? assistantName : userMap[msg.creatorId] || 'User'
-
-        // Format: [timestamp - Name]: message content
-        const prefix = timestamp ? `[${timestamp} - ${userName}]: ` : `[${userName}]: `
-        const formattedContent = prefix + parseTextForUseLiKePrompt(msg.commentText)
-
-        messages.push([role, formattedContent])
     }
 
     // Add base instructions
