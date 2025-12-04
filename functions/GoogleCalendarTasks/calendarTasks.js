@@ -292,10 +292,11 @@ const removeCalendarTasks = async (
             }
 
             const { projectId, calendarData } = task
-            const { dateTime, date } = calendarData.start
-            const taskDateFormatted = moment(dateTime || date)
+            const taskMoment = moment(dateTime || date)
                 .utcOffset(timezoneOffset)
-                .format('DDMMYYYY')
+                .startOf('day')
+            const taskDateFormatted = taskMoment.format('DDMMYYYY')
+            const syncDateMoment = moment(dateFormated, 'DDMMYYYY').startOf('day')
 
             let shouldDelete = false
             let deleteReason = ''
@@ -303,7 +304,15 @@ const removeCalendarTasks = async (
             if (removeFromAllDates) {
                 shouldDelete = true
                 deleteReason = 'removeFromAllDates is true'
-            } else if (taskDateFormatted === dateFormated) {
+            } else if (taskMoment.isAfter(syncDateMoment)) {
+                // Future task - DELETE (Clean up orphans)
+                shouldDelete = true
+                deleteReason = 'Future task (orphan cleanup)'
+            } else if (taskMoment.isBefore(syncDateMoment)) {
+                // Past task - SKIP (Preserve history)
+                // console.log(`[removeCalendarTasks] Skipping task ${task.id} - Past task`)
+            } else {
+                // Today's task - Check validity
                 if (checkIfIsInvalidEvent(events, task.id)) {
                     shouldDelete = true
                     deleteReason = 'Task is invalid/declined'
@@ -312,10 +321,6 @@ const removeCalendarTasks = async (
                         `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Date match but valid event`
                     )
                 }
-            } else {
-                console.log(
-                    `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Date mismatch: ${taskDateFormatted} !== ${dateFormated}`
-                )
             }
 
             if (shouldDelete) {
