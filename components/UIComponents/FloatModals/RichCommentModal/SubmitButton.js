@@ -34,7 +34,11 @@ export default function SubmitButton({ onSubmit, disabled, setShowRunOutGoalModa
                     icon={'plus'}
                     iconColor={'#ffffff'}
                     type={'primary'}
-                    onPress={onSubmit}
+                    onPress={event => {
+                        event?.preventDefault?.()
+                        event?.stopPropagation?.()
+                        onSubmit()
+                    }}
                     shortcutText={'Enter'}
                     forceShowShortcut={true}
                     disabled={disabled}
