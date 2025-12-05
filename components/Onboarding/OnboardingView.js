@@ -6,12 +6,15 @@ import styles from '../styles/global'
 import URLSystemTrigger from '../../URLSystem/URLSystemTrigger'
 import { setNavigationRoute } from '../../redux/actions'
 import Icon from '../Icon'
+import WhatsAppMockup from './WhatsAppMockup'
 
 export default function OnboardingView({ navigation }) {
     const dispatch = useDispatch()
     const [step, setStep] = useState(0)
     const [answers, setAnswers] = useState({})
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
+    const [chatMessages, setChatMessages] = useState([])
+    const [chatOptions, setChatOptions] = useState([])
 
     useEffect(() => {
         dispatch(setNavigationRoute('Onboarding'))
@@ -28,7 +31,44 @@ export default function OnboardingView({ navigation }) {
 
     const isDesktop = windowWidth > 768
 
+    // Initialize chat for step 1
+    useEffect(() => {
+        if (step === 1) {
+            setChatMessages([
+                { sender: 'anna', text: "Hi there! I'm Anna, your personal AI assistant. 👋" },
+                {
+                    sender: 'anna',
+                    text: "I'm here to help you organize your life and work. How do you plan to use Alldone?",
+                },
+            ])
+            setChatOptions(['Private Life', 'Work', 'Both'])
+        } else if (step === 2) {
+            // Add user answer from step 1 to messages is handled in handleAnswer
+            // Add next question
+            setTimeout(() => {
+                setChatMessages(prev => [
+                    ...prev,
+                    {
+                        sender: 'anna',
+                        text: 'Do you want to be reminded every day with your most important task of the day?',
+                    },
+                ])
+                setChatOptions(['Yes', 'No'])
+            }, 500)
+        } else if (step === 3) {
+            setTimeout(() => {
+                setChatMessages(prev => [...prev, { sender: 'anna', text: 'Setting up your trial... 🚀' }])
+                setChatOptions([])
+                setTimeout(handleFinish, 1500)
+            }, 500)
+        }
+    }, [step])
+
     const handleAnswer = (questionId, answer) => {
+        // Add user message
+        setChatMessages(prev => [...prev, { sender: 'user', text: answer }])
+        setChatOptions([]) // Clear options while processing
+
         setAnswers(prev => ({ ...prev, [questionId]: answer }))
         setStep(prev => prev + 1)
     }
@@ -53,12 +93,6 @@ export default function OnboardingView({ navigation }) {
         URLSystemTrigger.redirectToStripe(planType)
     }
 
-    useEffect(() => {
-        if (step === 3) {
-            handleFinish()
-        }
-    }, [step])
-
     const renderLogo = () => (
         <View style={localStyles.logoContainer}>
             <Icon size={32} name={'logo'} color={Colors.Primary100} />
@@ -77,61 +111,28 @@ export default function OnboardingView({ navigation }) {
         </View>
     )
 
-    const renderQuestion1 = () => (
+    const renderInteractiveChat = () => (
         <View style={localStyles.contentContainer}>
             {renderLogo()}
-            <Text style={localStyles.question}>How do you plan to use Alldone?</Text>
-            <View style={localStyles.optionsContainer}>
-                {['Private Life', 'Work', 'Both'].map(option => (
-                    <TouchableOpacity
-                        key={option}
-                        style={localStyles.optionButton}
-                        onPress={() => handleAnswer('usage', option)}
-                    >
-                        <Text style={localStyles.optionText}>{option}</Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-        </View>
-    )
-
-    const renderQuestion2 = () => (
-        <View style={localStyles.contentContainer}>
-            {renderLogo()}
-            <Text style={localStyles.question}>
-                Do you want to be reminded every day with your most important task of the day?
-            </Text>
-            <View style={localStyles.optionsContainer}>
-                {['Yes', 'No'].map(option => (
-                    <TouchableOpacity
-                        key={option}
-                        style={localStyles.optionButton}
-                        onPress={() => handleAnswer('reminders', option)}
-                    >
-                        <Text style={localStyles.optionText}>{option}</Text>
-                    </TouchableOpacity>
-                ))}
+            <View style={{ height: 600, width: '100%', alignItems: 'center' }}>
+                <WhatsAppMockup
+                    messages={chatMessages}
+                    options={chatOptions}
+                    onOptionSelect={option => {
+                        if (step === 1) handleAnswer('usage', option)
+                        if (step === 2) handleAnswer('reminders', option)
+                    }}
+                    style={{ transform: [{ scale: 1 }], height: '100%', width: 300 }}
+                />
             </View>
         </View>
     )
 
     const renderContent = () => {
-        switch (step) {
-            case 0:
-                return renderWelcome()
-            case 1:
-                return renderQuestion1()
-            case 2:
-                return renderQuestion2()
-            case 3:
-                return (
-                    <View style={localStyles.contentContainer}>
-                        {renderLogo()}
-                        <Text style={localStyles.title}>Setting up your trial...</Text>
-                    </View>
-                )
-            default:
-                return null
+        if (step === 0) {
+            return renderWelcome()
+        } else {
+            return renderInteractiveChat()
         }
     }
 
@@ -157,6 +158,16 @@ export default function OnboardingView({ navigation }) {
                     muted
                     playsInline
                 />
+                {step === 0 && (
+                    <View
+                        style={[
+                            localStyles.phoneOverlay,
+                            isDesktop ? localStyles.phoneOverlayDesktop : localStyles.phoneOverlayMobile,
+                        ]}
+                    >
+                        <WhatsAppMockup />
+                    </View>
+                )}
             </View>
             <View
                 style={[
@@ -184,6 +195,7 @@ const localStyles = StyleSheet.create({
     videoSection: {
         backgroundColor: '#000',
         overflow: 'hidden',
+        position: 'relative',
     },
     videoSectionDesktop: {
         width: '50%',
@@ -192,6 +204,20 @@ const localStyles = StyleSheet.create({
     videoSectionMobile: {
         width: '100%',
         height: '45%', // Slightly reduced to give more space to content
+    },
+    phoneOverlay: {
+        position: 'absolute',
+        zIndex: 10,
+    },
+    phoneOverlayDesktop: {
+        bottom: -120,
+        right: 40,
+        transform: [{ scale: 0.85 }, { rotate: '6deg' }],
+    },
+    phoneOverlayMobile: {
+        bottom: -230,
+        right: -20,
+        transform: [{ scale: 0.6 }, { rotate: '6deg' }],
     },
     contentSection: {
         alignItems: 'center',
