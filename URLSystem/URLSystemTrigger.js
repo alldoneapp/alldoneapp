@@ -77,13 +77,13 @@ class URLSystemTrigger {
             case URL_LOGIN:
                 return TasksHelper.processURLAllProjectsTasks(navigation)
             case URL_START_TRIAL:
-                return URLSystemTrigger.processStartTrial(pathname)
+                return URLSystemTrigger.processStartTrial(navigation, pathname)
             case URL_PAYMENT_SUCCESS:
                 return SettingsHelper.processURLPaymentSuccess(navigation)
         }
     }
 
-    static processStartTrial = pathname => {
+    static processStartTrial = (navigation, pathname) => {
         // Parse query parameters from the pathname parameter
         let planType = 'monthly'
 
@@ -100,6 +100,10 @@ class URLSystemTrigger {
             planType = urlParams.get('plan') || urlParams.get('type') || 'monthly'
         }
 
+        navigation.navigate('Onboarding', { plan: planType })
+    }
+
+    static redirectToStripe = planType => {
         // Generate unique tracking ID for linking subscription to account later
         const trackingId = 'alldone_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
 
@@ -108,14 +112,14 @@ class URLSystemTrigger {
         localStorage.setItem('alldone_trial_plan_type', planType)
         localStorage.setItem('alldone_trial_timestamp', Date.now().toString())
 
+        const isProduction = inProductionEnvironment()
+
         console.log('💾 Storing trial tracking data:', {
             trackingId: trackingId.substring(0, 20) + '...',
             planType,
             timestamp: Date.now(),
             redirecting: isProduction ? 'production' : 'test',
         })
-
-        const isProduction = inProductionEnvironment()
 
         // Define the redirect URLs based on environment
         let monthlyUrl, yearlyUrl

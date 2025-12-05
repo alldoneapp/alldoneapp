@@ -13,6 +13,7 @@ import ProjectDetailedView from './components/ProjectDetailedView/ProjectDetaile
 import GoalDetailedView from './components/GoalDetailedView/GoalDetailedView'
 import PrivateResourcePage from './components/PrivateResource/PrivateResourcePage'
 import PaymentSuccessPage from './components/PaymentSuccess/PaymentSuccessPage'
+import OnboardingView from './components/Onboarding/OnboardingView'
 import NoteMaxLengthModal from './components/UIComponents/FloatModals/NoteMaxLengthModal'
 import {
     hideWebSideBar,
@@ -205,6 +206,19 @@ const AppStack = createStackNavigator(
         LoginScreen: LoginScreen,
         PrivateResource: PrivateResourcePage,
         PaymentSuccess: PaymentSuccessPage,
+        Onboarding: {
+            screen: props => (
+                <View
+                    style={{ flex: 1 }}
+                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
+                    onLayout={onLayoutChange}
+                >
+                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
+                        <OnboardingView navigation={props.navigation} />
+                    </View>
+                </View>
+            ),
+        },
     },
     {
         initialRouteName: 'LoginScreen',
