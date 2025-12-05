@@ -1330,21 +1330,21 @@ class AlldoneSimpleMCPServer {
 
         const db = admin.firestore()
 
-        // Initialize SearchService if not already done
-        if (!this.searchService) {
-            const { SearchService } = require('../shared/SearchService')
-            this.searchService = new SearchService({
-                database: db,
-                moment: moment,
-                enableAlgolia: true,
-                enableNoteContent: true,
-                enableDateParsing: true,
-                isCloudFunction: true,
-            })
-            await this.searchService.initialize()
-        }
-
         try {
+            // Initialize SearchService if not already done
+            if (!this.searchService) {
+                const { SearchService } = require('../shared/SearchService')
+                this.searchService = new SearchService({
+                    database: db,
+                    moment: moment,
+                    enableAlgolia: true,
+                    enableNoteContent: true,
+                    enableDateParsing: true,
+                    isCloudFunction: true,
+                })
+                await this.searchService.initialize()
+            }
+
             // Execute search using unified service
             const result = await this.searchService.search(userId, {
                 query,
@@ -1385,21 +1385,21 @@ class AlldoneSimpleMCPServer {
 
         const db = admin.firestore()
 
-        // Initialize SearchService if not already done (for note content retrieval)
-        if (!this.searchService) {
-            const { SearchService } = require('../shared/SearchService')
-            this.searchService = new SearchService({
-                database: db,
-                moment: moment,
-                enableAlgolia: true,
-                enableNoteContent: true,
-                enableDateParsing: true,
-                isCloudFunction: true,
-            })
-            await this.searchService.initialize()
-        }
-
         try {
+            // Initialize SearchService if not already done (for note content retrieval)
+            if (!this.searchService) {
+                const { SearchService } = require('../shared/SearchService')
+                this.searchService = new SearchService({
+                    database: db,
+                    moment: moment,
+                    enableAlgolia: true,
+                    enableNoteContent: true,
+                    enableDateParsing: true,
+                    isCloudFunction: true,
+                })
+                await this.searchService.initialize()
+            }
+
             // Get full note content using unified service
             const result = await this.searchService.getNote(userId, noteId, projectId)
 

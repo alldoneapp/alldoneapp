@@ -152,143 +152,158 @@ class SearchService {
      * @returns {Object} Optimized search results
      */
     async searchWithOptimization(userId, searchParams) {
-        const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
-        const MAX_SEARCH_ATTEMPTS = 5
-        let bestResults = null
-        let searchAttempts = []
+        try {
+            const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
+            const MAX_SEARCH_ATTEMPTS = 5
+            let bestResults = null
+            let searchAttempts = []
 
-        // Try primary search first
-        let results = await this.executeSearch(userId, searchParams)
-        searchAttempts.push({ query, totalResults: results.totalResults, type: 'primary' })
-        bestResults = results
+            // Try primary search first
+            let results = await this.executeSearch(userId, searchParams)
+            searchAttempts.push({ query, totalResults: results.totalResults, type: 'primary' })
+            bestResults = results
 
-        // Check if results are in optimal range (1-20)
-        if (results.totalResults >= 1 && results.totalResults <= 20) {
+            // Check if results are in optimal range (1-20)
+            if (results.totalResults >= 1 && results.totalResults <= 20) {
+                return {
+                    ...results,
+                    searchStrategy: {
+                        finalQuery: query,
+                        attempts: searchAttempts,
+                        strategy: 'primary_success',
+                    },
+                }
+            }
+
+            // If >20 results, try more specific searches (with attempt limit)
+            if (results.totalResults > 20) {
+                let currentQuery = query
+                let attemptCount = 1 // Already tried primary
+
+                while (attemptCount < MAX_SEARCH_ATTEMPTS) {
+                    const specificQuery = this.makeQueryMoreSpecific(currentQuery)
+
+                    // If we can't make it more specific, break
+                    if (specificQuery === currentQuery) {
+                        break
+                    }
+
+                    const specificResults = await this.executeSearch(userId, { ...searchParams, query: specificQuery })
+                    searchAttempts.push({
+                        query: specificQuery,
+                        totalResults: specificResults.totalResults,
+                        type: 'specific',
+                    })
+                    attemptCount++
+
+                    // Update best results if this is better
+                    if (specificResults.totalResults <= 20) {
+                        // Found optimal range!
+                        return {
+                            ...specificResults,
+                            searchStrategy: {
+                                finalQuery: specificQuery,
+                                attempts: searchAttempts,
+                                strategy: 'specificity_optimization_success',
+                            },
+                        }
+                    } else if (specificResults.totalResults < bestResults.totalResults) {
+                        // Better than what we had, but still too many
+                        bestResults = specificResults
+                        currentQuery = specificQuery
+                    } else {
+                        // Not improving, stop trying
+                        break
+                    }
+                }
+
+                // Return best results found (even if >20)
+                return {
+                    ...bestResults,
+                    searchStrategy: {
+                        finalQuery: bestResults === results ? query : currentQuery,
+                        attempts: searchAttempts,
+                        strategy: 'specificity_optimization_partial',
+                        note: `Found ${bestResults.totalResults} results after ${attemptCount} attempts (max ${MAX_SEARCH_ATTEMPTS})`,
+                    },
+                }
+            }
+
+            // If 0 results, try fallback searches with more general terms (with attempt limit)
+            if (results.totalResults === 0) {
+                const fallbackQueries = this.generateFallbackQueries(query)
+                let attemptCount = 1 // Already tried primary
+
+                for (const fallbackQuery of fallbackQueries) {
+                    if (attemptCount >= MAX_SEARCH_ATTEMPTS) {
+                        break
+                    }
+
+                    const fallbackResults = await this.executeSearch(userId, { ...searchParams, query: fallbackQuery })
+                    searchAttempts.push({
+                        query: fallbackQuery,
+                        totalResults: fallbackResults.totalResults,
+                        type: 'fallback',
+                    })
+                    attemptCount++
+
+                    if (fallbackResults.totalResults >= 1) {
+                        // Check if we found optimal range
+                        if (fallbackResults.totalResults <= 20) {
+                            return {
+                                ...fallbackResults,
+                                searchStrategy: {
+                                    finalQuery: fallbackQuery,
+                                    attempts: searchAttempts,
+                                    strategy: 'fallback_success',
+                                    originalQuery: query,
+                                },
+                            }
+                        } else {
+                            // Found results but too many - keep as best option
+                            bestResults = fallbackResults
+                        }
+                    }
+                }
+
+                // Return best results found (could be 0 or >20)
+                return {
+                    ...bestResults,
+                    searchStrategy: {
+                        finalQuery: bestResults === results ? query : searchAttempts[searchAttempts.length - 1].query,
+                        attempts: searchAttempts,
+                        strategy: bestResults.totalResults === 0 ? 'no_results_found' : 'fallback_partial',
+                        originalQuery: query,
+                        note:
+                            bestResults.totalResults === 0
+                                ? `No results found after ${attemptCount} attempts (max ${MAX_SEARCH_ATTEMPTS})`
+                                : `Found ${bestResults.totalResults} results after fallback attempts`,
+                    },
+                }
+            }
+
+            // Return original results with strategy info (shouldn't reach here)
             return {
                 ...results,
                 searchStrategy: {
                     finalQuery: query,
                     attempts: searchAttempts,
-                    strategy: 'primary_success',
+                    strategy: 'no_optimization_applied',
                 },
             }
-        }
-
-        // If >20 results, try more specific searches (with attempt limit)
-        if (results.totalResults > 20) {
-            let currentQuery = query
-            let attemptCount = 1 // Already tried primary
-
-            while (attemptCount < MAX_SEARCH_ATTEMPTS) {
-                const specificQuery = this.makeQueryMoreSpecific(currentQuery)
-
-                // If we can't make it more specific, break
-                if (specificQuery === currentQuery) {
-                    break
-                }
-
-                const specificResults = await this.executeSearch(userId, { ...searchParams, query: specificQuery })
-                searchAttempts.push({
-                    query: specificQuery,
-                    totalResults: specificResults.totalResults,
-                    type: 'specific',
-                })
-                attemptCount++
-
-                // Update best results if this is better
-                if (specificResults.totalResults <= 20) {
-                    // Found optimal range!
-                    return {
-                        ...specificResults,
-                        searchStrategy: {
-                            finalQuery: specificQuery,
-                            attempts: searchAttempts,
-                            strategy: 'specificity_optimization_success',
-                        },
-                    }
-                } else if (specificResults.totalResults < bestResults.totalResults) {
-                    // Better than what we had, but still too many
-                    bestResults = specificResults
-                    currentQuery = specificQuery
-                } else {
-                    // Not improving, stop trying
-                    break
-                }
-            }
-
-            // Return best results found (even if >20)
+        } catch (error) {
+            console.error('Optimization search failed:', error)
+            // Fallback to basic empty result if optimization crashes
             return {
-                ...bestResults,
+                results: {},
+                query: searchParams.query,
+                totalResults: 0,
+                message: `Search optimization failed: ${error.message}`,
                 searchStrategy: {
-                    finalQuery: bestResults === results ? query : currentQuery,
-                    attempts: searchAttempts,
-                    strategy: 'specificity_optimization_partial',
-                    note: `Found ${bestResults.totalResults} results after ${attemptCount} attempts (max ${MAX_SEARCH_ATTEMPTS})`,
+                    strategy: 'optimization_failed',
+                    error: error.message,
                 },
             }
-        }
-
-        // If 0 results, try fallback searches with more general terms (with attempt limit)
-        if (results.totalResults === 0) {
-            const fallbackQueries = this.generateFallbackQueries(query)
-            let attemptCount = 1 // Already tried primary
-
-            for (const fallbackQuery of fallbackQueries) {
-                if (attemptCount >= MAX_SEARCH_ATTEMPTS) {
-                    break
-                }
-
-                const fallbackResults = await this.executeSearch(userId, { ...searchParams, query: fallbackQuery })
-                searchAttempts.push({
-                    query: fallbackQuery,
-                    totalResults: fallbackResults.totalResults,
-                    type: 'fallback',
-                })
-                attemptCount++
-
-                if (fallbackResults.totalResults >= 1) {
-                    // Check if we found optimal range
-                    if (fallbackResults.totalResults <= 20) {
-                        return {
-                            ...fallbackResults,
-                            searchStrategy: {
-                                finalQuery: fallbackQuery,
-                                attempts: searchAttempts,
-                                strategy: 'fallback_success',
-                                originalQuery: query,
-                            },
-                        }
-                    } else {
-                        // Found results but too many - keep as best option
-                        bestResults = fallbackResults
-                    }
-                }
-            }
-
-            // Return best results found (could be 0 or >20)
-            return {
-                ...bestResults,
-                searchStrategy: {
-                    finalQuery: bestResults === results ? query : searchAttempts[searchAttempts.length - 1].query,
-                    attempts: searchAttempts,
-                    strategy: bestResults.totalResults === 0 ? 'no_results_found' : 'fallback_partial',
-                    originalQuery: query,
-                    note:
-                        bestResults.totalResults === 0
-                            ? `No results found after ${attemptCount} attempts (max ${MAX_SEARCH_ATTEMPTS})`
-                            : `Found ${bestResults.totalResults} results after fallback attempts`,
-                },
-            }
-        }
-
-        // Return original results with strategy info (shouldn't reach here)
-        return {
-            ...results,
-            searchStrategy: {
-                finalQuery: query,
-                attempts: searchAttempts,
-                strategy: 'no_optimization_applied',
-            },
         }
     }
 
@@ -299,8 +314,6 @@ class SearchService {
      * @returns {Object} Search results
      */
     async executeSearch(userId, searchParams) {
-        await this.ensureInitialized()
-
         const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
 
         // Validate query
@@ -314,6 +327,8 @@ class SearchService {
         }
 
         try {
+            await this.ensureInitialized()
+
             // Get user's accessible projects
             const userProjects = await this.getUserProjects(userId)
             if (userProjects.length === 0) {
@@ -725,6 +740,7 @@ class SearchService {
             .replace(/\\"/g, '"') // Unescape escaped quotes
             .replace(/\\'/g, "'") // Unescape escaped single quotes
             .trim()
+            .substring(0, 500) // Safety: Truncate to 500 chars
 
         // Extract mentions (@username)
         const mentionMatches = normalizedQuery.match(/@(\w+)/g)
@@ -1066,13 +1082,31 @@ class SearchService {
         }
 
         // Generate contextual snippet (first 150 chars with keyword context)
+        // IMPORTANT: Using indexOf-based search instead of regex to avoid ReDoS
+        // with many keyword alternations (e.g., 8+ keywords cause catastrophic backtracking)
         if (content && content.length > 150) {
-            const keywords = parsedQuery.keywords.join('|')
-            const regex = new RegExp(`(.{0,50})(${keywords})(.{0,50})`, 'i')
-            const match = content.match(regex)
+            const keywords = parsedQuery.keywords || []
+            const contentLower = content.toLowerCase()
 
-            if (match) {
-                return `...${match[1]}${match[2]}${match[3]}...`
+            // Find the first keyword match position using safe string search
+            let firstMatchPos = -1
+            let matchedKeyword = ''
+            for (const keyword of keywords) {
+                if (keyword && keyword.length > 0) {
+                    const pos = contentLower.indexOf(keyword.toLowerCase())
+                    if (pos !== -1 && (firstMatchPos === -1 || pos < firstMatchPos)) {
+                        firstMatchPos = pos
+                        matchedKeyword = keyword
+                    }
+                }
+            }
+
+            if (firstMatchPos !== -1) {
+                // Extract context around the match (50 chars before and after)
+                const start = Math.max(0, firstMatchPos - 50)
+                const end = Math.min(content.length, firstMatchPos + matchedKeyword.length + 50)
+                const snippet = content.substring(start, end)
+                return (start > 0 ? '...' : '') + snippet + (end < content.length ? '...' : '')
             }
 
             return content.substring(0, 147) + '...'
