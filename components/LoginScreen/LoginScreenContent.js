@@ -80,12 +80,29 @@ export default function LoginScreenContent() {
                         </View>
                     </a>
                     {loginType === NORMAL_LOGIN && (
-                        <Image
-                            source={{ uri: require(`../../web/images/illustrations/PersonajeEnseñando.png`) }}
-                            style={{ width: 362 * 0.75, height: 470 * 0.75 }}
-                            width={362}
-                            height={470}
-                        />
+                        <View
+                            style={{
+                                width: 270,
+                                height: 480,
+                                borderRadius: 20,
+                                overflow: 'hidden',
+                                marginBottom: 20,
+                                marginTop: 20,
+                            }}
+                        >
+                            <video
+                                src={require('../../assets/annasmile.mp4')}
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                }}
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                            />
+                        </View>
                     )}
                     {loginType === GUIDE_LOGIN && (
                         <Image
@@ -97,12 +114,12 @@ export default function LoginScreenContent() {
                     )}
 
                     {loginType === NORMAL_LOGIN && (
-                        <Text style={localStyles.title}>Sign in with your personal email to access Alldone</Text>
+                        <Text style={localStyles.title}>Sign in with your personal email</Text>
                     )}
                     {loginType === GUIDE_LOGIN && <Text style={localStyles.title}>{templateTitle}</Text>}
                     <LogInButton />
                     <Text style={localStyles.subtitle}>
-                        Alldone helps you to achieve your goals in life. When you sign in you accept the{' '}
+                        When you sign in you accept the{' '}
                         <a
                             href="https://alldone.app/privacy"
                             target={'_blank'}

@@ -14,6 +14,7 @@ import GoalDetailedView from './components/GoalDetailedView/GoalDetailedView'
 import PrivateResourcePage from './components/PrivateResource/PrivateResourcePage'
 import PaymentSuccessPage from './components/PaymentSuccess/PaymentSuccessPage'
 import OnboardingView from './components/Onboarding/OnboardingView'
+import WhatsAppOnboarding from './components/Onboarding/WhatsAppOnboarding'
 import NoteMaxLengthModal from './components/UIComponents/FloatModals/NoteMaxLengthModal'
 import {
     hideWebSideBar,
@@ -219,7 +220,21 @@ const AppStack = createStackNavigator(
                 </View>
             ),
         },
+        WhatsAppOnboarding: {
+            screen: props => (
+                <View
+                    style={{ flex: 1 }}
+                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
+                    onLayout={onLayoutChange}
+                >
+                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
+                        <WhatsAppOnboarding navigation={props.navigation} />
+                    </View>
+                </View>
+            ),
+        },
     },
+
     {
         initialRouteName: 'LoginScreen',
         headerMode: 'none',

@@ -381,7 +381,7 @@ const localStyles = StyleSheet.create({
     },
     optionsContainer: {
         width: '100%',
-        gap: 16,
+        // gap: 16, // not supported in RN
     },
     optionButton: {
         backgroundColor: Colors.White,

@@ -211,5 +211,6 @@ export const processNewUser = async firebaseUser => {
     //handleCookies()
 
     const url = initialUrl !== '/' ? initialUrl : window.location.pathname
-    URLTrigger.processUrl(NavigationService, url)
+    // URLTrigger.processUrl(NavigationService, url)
+    NavigationService.navigate('WhatsAppOnboarding', { nextUrl: url })
 }

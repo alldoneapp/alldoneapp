@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     statusIcons: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        // gap: 4, // not supported in RN
     },
     signalIcon: { width: 16, height: 10, backgroundColor: '#000', borderRadius: 2 },
     wifiIcon: { width: 16, height: 10, backgroundColor: '#000', borderRadius: 4 },
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-end',
         marginTop: 4,
-        gap: 4,
+        // gap: 4, // not supported in RN
     },
     timeSent: {
         fontSize: 10,
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     optionsContainer: {
         marginTop: 16,
         alignItems: 'flex-end',
-        gap: 8,
+        // gap: 8, // gap is not supported in RN styles, using margin on children instead
     },
     optionBubble: {
         backgroundColor: '#fff',
@@ -314,7 +314,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: Colors.Primary100,
+        borderColor: '#E2E8F0',
+        marginBottom: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
