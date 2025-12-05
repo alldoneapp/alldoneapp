@@ -5,6 +5,7 @@ import Colors from '../../Themes/Colors'
 import styles from '../styles/global'
 import URLSystemTrigger from '../../URLSystem/URLSystemTrigger'
 import { setNavigationRoute } from '../../redux/actions'
+import Icon from '../Icon'
 
 export default function OnboardingView({ navigation }) {
     const dispatch = useDispatch()
@@ -58,18 +59,27 @@ export default function OnboardingView({ navigation }) {
         }
     }, [step])
 
+    const renderLogo = () => (
+        <View style={localStyles.logoContainer}>
+            <Icon size={32} name={'logo'} color={Colors.Primary100} />
+            <Icon style={{ marginLeft: 12 }} size={32} name={'logo-name'} color={Colors.Primary100} />
+        </View>
+    )
+
     const renderWelcome = () => (
         <View style={localStyles.contentContainer}>
+            {renderLogo()}
             <Text style={localStyles.title}>Welcome to Alldone!</Text>
             <Text style={localStyles.subtitle}>We're excited to have you on board.</Text>
-            <TouchableOpacity style={localStyles.button} onPress={() => setStep(1)}>
-                <Text style={localStyles.buttonText}>Get Started</Text>
+            <TouchableOpacity style={localStyles.primaryButton} onPress={() => setStep(1)}>
+                <Text style={localStyles.primaryButtonText}>Get Started</Text>
             </TouchableOpacity>
         </View>
     )
 
     const renderQuestion1 = () => (
         <View style={localStyles.contentContainer}>
+            {renderLogo()}
             <Text style={localStyles.question}>How do you plan to use Alldone?</Text>
             <View style={localStyles.optionsContainer}>
                 {['Private Life', 'Work', 'Both'].map(option => (
@@ -87,6 +97,7 @@ export default function OnboardingView({ navigation }) {
 
     const renderQuestion2 = () => (
         <View style={localStyles.contentContainer}>
+            {renderLogo()}
             <Text style={localStyles.question}>
                 Do you want to be reminded every day with your most important task of the day?
             </Text>
@@ -115,6 +126,7 @@ export default function OnboardingView({ navigation }) {
             case 3:
                 return (
                     <View style={localStyles.contentContainer}>
+                        {renderLogo()}
                         <Text style={localStyles.title}>Setting up your trial...</Text>
                     </View>
                 )
@@ -179,12 +191,12 @@ const localStyles = StyleSheet.create({
     },
     videoSectionMobile: {
         width: '100%',
-        height: '50%',
+        height: '45%', // Slightly reduced to give more space to content
     },
     contentSection: {
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 32,
+        padding: 40,
     },
     contentSectionDesktop: {
         width: '50%',
@@ -192,62 +204,85 @@ const localStyles = StyleSheet.create({
     },
     contentSectionMobile: {
         width: '100%',
-        height: '50%',
+        height: '55%',
     },
     contentContainer: {
         width: '100%',
-        maxWidth: 400,
+        maxWidth: 480,
         alignItems: 'center',
     },
+    logoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 48,
+    },
     title: {
-        ...styles.title3,
+        ...styles.title2,
         textAlign: 'center',
-        marginBottom: 12,
+        marginBottom: 16,
         color: Colors.Text01,
     },
     subtitle: {
         ...styles.body1,
         textAlign: 'center',
-        marginBottom: 32,
+        marginBottom: 48,
         color: Colors.Text02,
+        maxWidth: 400,
     },
     question: {
-        ...styles.title4,
+        ...styles.title3,
         textAlign: 'center',
-        marginBottom: 32,
+        marginBottom: 40,
         color: Colors.Text01,
     },
-    button: {
+    primaryButton: {
         backgroundColor: Colors.Primary100,
-        paddingVertical: 16,
+        paddingVertical: 20,
         paddingHorizontal: 48,
-        borderRadius: 12,
+        borderRadius: 16,
         width: '100%',
         alignItems: 'center',
+        shadowColor: Colors.Primary100,
+        shadowOffset: {
+            width: 0,
+            height: 8,
+        },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+        elevation: 8,
     },
-    buttonText: {
+    primaryButtonText: {
         color: Colors.White,
         fontSize: 18,
         fontWeight: '600',
+        letterSpacing: 0.5,
     },
     optionsContainer: {
         width: '100%',
-        gap: 12,
+        gap: 16,
     },
     optionButton: {
         backgroundColor: Colors.White,
-        paddingVertical: 16,
-        paddingHorizontal: 24,
-        borderRadius: 12,
+        paddingVertical: 20,
+        paddingHorizontal: 32,
+        borderRadius: 16,
         width: '100%',
         borderWidth: 1,
-        borderColor: Colors.Border,
+        borderColor: Colors.Grey300,
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 16,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
     },
     optionText: {
         color: Colors.Text01,
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: '500',
     },
 })
