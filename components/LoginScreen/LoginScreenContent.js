@@ -47,7 +47,10 @@ export default function LoginScreenContent() {
     }
 
     const writeBrowserURL = () => {
-        URLSystem.push(URL_LOGIN)
+        const { pathname } = window.location
+        if (!pathname.startsWith('/starttrial') && !pathname.startsWith('/paymentsuccess')) {
+            URLSystem.push(URL_LOGIN)
+        }
     }
 
     useEffect(() => {
