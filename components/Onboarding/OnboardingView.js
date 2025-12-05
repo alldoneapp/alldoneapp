@@ -113,8 +113,15 @@ export default function OnboardingView({ navigation }) {
 
     const renderInteractiveChat = () => (
         <View style={localStyles.contentContainer}>
-            {renderLogo()}
-            <View style={{ height: 600, width: '100%', alignItems: 'center' }}>
+            {isDesktop && renderLogo()}
+            <View
+                style={{
+                    height: isDesktop ? 600 : 450,
+                    width: '100%',
+                    alignItems: 'center',
+                    marginTop: isDesktop ? 0 : -80, // Move up on mobile
+                }}
+            >
                 <WhatsAppMockup
                     messages={chatMessages}
                     options={chatOptions}
@@ -158,16 +165,6 @@ export default function OnboardingView({ navigation }) {
                     muted
                     playsInline
                 />
-                {step === 0 && (
-                    <View
-                        style={[
-                            localStyles.phoneOverlay,
-                            isDesktop ? localStyles.phoneOverlayDesktop : localStyles.phoneOverlayMobile,
-                        ]}
-                    >
-                        <WhatsAppMockup />
-                    </View>
-                )}
             </View>
             <View
                 style={[
@@ -223,6 +220,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         padding: 40,
+        zIndex: 20, // Ensure it overlaps video section if needed
     },
     contentSectionDesktop: {
         width: '50%',
