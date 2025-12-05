@@ -31,45 +31,138 @@ export default function OnboardingView({ navigation }) {
 
     const isDesktop = windowWidth > 768
 
+    const [isTyping, setIsTyping] = useState(false)
+
+    // Helper to simulate typing and sending messages
+    const sendAnnaMessages = async (messages, options = [], delay = 3000) => {
+        setIsTyping(true)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        setIsTyping(false)
+        setChatMessages(prev => [...prev, ...messages])
+        if (options.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            setChatOptions(options)
+        }
+    }
+
     // Initialize chat for step 1
     useEffect(() => {
-        if (step === 1) {
-            setChatMessages([
-                { sender: 'anna', text: "Hi there! I'm Anna, your personal AI assistant. 👋" },
-                {
-                    sender: 'anna',
-                    text: "I'm here to help you organize your life and work. How do you plan to use Alldone?",
-                },
-            ])
-            setChatOptions(['Private Life', 'Work', 'Both'])
-        } else if (step === 2) {
-            // Add user answer from step 1 to messages is handled in handleAnswer
-            // Add next question
-            setTimeout(() => {
-                setChatMessages(prev => [
-                    ...prev,
+        const runStep = async () => {
+            if (step === 1) {
+                // Initial greeting - no typing delay needed or short one
+                setChatMessages([
+                    { sender: 'anna', text: "Hi I am Anna. Your AI 'Chief of Staff' to get it all done." },
                     {
                         sender: 'anna',
-                        text: 'Do you want to be reminded every day with your most important task of the day?',
+                        text:
+                            'You can chat naturally with me on Whatsapp or on our web app just like you would with a human assistant.',
                     },
                 ])
-                setChatOptions(['Yes', 'No'])
-            }, 500)
-        } else if (step === 3) {
-            setTimeout(() => {
-                setChatMessages(prev => [...prev, { sender: 'anna', text: 'Setting up your trial... 🚀' }])
-                setChatOptions([])
-                setTimeout(handleFinish, 1500)
-            }, 500)
+                setTimeout(() => {
+                    setChatOptions(['Sounds good ... so what can you do for me?'])
+                }, 1000)
+            } else if (step === 2) {
+                await sendAnnaMessages(
+                    [
+                        { sender: 'anna', text: 'I can handle your tasks, notes, calendar & more on your behalf.' },
+                        { sender: 'anna', text: "Why don't you try it out right now to add a new task?" },
+                    ],
+                    ['Prepare meeting with Claudia']
+                )
+            } else if (step === 3) {
+                await sendAnnaMessages(
+                    [
+                        {
+                            sender: 'anna',
+                            text:
+                                'I just added "Prepare meeting with Claudia" to your tasks in the project "Work". Here is a link to it.',
+                        },
+                        {
+                            sender: 'anna',
+                            text: 'Btw: You can also let me search your notes for you. Pelase give it a try.',
+                        },
+                    ],
+                    ['Thanks. What did I last discuss with Frank?']
+                )
+            } else if (step === 4) {
+                await sendAnnaMessages(
+                    [
+                        {
+                            sender: 'anna',
+                            text:
+                                'In your meeting notes from the 10th of March with Frank you discussed how to write a good screenplay. Here are the full notes (link).',
+                        },
+                        {
+                            sender: 'anna',
+                            text: 'Btw: you can also add to your notes by just telling me for example via a voice note',
+                        },
+                    ],
+                    ['This is great. What else?']
+                )
+            } else if (step === 5) {
+                await sendAnnaMessages(
+                    [
+                        {
+                            sender: 'anna',
+                            text:
+                                'Since I am a Chief of Staff I can also manage your "Staff" for you. Both AI and humans.',
+                        },
+                        {
+                            sender: 'anna',
+                            text:
+                                'For example I can ask "Rudy Research" to see what\'s going on in your area every week so you can plan your weekend properly.',
+                        },
+                        {
+                            sender: 'anna',
+                            text: 'Or I can ask an AI to join your meetings and take automatic meeting notes.',
+                        },
+                    ],
+                    ['Can you also remind me of my tasks so I dont forget?']
+                )
+            } else if (step === 6) {
+                await sendAnnaMessages(
+                    [
+                        {
+                            sender: 'anna',
+                            text:
+                                'Yes sure. Do you want me to remind you every morning with the most important task of the day?',
+                        },
+                    ],
+                    ['Yes, please', 'No thank you']
+                )
+            } else if (step === 7) {
+                await sendAnnaMessages(
+                    [
+                        { sender: 'anna', text: 'Ok thanks will do!' },
+                        {
+                            sender: 'anna',
+                            text:
+                                'Remember that you can always also just use our web app to use the same tool i am using internally to help you organize your life so you keep full control.',
+                        },
+                        {
+                            sender: 'anna',
+                            text:
+                                "Now let's start the trial to test me for free. Looking foward to working with you and to get it all done!",
+                        },
+                    ],
+                    ["Ok let's go!"]
+                )
+            } else if (step === 8) {
+                handleFinish()
+            }
         }
+        runStep()
     }, [step])
 
     const handleAnswer = (questionId, answer) => {
-        // Add user message
-        setChatMessages(prev => [...prev, { sender: 'user', text: answer }])
         setChatOptions([]) // Clear options while processing
 
-        setAnswers(prev => ({ ...prev, [questionId]: answer }))
+        // Add user message
+        setChatMessages(prev => [...prev, { sender: 'user', text: answer }])
+
+        if (questionId) {
+            setAnswers(prev => ({ ...prev, [questionId]: answer }))
+        }
         setStep(prev => prev + 1)
     }
 
@@ -104,7 +197,7 @@ export default function OnboardingView({ navigation }) {
         <View style={localStyles.contentContainer}>
             {renderLogo()}
             <Text style={localStyles.title}>Welcome to Alldone!</Text>
-            <Text style={localStyles.subtitle}>We're excited to have you on board.</Text>
+            <Text style={localStyles.subtitle}>Let me show you how I can help you</Text>
             <TouchableOpacity style={localStyles.primaryButton} onPress={() => setStep(1)}>
                 <Text style={localStyles.primaryButtonText}>Get Started</Text>
             </TouchableOpacity>
@@ -123,11 +216,16 @@ export default function OnboardingView({ navigation }) {
                 }}
             >
                 <WhatsAppMockup
+                    isTyping={isTyping}
                     messages={chatMessages}
                     options={chatOptions}
                     onOptionSelect={option => {
-                        if (step === 1) handleAnswer('usage', option)
-                        if (step === 2) handleAnswer('reminders', option)
+                        // Just advance step for most interactions, capture specific answers if needed
+                        if (step === 6) {
+                            handleAnswer('reminders', option)
+                        } else {
+                            handleAnswer(null, option)
+                        }
                     }}
                     style={{ transform: [{ scale: 1 }], height: '100%', width: 300 }}
                 />

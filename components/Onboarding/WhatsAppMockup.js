@@ -1,9 +1,55 @@
-import React, { useRef } from 'react'
-import { StyleSheet, View, Text, Image, ScrollView, TouchableOpacity } from 'react-native'
+import React, { useRef, useEffect } from 'react'
+import { StyleSheet, View, Text, Image, ScrollView, TouchableOpacity, Animated, Easing } from 'react-native'
 import Colors from '../../Themes/Colors'
 import Icon from '../Icon'
 
-export default function WhatsAppMockup({ messages = [], options = [], onOptionSelect, style }) {
+const TypingIndicator = () => {
+    const dot1Opacity = useRef(new Animated.Value(0)).current
+    const dot2Opacity = useRef(new Animated.Value(0)).current
+    const dot3Opacity = useRef(new Animated.Value(0)).current
+
+    useEffect(() => {
+        const animate = () => {
+            const duration = 300
+            const sequence = [
+                Animated.sequence([
+                    Animated.timing(dot1Opacity, { toValue: 1, duration, useNativeDriver: true }),
+                    Animated.timing(dot1Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
+                ]),
+                Animated.sequence([
+                    Animated.timing(dot2Opacity, { toValue: 1, duration, useNativeDriver: true }),
+                    Animated.timing(dot2Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
+                ]),
+                Animated.sequence([
+                    Animated.timing(dot3Opacity, { toValue: 1, duration, useNativeDriver: true }),
+                    Animated.timing(dot3Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
+                ]),
+            ]
+
+            Animated.loop(Animated.stagger(150, sequence)).start()
+        }
+
+        animate()
+    }, [])
+
+    const dotStyle = {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#8E8E93',
+        marginHorizontal: 2,
+    }
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 20, width: 40 }}>
+            <Animated.View style={[dotStyle, { opacity: dot1Opacity }]} />
+            <Animated.View style={[dotStyle, { opacity: dot2Opacity }]} />
+            <Animated.View style={[dotStyle, { opacity: dot3Opacity }]} />
+        </View>
+    )
+}
+
+export default function WhatsAppMockup({ messages = [], options = [], onOptionSelect, style, isTyping }) {
     const scrollViewRef = useRef()
 
     return (
@@ -25,7 +71,7 @@ export default function WhatsAppMockup({ messages = [], options = [], onOptionSe
                     <Image source={require('../../web/images/illustrations/AnnaAlldone.png')} style={styles.avatar} />
                     <View style={styles.headerInfo}>
                         <Text style={styles.headerName}>Anna Alldone</Text>
-                        <Text style={styles.headerStatus}>Online</Text>
+                        <Text style={styles.headerStatus}>{isTyping ? 'typing...' : 'Online'}</Text>
                     </View>
                 </View>
                 <View style={styles.headerRight}>
@@ -45,49 +91,38 @@ export default function WhatsAppMockup({ messages = [], options = [], onOptionSe
                     <Text style={styles.dateText}>Today</Text>
                 </View>
 
-                {messages.length === 0 ? (
-                    <>
-                        <View style={styles.messageBubbleReceived}>
-                            <Text style={styles.messageText}>Hi there! I'm Anna, your personal AI assistant. 👋</Text>
-                            <Text style={styles.timeReceived}>09:41</Text>
-                        </View>
-
-                        <View style={styles.messageBubbleReceived}>
-                            <Text style={styles.messageText}>
-                                I'm here to help you organize your life and work. What's your main goal for today?
-                            </Text>
-                            <Text style={styles.timeReceived}>09:41</Text>
-                        </View>
-
-                        <View style={styles.messageBubbleSent}>
-                            <Text style={styles.messageText}>I want to be more productive!</Text>
-                            <View style={styles.sentStatus}>
-                                <Text style={styles.timeSent}>09:42</Text>
+                {messages.map((msg, index) => (
+                    <View
+                        key={index}
+                        style={msg.sender === 'user' ? styles.messageBubbleSent : styles.messageBubbleReceived}
+                    >
+                        <Text style={msg.sender === 'user' ? styles.messageTextSent : styles.messageText}>
+                            {msg.text.split(/(\(link\)|link)/gi).map((part, i) => {
+                                if (part.toLowerCase() === 'link' || part.toLowerCase() === '(link)') {
+                                    return (
+                                        <Text key={i} style={{ color: '#007AFF', textDecorationLine: 'underline' }}>
+                                            {part}
+                                        </Text>
+                                    )
+                                }
+                                return part
+                            })}
+                        </Text>
+                        <Text style={msg.sender === 'user' ? styles.timeSent : styles.timeReceived}>
+                            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                        {msg.sender === 'user' && (
+                            <View style={styles.ticks}>
                                 <Icon name="check-double" size={12} color={Colors.Primary100} />
                             </View>
-                        </View>
-                        <View style={styles.messageBubbleReceived}>
-                            <Text style={styles.messageText}>That's great! Let's get started. 🚀</Text>
-                            <Text style={styles.timeReceived}>09:42</Text>
-                        </View>
-                    </>
-                ) : (
-                    messages.map((msg, index) => (
-                        <View
-                            key={index}
-                            style={msg.sender === 'user' ? styles.messageBubbleSent : styles.messageBubbleReceived}
-                        >
-                            <Text style={styles.messageText}>{msg.text}</Text>
-                            {msg.sender === 'user' ? (
-                                <View style={styles.sentStatus}>
-                                    <Text style={styles.timeSent}>09:42</Text>
-                                    <Icon name="check-double" size={12} color={Colors.Primary100} />
-                                </View>
-                            ) : (
-                                <Text style={styles.timeReceived}>09:42</Text>
-                            )}
-                        </View>
-                    ))
+                        )}
+                    </View>
+                ))}
+
+                {isTyping && (
+                    <View style={[styles.messageBubbleReceived, { paddingVertical: 12, paddingHorizontal: 16 }]}>
+                        <TypingIndicator />
+                    </View>
                 )}
 
                 {/* Options / Quick Replies */}
