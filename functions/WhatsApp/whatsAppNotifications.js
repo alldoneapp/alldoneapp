@@ -34,7 +34,18 @@ async function processWhatsAppNotifications() {
 
     for (const doc of docs) {
         const notif = doc.data()
-        const { userId, userPhone, projectId, projectName, objectId, objectName, updateText, link } = notif
+        const {
+            userId,
+            userPhone,
+            projectId,
+            projectName,
+            objectId,
+            objectName,
+            updateText,
+            link,
+            assistantName,
+            openTasksCount,
+        } = notif
 
         try {
             let finalProjectName = projectName || 'Project'
@@ -59,7 +70,9 @@ async function processWhatsAppNotifications() {
                 finalProjectName,
                 finalObjectName,
                 updateText || 'alert time reached',
-                finalLink
+                finalLink,
+                assistantName,
+                openTasksCount
             )
 
             await db.doc(`whatsAppNotifications/${doc.id}`).delete()

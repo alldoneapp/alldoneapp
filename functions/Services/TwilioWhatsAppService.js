@@ -645,7 +645,16 @@ class TwilioWhatsAppService {
      * @param {string} objectUrl
      * @returns {Promise<Object>}
      */
-    async sendNotificationWithTemplate(userPhone, userId, projectName, objectName, updateText, objectUrl) {
+    async sendNotificationWithTemplate(
+        userPhone,
+        userId,
+        projectName,
+        objectName,
+        updateText,
+        objectUrl,
+        assistantName,
+        openTasksCountOverride
+    ) {
         if (!userPhone) {
             console.warn('No phone number provided for WhatsApp notification')
             return { success: false, error: 'No phone number provided', to: userPhone }
@@ -685,15 +694,21 @@ class TwilioWhatsAppService {
                 .trim()
 
             // Count open/overdue tasks across all projects for this user
-            const openTasksCount = await this._countUserOpenTasks(userId)
+            let openTasksCountString = '0'
+            if (openTasksCountOverride !== undefined && openTasksCountOverride !== null) {
+                openTasksCountString = openTasksCountOverride.toString()
+            } else {
+                const openTasksCount = await this._countUserOpenTasks(userId)
+                openTasksCountString = openTasksCount.toString()
+            }
 
             const contentVariables = JSON.stringify({
-                1: 'Alldone.app',
+                1: assistantName || 'Alldone.app',
                 2: projectName || 'Project',
                 3: objectName || 'Item',
                 4: templateValue,
                 5: objectUrl || getBaseUrl(),
-                6: openTasksCount.toString(),
+                6: openTasksCountString,
             })
 
             console.log('Sending WhatsApp generic template:', {
