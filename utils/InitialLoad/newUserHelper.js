@@ -12,6 +12,7 @@ import {
     unwatch,
 } from '../backends/firestore'
 import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
+import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getNewDefaultUser } from '../../components/ContactsView/Utils/ContactsHelper'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -71,20 +72,34 @@ const generateInitialProject = (userId, assistantId) => {
     return project
 }
 
-const generateInitialAssistant = projectId => {
-    const { defaultAssistant } = store.getState()
+const getDefaultGlobalAssistantId = () => {
+    const hostname = window.location.hostname
+    const isStaging = hostname.includes('staging') || hostname.includes('localhost')
 
-    if (!defaultAssistant || !defaultAssistant.uid) {
-        console.warn('No default assistant found, skipping assistant creation')
-        return null
+    // Staging: -OfxnUeFjPmvyqk5gFQE
+    // Production: -Ns4cpvpLDeygvV2cjcJ
+    return isStaging ? '-OfxnUeFjPmvyqk5gFQE' : '-Ns4cpvpLDeygvV2cjcJ'
+}
+
+const generateInitialAssistant = (globalAssistant, userId) => {
+    if (!globalAssistant) {
+        const { defaultAssistant } = store.getState()
+        if (!defaultAssistant || !defaultAssistant.uid) {
+            console.warn('No default assistant found, skipping assistant creation')
+            return null
+        }
+        globalAssistant = defaultAssistant
     }
 
     const assistant = {
-        ...defaultAssistant,
+        ...globalAssistant,
         uid: getId(),
         noteIdsByProject: {},
         lastVisitBoard: {},
         commentsData: null,
+        creatorId: userId,
+        createdDate: Date.now(),
+        isDefault: true,
     }
 
     return assistant
@@ -117,8 +132,18 @@ export const processNewUser = async firebaseUser => {
     const { initialUrl } = store.getState()
     const { uid: userId, email } = firebaseUser
 
+    // Fetch the specific global assistant to be used as default
+    const globalAssistantId = getDefaultGlobalAssistantId()
+    let globalAssistant = null
+    try {
+        globalAssistant = await getAssistantData(GLOBAL_PROJECT_ID, globalAssistantId)
+        console.log('Found global assistant for new user:', globalAssistant?.displayName)
+    } catch (error) {
+        console.warn('Failed to fetch global assistant:', error)
+    }
+
     // Generate assistant first to get its ID for the project
-    const assistant = generateInitialAssistant()
+    const assistant = generateInitialAssistant(globalAssistant, userId)
     const project = generateInitialProject(userId, assistant?.uid)
     const workstream = generateInitialWorkstream(project.id, userId)
     const task = generateInitialTask(userId)
@@ -156,6 +181,14 @@ export const processNewUser = async firebaseUser => {
 
     createUploadNewUserFeeds(mappedUser, userId, project.id, project, task.id, task)
     await uploadNewUser(userId, user, project, task, workstream, assistant)
+
+    if (assistant && globalAssistant) {
+        // Copy pre-configured tasks from the global assistant to the new assistant
+        // We use the original globalAssistant.uid as the source
+        copyPreConfigTasksToNewAssistant(GLOBAL_PROJECT_ID, globalAssistant.uid, project.id, assistant.uid).catch(err =>
+            console.warn('Failed to copy pre-config tasks:', err)
+        )
+    }
 
     watchLoggedUserData(user)
     watchProjectData(project.id, true, false)
