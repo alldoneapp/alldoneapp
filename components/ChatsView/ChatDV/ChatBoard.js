@@ -51,7 +51,11 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     const [showingEarlier, setShowingEarlier] = useState(false)
     const [serverTime, setServerTime] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
+    const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
     const scrollViewRef = useRef()
+    const lastScrollPositionRef = useRef(0)
+    const contentHeightRef = useRef(0)
+    const scrollViewHeightRef = useRef(0)
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
@@ -74,6 +78,31 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
 
     const scrollToEnd = () => {
         scrollViewRef.current?.scrollToEnd({ animated: false })
+    }
+
+    const onMessageSent = () => {
+        setAutoScrollEnabled(true)
+    }
+
+    const handleScroll = event => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+        const currentScrollPosition = contentOffset.y
+        const maxScrollPosition = contentSize.height - layoutMeasurement.height
+
+        // Update refs for tracking
+        lastScrollPositionRef.current = currentScrollPosition
+        contentHeightRef.current = contentSize.height
+        scrollViewHeightRef.current = layoutMeasurement.height
+
+        // If user scrolls up (away from bottom by more than 50px threshold), disable auto-scroll
+        const distanceFromBottom = maxScrollPosition - currentScrollPosition
+        if (distanceFromBottom > 50) {
+            setAutoScrollEnabled(false)
+        }
+    }
+
+    const handleContentSizeChange = (contentWidth, contentHeight) => {
+        contentHeightRef.current = contentHeight
     }
 
     const writeBrowserURL = () => {
@@ -179,17 +208,23 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     }, [chat.id])
 
     useEffect(() => {
-        if (!showingEarlier) {
+        if (!showingEarlier && autoScrollEnabled) {
             setTimeout(() => {
                 scrollToEnd()
             })
         }
-    }, [lastMessageid, lastMessageLength])
+    }, [lastMessageid, lastMessageLength, autoScrollEnabled])
 
     return (
         <KeyboardAvoidingView behavior="height" style={{ flex: 1 }}>
             <PagesAmountSubscriptionContainer projectId={projectId} chat={chat} />
-            <CustomScrollView ref={scrollViewRef} containerStyle={[localStyles.scrollView]}>
+            <CustomScrollView
+                ref={scrollViewRef}
+                containerStyle={[localStyles.scrollView]}
+                onScroll={handleScroll}
+                onContentSizeChange={handleContentSizeChange}
+                scrollEventThrottle={16}
+            >
                 {page < chatPagesAmount && messages.length > 0 && (
                     <ShowMoreButton expand={showEarlier} expandText={'show earlier'} />
                 )}
@@ -224,6 +259,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                     assistantId={assistantId}
                     objectType={objectType}
                     setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
+                    onMessageSent={onMessageSent}
                 />
             )}
         </KeyboardAvoidingView>

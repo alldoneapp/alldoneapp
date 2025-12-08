@@ -14,6 +14,7 @@ const CustomScrollView = (
         containerStyle,
         nativeID,
         style,
+        onContentSizeChange: externalOnContentSizeChange,
         ...props
     },
     ref
@@ -44,6 +45,9 @@ const CustomScrollView = (
 
     const onContentSizeChange = (width, height) => {
         setWholeHeight(height)
+        if (externalOnContentSizeChange) {
+            externalOnContentSizeChange(width, height)
+        }
     }
 
     useImperativeHandle(ref, () => ({

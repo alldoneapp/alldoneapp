@@ -42,6 +42,7 @@ export default function ChatInput({
     assistantId,
     objectType,
     setAmountOfNewCommentsToHighligth,
+    onMessageSent,
 }) {
     const dispatch = useDispatch()
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
@@ -106,6 +107,9 @@ export default function ChatInput({
                 inputRef.current.clear()
 
                 if (assistantEnabled) setWaitingForBotAnswer(true)
+
+                // Re-enable auto-scroll when user sends a message
+                if (onMessageSent) onMessageSent()
 
                 updateNewAttachmentsData(projectId, inputText).then(commentWithAttachments => {
                     createObjectMessage(
