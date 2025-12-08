@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { StyleSheet, Text, View, TextInput, Dimensions, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
+import { firebase } from '@firebase/app'
 
 import styles from '../styles/global'
 import Colors from '../../Themes/Colors'
@@ -55,6 +56,35 @@ export default function WhatsAppOnboarding({ navigation }) {
         setSaving(true)
         try {
             await setUserPhone(loggedUser.uid, validation.formatted)
+
+            // Automatically generate MCP access token for this user
+            try {
+                // Ensure auth is loaded
+                if (firebase.auth) {
+                    const currentUser = firebase.auth().currentUser
+                    if (currentUser) {
+                        const idToken = await currentUser.getIdToken()
+                        // Use relative path which works for Web, simple fetch to the backend function
+                        // We use the same endpoint that the direct login page uses
+                        console.log('Generating MCP token for WhatsApp user...')
+                        await fetch('/mcpServer/get-token', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                firebaseToken: idToken,
+                                email: currentUser.email,
+                            }),
+                        })
+                        console.log('MCP token generation request sent')
+                    }
+                }
+            } catch (tokenError) {
+                // We don't block the user flow if token generation fails, just log it
+                console.warn('Failed to auto-generate MCP token:', tokenError)
+            }
+
             proceed()
         } catch (error) {
             console.error('Error saving phone:', error)
