@@ -13,6 +13,7 @@ import {
 } from '../backends/firestore'
 import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
 import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
+import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getNewDefaultUser } from '../../components/ContactsView/Utils/ContactsHelper'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -140,6 +141,8 @@ export const processNewUser = async firebaseUser => {
         console.log('Found global assistant for new user:', globalAssistant?.displayName)
     } catch (error) {
         console.warn('Failed to fetch global assistant:', error)
+        console.error('CRITICAL ERROR: Failed to fetch global assistant', error)
+        alert('CRITICAL ERROR: Failed to fetch global assistant: ' + error.message)
     }
 
     // Generate assistant first to get its ID for the project
