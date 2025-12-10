@@ -13,6 +13,8 @@ import NavigationService from '../../utils/NavigationService'
 import Icon from '../Icon'
 import SplitLayout from './SplitLayout'
 import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
+import { requestNotificationPermission } from '../../utils/backends/firestore'
+import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 
 export default function WhatsAppOnboarding({ navigation }) {
     const [phone, setPhone] = useState('')
@@ -30,7 +32,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     const nextUrl = navigation.getParam('nextUrl', '/')
     const isDesktop = windowWidth > 768
 
-    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail
+    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail, 3: Push
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -131,10 +133,22 @@ export default function WhatsAppOnboarding({ navigation }) {
             await startServerSideAuth(projectId, service)
             // Auto advance
             if (service === 'calendar') setStep(2)
-            else proceed()
+            else setStep(3)
         } catch (error) {
             console.error('Connection failed', error)
         }
+    }
+
+    const enablePushNotifications = async () => {
+        try {
+            const result = await requestNotificationPermission()
+            if (result.success) {
+                await setUserReceivePushNotifications(loggedUser.uid, true)
+            }
+        } catch (error) {
+            console.error('Error enabling push notifications:', error)
+        }
+        proceed()
     }
 
     const renderWhatsAppStep = () => (
@@ -196,6 +210,20 @@ export default function WhatsAppOnboarding({ navigation }) {
             <TouchableOpacity style={localStyles.primaryButton} onPress={() => connectService('gmail')}>
                 <Text style={localStyles.primaryButtonText}>{translate('Connect Gmail')}</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => setStep(3)}>
+                <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
+            </TouchableOpacity>
+        </View>
+    )
+
+    const renderPushNotificationStep = () => (
+        <View style={localStyles.contentContainer}>
+            <Icon name="bell" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
+            <Text style={localStyles.title}>{translate('Enable Push Notifications')}</Text>
+            <Text style={localStyles.subtitle}>{translate('onboarding_enable_push_desc')}</Text>
+            <TouchableOpacity style={localStyles.primaryButton} onPress={enablePushNotifications}>
+                <Text style={localStyles.primaryButtonText}>{translate('Enable')}</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={localStyles.secondaryButton} onPress={() => proceed()}>
                 <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
             </TouchableOpacity>
@@ -207,6 +235,7 @@ export default function WhatsAppOnboarding({ navigation }) {
             {step === 0 && renderWhatsAppStep()}
             {step === 1 && renderCalendarConnection()}
             {step === 2 && renderGmailConnection()}
+            {step === 3 && renderPushNotificationStep()}
         </SplitLayout>
     )
 }
