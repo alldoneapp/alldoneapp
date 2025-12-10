@@ -138,6 +138,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                     playsInline
                 />
             </View>
+            <View style={isDesktop ? localStyles.separatorDesktop : localStyles.separatorMobile} />
             <View
                 style={[
                     localStyles.contentSection,
@@ -146,8 +147,8 @@ export default function WhatsAppOnboarding({ navigation }) {
             >
                 <View style={localStyles.contentContainer}>
                     {isDesktop && renderLogo()}
-                    <Text style={localStyles.title}>Let's connect on Whatsapp</Text>
-                    <Text style={localStyles.subtitle}>Add your Whatsapp number so we can chat there as well</Text>
+                    <Text style={localStyles.title}>What's your WhatsApp number?</Text>
+                    <Text style={localStyles.subtitle}>Let's chat over there as well</Text>
 
                     <View style={localStyles.inputContainer}>
                         <Text style={localStyles.label}>WhatsApp Number</Text>
@@ -199,11 +200,12 @@ const localStyles = StyleSheet.create({
     },
     videoSectionDesktop: {
         width: '50%',
+        maxWidth: 700,
         height: '100%',
     },
     videoSectionMobile: {
         width: '100%',
-        height: '45%',
+        height: '35%',
     },
     contentSection: {
         alignItems: 'center',
@@ -212,13 +214,25 @@ const localStyles = StyleSheet.create({
         backgroundColor: Colors.White,
     },
     contentSectionDesktop: {
-        width: '50%',
+        flex: 1,
         height: '100%',
         padding: 40, // More padding on desktop
     },
     contentSectionMobile: {
         width: '100%',
-        height: '55%',
+        flex: 1,
+        justifyContent: 'flex-start',
+        paddingTop: 32,
+    },
+    separatorDesktop: {
+        width: 2,
+        height: '100%',
+        backgroundColor: Colors.Grey300,
+    },
+    separatorMobile: {
+        width: '100%',
+        height: 2,
+        backgroundColor: Colors.Grey300,
     },
     contentContainer: {
         width: '100%',
