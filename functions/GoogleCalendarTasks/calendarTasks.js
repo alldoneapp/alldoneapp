@@ -308,8 +308,14 @@ const removeCalendarTasks = async (
             const taskMoment = moment(dateTime || date)
                 .utcOffset(timezoneOffset)
                 .startOf('day')
-            const taskDateFormatted = taskMoment.format('DDMMYYYY')
-            const syncDateMoment = moment(dateFormated, 'DDMMYYYY').startOf('day')
+            // Use string comparison (YYYYMMDD) effectively ignoring offsets for the categorization
+            // of Past/Today/Future to be more robust against TZ shifts
+            const taskDateStr = taskMoment.format('YYYYMMDD')
+            const syncDateStr = moment(dateFormated, 'DDMMYYYY').format('YYYYMMDD')
+
+            const isToday = taskDateStr === syncDateStr
+            const isFuture = taskDateStr > syncDateStr
+            const isPast = taskDateStr < syncDateStr
 
             let shouldDelete = false
             let deleteReason = ''
@@ -317,13 +323,15 @@ const removeCalendarTasks = async (
             if (removeFromAllDates) {
                 shouldDelete = true
                 deleteReason = 'removeFromAllDates is true'
-            } else if (taskMoment.isAfter(syncDateMoment)) {
+            } else if (isFuture) {
                 // Future task - DELETE (Clean up orphans)
                 shouldDelete = true
-                deleteReason = 'Future task (orphan cleanup)'
-            } else if (taskMoment.isBefore(syncDateMoment)) {
+                deleteReason = `Future task (orphan cleanup) - TaskDate: ${taskDateStr} SyncDate: ${syncDateStr}`
+            } else if (isPast) {
                 // Past task - SKIP (Preserve history)
-                // console.log(`[removeCalendarTasks] Skipping task ${task.id} - Past task`)
+                console.log(
+                    `[removeCalendarTasks] Skipping task ${task.id} - Past task. TaskDate: ${taskDateStr} SyncDate: ${syncDateStr}`
+                )
             } else {
                 // Today's task - Check validity
                 if (checkIfIsInvalidEvent(events, task.id)) {
@@ -331,7 +339,7 @@ const removeCalendarTasks = async (
                     deleteReason = 'Task is invalid/declined'
                 } else {
                     console.log(
-                        `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Date match but valid event`
+                        `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Date match (${taskDateStr}) but valid event`
                     )
                 }
             }

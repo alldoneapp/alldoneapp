@@ -44,8 +44,13 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             // It's an IANA timezone string (e.g., "Europe/Berlin")
             timezoneOffset = moment.tz(timezone).utcOffset()
         } else if (typeof timezone === 'number') {
-            // It's already an offset in minutes
-            timezoneOffset = timezone
+            // It's already an offset. If small number, treat as hours (e.g. 1 -> 60)
+            // Range checks for valid hour offsets (typically -12 to +14)
+            if (Math.abs(timezone) <= 16) {
+                timezoneOffset = timezone * 60
+            } else {
+                timezoneOffset = timezone
+            }
         }
 
         console.log(
