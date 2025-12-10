@@ -7,12 +7,12 @@ import URLSystemTrigger from '../../URLSystem/URLSystemTrigger'
 import { setNavigationRoute } from '../../redux/actions'
 import Icon from '../Icon'
 import WhatsAppMockup from './WhatsAppMockup'
+import SplitLayout from './SplitLayout'
 
 export default function OnboardingView({ navigation }) {
     const dispatch = useDispatch()
     const [step, setStep] = useState(0)
     const [answers, setAnswers] = useState({})
-    const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const [chatMessages, setChatMessages] = useState([])
     const [chatOptions, setChatOptions] = useState([])
 
@@ -26,11 +26,14 @@ export default function OnboardingView({ navigation }) {
                 page_title: 'Onboarding Start',
             })
         }
+    }, [])
 
+    const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
+
+    useEffect(() => {
         const updateDimensions = () => {
             setWindowWidth(Dimensions.get('window').width)
         }
-
         Dimensions.addEventListener('change', updateDimensions)
         return () => {
             Dimensions.removeEventListener('change', updateDimensions)
@@ -275,103 +278,10 @@ export default function OnboardingView({ navigation }) {
         }
     }
 
-    return (
-        <View style={[localStyles.container, isDesktop ? localStyles.containerDesktop : localStyles.containerMobile]}>
-            <View
-                style={[
-                    localStyles.videoSection,
-                    isDesktop ? localStyles.videoSectionDesktop : localStyles.videoSectionMobile,
-                ]}
-            >
-                <video
-                    src={require('../../assets/annasmile.mp4')}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        objectPosition: isDesktop ? 'center center' : 'center 20%',
-                        display: 'block',
-                    }}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                />
-            </View>
-            <View
-                style={[
-                    localStyles.contentSection,
-                    isDesktop ? localStyles.contentSectionDesktop : localStyles.contentSectionMobile,
-                ]}
-            >
-                {renderContent()}
-            </View>
-        </View>
-    )
+    return <SplitLayout>{renderContent()}</SplitLayout>
 }
 
 const localStyles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.White,
-    },
-    containerDesktop: {
-        flexDirection: 'row',
-    },
-    containerMobile: {
-        flexDirection: 'column',
-    },
-    videoSection: {
-        backgroundColor: '#000',
-        overflow: 'hidden',
-        position: 'relative',
-    },
-    videoSectionDesktop: {
-        width: '50%',
-        height: '100%',
-    },
-    videoSectionMobile: {
-        width: '100%',
-        height: '45%', // Slightly reduced to give more space to content
-    },
-    phoneOverlay: {
-        position: 'absolute',
-        zIndex: 10,
-    },
-    phoneOverlayDesktop: {
-        bottom: -120,
-        right: 40,
-        transform: [{ scale: 0.85 }, { rotate: '6deg' }],
-    },
-    phoneOverlayMobile: {
-        bottom: -230,
-        right: -20,
-        transform: [{ scale: 0.6 }, { rotate: '6deg' }],
-    },
-    contentSection: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 40,
-        zIndex: 20, // Ensure it overlaps video section if needed
-    },
-    contentSectionDesktop: {
-        width: '50%',
-        height: '100%',
-    },
-    contentSectionMobile: {
-        width: '100%',
-        height: '55%',
-    },
-    contentContainer: {
-        width: '100%',
-        maxWidth: 480,
-        alignItems: 'center',
-    },
-    logoContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 48,
-    },
     title: {
         ...styles.title2,
         textAlign: 'center',
@@ -416,6 +326,14 @@ const localStyles = StyleSheet.create({
     optionsContainer: {
         width: '100%',
         // gap: 16, // not supported in RN
+    },
+    logoContainer: {
+        width: '100%',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 48,
+        flexWrap: 'nowrap',
     },
     optionButton: {
         backgroundColor: Colors.White,

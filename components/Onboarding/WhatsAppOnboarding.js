@@ -11,6 +11,7 @@ import { setUserPhone } from '../../utils/backends/Users/usersFirestore'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import Icon from '../Icon'
+import SplitLayout from './SplitLayout'
 
 export default function WhatsAppOnboarding({ navigation }) {
     const [phone, setPhone] = useState('')
@@ -116,124 +117,42 @@ export default function WhatsAppOnboarding({ navigation }) {
     )
 
     return (
-        <View style={[localStyles.container, isDesktop ? localStyles.containerDesktop : localStyles.containerMobile]}>
-            <View
-                style={[
-                    localStyles.videoSection,
-                    isDesktop ? localStyles.videoSectionDesktop : localStyles.videoSectionMobile,
-                ]}
-            >
-                <video
-                    src={require('../../assets/annasmile.mp4')}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        objectPosition: isDesktop ? 'center center' : 'center 20%',
-                        display: 'block',
-                    }}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                />
-            </View>
-            <View style={isDesktop ? localStyles.separatorDesktop : localStyles.separatorMobile} />
-            <View
-                style={[
-                    localStyles.contentSection,
-                    isDesktop ? localStyles.contentSectionDesktop : localStyles.contentSectionMobile,
-                ]}
-            >
-                <View style={localStyles.contentContainer}>
-                    {isDesktop && renderLogo()}
-                    <Text style={localStyles.title}>What's your WhatsApp number?</Text>
-                    <Text style={localStyles.subtitle}>Let's chat over there as well</Text>
+        <SplitLayout>
+            <View style={localStyles.contentContainer}>
+                {isDesktop && renderLogo()}
+                <Text style={localStyles.title}>What's your WhatsApp number?</Text>
+                <Text style={localStyles.subtitle}>Let's chat over there as well</Text>
 
-                    <View style={localStyles.inputContainer}>
-                        <Text style={localStyles.label}>WhatsApp Number</Text>
-                        <TextInput
-                            ref={phoneInputRef}
-                            style={localStyles.phoneInput}
-                            value={phone}
-                            placeholder="Type your phone number"
-                            placeholderTextColor={Colors.Text03}
-                            onChangeText={onPhoneChange}
-                            keyboardType="phone-pad"
-                            autoFocus={true}
-                            onSubmitEditing={handleContinue}
-                        />
-                        {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
-                    </View>
+                <View style={localStyles.inputContainer}>
+                    <Text style={localStyles.label}>WhatsApp Number</Text>
+                    <TextInput
+                        ref={phoneInputRef}
+                        style={localStyles.phoneInput}
+                        value={phone}
+                        placeholder="Type your phone number"
+                        placeholderTextColor={Colors.Text03}
+                        onChangeText={onPhoneChange}
+                        keyboardType="phone-pad"
+                        autoFocus={true}
+                        onSubmitEditing={handleContinue}
+                    />
+                    {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
+                </View>
 
-                    <View style={localStyles.actions}>
-                        <TouchableOpacity style={localStyles.primaryButton} onPress={handleContinue}>
-                            <Text style={localStyles.primaryButtonText}>
-                                {saving ? 'Saving...' : 'Save & Continue'}
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={localStyles.secondaryButton} onPress={handleSkip}>
-                            <Text style={localStyles.secondaryButtonText}>No thank you</Text>
-                        </TouchableOpacity>
-                    </View>
+                <View style={localStyles.actions}>
+                    <TouchableOpacity style={localStyles.primaryButton} onPress={handleContinue}>
+                        <Text style={localStyles.primaryButtonText}>{saving ? 'Saving...' : 'Save & Continue'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={localStyles.secondaryButton} onPress={handleSkip}>
+                        <Text style={localStyles.secondaryButtonText}>No thank you</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
-        </View>
+        </SplitLayout>
     )
 }
 
 const localStyles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.White,
-    },
-    containerDesktop: {
-        flexDirection: 'row',
-    },
-    containerMobile: {
-        flexDirection: 'column',
-    },
-    videoSection: {
-        backgroundColor: '#000',
-        overflow: 'hidden',
-        position: 'relative',
-    },
-    videoSectionDesktop: {
-        width: '50%',
-        maxWidth: 700,
-        height: '100%',
-    },
-    videoSectionMobile: {
-        width: '100%',
-        height: '35%',
-    },
-    contentSection: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24, // Reduced default padding
-        backgroundColor: Colors.White,
-    },
-    contentSectionDesktop: {
-        flex: 1,
-        height: '100%',
-        padding: 40, // More padding on desktop
-    },
-    contentSectionMobile: {
-        width: '100%',
-        flex: 1,
-        justifyContent: 'flex-start',
-        paddingTop: 32,
-    },
-    separatorDesktop: {
-        width: 2,
-        height: '100%',
-        backgroundColor: Colors.Grey300,
-    },
-    separatorMobile: {
-        width: '100%',
-        height: 2,
-        backgroundColor: Colors.Grey300,
-    },
     contentContainer: {
         width: '100%',
         maxWidth: 480,
@@ -243,6 +162,9 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 48,
+        flexWrap: 'nowrap',
+        justifyContent: 'center',
+        width: '100%',
     },
     title: {
         ...styles.title2,
