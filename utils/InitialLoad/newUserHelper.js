@@ -158,7 +158,7 @@ const createWelcomeChatAndMessage = async (project, assistant, userId) => {
         [FEED_PUBLIC_FOR_ALL], // isPublicFor
         '#FFFFFF', // hasStar (color)
         null, // stickyData
-        [userId, assistant.uid], // followerIds
+        [userId], // followerIds
         '', // quickDateId
         assistant.uid, // assistantId
         STAYWARD_COMMENT, // commentType
@@ -178,6 +178,30 @@ const createWelcomeChatAndMessage = async (project, assistant, userId) => {
         creatorId: assistant.uid,
         fromAssistant: true,
         commentType: STAYWARD_COMMENT,
+    })
+
+    // 3. Create Chat Notification for the User
+    batch.set(getDb().doc(`chatNotifications/${project.id}/${userId}/${commentId}`), {
+        chatId: chatId,
+        chatType: 'topics',
+        followed: true,
+        date: Date.now(),
+        creatorId: assistant.uid,
+        creatorType: 'assistant',
+    })
+
+    // 4. Update User's lastAssistantCommentData (to show in assistant line)
+    const updateAssistantData = {
+        objectType: 'topics',
+        objectId: chatId,
+        creatorId: assistant.uid,
+        creatorType: 'assistant',
+        date: Date.now(),
+    }
+
+    batch.update(getDb().doc(`users/${userId}`), {
+        [`lastAssistantCommentData.${project.id}`]: updateAssistantData,
+        [`lastAssistantCommentData.allProjects`]: { ...updateAssistantData, projectId: project.id },
     })
 
     await batch.commit()

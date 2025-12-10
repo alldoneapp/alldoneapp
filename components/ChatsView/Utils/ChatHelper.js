@@ -103,10 +103,8 @@ class ChatHelper {
         }
 
         if (!user) {
-            console.log('ChatHelper: Navigation failed - Chat creator not found')
-            navigation.navigate('Root')
-            store.dispatch(navigateToAllProjectsTasks())
-            return
+            console.log('ChatHelper: Chat creator found (probably assistant), using logged user')
+            // Don't navigate away, just continue with logged user as fallback
         }
 
         const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
@@ -119,7 +117,7 @@ class ChatHelper {
 
         store.dispatch([
             switchProject(projectIndex),
-            storeCurrentUser(user),
+            storeCurrentUser(user || loggedUser),
             setSelectedNavItem(tab),
             setSelectedTypeOfProject(projectType),
         ])
