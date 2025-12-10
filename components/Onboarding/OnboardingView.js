@@ -120,12 +120,7 @@ export default function OnboardingView({ navigation }) {
                         },
                         {
                             sender: 'anna',
-                            text:
-                                'For example I can ask "Rudy Research" to see what\'s going on in your area every week so you can plan your weekend properly.',
-                        },
-                        {
-                            sender: 'anna',
-                            text: 'Or I can ask an AI to join your meetings and take automatic meeting notes.',
+                            text: 'For example I can ask an AI to join your meetings and take automatic meeting notes.',
                         },
                     ],
                     ['Can you also remind me of my tasks so I dont forget?']
@@ -148,12 +143,7 @@ export default function OnboardingView({ navigation }) {
                         {
                             sender: 'anna',
                             text:
-                                'Remember that you can always also just use our web app to use the same tool i am using internally to help you organize your life so you keep full control.',
-                        },
-                        {
-                            sender: 'anna',
-                            text:
-                                "Now let's start the trial to test me for free. Looking foward to working with you and to get it all done!",
+                                "Now let's start the free trial. Looking foward to working with you and to get it all done!",
                         },
                     ],
                     ["Ok let's go!"]
