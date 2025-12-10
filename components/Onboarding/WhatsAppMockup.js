@@ -49,6 +49,61 @@ const TypingIndicator = () => {
     )
 }
 
+const OptionBubble = ({ option, onPress }) => {
+    const scaleAnim = useRef(new Animated.Value(1)).current
+    const opacityAnim = useRef(new Animated.Value(1)).current
+
+    useEffect(() => {
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.parallel([
+                    Animated.timing(scaleAnim, {
+                        toValue: 1.05,
+                        duration: 800,
+                        useNativeDriver: true,
+                        easing: Easing.inOut(Easing.ease),
+                    }),
+                    Animated.timing(opacityAnim, {
+                        toValue: 0.8,
+                        duration: 800,
+                        useNativeDriver: true,
+                        easing: Easing.inOut(Easing.ease),
+                    }),
+                ]),
+                Animated.parallel([
+                    Animated.timing(scaleAnim, {
+                        toValue: 1,
+                        duration: 800,
+                        useNativeDriver: true,
+                        easing: Easing.inOut(Easing.ease),
+                    }),
+                    Animated.timing(opacityAnim, {
+                        toValue: 1,
+                        duration: 800,
+                        useNativeDriver: true,
+                        easing: Easing.inOut(Easing.ease),
+                    }),
+                ]),
+            ])
+        )
+        pulse.start()
+        return () => pulse.stop()
+    }, [])
+
+    return (
+        <Animated.View
+            style={{
+                transform: [{ scale: scaleAnim }],
+                opacity: opacityAnim,
+            }}
+        >
+            <TouchableOpacity style={styles.optionBubble} onPress={onPress} activeOpacity={0.8}>
+                <Text style={styles.optionText}>{option}</Text>
+            </TouchableOpacity>
+        </Animated.View>
+    )
+}
+
 export default function WhatsAppMockup({ messages = [], options = [], onOptionSelect, style, isTyping }) {
     const scrollViewRef = useRef()
 
@@ -129,13 +184,11 @@ export default function WhatsAppMockup({ messages = [], options = [], onOptionSe
                 {options.length > 0 && (
                     <View style={styles.optionsContainer}>
                         {options.map((option, index) => (
-                            <TouchableOpacity
+                            <OptionBubble
                                 key={index}
-                                style={styles.optionBubble}
+                                option={option}
                                 onPress={() => onOptionSelect && onOptionSelect(option)}
-                            >
-                                <Text style={styles.optionText}>{option}</Text>
-                            </TouchableOpacity>
+                            />
                         ))}
                     </View>
                 )}
@@ -310,11 +363,11 @@ const styles = StyleSheet.create({
     },
     optionBubble: {
         backgroundColor: '#fff',
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
+        paddingVertical: 12, // Increased padding
+        paddingHorizontal: 20, // Increased padding
+        borderRadius: 24, // Increased border radius
+        borderWidth: 2, // Thicker border
+        borderColor: Colors.Primary100, // Primary color border
         marginBottom: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
