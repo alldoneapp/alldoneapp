@@ -7,7 +7,7 @@ import styles from '../styles/global'
 import Colors from '../../Themes/Colors'
 import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
-import { setUserPhone } from '../../utils/backends/Users/usersFirestore'
+import { setUserPhone, setUserReceiveWhatsApp } from '../../utils/backends/Users/usersFirestore'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import Icon from '../Icon'
@@ -66,6 +66,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         setSaving(true)
         try {
             await setUserPhone(loggedUser.uid, validation.formatted)
+            await setUserReceiveWhatsApp(loggedUser.uid, true)
 
             // Automatically generate MCP access token for this user
             try {
