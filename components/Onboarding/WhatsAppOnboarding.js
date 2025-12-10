@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { StyleSheet, Text, View, TextInput, Dimensions, TouchableOpacity, Image } from 'react-native'
-import { useSelector } from 'react-redux'
+import { StyleSheet, Text, View, TextInput, Dimensions, TouchableOpacity, Image, ActivityIndicator } from 'react-native'
+import { useDispatch, useSelector } from 'react-redux'
 import { firebase } from '@firebase/app'
 
 import styles from '../styles/global'
@@ -33,6 +33,8 @@ export default function WhatsAppOnboarding({ navigation }) {
     const isDesktop = windowWidth > 768
 
     const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail, 3: Push
+    const [connectingService, setConnectingService] = useState(null)
+    const [showSuccess, setShowSuccess] = useState(null)
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -129,13 +131,20 @@ export default function WhatsAppOnboarding({ navigation }) {
     )
 
     const connectService = async service => {
+        setConnectingService(service)
         try {
             await startServerSideAuth(projectId, service)
+            setConnectingService(null)
+            setShowSuccess(service)
             // Auto advance
-            if (service === 'calendar') setStep(2)
-            else setStep(3)
+            setTimeout(() => {
+                setShowSuccess(null)
+                if (service === 'calendar') setStep(2)
+                else setStep(3)
+            }, 1000)
         } catch (error) {
             console.error('Connection failed', error)
+            setConnectingService(null)
         }
     }
 
@@ -193,10 +202,27 @@ export default function WhatsAppOnboarding({ navigation }) {
             <Icon name="calendar" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
             <Text style={localStyles.title}>{translate('Connect Google Calendar')}</Text>
             <Text style={localStyles.subtitle}>{translate('onboarding_connect_calendar_desc')}</Text>
-            <TouchableOpacity style={localStyles.primaryButton} onPress={() => connectService('calendar')}>
-                <Text style={localStyles.primaryButtonText}>{translate('Connect Calendar')}</Text>
+            <TouchableOpacity
+                style={[localStyles.primaryButton, connectingService === 'calendar' && { opacity: 0.7 }]}
+                onPress={() => connectService('calendar')}
+                disabled={connectingService === 'calendar' || showSuccess === 'calendar'}
+            >
+                {connectingService === 'calendar' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <ActivityIndicator color="#FFF" size="small" style={{ marginRight: 8 }} />
+                        <Text style={localStyles.primaryButtonText}>{translate('Working on it...')}</Text>
+                    </View>
+                ) : showSuccess === 'calendar' ? (
+                    <Text style={localStyles.primaryButtonText}>{translate('Connected!')}</Text>
+                ) : (
+                    <Text style={localStyles.primaryButtonText}>{translate('Connect Calendar')}</Text>
+                )}
             </TouchableOpacity>
-            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => setStep(2)}>
+            <TouchableOpacity
+                style={localStyles.secondaryButton}
+                onPress={() => setStep(2)}
+                disabled={connectingService === 'calendar'}
+            >
                 <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
             </TouchableOpacity>
         </View>
@@ -207,10 +233,27 @@ export default function WhatsAppOnboarding({ navigation }) {
             <Icon name="gmail" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
             <Text style={localStyles.title}>{translate('Connect Gmail')}</Text>
             <Text style={localStyles.subtitle}>{translate('onboarding_connect_gmail_desc')}</Text>
-            <TouchableOpacity style={localStyles.primaryButton} onPress={() => connectService('gmail')}>
-                <Text style={localStyles.primaryButtonText}>{translate('Connect Gmail')}</Text>
+            <TouchableOpacity
+                style={[localStyles.primaryButton, connectingService === 'gmail' && { opacity: 0.7 }]}
+                onPress={() => connectService('gmail')}
+                disabled={connectingService === 'gmail' || showSuccess === 'gmail'}
+            >
+                {connectingService === 'gmail' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <ActivityIndicator color="#FFF" size="small" style={{ marginRight: 8 }} />
+                        <Text style={localStyles.primaryButtonText}>{translate('Working on it...')}</Text>
+                    </View>
+                ) : showSuccess === 'gmail' ? (
+                    <Text style={localStyles.primaryButtonText}>{translate('Connected!')}</Text>
+                ) : (
+                    <Text style={localStyles.primaryButtonText}>{translate('Connect Gmail')}</Text>
+                )}
             </TouchableOpacity>
-            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => setStep(3)}>
+            <TouchableOpacity
+                style={localStyles.secondaryButton}
+                onPress={() => setStep(3)}
+                disabled={connectingService === 'gmail'}
+            >
                 <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
             </TouchableOpacity>
         </View>

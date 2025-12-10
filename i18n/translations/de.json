@@ -1059,5 +1059,8 @@
     "Connect Calendar": "Kalender verbinden",
     "Connect Gmail": "Gmail verbinden",
     "onboarding_connect_gmail_desc": "Verbinden Sie Ihre E-Mail, damit ich Ihnen helfen kann, Antworten zu entwerfen und Ihren Posteingang zu organisieren.",
-    "Skip": "Überspringen"
+    "Enable": "Aktivieren",
+    "Skip": "Überspringen",
+    "Connected!": "Verbunden!",
+    "Working on it...": "Arbeite daran..."
 }

@@ -1516,6 +1516,8 @@
     "onboarding_connect_gmail_desc": "Verbinden Sie Ihre E-Mail, damit ich Ihnen helfen kann, Antworten zu entwerfen und Ihren Posteingang zu organisieren.",
     "Enable Push Notifications": "Push-Benachrichtigungen aktivieren",
     "onboarding_enable_push_desc": "Lassen Sie sich benachrichtigen, wenn wichtige Aufgaben fällig sind oder wenn Ihr Assistent ein Update für Sie hat.",
-    "Enable": "Aktivieren",
-    "Skip": "Überspringen"
+    "Enable": "Enable",
+    "Skip": "Skip",
+    "Connected!": "Connected!",
+    "Working on it...": "Working on it..."
 }
