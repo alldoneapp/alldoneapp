@@ -10,6 +10,8 @@ import {
     watchForceReload,
     initFCMonLoad,
     unwatch,
+    getDb,
+    getFirestoreTime,
 } from '../backends/firestore'
 import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
 import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
@@ -32,6 +34,10 @@ import { storeVersion } from '../Observers'
 import NavigationService from '../NavigationService'
 import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumFirestore'
 import { PLAN_STATUS_PREMIUM } from '../../components/Premium/PremiumHelper'
+import { createChat } from '../backends/Chats/chatsComments'
+import { STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
+import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
+import { BatchWrapper } from '../../functions/BatchWrapper/batchWrapper'
 
 const generateInitialWorkstream = (projectId, userId) => {
     return getDefaultMainWorkstream(projectId, userId)
@@ -121,6 +127,63 @@ const generateInitialTask = userId => {
     return task
 }
 
+const createWelcomeChatAndMessage = async (project, assistant, userId) => {
+    console.log('[NewUserWelcomeChat] Starting createWelcomeChatAndMessage', {
+        projectId: project.id,
+        assistantId: assistant?.uid,
+        userId,
+    })
+
+    if (!assistant) {
+        console.warn('[NewUserWelcomeChat] createWelcomeChatAndMessage aborted: No assistant provided')
+        return
+    }
+
+    const chatId = getId()
+    const message =
+        "Welcome to Alldone! My name is Anna. Think of me as your AI Chief of staff. You can talk to me here or on Whatsapp to capture tasks, ask what's next, capture your ideas and many things more. What can I do for you today?"
+    const title = 'Welcome'
+
+    console.log('[NewUserWelcomeChat] Creating Welcome Chat/Topic...', { chatId, title })
+
+    // 1. Create Chat (Topic)
+    // We make the assistant the creator of the chat
+    await createChat(
+        chatId,
+        project.id,
+        assistant.uid, // creatorId
+        message, // comment (sets lastComment data)
+        'topics', // type
+        title, // title
+        [FEED_PUBLIC_FOR_ALL], // isPublicFor
+        '#FFFFFF', // hasStar (color)
+        null, // stickyData
+        [userId, assistant.uid], // followerIds
+        '', // quickDateId
+        assistant.uid, // assistantId
+        STAYWARD_COMMENT, // commentType
+        assistant.uid // parentObjectCreatorId
+    )
+
+    console.log('[NewUserWelcomeChat] Welcome Chat Created. Adding initial comment document...')
+
+    // 2. Create the Comment Document (Since createChat doesn't do it)
+    const commentId = getId()
+    const batch = new BatchWrapper(getDb())
+
+    batch.set(getDb().doc(`chatComments/${project.id}/topics/${chatId}/comments/${commentId}`), {
+        commentText: message,
+        lastChangeDate: getFirestoreTime(),
+        created: Date.now(),
+        creatorId: assistant.uid,
+        fromAssistant: true,
+        commentType: STAYWARD_COMMENT,
+    })
+
+    await batch.commit()
+    console.log('[NewUserWelcomeChat] createWelcomeChatAndMessage completed successfully', { commentId })
+}
+
 export const processNewUser = async firebaseUser => {
     unwatch('loggedUser')
 
@@ -190,6 +253,12 @@ export const processNewUser = async firebaseUser => {
         // We use the original globalAssistant.uid as the source
         copyPreConfigTasksToNewAssistant(GLOBAL_PROJECT_ID, globalAssistant.uid, project.id, assistant.uid).catch(err =>
             console.warn('Failed to copy pre-config tasks:', err)
+        )
+    }
+
+    if (assistant) {
+        createWelcomeChatAndMessage(project, assistant, userId).catch(err =>
+            console.warn('Failed to create welcome chat:', err)
         )
     }
 
