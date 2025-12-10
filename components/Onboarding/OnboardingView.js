@@ -19,6 +19,14 @@ export default function OnboardingView({ navigation }) {
     useEffect(() => {
         dispatch(setNavigationRoute('Onboarding'))
 
+        // Track onboarding view
+        if (typeof gtag === 'function') {
+            gtag('event', 'onboarding_view', {
+                page_path: '/starttrial',
+                page_title: 'Onboarding Start',
+            })
+        }
+
         const updateDimensions = () => {
             setWindowWidth(Dimensions.get('window').width)
         }
@@ -183,6 +191,21 @@ export default function OnboardingView({ navigation }) {
             planType = urlParams.get('plan') || urlParams.get('type') || 'monthly'
         }
 
+        // Track checkout begin
+        if (typeof gtag === 'function') {
+            gtag('event', 'begin_checkout', {
+                items: [
+                    {
+                        item_id: planType === 'yearly' ? 'premium_yearly' : 'premium_monthly',
+                        item_name: planType === 'yearly' ? 'Premium Yearly' : 'Premium Monthly',
+                        price: planType === 'yearly' ? 1.0 : 0.5,
+                    },
+                ],
+                value: planType === 'yearly' ? 1.0 : 0.5,
+                currency: 'USD',
+            })
+        }
+
         URLSystemTrigger.redirectToStripe(planType)
     }
 
@@ -198,7 +221,18 @@ export default function OnboardingView({ navigation }) {
             {renderLogo()}
             <Text style={localStyles.title}>Welcome to Alldone!</Text>
             <Text style={localStyles.subtitle}>Let me show you how I can help you</Text>
-            <TouchableOpacity style={localStyles.primaryButton} onPress={() => setStep(1)}>
+            <TouchableOpacity
+                style={localStyles.primaryButton}
+                onPress={() => {
+                    if (typeof gtag === 'function') {
+                        gtag('event', 'onboarding_start', {
+                            event_category: 'onboarding',
+                            event_label: 'get_started_click',
+                        })
+                    }
+                    setStep(1)
+                }}
+            >
                 <Text style={localStyles.primaryButtonText}>Get Started</Text>
             </TouchableOpacity>
         </View>

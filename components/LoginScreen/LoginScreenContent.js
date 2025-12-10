@@ -67,6 +67,12 @@ export default function LoginScreenContent() {
         writeBrowserURL()
         dispatch(setNavigationRoute('LoginScreen'))
         logEvent('login_page')
+        if (typeof gtag === 'function') {
+            gtag('event', 'login_view', {
+                page_path: '/login',
+                page_title: 'Login Page',
+            })
+        }
     }, [])
 
     return (
@@ -113,9 +119,7 @@ export default function LoginScreenContent() {
                         />
                     )}
 
-                    {loginType === NORMAL_LOGIN && (
-                        <Text style={localStyles.title}>Sign in with your personal email</Text>
-                    )}
+                    {loginType === NORMAL_LOGIN && <Text style={localStyles.title}>Sign in with Google</Text>}
                     {loginType === GUIDE_LOGIN && <Text style={localStyles.title}>{templateTitle}</Text>}
                     <LogInButton />
                     <Text style={localStyles.subtitle}>
@@ -124,6 +128,14 @@ export default function LoginScreenContent() {
                             href="https://alldone.app/privacy"
                             target={'_blank'}
                             style={{ color: Colors.Primary100, textDecoration: 'none' }}
+                            onClick={() => {
+                                if (typeof gtag === 'function') {
+                                    gtag('event', 'click_privacy_policy', {
+                                        event_category: 'login',
+                                        event_label: 'privacy_policy_link',
+                                    })
+                                }
+                            }}
                         >
                             Privacy Policy
                         </a>{' '}
@@ -132,10 +144,17 @@ export default function LoginScreenContent() {
                             href="https://alldone.app/terms"
                             target={'_blank'}
                             style={{ color: Colors.Primary100, textDecoration: 'none' }}
+                            onClick={() => {
+                                if (typeof gtag === 'function') {
+                                    gtag('event', 'click_terms_service', {
+                                        event_category: 'login',
+                                        event_label: 'terms_service_link',
+                                    })
+                                }
+                            }}
                         >
                             Terms of Service
                         </a>{' '}
-                        and want to login with your Google account
                     </Text>
                 </View>
             </ScrollView>

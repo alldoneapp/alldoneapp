@@ -22,6 +22,13 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
         )
         document.cookie = 'g_state=; Max-Age=-99999999;'
         // !loggedIn && window.google.accounts.id.prompt()      // Uncomment this if want auto prompt the Login Popup
+
+        if (typeof gtag === 'function') {
+            gtag('event', 'login_button_rendered', {
+                event_category: 'login',
+                event_label: 'google_signin_rendered',
+            })
+        }
     }
 
     return (
