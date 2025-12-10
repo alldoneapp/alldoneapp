@@ -278,7 +278,16 @@ const removeCalendarTasks = async (
 
     // Search across ALL user projects to find calendar tasks to potentially remove
     // This ensures we find and clean up tasks even if they were manually moved
+    console.log(`[removeCalendarTasks] Fetching tasks for projects: ${user.projectIds.join(', ')}`)
     const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, false)
+    console.log(`[removeCalendarTasks] Found ${tasks.length} tasks in DB to check.`)
+    tasks.forEach(t =>
+        console.log(
+            `[removeCalendarTasks] DB Task: ${t.id} | ${t.name} | Date: ${
+                t.calendarData?.start?.dateTime || t.calendarData?.start?.date
+            }`
+        )
+    )
 
     const batch = new BatchWrapper(admin.firestore())
     let tasksToDelete = 0
@@ -288,6 +297,9 @@ const removeCalendarTasks = async (
             // Only consider tasks from the current calendar account
             // This prevents deleting tasks from other calendar accounts when syncing across projects
             if (email && task.calendarData && task.calendarData.email !== email) {
+                console.log(
+                    `[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Email mismatch: ${task.calendarData.email} vs ${email}`
+                )
                 return // Skip this task, it belongs to a different calendar account
             }
 
@@ -331,6 +343,8 @@ const removeCalendarTasks = async (
                 tasksToDelete++
                 batch.delete(admin.firestore().doc(`items/${projectId}/tasks/${task.id}`))
             }
+        } else {
+            console.log(`[removeCalendarTasks] Skipping task ${task.id} (${task.name}) - Has noteId`)
         }
     })
 
