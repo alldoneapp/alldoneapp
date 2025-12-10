@@ -51,6 +51,9 @@ const getEnvFunctions = () => {
             SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
             IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
             GIPHY_API_KEY: process.env.GIPHY_API_KEY || '',
+            GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
+            GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
+                process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -79,6 +82,9 @@ const getEnvFunctions = () => {
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                         '',
+                    GOOGLE_ANALYTICS_KEY: envJson.GOOGLE_ANALYTICS_KEY || '',
+                    GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
+                        envJson.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -107,6 +113,9 @@ const getEnvFunctions = () => {
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                             '',
+                        GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
+                        GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
+                            process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
                     }
                 }
             } catch (error) {
@@ -130,6 +139,9 @@ const getEnvFunctions = () => {
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                         '',
+                    GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
+                    GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
+                        process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
                 }
             }
         } else {
@@ -153,6 +165,9 @@ const getEnvFunctions = () => {
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                     '',
+                GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
+                GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
+                    process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
             }
         }
     }

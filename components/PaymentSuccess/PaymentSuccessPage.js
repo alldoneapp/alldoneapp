@@ -27,12 +27,12 @@ export default function PaymentSuccessPage() {
             // Track the conversion event in Google Analytics with the specific measurement ID
             if (typeof gtag !== 'undefined') {
                 // Send conversion event to the specific Google Analytics property
-                gtag('config', 'G-GNT2NCRH9K', {
+                gtag('config', 'G-HR3PWMHKQQ', {
                     send_page_view: false,
                 })
 
                 gtag('event', 'conversion', {
-                    send_to: 'G-GNT2NCRH9K',
+                    send_to: 'G-HR3PWMHKQQ',
                     event_category: 'trial_conversion',
                     event_label: planType || 'unknown',
                     value: planType === 'yearly' ? 1 : 0.5, // Higher value for yearly plans
@@ -44,7 +44,7 @@ export default function PaymentSuccessPage() {
                 })
 
                 console.log('📊 Google Analytics conversion tracked:', {
-                    measurement_id: 'G-GNT2NCRH9K',
+                    measurement_id: 'G-HR3PWMHKQQ',
                     event: 'conversion',
                     plan_type: planType,
                     tracking_id_preview: trackingId?.substring(0, 20) + '...',

@@ -19,32 +19,17 @@
     <link rel="apple-touch-icon" sizes="72x72" href="apple-touch-icon-72x72.png" />
     <!-- For non-Retina iPhone, iPod Touch, and Android 2.1+ devices: -->
     <link rel="apple-touch-icon" href="apple-touch-icon-57x57.png" /><!-- 57×57px -->
-    <head>
-        <!-- Google Tag Manager -->
-        <script>
-            function gtmFn(w, d, s, l, i) {
-                w[l] = w[l] || []
-                w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' })
-                var f = d.getElementsByTagName(s)[0],
-                    j = d.createElement(s),
-                    dl = l != 'dataLayer' ? '&l=' + l : ''
-                j.async = true
-                j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl
-                f.parentNode.insertBefore(j, f)
-            }
-            gtmFn(window, document, 'script', 'dataLayer', 'GTM-THM5BX5')
-        </script>
-        <!-- End Google Tag Manager -->
 
-        <!-- Google Analytics for Trial Conversion Tracking -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-GNT2NCRH9K"></script>
+    <head>
+        <!-- Google Analytics -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-HR3PWMHKQQ"></script>
         <script>
             window.dataLayer = window.dataLayer || []
             function gtag() {
                 dataLayer.push(arguments)
             }
             gtag('js', new Date())
-            gtag('config', 'G-GNT2NCRH9K', {
+            gtag('config', 'G-HR3PWMHKQQ', {
                 send_page_view: false,
                 allow_google_signals: false,
                 allow_ad_personalization_signals: false,
@@ -142,6 +127,7 @@
             * {
                 flex-basis: auto !important;
             }
+
             html,
             body,
             #root {
@@ -153,6 +139,7 @@
                 /* Allows content to fill the viewport and go beyond the bottom */
                 min-height: 100%;
             }
+
             #root {
                 flex-shrink: 0;
                 flex-basis: auto;
@@ -183,9 +170,11 @@
                 padding-left: env(safe-area-inset-left) !important;
                 padding-right: env(safe-area-inset-right) !important;
             }
+
             .react-tiny-popover-container {
                 box-shadow: 0px 4px 16px rgba(78, 93, 120, 0.56);
             }
+
             /* Enable for apps that support dark-theme */
             /*@media (prefers-color-scheme: dark) {
         body {
@@ -196,16 +185,6 @@
     </head>
 
     <body>
-        <!-- Google Tag Manager (noscript) -->
-        <noscript
-            ><iframe
-                src="https://www.googletagmanager.com/ns.html?id=GTM-THM5BX5"
-                height="0"
-                width="0"
-                style="display: none; visibility: hidden;"
-            ></iframe
-        ></noscript>
-        <!-- End Google Tag Manager (noscript) -->
         <!--
       A generic no script element with a reload button and a message.
       Feel free to customize this however you'd like.
