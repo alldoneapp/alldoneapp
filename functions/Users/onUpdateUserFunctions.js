@@ -22,13 +22,7 @@ const onUpdateUser = async (userId, change) => {
             admin.firestore().collection('whatsAppNotifications').add({
                 userId: userId,
                 userPhone: newUser.phone,
-                projectId: 'private',
-                projectName: 'Private',
-                objectName: 'Welcome',
-                updateText: 'Hi - here is Anna Alldone. What can I do for you?',
-                link: 'https://my.alldone.app',
-                assistantName: 'Anna Alldone',
-                openTasksCount: 1,
+                isWelcome: true,
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
             })
         )

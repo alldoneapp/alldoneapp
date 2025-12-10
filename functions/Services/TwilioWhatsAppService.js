@@ -773,6 +773,65 @@ Powered by Alldone Assistant 🚀`
 
         return await this.sendWhatsAppMessage(testPhoneNumber, testMessage)
     }
+
+    /**
+     * Send a welcome notification via WhatsApp using a template with no variables.
+     * Used when a new user adds their WhatsApp number.
+     * @param {string} userPhone - User's phone number
+     * @returns {Promise<Object>} - Send result
+     */
+    async sendWelcomeNotification(userPhone) {
+        if (!userPhone) {
+            console.warn('No phone number provided for WhatsApp welcome notification')
+            return { success: false, error: 'No phone number provided', to: userPhone }
+        }
+
+        try {
+            const client = this._initializeTwilioClient()
+            const formattedTo = this._formatWhatsAppNumber(userPhone)
+
+            console.log('Sending WhatsApp welcome template:', {
+                to: formattedTo,
+                contentSid: 'HXa3f62b884796b66c390aaf2b336dbcd7',
+            })
+
+            const response = await client.messages.create({
+                contentSid: 'HXa3f62b884796b66c390aaf2b336dbcd7',
+                from: this.twilioWhatsAppFrom,
+                to: formattedTo,
+            })
+
+            console.log('WhatsApp welcome message sent successfully:', {
+                sid: response.sid,
+                status: response.status,
+                to: formattedTo,
+            })
+
+            return {
+                success: true,
+                sid: response.sid,
+                status: response.status,
+                to: formattedTo,
+                message: 'WhatsApp welcome message sent successfully',
+            }
+        } catch (error) {
+            console.error('Failed to send WhatsApp welcome message:', {
+                error: error.message,
+                code: error.code,
+                status: error.status,
+                userPhone,
+                stack: error.stack,
+            })
+            return {
+                success: false,
+                error: error.message,
+                code: error.code,
+                status: error.status,
+                to: userPhone,
+                message: 'Failed to send WhatsApp welcome message',
+            }
+        }
+    }
 }
 
 module.exports = TwilioWhatsAppService

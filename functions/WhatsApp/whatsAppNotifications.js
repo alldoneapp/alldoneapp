@@ -45,9 +45,18 @@ async function processWhatsAppNotifications() {
             link,
             assistantName,
             openTasksCount,
+            isWelcome,
         } = notif
 
         try {
+            // Handle welcome notifications with the dedicated method
+            if (isWelcome) {
+                await service.sendWelcomeNotification(userPhone)
+                await db.doc(`whatsAppNotifications/${doc.id}`).delete()
+                processed++
+                continue
+            }
+
             let finalProjectName = projectName || 'Project'
             let finalObjectName = objectName || 'Item'
             let finalLink = link
