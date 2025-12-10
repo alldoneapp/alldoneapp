@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { StyleSheet, Text, View, TextInput, Dimensions, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, View, TextInput, Dimensions, TouchableOpacity, Image } from 'react-native'
 import { useSelector } from 'react-redux'
 import { firebase } from '@firebase/app'
 
@@ -12,6 +12,7 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import Icon from '../Icon'
 import SplitLayout from './SplitLayout'
+import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 
 export default function WhatsAppOnboarding({ navigation }) {
     const [phone, setPhone] = useState('')
@@ -20,9 +21,16 @@ export default function WhatsAppOnboarding({ navigation }) {
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const phoneInputRef = useRef()
     const loggedUser = useSelector(state => state.loggedUser)
+    const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
+    const firstProjectId = useSelector(state =>
+        state.loggedUserProjects && state.loggedUserProjects.length > 0 ? state.loggedUserProjects[0].id : null
+    )
+    const projectId = defaultProjectId || firstProjectId
 
     const nextUrl = navigation.getParam('nextUrl', '/')
     const isDesktop = windowWidth > 768
+
+    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -42,8 +50,9 @@ export default function WhatsAppOnboarding({ navigation }) {
         if (saving) return
 
         // If phone is empty, just proceed (treat as skip)
+        // If phone is empty, just proceed (treat as skip)
         if (!phone || phone.trim() === '') {
-            proceed()
+            setStep(1)
             return
         }
 
@@ -86,7 +95,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 console.warn('Failed to auto-generate MCP token:', tokenError)
             }
 
-            proceed()
+            setStep(1)
         } catch (error) {
             console.error('Error saving phone:', error)
             setValidationError('Failed to save phone number. Please try again.')
@@ -95,7 +104,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     }
 
     const handleSkip = () => {
-        proceed()
+        setStep(1)
     }
 
     const proceed = () => {
@@ -116,38 +125,87 @@ export default function WhatsAppOnboarding({ navigation }) {
         </View>
     )
 
+    const connectService = async service => {
+        try {
+            await startServerSideAuth(projectId, service)
+            // Auto advance
+            if (service === 'calendar') setStep(2)
+            else proceed()
+        } catch (error) {
+            console.error('Connection failed', error)
+        }
+    }
+
+    const renderWhatsAppStep = () => (
+        <View style={localStyles.contentContainer}>
+            <Image
+                source={require('../../assets/whatsapp.png')}
+                style={{ width: 64, height: 64, marginBottom: 24 }}
+                resizeMode="contain"
+            />
+            <Text style={localStyles.title}>What's your WhatsApp number?</Text>
+            <Text style={localStyles.subtitle}>Let's chat over there as well</Text>
+
+            <View style={localStyles.inputContainer}>
+                <Text style={localStyles.label}>WhatsApp Number</Text>
+                <TextInput
+                    ref={phoneInputRef}
+                    style={localStyles.phoneInput}
+                    value={phone}
+                    placeholder="Type your phone number"
+                    placeholderTextColor={Colors.Text03}
+                    onChangeText={onPhoneChange}
+                    keyboardType="phone-pad"
+                    autoFocus={true}
+                    onSubmitEditing={handleContinue}
+                />
+                {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
+            </View>
+
+            <View style={localStyles.actions}>
+                <TouchableOpacity style={localStyles.primaryButton} onPress={handleContinue}>
+                    <Text style={localStyles.primaryButtonText}>{saving ? 'Saving...' : 'Save & Continue'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={localStyles.secondaryButton} onPress={handleSkip}>
+                    <Text style={localStyles.secondaryButtonText}>No thank you</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    )
+
+    const renderCalendarConnection = () => (
+        <View style={localStyles.contentContainer}>
+            <Icon name="calendar" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
+            <Text style={localStyles.title}>{translate('Connect Google Calendar')}</Text>
+            <Text style={localStyles.subtitle}>{translate('onboarding_connect_calendar_desc')}</Text>
+            <TouchableOpacity style={localStyles.primaryButton} onPress={() => connectService('calendar')}>
+                <Text style={localStyles.primaryButtonText}>{translate('Connect Calendar')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => setStep(2)}>
+                <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
+            </TouchableOpacity>
+        </View>
+    )
+
+    const renderGmailConnection = () => (
+        <View style={localStyles.contentContainer}>
+            <Icon name="gmail" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
+            <Text style={localStyles.title}>{translate('Connect Gmail')}</Text>
+            <Text style={localStyles.subtitle}>{translate('onboarding_connect_gmail_desc')}</Text>
+            <TouchableOpacity style={localStyles.primaryButton} onPress={() => connectService('gmail')}>
+                <Text style={localStyles.primaryButtonText}>{translate('Connect Gmail')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => proceed()}>
+                <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
+            </TouchableOpacity>
+        </View>
+    )
+
     return (
         <SplitLayout>
-            <View style={localStyles.contentContainer}>
-                {isDesktop && renderLogo()}
-                <Text style={localStyles.title}>What's your WhatsApp number?</Text>
-                <Text style={localStyles.subtitle}>Let's chat over there as well</Text>
-
-                <View style={localStyles.inputContainer}>
-                    <Text style={localStyles.label}>WhatsApp Number</Text>
-                    <TextInput
-                        ref={phoneInputRef}
-                        style={localStyles.phoneInput}
-                        value={phone}
-                        placeholder="Type your phone number"
-                        placeholderTextColor={Colors.Text03}
-                        onChangeText={onPhoneChange}
-                        keyboardType="phone-pad"
-                        autoFocus={true}
-                        onSubmitEditing={handleContinue}
-                    />
-                    {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
-                </View>
-
-                <View style={localStyles.actions}>
-                    <TouchableOpacity style={localStyles.primaryButton} onPress={handleContinue}>
-                        <Text style={localStyles.primaryButtonText}>{saving ? 'Saving...' : 'Save & Continue'}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={localStyles.secondaryButton} onPress={handleSkip}>
-                        <Text style={localStyles.secondaryButtonText}>No thank you</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
+            {step === 0 && renderWhatsAppStep()}
+            {step === 1 && renderCalendarConnection()}
+            {step === 2 && renderGmailConnection()}
         </SplitLayout>
     )
 }

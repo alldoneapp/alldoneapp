@@ -1053,5 +1053,11 @@
     "Percent for receive a comment when create an object": "Prozentsatz für den Erhalt eines Kommentars beim Erstellen eines Objekts",
     "Random someday task": "Zufällige Irgendwann-Aufgabe",
     "Chance for random someday task": "Chance für zufällige Irgendwann-Aufgabe",
-    "Percent chance to select a random task from someday when starting a new day": "Prozentuale Chance eine zufällige Aufgabe aus Irgendwann beim Tagesstart auszuwählen"
+    "Percent chance to select a random task from someday when starting a new day": "Prozentuale Chance eine zufällige Aufgabe aus Irgendwann beim Tagesstart auszuwählen",
+    "Connect Google Calendar": "Google Kalender verbinden",
+    "onboarding_connect_calendar_desc": "Verbinden Sie Ihren Kalender, damit ich Ihnen helfen kann, sich auf Meetings vorzubereiten und Ihren Zeitplan zu verwalten.",
+    "Connect Calendar": "Kalender verbinden",
+    "Connect Gmail": "Gmail verbinden",
+    "onboarding_connect_gmail_desc": "Verbinden Sie Ihre E-Mail, damit ich Ihnen helfen kann, Antworten zu entwerfen und Ihren Posteingang zu organisieren.",
+    "Skip": "Überspringen"
 }

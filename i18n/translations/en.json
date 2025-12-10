@@ -1508,5 +1508,11 @@
     "All time": "All time",
     "Yesterday": "Yesterday",
     "Last 30 days": "Last 30 days",
-    "Last 90 days": "Last 90 days"
+    "Last 90 days": "Last 90 days",
+    "Connect Google Calendar": "Connect Google Calendar",
+    "onboarding_connect_calendar_desc": "Connect your calendar so I can help you prepare for meetings and manage your schedule.",
+    "Connect Calendar": "Connect Calendar",
+    "Connect Gmail": "Connect Gmail",
+    "onboarding_connect_gmail_desc": "Connect your email so I can help you draft replies and organize your inbox.",
+    "Skip": "Skip"
 }

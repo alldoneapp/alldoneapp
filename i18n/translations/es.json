@@ -1484,5 +1484,11 @@
     "Authorization Header Value placeholder": "Bearer su-clave-api",
     "Send messages in the chat to trigger the webhook": "Envía mensajes en el chat para activar el webhook",
     "The webhook will receive this prompt and call back when complete": "El webhook recibirá este prompt y devolverá la llamada cuando se complete",
-    "Workflow is being executed now ...": "El flujo de trabajo se está ejecutando ahora ..."
+    "Workflow is being executed now ...": "El flujo de trabajo se está ejecutando ahora ...",
+    "Connect Google Calendar": "Conectar Google Calendar",
+    "onboarding_connect_calendar_desc": "Conecta tu calendario para que pueda ayudarte a prepararte para reuniones y gestionar tu agenda.",
+    "Connect Calendar": "Conectar Calendario",
+    "Connect Gmail": "Conectar Gmail",
+    "onboarding_connect_gmail_desc": "Conecta tu correo electrónico para que pueda ayudarte a redactar respuestas y organizar tu bandeja de entrada.",
+    "Skip": "Saltar"
 }
