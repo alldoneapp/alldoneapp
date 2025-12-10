@@ -346,7 +346,7 @@ const removeCalendarTasks = async (
 
             if (shouldDelete) {
                 console.log(
-                    `[removeCalendarTasks] Deleting task ${task.id} (${task.name}) - Reason: ${deleteReason} - Date: ${taskDateFormatted}`
+                    `[removeCalendarTasks] Deleting task ${task.id} (${task.name}) - Reason: ${deleteReason} - Date: ${taskDateStr}`
                 )
                 tasksToDelete++
                 batch.delete(admin.firestore().doc(`items/${projectId}/tasks/${task.id}`))
