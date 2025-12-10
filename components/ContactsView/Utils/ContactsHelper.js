@@ -738,7 +738,7 @@ export const getNewDefaultUser = (customData = {}) => {
         newEarnedSkillPoints: 0,
         statisticsSelectedUsersIds: {},
         singUpUrl: '',
-        noticeAboutTheBotBehavior: false,
+        noticeAboutTheBotBehavior: true,
         defaultProjectId: '',
         apisConnected: null,
         noteIdsByProject: {},
