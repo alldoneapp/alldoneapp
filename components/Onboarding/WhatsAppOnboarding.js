@@ -210,7 +210,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 {connectingService === 'calendar' ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <ActivityIndicator color="#FFF" size="small" style={{ marginRight: 8 }} />
-                        <Text style={localStyles.primaryButtonText}>{translate('Working on it...')}</Text>
+                        <Text style={localStyles.primaryButtonText}>{translate('working_on_it')}</Text>
                     </View>
                 ) : showSuccess === 'calendar' ? (
                     <Text style={localStyles.primaryButtonText}>{translate('Connected!')}</Text>
@@ -241,7 +241,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 {connectingService === 'gmail' ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <ActivityIndicator color="#FFF" size="small" style={{ marginRight: 8 }} />
-                        <Text style={localStyles.primaryButtonText}>{translate('Working on it...')}</Text>
+                        <Text style={localStyles.primaryButtonText}>{translate('working_on_it')}</Text>
                     </View>
                 ) : showSuccess === 'gmail' ? (
                     <Text style={localStyles.primaryButtonText}>{translate('Connected!')}</Text>
