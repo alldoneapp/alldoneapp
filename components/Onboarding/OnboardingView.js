@@ -11,7 +11,7 @@ import SplitLayout from './SplitLayout'
 
 export default function OnboardingView({ navigation }) {
     const dispatch = useDispatch()
-    const [step, setStep] = useState(0)
+    const [step, setStep] = useState(1)
     const [answers, setAnswers] = useState({})
     const [chatMessages, setChatMessages] = useState([])
     const [chatOptions, setChatOptions] = useState([])
@@ -226,13 +226,13 @@ export default function OnboardingView({ navigation }) {
 
     const renderInteractiveChat = () => (
         <View style={localStyles.contentContainer}>
-            {isDesktop && renderLogo()}
+            {renderLogo()}
             <View
                 style={{
-                    height: isDesktop ? 600 : 450,
+                    height: isDesktop ? 600 : 550,
                     width: '100%',
                     alignItems: 'center',
-                    marginTop: isDesktop ? 0 : -80, // Move up on mobile
+                    marginTop: isDesktop ? 0 : 0,
                 }}
             >
                 <WhatsAppMockup
@@ -261,7 +261,7 @@ export default function OnboardingView({ navigation }) {
         }
     }
 
-    return <SplitLayout>{renderContent()}</SplitLayout>
+    return <SplitLayout hideVideoOnMobile={true}>{renderContent()}</SplitLayout>
 }
 
 const localStyles = StyleSheet.create({

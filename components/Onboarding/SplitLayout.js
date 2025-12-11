@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react'
 import { StyleSheet, View, Dimensions, ScrollView } from 'react-native'
 import Colors from '../../Themes/Colors'
 
-export default function SplitLayout({ children, videoSrc = require('../../assets/annasmile.mp4') }) {
+export default function SplitLayout({
+    children,
+    videoSrc = require('../../assets/annasmile.mp4'),
+    hideVideoOnMobile = false,
+}) {
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
 
     useEffect(() => {
@@ -17,26 +21,30 @@ export default function SplitLayout({ children, videoSrc = require('../../assets
 
     const isDesktop = windowWidth > 768
 
+    const showVideo = isDesktop || !hideVideoOnMobile
+
     return (
         <View style={[styles.container, isDesktop ? styles.containerDesktop : styles.containerMobile]}>
-            <View style={[styles.videoSection, isDesktop ? styles.videoSectionDesktop : styles.videoSectionMobile]}>
-                <video
-                    src={videoSrc}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        objectPosition: isDesktop ? 'center center' : 'center 20%',
-                        display: 'block',
-                    }}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                />
-            </View>
+            {showVideo && (
+                <View style={[styles.videoSection, isDesktop ? styles.videoSectionDesktop : styles.videoSectionMobile]}>
+                    <video
+                        src={videoSrc}
+                        style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            objectPosition: isDesktop ? 'center center' : 'center 20%',
+                            display: 'block',
+                        }}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                    />
+                </View>
+            )}
 
-            <View style={isDesktop ? styles.separatorDesktop : styles.separatorMobile} />
+            {showVideo && <View style={isDesktop ? styles.separatorDesktop : styles.separatorMobile} />}
 
             <ScrollView
                 style={{ flex: 1, width: '100%' }}
