@@ -106,10 +106,6 @@ export default function WhatsAppOnboarding({ navigation }) {
         }
     }, [])
 
-    useEffect(() => {
-        setTimeout(() => phoneInputRef.current?.focus(), 100)
-    }, [])
-
     const handleContinue = async () => {
         if (saving) return
 
@@ -266,7 +262,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                     placeholderTextColor={Colors.Text03}
                     onChangeText={onPhoneChange}
                     keyboardType="phone-pad"
-                    autoFocus={true}
+                    autoFocus={false}
                     onSubmitEditing={handleContinue}
                 />
                 {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
