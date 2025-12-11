@@ -25,6 +25,7 @@ import SplitLayout from './SplitLayout'
 import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { requestNotificationPermission } from '../../utils/backends/firestore'
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
+import { disableMorningReminderTask } from '../../utils/backends/Tasks/tasksFirestore'
 
 export default function WhatsAppOnboarding({ navigation }) {
     const [phone, setPhone] = useState('')
@@ -42,7 +43,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     const nextUrl = navigation.getParam('nextUrl', '/')
     const isDesktop = windowWidth > 768
 
-    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail, 3: Push
+    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail, 3: MorningReminder, 4: Push
     const [connectingService, setConnectingService] = useState(null)
     const [showSuccess, setShowSuccess] = useState(null)
     const blinkAnim = useRef(new Animated.Value(1)).current
@@ -190,6 +191,18 @@ export default function WhatsAppOnboarding({ navigation }) {
         proceed()
     }
 
+    const handleMorningReminder = async enabled => {
+        if (!enabled) {
+            try {
+                // If user disabled, find the Daily Focus Task and set recurrence to never
+                await disableMorningReminderTask(projectId)
+            } catch (error) {
+                console.error('Error disabling morning reminder:', error)
+            }
+        }
+        setStep(4)
+    }
+
     const renderWhatsAppStep = () => (
         <View style={localStyles.contentContainer}>
             <Image
@@ -303,6 +316,20 @@ export default function WhatsAppOnboarding({ navigation }) {
         )
     }
 
+    const renderMorningReminderStep = () => (
+        <View style={localStyles.contentContainer}>
+            <Icon name="bell" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
+            <Text style={localStyles.title}>{translate('Morning Tasks Reminder')}</Text>
+            <Text style={localStyles.subtitle}>{translate('onboarding_morning_reminder_desc')}</Text>
+            <TouchableOpacity style={localStyles.primaryButton} onPress={() => handleMorningReminder(true)}>
+                <Text style={localStyles.primaryButtonText}>{translate('Enable')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => handleMorningReminder(false)}>
+                <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
+            </TouchableOpacity>
+        </View>
+    )
+
     const renderPushNotificationStep = () => (
         <View style={localStyles.contentContainer}>
             <Icon name="bell" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
@@ -322,7 +349,8 @@ export default function WhatsAppOnboarding({ navigation }) {
             {step === 0 && renderWhatsAppStep()}
             {step === 1 && renderCalendarConnection()}
             {step === 2 && renderGmailConnection()}
-            {step === 3 && renderPushNotificationStep()}
+            {step === 3 && renderMorningReminderStep()}
+            {step === 4 && renderPushNotificationStep()}
         </SplitLayout>
     )
 }

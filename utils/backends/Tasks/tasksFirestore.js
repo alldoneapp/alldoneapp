@@ -3018,3 +3018,36 @@ export async function setTaskAISystemMessage(projectId, taskId, aiSystemMessage,
     }
     batch.commit()
 }
+
+export async function disableMorningReminderTask(projectId) {
+    try {
+        const project = await getDb()
+            .doc(`projects/${projectId}`)
+            .get()
+            .then(doc => doc.data())
+        const assistantId = project?.assistantId
+
+        if (!assistantId) {
+            console.log('No assistant found for project', projectId)
+            return false
+        }
+
+        const collectionPath = `assistantTasks/${projectId}/${assistantId}`
+
+        const snapshot = await getDb()
+            .collection(collectionPath)
+            .where('name', 'in', ['Daily Focus Task', 'daily focus task'])
+            .limit(1)
+            .get()
+
+        if (!snapshot.empty) {
+            const taskDoc = snapshot.docs[0]
+            await taskDoc.ref.update({ recurrence: 'never' })
+            return true
+        }
+        return false
+    } catch (error) {
+        console.error('Error disabling morning reminder task:', error)
+        return false
+    }
+}

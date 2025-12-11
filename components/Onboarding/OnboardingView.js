@@ -128,11 +128,15 @@ export default function OnboardingView({ navigation }) {
             } else if (step === 6) {
                 await sendAnnaMessages(
                     [
-                        { sender: 'anna', text: 'Ok thanks will do!' },
                         {
                             sender: 'anna',
                             text:
-                                "Now let's start the free trial. Looking foward to working with you and to get it all done!",
+                                'Yes definitely! You can set alerts for a certain time or I can just check-in with you every morning for example.',
+                        },
+                        {
+                            sender: 'anna',
+                            text:
+                                "Now let's start the free trial. Looking foward to working with you to get it all done!",
                         },
                     ],
                     ["Ok let's go!"]
