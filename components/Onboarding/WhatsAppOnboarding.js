@@ -27,6 +27,34 @@ import { requestNotificationPermission } from '../../utils/backends/firestore'
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 import { disableMorningReminderTask } from '../../utils/backends/Tasks/tasksFirestore'
 
+const ProgressBar = ({ current, total }) => {
+    const progress = useRef(new Animated.Value(0)).current
+
+    useEffect(() => {
+        Animated.timing(progress, {
+            toValue: (current + 1) / total,
+            duration: 500,
+            useNativeDriver: false,
+        }).start()
+    }, [current, total])
+
+    const width = progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0%', '100%'],
+    })
+
+    return (
+        <View style={localStyles.progressBarWrapper}>
+            <View style={localStyles.progressBarContainer}>
+                <Animated.View style={[localStyles.progressBarFill, { width }]} />
+            </View>
+            <Text style={localStyles.progressText}>
+                Step {current + 1} of {total}
+            </Text>
+        </View>
+    )
+}
+
 export default function WhatsAppOnboarding({ navigation }) {
     const [phone, setPhone] = useState('')
     const [validationError, setValidationError] = useState('')
@@ -346,6 +374,7 @@ export default function WhatsAppOnboarding({ navigation }) {
 
     return (
         <SplitLayout>
+            <ProgressBar current={step} total={5} />
             {step === 0 && renderWhatsAppStep()}
             {step === 1 && renderCalendarConnection()}
             {step === 2 && renderGmailConnection()}
@@ -454,5 +483,28 @@ const localStyles = StyleSheet.create({
         color: Colors.Text02,
         fontSize: 16,
         fontWeight: '500',
+    },
+    progressBarWrapper: {
+        width: '100%',
+        maxWidth: 480,
+        marginBottom: 32,
+        alignItems: 'center',
+    },
+    progressBarContainer: {
+        width: '100%',
+        height: 8,
+        backgroundColor: Colors.Grey200,
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginBottom: 8,
+    },
+    progressBarFill: {
+        height: '100%',
+        backgroundColor: Colors.Primary100,
+        borderRadius: 4,
+    },
+    progressText: {
+        ...styles.caption1,
+        color: Colors.Text03,
     },
 })

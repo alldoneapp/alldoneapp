@@ -1062,5 +1062,7 @@
     "Enable": "Aktivieren",
     "Skip": "Überspringen",
     "Connected!": "Verbunden!",
-    "working_on_it": "Arbeite daran..."
+    "working_on_it": "Arbeite daran...",
+    "Morning Tasks Reminder": "Täglicher Check-in",
+    "onboarding_morning_reminder_desc": "Möchtest du, dass ich dich jeden Morgen an die wichtigste Aufgabe des Tages erinnere?"
 }
