@@ -128,17 +128,6 @@ export default function OnboardingView({ navigation }) {
             } else if (step === 6) {
                 await sendAnnaMessages(
                     [
-                        {
-                            sender: 'anna',
-                            text:
-                                'Yes sure. Do you want me to remind you every morning with the most important task of the day?',
-                        },
-                    ],
-                    ['Yes, please', 'No thank you']
-                )
-            } else if (step === 7) {
-                await sendAnnaMessages(
-                    [
                         { sender: 'anna', text: 'Ok thanks will do!' },
                         {
                             sender: 'anna',
@@ -148,7 +137,7 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ["Ok let's go!"]
                 )
-            } else if (step === 8) {
+            } else if (step === 7) {
                 handleFinish()
             }
         }
