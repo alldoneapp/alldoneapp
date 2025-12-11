@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View, ImageBackground, Image, Text, ScrollView } from 'react-native'
+import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, Dimensions } from 'react-native'
 
 import Icon from '../Icon'
 import styles from '../styles/global'
@@ -22,6 +22,21 @@ export default function LoginScreenContent() {
     const [loginType, setLoginType] = useState(
         window.location.pathname.startsWith('/login') || window.location === '/' ? NORMAL_LOGIN : LOADING_LOGIN
     )
+    const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
+
+    useEffect(() => {
+        const updateDimensions = () => {
+            setWindowWidth(Dimensions.get('window').width)
+        }
+        Dimensions.addEventListener('change', updateDimensions)
+        return () => {
+            Dimensions.removeEventListener('change', updateDimensions)
+        }
+    }, [])
+
+    const isMobile = windowWidth < 768
+    const videoWidth = isMobile ? 180 : 270
+    const videoHeight = isMobile ? 320 : 480
 
     const getProjectIdFromUrl = url => {
         return url.split('/')[2]
@@ -88,8 +103,8 @@ export default function LoginScreenContent() {
                     {loginType === NORMAL_LOGIN && (
                         <View
                             style={{
-                                width: 270,
-                                height: 480,
+                                width: videoWidth,
+                                height: videoHeight,
                                 borderRadius: 20,
                                 overflow: 'hidden',
                                 marginBottom: 20,
