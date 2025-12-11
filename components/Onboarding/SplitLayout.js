@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { StyleSheet, View, Dimensions } from 'react-native'
+import { StyleSheet, View, Dimensions, ScrollView } from 'react-native'
 import Colors from '../../Themes/Colors'
 
 export default function SplitLayout({ children, videoSrc = require('../../assets/annasmile.mp4') }) {
@@ -38,11 +38,16 @@ export default function SplitLayout({ children, videoSrc = require('../../assets
 
             <View style={isDesktop ? styles.separatorDesktop : styles.separatorMobile} />
 
-            <View
-                style={[styles.contentSection, isDesktop ? styles.contentSectionDesktop : styles.contentSectionMobile]}
+            <ScrollView
+                style={{ flex: 1, width: '100%' }}
+                contentContainerStyle={[
+                    styles.contentSection,
+                    isDesktop ? styles.contentSectionDesktop : styles.contentSectionMobile,
+                ]}
+                showsVerticalScrollIndicator={false}
             >
                 {children}
-            </View>
+            </ScrollView>
         </View>
     )
 }
@@ -70,7 +75,7 @@ const styles = StyleSheet.create({
     },
     videoSectionMobile: {
         width: '100%',
-        height: '35%',
+        height: '25%',
     },
     contentSection: {
         backgroundColor: Colors.White,
@@ -85,8 +90,8 @@ const styles = StyleSheet.create({
     contentSectionMobile: {
         width: '100%',
         flex: 1,
-        justifyContent: 'center', // Changed from flex-start to center to avoid top gap
-        paddingTop: 0,
+        justifyContent: 'flex-start', // Use flex-start with padding for better control
+        padding: 24, // Add proper padding
     },
     separatorDesktop: {
         width: 2,

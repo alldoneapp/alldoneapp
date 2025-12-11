@@ -70,6 +70,9 @@ export default function WhatsAppOnboarding({ navigation }) {
 
     const nextUrl = navigation.getParam('nextUrl', '/')
     const isDesktop = windowWidth > 768
+    const isMobile = !isDesktop
+
+    const titleStyle = [localStyles.title, isMobile && { fontSize: 28 }]
 
     const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail, 3: MorningReminder, 4: Push
     const [connectingService, setConnectingService] = useState(null)
@@ -238,11 +241,10 @@ export default function WhatsAppOnboarding({ navigation }) {
                 style={{ width: 64, height: 64, marginBottom: 24 }}
                 resizeMode="contain"
             />
-            <Text style={localStyles.title}>What's your WhatsApp number?</Text>
-            <Text style={localStyles.subtitle}>Let's chat over there as well</Text>
+            <Text style={titleStyle}>{translate("What's your WhatsApp number?")}</Text>
+            <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24 }]}>Let's chat over there as well</Text>
 
             <View style={localStyles.inputContainer}>
-                <Text style={localStyles.label}>WhatsApp Number</Text>
                 <TextInput
                     ref={phoneInputRef}
                     style={localStyles.phoneInput}
@@ -273,7 +275,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         return (
             <View style={localStyles.contentContainer}>
                 <Icon name="calendar" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
-                <Text style={localStyles.title}>{translate('Connect Google Calendar')}</Text>
+                <Text style={titleStyle}>{translate('Connect Google Calendar')}</Text>
                 <Text style={localStyles.subtitle}>{translate('onboarding_connect_calendar_desc')}</Text>
                 <AnimatedTouchableOpacity
                     style={[
@@ -311,7 +313,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         return (
             <View style={localStyles.contentContainer}>
                 <Icon name="gmail" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
-                <Text style={localStyles.title}>{translate('Connect Gmail')}</Text>
+                <Text style={titleStyle}>{translate('Connect Gmail')}</Text>
                 <Text style={localStyles.subtitle}>{translate('onboarding_connect_gmail_desc')}</Text>
                 <AnimatedTouchableOpacity
                     style={[
@@ -347,7 +349,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     const renderMorningReminderStep = () => (
         <View style={localStyles.contentContainer}>
             <Icon name="bell" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
-            <Text style={localStyles.title}>{translate('Morning Tasks Reminder')}</Text>
+            <Text style={titleStyle}>{translate('Morning Tasks Reminder')}</Text>
             <Text style={localStyles.subtitle}>{translate('onboarding_morning_reminder_desc')}</Text>
             <TouchableOpacity style={localStyles.primaryButton} onPress={() => handleMorningReminder(true)}>
                 <Text style={localStyles.primaryButtonText}>{translate('Enable')}</Text>
@@ -361,7 +363,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     const renderPushNotificationStep = () => (
         <View style={localStyles.contentContainer}>
             <Icon name="bell" size={64} color={Colors.Primary100} style={{ marginBottom: 24 }} />
-            <Text style={localStyles.title}>{translate('Enable Push Notifications')}</Text>
+            <Text style={titleStyle}>{translate('Enable Push Notifications')}</Text>
             <Text style={localStyles.subtitle}>{translate('onboarding_enable_push_desc')}</Text>
             <TouchableOpacity style={localStyles.primaryButton} onPress={enablePushNotifications}>
                 <Text style={localStyles.primaryButtonText}>{translate('Enable')}</Text>
