@@ -23,7 +23,7 @@ import NavigationService from '../../utils/NavigationService'
 import Icon from '../Icon'
 import SplitLayout from './SplitLayout'
 import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
-import { requestNotificationPermission } from '../../utils/backends/firestore'
+import { requestNotificationPermission, logEvent } from '../../utils/backends/firestore'
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 import { disableMorningReminderTask } from '../../utils/backends/Tasks/tasksFirestore'
 
@@ -161,6 +161,7 @@ export default function WhatsAppOnboarding({ navigation }) {
             }
 
             setStep(1)
+            logEvent('onboarding_whatsapp_connected')
         } catch (error) {
             console.error('Error saving phone:', error)
             setValidationError('Failed to save phone number. Please try again.')
@@ -169,6 +170,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     }
 
     const handleSkip = () => {
+        logEvent('onboarding_whatsapp_skipped')
         setStep(1)
     }
 
@@ -201,8 +203,13 @@ export default function WhatsAppOnboarding({ navigation }) {
             setTimeout(() => {
                 setShowSuccess(null)
                 blinkAnim.setValue(1) // Reset animation
-                if (service === 'calendar') setStep(2)
-                else setStep(3)
+                if (service === 'calendar') {
+                    logEvent('onboarding_calendar_connected')
+                    setStep(2)
+                } else {
+                    logEvent('onboarding_gmail_connected')
+                    setStep(3)
+                }
             }, 2000)
         } catch (error) {
             console.error('Connection failed', error)
@@ -215,6 +222,9 @@ export default function WhatsAppOnboarding({ navigation }) {
             const result = await requestNotificationPermission()
             if (result.success) {
                 await setUserReceivePushNotifications(loggedUser.uid, true)
+                logEvent('onboarding_push_enabled')
+            } else {
+                logEvent('onboarding_push_skipped')
             }
         } catch (error) {
             console.error('Error enabling push notifications:', error)
@@ -230,6 +240,9 @@ export default function WhatsAppOnboarding({ navigation }) {
             } catch (error) {
                 console.error('Error disabling morning reminder:', error)
             }
+            logEvent('onboarding_morning_reminder_skipped')
+        } else {
+            logEvent('onboarding_morning_reminder_enabled')
         }
         setStep(4)
     }
@@ -299,7 +312,10 @@ export default function WhatsAppOnboarding({ navigation }) {
                 </AnimatedTouchableOpacity>
                 <TouchableOpacity
                     style={localStyles.secondaryButton}
-                    onPress={() => setStep(2)}
+                    onPress={() => {
+                        logEvent('onboarding_calendar_skipped')
+                        setStep(2)
+                    }}
                     disabled={connectingService === 'calendar'}
                 >
                     <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
@@ -337,7 +353,10 @@ export default function WhatsAppOnboarding({ navigation }) {
                 </AnimatedTouchableOpacity>
                 <TouchableOpacity
                     style={localStyles.secondaryButton}
-                    onPress={() => setStep(3)}
+                    onPress={() => {
+                        logEvent('onboarding_gmail_skipped')
+                        setStep(3)
+                    }}
                     disabled={connectingService === 'gmail'}
                 >
                     <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
@@ -368,7 +387,13 @@ export default function WhatsAppOnboarding({ navigation }) {
             <TouchableOpacity style={localStyles.primaryButton} onPress={enablePushNotifications}>
                 <Text style={localStyles.primaryButtonText}>{translate('Enable')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={localStyles.secondaryButton} onPress={() => proceed()}>
+            <TouchableOpacity
+                style={localStyles.secondaryButton}
+                onPress={() => {
+                    logEvent('onboarding_push_skipped')
+                    proceed()
+                }}
+            >
                 <Text style={localStyles.secondaryButtonText}>{translate('Skip')}</Text>
             </TouchableOpacity>
         </View>
