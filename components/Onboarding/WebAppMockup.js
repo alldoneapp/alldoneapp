@@ -73,7 +73,7 @@ export default function WebAppMockup({ onContinue, taskName = 'Prepare meeting w
                             <Text style={styles.cardTitle}>Anna Alldone: What can I do?</Text>
                             <View style={styles.aiInputRow}>
                                 <Image
-                                    source={{ uri: 'https://alldone.app/assets/images/marketing/anna-avatar.png' }}
+                                    source={require('../../web/images/illustrations/AnnaAlldone.png')}
                                     style={styles.annaAvatar}
                                 />
                                 <View style={styles.aiInput}>

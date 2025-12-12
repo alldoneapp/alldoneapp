@@ -93,14 +93,24 @@ export default function OnboardingView({ navigation }) {
                         {
                             sender: 'anna',
                             text:
-                                'Btw: You can always just click on the links to open the app and do things there traditionally as well.',
+                                'Btw: You can always just open the web app and do things there traditionally as well.',
                         },
                     ],
-                    ['Oh cool - let us have a look']
+                    ['Oh cool - show me please']
                 )
             } else if (step === 4) {
                 // Step 4 is the Web App Mockup View - handled in render, no chat messages needed here
             } else if (step === 5) {
+                await sendAnnaMessages(
+                    [
+                        {
+                            sender: 'anna',
+                            text: 'I can also search your notes for you. Please give it a try!',
+                        },
+                    ],
+                    ['Ah ok nice! What did I last discuss with Frank?']
+                )
+            } else if (step === 6) {
                 await sendAnnaMessages(
                     [
                         {
@@ -115,7 +125,7 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ['This is great. What else?']
                 )
-            } else if (step === 6) {
+            } else if (step === 7) {
                 await sendAnnaMessages(
                     [
                         {
@@ -130,7 +140,7 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ['Can you also remind me of my tasks so I dont forget?']
                 )
-            } else if (step === 7) {
+            } else if (step === 8) {
                 await sendAnnaMessages(
                     [
                         {
@@ -146,8 +156,8 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ['Start free trial, then monthly', 'Start free trial, then yearly (save 45%!)']
                 )
-            } else if (step === 8) {
-                // If we have a selected plan (from step 7), finish immediately
+            } else if (step === 9) {
+                // If we have a selected plan (from step 8), finish immediately
                 if (selectedPlan) {
                     handleFinish(selectedPlan)
                 } else {
@@ -262,7 +272,7 @@ export default function OnboardingView({ navigation }) {
                     options={chatOptions}
                     onOptionSelect={option => {
                         // Just advance step for most interactions, capture specific answers if needed
-                        if (step === 7) {
+                        if (step === 8) {
                             handleAnswer('reminders', option)
                         } else {
                             handleAnswer(null, option)
