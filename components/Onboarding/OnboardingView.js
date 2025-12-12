@@ -8,6 +8,7 @@ import { setNavigationRoute } from '../../redux/actions'
 import Icon from '../Icon'
 import WhatsAppMockup from './WhatsAppMockup'
 import SplitLayout from './SplitLayout'
+import WebAppMockup from './WebAppMockup'
 
 export default function OnboardingView({ navigation }) {
     const dispatch = useDispatch()
@@ -98,6 +99,8 @@ export default function OnboardingView({ navigation }) {
                     ['Oh cool - let us have a look']
                 )
             } else if (step === 4) {
+                // Step 4 is the Web App Mockup View - handled in render, no chat messages needed here
+            } else if (step === 5) {
                 await sendAnnaMessages(
                     [
                         {
@@ -112,7 +115,7 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ['This is great. What else?']
                 )
-            } else if (step === 5) {
+            } else if (step === 6) {
                 await sendAnnaMessages(
                     [
                         {
@@ -127,7 +130,7 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ['Can you also remind me of my tasks so I dont forget?']
                 )
-            } else if (step === 6) {
+            } else if (step === 7) {
                 await sendAnnaMessages(
                     [
                         {
@@ -143,8 +146,8 @@ export default function OnboardingView({ navigation }) {
                     ],
                     ['Start free trial, then monthly', 'Start free trial, then yearly (save 45%!)']
                 )
-            } else if (step === 7) {
-                // If we have a selected plan (from step 6), finish immediately
+            } else if (step === 8) {
+                // If we have a selected plan (from step 7), finish immediately
                 if (selectedPlan) {
                     handleFinish(selectedPlan)
                 } else {
@@ -259,7 +262,7 @@ export default function OnboardingView({ navigation }) {
                     options={chatOptions}
                     onOptionSelect={option => {
                         // Just advance step for most interactions, capture specific answers if needed
-                        if (step === 6) {
+                        if (step === 7) {
                             handleAnswer('reminders', option)
                         } else {
                             handleAnswer(null, option)
@@ -274,6 +277,26 @@ export default function OnboardingView({ navigation }) {
     const renderContent = () => {
         if (step === 0) {
             return renderWelcome()
+        } else if (step === 4) {
+            return (
+                <View style={localStyles.contentContainer}>
+                    {renderLogo()}
+                    <View
+                        style={{
+                            height: isDesktop ? 600 : 550,
+                            width: '100%',
+                            alignItems: 'center',
+                            marginTop: isDesktop ? 0 : 0,
+                        }}
+                    >
+                        <WebAppMockup
+                            onContinue={() => setStep(5)}
+                            taskName={answers['taskName'] || 'Prepare meeting with Claudia'}
+                            style={{ transform: [{ scale: 1 }], height: '100%', width: 300 }}
+                        />
+                    </View>
+                </View>
+            )
         } else {
             return renderInteractiveChat()
         }
