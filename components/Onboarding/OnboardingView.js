@@ -91,10 +91,11 @@ export default function OnboardingView({ navigation }) {
                         },
                         {
                             sender: 'anna',
-                            text: 'Btw: You can also let me search your notes for you. Pelase give it a try.',
+                            text:
+                                'Btw: You can always just click on the links to open the app and do things there traditionally as well.',
                         },
                     ],
-                    ['Thanks. What did I last discuss with Frank?']
+                    ['Oh cool - let us have a look']
                 )
             } else if (step === 4) {
                 await sendAnnaMessages(
@@ -140,7 +141,7 @@ export default function OnboardingView({ navigation }) {
                                 "Now let's start the free trial. Looking foward to working with you to get it all done!",
                         },
                     ],
-                    ['Start free trial, then monthly plan', 'Start free trial, then yearly plan (save 45%!)']
+                    ['Start free trial, then monthly', 'Start free trial, then yearly (save 45%!)']
                 )
             } else if (step === 7) {
                 // If we have a selected plan (from step 6), finish immediately
