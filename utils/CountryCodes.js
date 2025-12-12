@@ -29,6 +29,18 @@ export const COUNTRY_CODES = [
     { code: 'AE', name: 'UAE', dialCode: '971', flag: '🇦🇪' },
     { code: 'ZA', name: 'South Africa', dialCode: '27', flag: '🇿🇦' },
     { code: 'EG', name: 'Egypt', dialCode: '20', flag: '🇪🇬' },
+    { code: 'CO', name: 'Colombia', dialCode: '57', flag: '🇨🇴' },
+    { code: 'AR', name: 'Argentina', dialCode: '54', flag: '🇦🇷' },
+    { code: 'CL', name: 'Chile', dialCode: '56', flag: '🇨🇱' },
+    { code: 'PE', name: 'Peru', dialCode: '51', flag: '🇵🇪' },
+    { code: 'ID', name: 'Indonesia', dialCode: '62', flag: '🇮🇩' },
+    { code: 'MY', name: 'Malaysia', dialCode: '60', flag: '🇲🇾' },
+    { code: 'SG', name: 'Singapore', dialCode: '65', flag: '🇸🇬' },
+    { code: 'TH', name: 'Thailand', dialCode: '66', flag: '🇹🇭' },
+    { code: 'VN', name: 'Vietnam', dialCode: '84', flag: '🇻🇳' },
+    { code: 'PH', name: 'Philippines', dialCode: '63', flag: '🇵🇭' },
+    { code: 'HK', name: 'Hong Kong', dialCode: '852', flag: '🇭🇰' },
+    { code: 'TW', name: 'Taiwan', dialCode: '886', flag: '🇹🇼' },
 ]
 
 export const DEFAULT_COUNTRY = COUNTRY_CODES.find(c => c.code === 'US')
