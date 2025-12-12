@@ -26,6 +26,7 @@ import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { requestNotificationPermission, logEvent } from '../../utils/backends/firestore'
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 import { disableMorningReminderTask } from '../../utils/backends/Tasks/tasksFirestore'
+import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../utils/CountryCodes'
 
 const ProgressBar = ({ current, total }) => {
     const progress = useRef(new Animated.Value(0)).current
@@ -57,6 +58,8 @@ const ProgressBar = ({ current, total }) => {
 
 export default function WhatsAppOnboarding({ navigation }) {
     const [phone, setPhone] = useState('')
+    const [selectedCountry, setSelectedCountry] = useState(DEFAULT_COUNTRY || COUNTRY_CODES[0])
+    const [showCountryPicker, setShowCountryPicker] = useState(false)
     const [validationError, setValidationError] = useState('')
     const [saving, setSaving] = useState(false)
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
@@ -116,7 +119,16 @@ export default function WhatsAppOnboarding({ navigation }) {
             return
         }
 
-        const validation = validatePhoneNumber(phone)
+        // Combine country code and phone
+        // Remove leading 0s and non-digits from the user input first to rely on the country code
+        let cleanInput = phone.replace(/\D/g, '')
+        // If user pasted a full number with country code (e.g. 49179...), we might want to be smart.
+        // But the requested UI is explicit picker + local number.
+        // Let's assume standard behavior: Picker Code + Input (stripping leading 0s)
+        cleanInput = cleanInput.replace(/^0+/, '')
+
+        const fullPhone = `+${selectedCountry.dialCode}${cleanInput}`
+        const validation = validatePhoneNumber(fullPhone)
 
         if (!validation.isValid) {
             setValidationError(translate(validation.error) || validation.error || 'Invalid phone number')
@@ -243,6 +255,46 @@ export default function WhatsAppOnboarding({ navigation }) {
         setStep(4)
     }
 
+    const renderCountryPickerModal = () => {
+        if (!showCountryPicker) return null
+
+        return (
+            <View style={localStyles.modalOverlay}>
+                <View style={localStyles.modalContent}>
+                    <View style={localStyles.modalHeader}>
+                        <Text style={localStyles.modalTitle}>{translate('Select Country')}</Text>
+                        <TouchableOpacity
+                            onPress={() => setShowCountryPicker(false)}
+                            style={localStyles.modalCloseButton}
+                        >
+                            <Icon name="x" size={24} color={Colors.Text02} />
+                        </TouchableOpacity>
+                    </View>
+                    <Animated.ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                        {COUNTRY_CODES.map(country => (
+                            <TouchableOpacity
+                                key={country.code}
+                                style={localStyles.countryItem}
+                                onPress={() => {
+                                    setSelectedCountry(country)
+                                    setShowCountryPicker(false)
+                                }}
+                            >
+                                <Text style={localStyles.countryItemText}>
+                                    <Text style={{ fontSize: 24 }}>{country.flag}</Text> {country.name} (+
+                                    {country.dialCode})
+                                </Text>
+                                {selectedCountry.code === country.code && (
+                                    <Icon name="check" size={20} color={Colors.Primary100} />
+                                )}
+                            </TouchableOpacity>
+                        ))}
+                    </Animated.ScrollView>
+                </View>
+            </View>
+        )
+    }
+
     const renderWhatsAppStep = () => (
         <View style={localStyles.contentContainer}>
             <Image
@@ -251,20 +303,32 @@ export default function WhatsAppOnboarding({ navigation }) {
                 resizeMode="contain"
             />
             <Text style={titleStyle}>{translate("What's your WhatsApp number?")}</Text>
-            <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24 }]}>Let's chat over there as well</Text>
+            <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24 }]}>
+                {translate('Please enter your whatsapp number including your country code')}
+            </Text>
 
             <View style={localStyles.inputContainer}>
-                <TextInput
-                    ref={phoneInputRef}
-                    style={localStyles.phoneInput}
-                    value={phone}
-                    placeholder="Type your phone number"
-                    placeholderTextColor={Colors.Text03}
-                    onChangeText={onPhoneChange}
-                    keyboardType="phone-pad"
-                    autoFocus={false}
-                    onSubmitEditing={handleContinue}
-                />
+                <View style={localStyles.phoneInputWrapper}>
+                    <TouchableOpacity
+                        style={localStyles.countryPickerTrigger}
+                        onPress={() => setShowCountryPicker(true)}
+                    >
+                        <Text style={{ fontSize: 24 }}>{selectedCountry.flag}</Text>
+                        <Text style={localStyles.dialCode}>+{selectedCountry.dialCode}</Text>
+                        <Icon name="chevron-down" size={16} color={Colors.Text02} />
+                    </TouchableOpacity>
+                    <TextInput
+                        ref={phoneInputRef}
+                        style={localStyles.phoneInput}
+                        value={phone}
+                        placeholder="123456789"
+                        placeholderTextColor={Colors.Text03}
+                        onChangeText={onPhoneChange}
+                        keyboardType="phone-pad"
+                        autoFocus={false}
+                        onSubmitEditing={handleContinue}
+                    />
+                </View>
                 {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
             </View>
 
@@ -276,6 +340,8 @@ export default function WhatsAppOnboarding({ navigation }) {
                     <Text style={localStyles.secondaryButtonText}>No thank you</Text>
                 </TouchableOpacity>
             </View>
+
+            {renderCountryPickerModal()}
         </View>
     )
 
@@ -443,12 +509,42 @@ const localStyles = StyleSheet.create({
         marginBottom: 8,
         color: Colors.Text02,
     },
+    phoneInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+    },
+    countryPickerTrigger: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        height: 48,
+        backgroundColor: Colors.White,
+        borderWidth: 1,
+        borderColor: Colors.Grey300,
+        borderRadius: 8,
+        marginRight: 8,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    dialCode: {
+        ...styles.body1,
+        color: Colors.Text01,
+        marginHorizontal: 8,
+    },
     phoneInput: {
         ...styles.body1,
+        flex: 1,
         color: Colors.Text01,
         paddingVertical: 12,
         paddingHorizontal: 16,
-        borderWidth: 2,
+        borderWidth: 1,
         borderColor: Colors.Grey300,
         borderRadius: 8,
         backgroundColor: Colors.White,
@@ -461,6 +557,55 @@ const localStyles = StyleSheet.create({
         shadowOpacity: 0.05,
         shadowRadius: 2,
         elevation: 2,
+    },
+    modalOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    modalContent: {
+        width: '90%',
+        maxWidth: 400,
+        maxHeight: '80%',
+        backgroundColor: Colors.White,
+        borderRadius: 16,
+        padding: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 5,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    modalTitle: {
+        ...styles.title6,
+        color: Colors.Text01,
+    },
+    modalCloseButton: {
+        padding: 4,
+    },
+    countryItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.Grey200,
+    },
+    countryItemText: {
+        ...styles.body1,
+        color: Colors.Text01,
     },
     errorText: {
         ...styles.caption2,
