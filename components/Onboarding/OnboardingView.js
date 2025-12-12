@@ -15,6 +15,7 @@ export default function OnboardingView({ navigation }) {
     const [answers, setAnswers] = useState({})
     const [chatMessages, setChatMessages] = useState([])
     const [chatOptions, setChatOptions] = useState([])
+    const [selectedPlan, setSelectedPlan] = useState(null)
 
     useEffect(() => {
         dispatch(setNavigationRoute('Onboarding'))
@@ -139,10 +140,15 @@ export default function OnboardingView({ navigation }) {
                                 "Now let's start the free trial. Looking foward to working with you to get it all done!",
                         },
                     ],
-                    ["Ok let's go!"]
+                    ['Start free trial, then monthly plan', 'Start free trial, then yearly plan (save 45%!)']
                 )
             } else if (step === 7) {
-                handleFinish()
+                // If we have a selected plan (from step 6), finish immediately
+                if (selectedPlan) {
+                    handleFinish(selectedPlan)
+                } else {
+                    handleFinish()
+                }
             }
         }
         runStep()
@@ -157,24 +163,35 @@ export default function OnboardingView({ navigation }) {
         if (questionId) {
             setAnswers(prev => ({ ...prev, [questionId]: answer }))
         }
+
+        // Capture plan selection if it matches our options
+        if (answer.includes('monthly plan')) {
+            setSelectedPlan('monthly')
+        } else if (answer.includes('yearly plan')) {
+            setSelectedPlan('yearly')
+        }
+
         setStep(prev => prev + 1)
     }
 
-    const handleFinish = () => {
+    const handleFinish = explicitPlanType => {
         // Here we could save the answers to the backend if needed
         console.log('Onboarding answers:', answers)
 
         // Proceed to the original starttrial logic
         const params = navigation.state.params || {}
-        let planType = 'monthly'
-        if (params.plan) {
-            planType = params.plan
-        } else if (params.type) {
-            planType = params.type
-        } else {
-            // Fallback to window location if available, or default
-            const urlParams = new URLSearchParams(window.location.search)
-            planType = urlParams.get('plan') || urlParams.get('type') || 'monthly'
+        let planType = explicitPlanType || 'monthly'
+
+        if (!explicitPlanType) {
+            if (params.plan) {
+                planType = params.plan
+            } else if (params.type) {
+                planType = params.type
+            } else {
+                // Fallback to window location if available, or default
+                const urlParams = new URLSearchParams(window.location.search)
+                planType = urlParams.get('plan') || urlParams.get('type') || 'monthly'
+            }
         }
 
         // Track checkout begin
