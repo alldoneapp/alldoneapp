@@ -1016,7 +1016,10 @@ export const EditorToolbar = ({
                     reader.onloadend = async () => {
                         const base64data = reader.result
                         try {
-                            const result = await firebase.functions().httpsCallable('transcribeMeetingAudio')({
+                            const result = await firebase
+                                .app()
+                                .functions('europe-west1')
+                                .httpsCallable('transcribeMeetingAudio')({
                                 audioChunk: base64data,
                             })
                             const text = result.data.text
