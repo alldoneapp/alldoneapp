@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     },
     videoSectionMobile: {
         width: '100%',
-        height: '25%',
+        height: '20%',
     },
     contentSection: {
         backgroundColor: Colors.White,
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
         width: '100%',
         flex: 1,
         justifyContent: 'flex-start', // Use flex-start with padding for better control
-        padding: 24, // Add proper padding
+        padding: 16, // Add proper padding
     },
     separatorDesktop: {
         width: 2,
