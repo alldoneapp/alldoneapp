@@ -974,27 +974,35 @@ export const EditorToolbar = ({
     const [isRecording, setIsRecording] = useState(false)
     const mediaRecorderRef = useRef(null)
     const streamRef = useRef(null)
+    const intervalRef = useRef(null)
+
+    const stopRecording = () => {
+        if (intervalRef.current) {
+            clearTimeout(intervalRef.current)
+            intervalRef.current = null
+        }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop()
+        }
+        if (streamRef.current) {
+            try {
+                streamRef.current.getTracks().forEach(track => track.stop())
+            } catch (e) {
+                console.error('Error stopping tracks', e)
+            }
+        }
+        setIsRecording(false)
+    }
 
     const toggleTranscription = async () => {
         if (isRecording) {
-            // Stop recording
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-                mediaRecorderRef.current.stop()
-            }
-            if (streamRef.current) {
-                try {
-                    streamRef.current.getTracks().forEach(track => track.stop())
-                } catch (e) {
-                    console.error('Error stopping tracks', e)
-                }
-            }
-            setIsRecording(false)
+            stopRecording()
             return
         }
 
         try {
             const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
+                video: true, // Required for getDisplayMedia, but we ignore video
                 audio: true,
             })
 
@@ -1005,49 +1013,79 @@ export const EditorToolbar = ({
                 return
             }
 
-            const audioStream = new MediaStream(audioTracks)
-            const mimeType = 'audio/webm'
-            const recorder = new MediaRecorder(audioStream, { mimeType })
-
-            recorder.ondataavailable = async event => {
-                if (event.data.size > 0) {
-                    const reader = new FileReader()
-                    reader.readAsDataURL(event.data)
-                    reader.onloadend = async () => {
-                        const base64data = reader.result
-                        try {
-                            const result = await firebase
-                                .app()
-                                .functions('europe-west1')
-                                .httpsCallable('transcribeMeetingAudio')({
-                                audioChunk: base64data,
-                            })
-                            const text = result.data.text
-                            if (text && text.trim().length > 0) {
-                                const editor = exportRef.getEditor()
-                                const length = editor.getLength()
-                                editor.insertText(length, `\n${text.trim()} `, 'user')
-                                editor.setSelection(length + text.length + 2)
-                            }
-                        } catch (err) {
-                            console.error('Transcription error:', err)
-                        }
-                    }
-                }
-            }
-
             // Handle stream stop from browser UI
             if (stream.getVideoTracks().length > 0) {
                 stream.getVideoTracks()[0].onended = () => {
-                    setIsRecording(false)
-                    if (recorder.state !== 'inactive') recorder.stop()
+                    stopRecording()
+                }
+            }
+            if (stream.getAudioTracks().length > 0) {
+                stream.getAudioTracks()[0].onended = () => {
+                    stopRecording()
                 }
             }
 
-            recorder.start(10000) // 10 seconds chunks
             streamRef.current = stream
-            mediaRecorderRef.current = recorder
             setIsRecording(true)
+
+            const startNextChunk = () => {
+                if (!streamRef.current || !streamRef.current.active) return
+
+                const audioStream = new MediaStream(streamRef.current.getAudioTracks())
+                const mimeType = 'audio/webm' // Chrome defaults to this
+                // Try to use MediaRecorder
+                let recorder
+                try {
+                    recorder = new MediaRecorder(audioStream, { mimeType })
+                } catch (e) {
+                    console.error('MediaRecorder creation failed', e)
+                    // Fallback or error handling
+                    alert('Browser not supported for audio recording')
+                    stopRecording()
+                    return
+                }
+
+                mediaRecorderRef.current = recorder
+
+                recorder.ondataavailable = async event => {
+                    if (event.data.size > 0) {
+                        const reader = new FileReader()
+                        reader.readAsDataURL(event.data)
+                        reader.onloadend = async () => {
+                            const base64data = reader.result
+                            try {
+                                const result = await firebase
+                                    .app()
+                                    .functions('europe-west1')
+                                    .httpsCallable('transcribeMeetingAudio')({
+                                    audioChunk: base64data,
+                                })
+                                const text = result.data.text
+                                if (text && text.trim().length > 0) {
+                                    const editor = exportRef.getEditor()
+                                    const length = editor.getLength()
+                                    editor.insertText(length, `\n${text.trim()} `, 'user')
+                                    editor.setSelection(length + text.length + 2)
+                                }
+                            } catch (err) {
+                                console.error('Transcription error:', err)
+                            }
+                        }
+                    }
+                }
+
+                recorder.start()
+                // Stop and restart execution after 10 seconds to create effective chunks with headers
+                intervalRef.current = setTimeout(() => {
+                    if (recorder.state !== 'inactive') {
+                        recorder.stop()
+                        // Start next chunk immediately
+                        startNextChunk()
+                    }
+                }, 10000)
+            }
+
+            startNextChunk()
         } catch (err) {
             console.error('Error starting transcription:', err)
             if (err.name !== 'NotAllowedError') {

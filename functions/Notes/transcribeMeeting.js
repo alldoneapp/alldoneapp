@@ -42,8 +42,8 @@ exports.transcribeMeetingAudio = onCall(
         try {
             // Convert base64 to buffer and write to file
             // The frontend should send the base64 string without the data URL prefix (e.g., "data:audio/webm;base64,")
-            // Or we handle stripping it here. let's be safe and strip if present.
-            const base64Data = audioChunk.replace(/^data:audio\/\w+;base64,/, '')
+            // But we handle stripping it here just in case, using a regex that handles extra parameters like codecs
+            const base64Data = audioChunk.replace(/^data:audio\/[a-zA-Z0-9-+\.]+;.*base64,/, '')
             const buffer = Buffer.from(base64Data, 'base64')
             fs.writeFileSync(tempFilePath, buffer)
 
