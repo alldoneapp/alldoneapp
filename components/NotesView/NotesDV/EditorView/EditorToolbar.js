@@ -973,7 +973,8 @@ export const EditorToolbar = ({
 
     const [isRecording, setIsRecording] = useState(false)
     const mediaRecorderRef = useRef(null)
-    const streamRef = useRef(null)
+    const streamsRef = useRef([]) // Store all streams to stop them
+    const audioContextRef = useRef(null)
     const intervalRef = useRef(null)
 
     const stopRecording = () => {
@@ -984,13 +985,25 @@ export const EditorToolbar = ({
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             mediaRecorderRef.current.stop()
         }
-        if (streamRef.current) {
+
+        streamsRef.current.forEach(stream => {
             try {
-                streamRef.current.getTracks().forEach(track => track.stop())
+                stream.getTracks().forEach(track => track.stop())
             } catch (e) {
                 console.error('Error stopping tracks', e)
             }
+        })
+        streamsRef.current = []
+
+        if (audioContextRef.current) {
+            try {
+                audioContextRef.current.close()
+            } catch (e) {
+                console.error('Error closing AudioContext', e)
+            }
+            audioContextRef.current = null
         }
+
         setIsRecording(false)
     }
 
@@ -1001,42 +1014,75 @@ export const EditorToolbar = ({
         }
 
         try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true, // Required for getDisplayMedia, but we ignore video
+            // Request both System Audio and Microphone
+            // We do this sequentially or parallel. Parallel is faster but let's be safe.
+            // Note: getDisplayMedia must be triggered by user gesture, which we have.
+
+            const systemStreamPromise = navigator.mediaDevices.getDisplayMedia({
+                video: true, // Required
                 audio: true,
             })
 
-            const audioTracks = stream.getAudioTracks()
+            const micStreamPromise = navigator.mediaDevices
+                .getUserMedia({
+                    audio: true,
+                })
+                .catch(err => {
+                    console.warn('Could not get microphone access', err)
+                    return null
+                })
+
+            const [systemStream, micStream] = await Promise.all([systemStreamPromise, micStreamPromise])
+
+            const audioTracks = systemStream.getAudioTracks()
             if (audioTracks.length === 0) {
                 alert(translate('Please ensure you share audio when selecting the screen/tab.'))
-                stream.getTracks().forEach(track => track.stop())
+                systemStream.getTracks().forEach(track => track.stop())
+                if (micStream) micStream.getTracks().forEach(track => track.stop())
                 return
             }
 
-            // Handle stream stop from browser UI
-            if (stream.getVideoTracks().length > 0) {
-                stream.getVideoTracks()[0].onended = () => {
+            // Mix Audio
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+            audioContextRef.current = audioContext
+            const destination = audioContext.createMediaStreamDestination()
+
+            const systemSource = audioContext.createMediaStreamSource(systemStream)
+            systemSource.connect(destination)
+
+            if (micStream) {
+                const micSource = audioContext.createMediaStreamSource(micStream)
+                micSource.connect(destination)
+                streamsRef.current.push(micStream)
+            }
+            streamsRef.current.push(systemStream)
+
+            // Handle stream stop from browser UI (System Stream only usually)
+            if (systemStream.getVideoTracks().length > 0) {
+                systemStream.getVideoTracks()[0].onended = () => {
                     stopRecording()
                 }
             }
-            if (stream.getAudioTracks().length > 0) {
-                stream.getAudioTracks()[0].onended = () => {
+            // Some browsers kill audio track if video track is killed
+            if (systemStream.getAudioTracks().length > 0) {
+                systemStream.getAudioTracks()[0].onended = () => {
+                    // stopRecording()
+                    // Don't stop entirely if just one track ends? But here system audio is critical.
                     stopRecording()
                 }
             }
 
-            streamRef.current = stream
             setIsRecording(true)
 
             const startNextChunk = () => {
-                if (!streamRef.current || !streamRef.current.active) return
+                if (!isRecording && !streamsRef.current.length) return // Stopped
 
-                const audioStream = new MediaStream(streamRef.current.getAudioTracks())
+                const mixedStream = destination.stream
                 const mimeType = 'audio/webm' // Chrome defaults to this
                 // Try to use MediaRecorder
                 let recorder
                 try {
-                    recorder = new MediaRecorder(audioStream, { mimeType })
+                    recorder = new MediaRecorder(mixedStream, { mimeType })
                 } catch (e) {
                     console.error('MediaRecorder creation failed', e)
                     // Fallback or error handling
@@ -1079,8 +1125,11 @@ export const EditorToolbar = ({
                 intervalRef.current = setTimeout(() => {
                     if (recorder.state !== 'inactive') {
                         recorder.stop()
-                        // Start next chunk immediately
-                        startNextChunk()
+                        // Start next chunk immediately (recurse)
+                        // Need check if we are still recording
+                        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                            startNextChunk()
+                        }
                     }
                 }, 10000)
             }
