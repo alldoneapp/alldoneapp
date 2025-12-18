@@ -1497,5 +1497,7 @@
     "Skip": "Saltar",
     "Morning Tasks Reminder": "Check-in diario",
     "onboarding_morning_reminder_desc": "¿Quieres que te recuerde cada mañana la tarea más importante del día?",
-    "What's your WhatsApp number?": "WhatsApp?"
+    "What's your WhatsApp number?": "WhatsApp?",
+    "onboarding_whatsapp_success_title": "¡Éxito!",
+    "onboarding_whatsapp_success_desc": "Por favor revisa tu WhatsApp. ¡Anna te acaba de enviar un mensaje!"
 }

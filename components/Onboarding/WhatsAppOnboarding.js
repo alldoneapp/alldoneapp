@@ -62,6 +62,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     const [showCountryPicker, setShowCountryPicker] = useState(false)
     const [validationError, setValidationError] = useState('')
     const [saving, setSaving] = useState(false)
+    const [showWhatsAppSuccess, setShowWhatsAppSuccess] = useState(false)
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const phoneInputRef = useRef()
     const loggedUser = useSelector(state => state.loggedUser)
@@ -140,6 +141,9 @@ export default function WhatsAppOnboarding({ navigation }) {
             await setUserPhone(loggedUser.uid, validation.formatted)
             await setUserReceiveWhatsApp(loggedUser.uid, true)
 
+            setShowWhatsAppSuccess(true)
+            setSaving(false)
+
             // Automatically generate MCP access token for this user
             try {
                 // Ensure auth is loaded
@@ -168,8 +172,11 @@ export default function WhatsAppOnboarding({ navigation }) {
                 console.warn('Failed to auto-generate MCP token:', tokenError)
             }
 
-            setStep(1)
             logEvent('onboarding_whatsapp_connected')
+            setTimeout(() => {
+                setShowWhatsAppSuccess(false)
+                setStep(1)
+            }, 5000)
         } catch (error) {
             console.error('Error saving phone:', error)
             setValidationError('Failed to save phone number. Please try again.')
@@ -300,65 +307,101 @@ export default function WhatsAppOnboarding({ navigation }) {
         )
     }
 
-    const renderWhatsAppStep = () => (
-        <View style={localStyles.contentContainer}>
-            <Image
-                source={require('../../assets/whatsapp.png')}
-                style={{ width: isMobile ? 48 : 64, height: isMobile ? 48 : 64, marginBottom: isMobile ? 12 : 24 }}
-                resizeMode="contain"
-            />
-            <Text style={[titleStyle, isMobile && { marginBottom: 8 }]}>
-                {translate("What's your WhatsApp number?")}
-            </Text>
-            <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24, fontSize: 14 }]}>
-                {translate('Please enter your whatsapp number including your country code')}
-            </Text>
-
-            <View style={[localStyles.inputContainer, isMobile && { marginBottom: 16 }]}>
-                <View style={localStyles.phoneInputWrapper}>
-                    <TouchableOpacity
-                        style={localStyles.countryPickerTrigger}
-                        onPress={() => setShowCountryPicker(true)}
-                    >
-                        <Text style={{ fontSize: 24 }}>{selectedCountry.flag}</Text>
-                        <Text style={localStyles.dialCode}>+{selectedCountry.dialCode}</Text>
-                        <Icon name="chevron-down" size={16} color={Colors.Text02} />
-                    </TouchableOpacity>
-                    <TextInput
-                        ref={phoneInputRef}
-                        style={localStyles.phoneInput}
-                        value={phone}
-                        placeholder="123456789"
-                        placeholderTextColor={Colors.Text03}
-                        onChangeText={onPhoneChange}
-                        keyboardType="phone-pad"
-                        autoFocus={false}
-                        onSubmitEditing={handleContinue}
+    const renderWhatsAppStep = () => {
+        if (showWhatsAppSuccess) {
+            return (
+                <View style={localStyles.contentContainer}>
+                    <Image
+                        source={require('../../assets/whatsapp.png')}
+                        style={{
+                            width: isMobile ? 64 : 80,
+                            height: isMobile ? 64 : 80,
+                            marginBottom: isMobile ? 16 : 24,
+                        }}
+                        resizeMode="contain"
                     />
-                </View>
-                {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
-            </View>
-
-            <View style={localStyles.actions}>
-                <TouchableOpacity
-                    style={[localStyles.primaryButton, isMobile && { paddingVertical: 10, marginBottom: 10 }]}
-                    onPress={handleContinue}
-                >
-                    <Text style={[localStyles.primaryButtonText, isMobile && { fontSize: 16 }]}>
-                        {saving ? 'Saving...' : 'Save & Continue'}
+                    <Icon
+                        name="check"
+                        size={isMobile ? 48 : 64}
+                        color={Colors.UtilityGreen300}
+                        style={{ marginBottom: 16 }}
+                    />
+                    <Text style={[titleStyle, isMobile && { marginBottom: 8 }]}>
+                        {translate('onboarding_whatsapp_success_title')}
                     </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[localStyles.secondaryButton, isMobile && { paddingVertical: 8 }]}
-                    onPress={handleSkip}
-                >
-                    <Text style={[localStyles.secondaryButtonText, isMobile && { fontSize: 14 }]}>No thank you</Text>
-                </TouchableOpacity>
-            </View>
+                    <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24, fontSize: 14 }]}>
+                        {translate('onboarding_whatsapp_success_desc')}
+                    </Text>
+                </View>
+            )
+        }
 
-            {renderCountryPickerModal()}
-        </View>
-    )
+        return (
+            <View style={localStyles.contentContainer}>
+                <Image
+                    source={require('../../assets/whatsapp.png')}
+                    style={{
+                        width: isMobile ? 48 : 64,
+                        height: isMobile ? 48 : 64,
+                        marginBottom: isMobile ? 12 : 24,
+                    }}
+                    resizeMode="contain"
+                />
+                <Text style={[titleStyle, isMobile && { marginBottom: 8 }]}>
+                    {translate("What's your WhatsApp number?")}
+                </Text>
+                <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24, fontSize: 14 }]}>
+                    {translate('Please enter your whatsapp number including your country code')}
+                </Text>
+
+                <View style={[localStyles.inputContainer, isMobile && { marginBottom: 16 }]}>
+                    <View style={localStyles.phoneInputWrapper}>
+                        <TouchableOpacity
+                            style={localStyles.countryPickerTrigger}
+                            onPress={() => setShowCountryPicker(true)}
+                        >
+                            <Text style={{ fontSize: 24 }}>{selectedCountry.flag}</Text>
+                            <Text style={localStyles.dialCode}>+{selectedCountry.dialCode}</Text>
+                            <Icon name="chevron-down" size={16} color={Colors.Text02} />
+                        </TouchableOpacity>
+                        <TextInput
+                            ref={phoneInputRef}
+                            style={localStyles.phoneInput}
+                            value={phone}
+                            placeholder="123456789"
+                            placeholderTextColor={Colors.Text03}
+                            onChangeText={onPhoneChange}
+                            keyboardType="phone-pad"
+                            autoFocus={false}
+                            onSubmitEditing={handleContinue}
+                        />
+                    </View>
+                    {validationError ? <Text style={localStyles.errorText}>{validationError}</Text> : null}
+                </View>
+
+                <View style={localStyles.actions}>
+                    <TouchableOpacity
+                        style={[localStyles.primaryButton, isMobile && { paddingVertical: 10, marginBottom: 10 }]}
+                        onPress={handleContinue}
+                    >
+                        <Text style={[localStyles.primaryButtonText, isMobile && { fontSize: 16 }]}>
+                            {saving ? 'Saving...' : 'Save & Continue'}
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[localStyles.secondaryButton, isMobile && { paddingVertical: 8 }]}
+                        onPress={handleSkip}
+                    >
+                        <Text style={[localStyles.secondaryButtonText, isMobile && { fontSize: 14 }]}>
+                            No thank you
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                {renderCountryPickerModal()}
+            </View>
+        )
+    }
 
     const renderCalendarConnection = () => {
         const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity)

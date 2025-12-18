@@ -1516,5 +1516,7 @@
     "Skip": "Skip",
     "Connected!": "Connected!",
     "working_on_it": "Working on it...",
-    "What's your WhatsApp number?": "WhatsApp?"
+    "What's your WhatsApp number?": "WhatsApp?",
+    "onboarding_whatsapp_success_title": "Success!",
+    "onboarding_whatsapp_success_desc": "Please check your WhatsApp. Anna just sent you a message!"
 }
