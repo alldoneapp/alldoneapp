@@ -1158,8 +1158,36 @@ export const EditorToolbar = ({
         <div
             id="toolbar-container"
             className={`ql-toolbar-container ${!mobile && mobileCollapsed ? 'ql-toolbar-container-collapsed' : ''}`}
-            style={{ height: clicked ? 184 : 76 }}
+            style={{ height: (clicked ? 184 : 76) + (isRecording ? 32 : 0) }}
         >
+            {isRecording && (
+                <div
+                    style={{
+                        backgroundColor: colors.Red, // or colors.Blue/Green depending on preference
+                        width: '100%',
+                        height: 32,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 16,
+                    }}
+                >
+                    <Text style={{ color: 'white', fontWeight: '500', fontSize: 13 }}>
+                        {translate('Transcription active. Keep tab in the foreground')}
+                    </Text>
+                    <TouchableOpacity
+                        onPress={stopRecording}
+                        style={{
+                            backgroundColor: 'rgba(255,255,255,0.2)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 4,
+                        }}
+                    >
+                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{translate('Stop')}</Text>
+                    </TouchableOpacity>
+                </div>
+            )}
             <div style={{ marginTop: 8 }} id="toolbar">
                 <div className="ql-formats2" style={{ paddingLeft: 8 }}>
                     <span className={'ql-toolbar-item'}>

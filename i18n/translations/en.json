@@ -1524,5 +1524,6 @@
     "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.": "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.",
     "Transcribe": "Transcribe",
     "Stop": "Stop",
-    "Please ensure you share audio when selecting the screen/tab.": "Please ensure you share audio when selecting the screen/tab."
+    "Please ensure you share audio when selecting the screen/tab.": "Please ensure you share audio when selecting the screen/tab.",
+    "Transcription active. Keep tab in the foreground": "Transcription active. Keep tab in the foreground"
 }

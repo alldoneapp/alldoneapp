@@ -1505,5 +1505,6 @@
     "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.": "No tienes suficiente Oro para transcribir este audio. Por favor actualiza o compra más Oro.",
     "Transcribe": "Transcribir",
     "Stop": "Parar",
-    "Please ensure you share audio when selecting the screen/tab.": "Asegúrese de compartir el audio al seleccionar la pantalla/pestaña."
+    "Please ensure you share audio when selecting the screen/tab.": "Asegúrese de compartir el audio al seleccionar la pantalla/pestaña.",
+    "Transcription active. Keep tab in the foreground": "Transcripción activa. Mantenga la pestaña en primer plano"
 }
