@@ -1,6 +1,6 @@
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'
 import { getPopoverWidth } from '../../utils/HelperFunctions'
@@ -13,6 +13,7 @@ import { translate } from '../../i18n/TranslationService'
 
 export default function LimitedFeatureModal() {
     const dispatch = useDispatch()
+    const modalState = useSelector(state => state.showLimitedFeatureModal)
 
     const closeModal = () => {
         dispatch(setShowLimitedFeatureModal(false))
@@ -26,10 +27,13 @@ export default function LimitedFeatureModal() {
         ])
     }
 
-    const header = translate('Limited feature')
-    const description = translate(
-        'Sorry, this feature is only available for premium users, please upgrade to premium to get the full potential of Alldone'
-    )
+    const header = typeof modalState === 'object' && modalState.title ? modalState.title : translate('Limited feature')
+    const description =
+        typeof modalState === 'object' && modalState.description
+            ? modalState.description
+            : translate(
+                  'Sorry, this feature is only available for premium users, please upgrade to premium to get the full potential of Alldone'
+              )
 
     return (
         <View style={localStyles.parent}>

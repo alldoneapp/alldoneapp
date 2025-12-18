@@ -5,6 +5,10 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
+const admin = require('firebase-admin')
+
+const TRANSCRIPTION_COST = 10 // Gold per chunk
+
 exports.transcribeMeetingAudio = onCall(
     {
         timeoutSeconds: 300,
@@ -22,6 +26,33 @@ exports.transcribeMeetingAudio = onCall(
         const { audioChunk } = data
         if (!audioChunk) {
             throw new HttpsError('invalid-argument', 'Audio chunk is required')
+        }
+
+        // Deduct Gold
+        try {
+            await admin.firestore().runTransaction(async transaction => {
+                const userRef = admin.firestore().doc(`users/${auth.uid}`)
+                const userDoc = await transaction.get(userRef)
+
+                if (!userDoc.exists) {
+                    throw new Error('User not found')
+                }
+
+                const currentGold = userDoc.data().gold || 0
+                if (currentGold < TRANSCRIPTION_COST) {
+                    throw new Error('Insufficient Gold')
+                }
+
+                transaction.update(userRef, {
+                    gold: admin.firestore.FieldValue.increment(-TRANSCRIPTION_COST),
+                })
+            })
+        } catch (e) {
+            console.error('Gold deduction failed:', e)
+            if (e.message === 'Insufficient Gold') {
+                throw new HttpsError('resource-exhausted', 'Insufficient Gold to transcribe audio.')
+            }
+            throw new HttpsError('internal', 'Transaction failed', e)
         }
 
         const env = getEnvFunctions()

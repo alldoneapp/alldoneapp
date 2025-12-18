@@ -38,7 +38,7 @@ import {
     NOT_USER_MENTIONED,
 } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import store from '../../../../redux/store'
-import { setQuotedNoteText, storeOpenModal } from '../../../../redux/actions'
+import { setQuotedNoteText, storeOpenModal, setShowLimitedFeatureModal } from '../../../../redux/actions'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -1115,6 +1115,17 @@ export const EditorToolbar = ({
                                 }
                             } catch (err) {
                                 console.error('Transcription error:', err)
+                                if (err.code === 'resource-exhausted' || err.message?.includes('Insufficient Gold')) {
+                                    store.dispatch(
+                                        setShowLimitedFeatureModal({
+                                            title: translate('Not enough Gold'),
+                                            description: translate(
+                                                'You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.'
+                                            ),
+                                        })
+                                    )
+                                    stopRecording()
+                                }
                             }
                         }
                     }
