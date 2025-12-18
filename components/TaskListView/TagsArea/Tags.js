@@ -33,6 +33,7 @@ import { setTaskDescription, setTaskDueDate, setTaskToBacklog } from '../../../u
 import GoalTag from '../../Tags/GoalTag'
 import { checkIfInMyDay, checkIfInMyDayOpenTab } from '../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import AlertTag from '../../Tags/AlertTag'
+import TranscribeTag from '../../Tags/TranscribeTag'
 
 export default function Tags({
     task,
@@ -222,7 +223,18 @@ export default function Tags({
                 />
             )}
             {inMyDayAndNotSubtask && task.alertEnabled && (
-                <AlertTag task={task} containerStyle={[tagAlignment, tagsStyle]} onPress={navigateToDv} />
+                <>
+                    {task.calendarData ? (
+                        <TranscribeTag
+                            task={task}
+                            projectId={projectId}
+                            containerStyle={[tagAlignment, tagsStyle]}
+                            disabled={isActiveOrganizeMode || isLocked}
+                        />
+                    ) : (
+                        <AlertTag task={task} containerStyle={[tagAlignment, tagsStyle]} onPress={navigateToDv} />
+                    )}
+                </>
             )}
             {subtaskList && subtaskList.length > 0 && (
                 <TaskSubTasks

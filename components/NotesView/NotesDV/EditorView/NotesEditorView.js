@@ -119,6 +119,7 @@ const NotesEditorView = ({
     objectType,
     objectId,
     object,
+    autoStartTranscription,
 }) => {
     const projectId = project ? project.id : undefined
     let quillRef = useRef(null)
@@ -1106,6 +1107,7 @@ const NotesEditorView = ({
                 connectionState={connectionState}
                 scrollYPos={scrollYPos}
                 scrollRef={scrollRef}
+                autoStartTranscription={autoStartTranscription}
             />
 
             <CustomScrollView

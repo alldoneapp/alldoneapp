@@ -23,12 +23,15 @@ export default function NoteEditorContainer({
     objectType,
     objectId,
     object,
+    navigation,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [editorKey, setEditorKey] = useState(v4())
     const dispatch = useDispatch()
     const [connectionState, setConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
+
+    const autoStartTranscription = navigation ? navigation.getParam('autoStartTranscription') : false
 
     const closeConnectionStateModal = () => {
         setConnectionState('')
@@ -84,6 +87,7 @@ export default function NoteEditorContainer({
                     objectType={objectType}
                     objectId={objectId}
                     object={object}
+                    autoStartTranscription={autoStartTranscription}
                 />
             )}
             {(connectionState === 'online' || connectionState === 'offline') && (

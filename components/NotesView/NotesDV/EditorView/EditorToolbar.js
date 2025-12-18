@@ -951,6 +951,7 @@ export const EditorToolbar = ({
     scrollYPos,
     scrollRef,
     getEditor,
+    autoStartTranscription,
 }) => {
     const usersInProject = useSelector(state => state.projectUsers[project.id])
     const loggedUser = useSelector(state => state.loggedUser)
@@ -1175,6 +1176,20 @@ export const EditorToolbar = ({
             }
         }
     }
+
+    const hasAutoStartedRef = useRef(false)
+
+    useEffect(() => {
+        if (autoStartTranscription && !hasAutoStartedRef.current && !isRecording) {
+            hasAutoStartedRef.current = true
+            // Use a short timeout to let the editor mount
+            setTimeout(() => {
+                toggleTranscription().catch(e => {
+                    console.warn('Auto-start transcription failed:', e)
+                })
+            }, 500)
+        }
+    }, [autoStartTranscription])
 
     return (
         <div

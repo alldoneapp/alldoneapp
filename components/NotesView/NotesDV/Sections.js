@@ -98,6 +98,7 @@ export default function Sections({ projectId, note, project, navigation }) {
                                         objectType={FOLLOWER_NOTES_TYPE}
                                         object={note}
                                         objectId={note.id}
+                                        navigation={navigation}
                                     />
                                 )
                             case DV_TAB_NOTE_BACKLINKS:
