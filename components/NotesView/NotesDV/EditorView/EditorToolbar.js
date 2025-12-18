@@ -1211,10 +1211,7 @@ export const EditorToolbar = ({
                             {shortcutAlt && <Shortcut text={'Z'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className={`ql-strike ${mobile ? 'ql-hide' : ''}`} />
                         </span>
-                        <span className={mobile ? 'ql-hide' : 'ql-toolbar-item'} onClick={keepScroll}>
-                            {shortcutAlt && <Shortcut text={'2'} parentStyle={localStyles.shortcuts.qlTextColor} />}
-                            <select className={'ql-color'}>{renderColorPopup(TEXT_COLORS)}</select>
-                        </span>
+
                         <span className={'ql-toolbar-item'} onClick={keepScroll}>
                             {shortcutAlt && (
                                 <Shortcut text={'3'} parentStyle={localStyles.shortcuts.qlBackgroundColor} />

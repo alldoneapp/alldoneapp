@@ -1069,5 +1069,11 @@
     "onboarding_morning_reminder_desc": "Möchtest du, dass ich dich jeden Morgen an die wichtigste Aufgabe des Tages erinnere?",
     "What's your WhatsApp number?": "WhatsApp?",
     "onboarding_whatsapp_success_title": "Erfolg!",
-    "onboarding_whatsapp_success_desc": "Bitte überprüfe dein WhatsApp. Anna hat dir gerade eine Nachricht gesendet!"
+    "onboarding_whatsapp_success_desc": "Bitte überprüfe dein WhatsApp. Anna hat dir gerade eine Nachricht gesendet!",
+    "You can now attach audio files to your notes using the attachment button on the keyboard": "Sie können jetzt Audio-Dateien an Ihre Notizen anhängen, indem Sie den Anhang-Button auf der Tastatur verwenden",
+    "Not enough Gold": "Nicht genug Gold",
+    "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.": "Sie haben nicht genug Gold, um dieses Audio zu transkribieren. Bitte upgraden Sie oder kaufen Sie mehr Gold.",
+    "Transcribe": "Transkribieren",
+    "Stop": "Stopp",
+    "Please ensure you share audio when selecting the screen/tab.": "Bitte stellen Sie sicher, dass Sie Audio teilen, wenn Sie den Bildschirm/Tab auswählen."
 }
