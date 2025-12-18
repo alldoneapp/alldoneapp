@@ -798,6 +798,8 @@ exports.resetUserFreePlanSecondGen = onSchedule(
         memory: '1GiB',
     },
     async event => {
+        const { resetUserFreePlan } = require('./Payment/SubscriptionsActions')
+        await resetUserFreePlan()
         const admin = require('firebase-admin')
         const { resetWarningsAndQuotas } = require('./Payment/QuotaWarnings')
         await resetWarningsAndQuotas(admin)
@@ -2536,3 +2538,5 @@ exports.googleOAuthCheckCredentials = onCall(
         }
     }
 )
+
+exports.transcribeMeetingAudio = require('./Notes/transcribeMeeting').transcribeMeetingAudio

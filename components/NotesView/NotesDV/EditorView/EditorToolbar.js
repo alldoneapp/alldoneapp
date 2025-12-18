@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
+import { firebase } from '@firebase/app'
 import { Quill } from 'react-quill'
 import v4 from 'uuid/v4'
 import styles, { colors } from '../../../styles/global'
@@ -970,6 +971,88 @@ export const EditorToolbar = ({
     const barPointerEvents = readOnly || disabled ? 'none' : 'auto'
     const commentPointerEvents = connectionState === 'offline' || disabled ? 'none' : 'auto'
 
+    const [isRecording, setIsRecording] = useState(false)
+    const mediaRecorderRef = useRef(null)
+    const streamRef = useRef(null)
+
+    const toggleTranscription = async () => {
+        if (isRecording) {
+            // Stop recording
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop()
+            }
+            if (streamRef.current) {
+                try {
+                    streamRef.current.getTracks().forEach(track => track.stop())
+                } catch (e) {
+                    console.error('Error stopping tracks', e)
+                }
+            }
+            setIsRecording(false)
+            return
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: true,
+            })
+
+            const audioTracks = stream.getAudioTracks()
+            if (audioTracks.length === 0) {
+                alert(translate('Please ensure you share audio when selecting the screen/tab.'))
+                stream.getTracks().forEach(track => track.stop())
+                return
+            }
+
+            const audioStream = new MediaStream(audioTracks)
+            const mimeType = 'audio/webm'
+            const recorder = new MediaRecorder(audioStream, { mimeType })
+
+            recorder.ondataavailable = async event => {
+                if (event.data.size > 0) {
+                    const reader = new FileReader()
+                    reader.readAsDataURL(event.data)
+                    reader.onloadend = async () => {
+                        const base64data = reader.result
+                        try {
+                            const result = await firebase.functions().httpsCallable('transcribeMeetingAudio')({
+                                audioChunk: base64data,
+                            })
+                            const text = result.data.text
+                            if (text && text.trim().length > 0) {
+                                const editor = exportRef.getEditor()
+                                const length = editor.getLength()
+                                editor.insertText(length, `\n${text.trim()} `, 'user')
+                                editor.setSelection(length + text.length + 2)
+                            }
+                        } catch (err) {
+                            console.error('Transcription error:', err)
+                        }
+                    }
+                }
+            }
+
+            // Handle stream stop from browser UI
+            if (stream.getVideoTracks().length > 0) {
+                stream.getVideoTracks()[0].onended = () => {
+                    setIsRecording(false)
+                    if (recorder.state !== 'inactive') recorder.stop()
+                }
+            }
+
+            recorder.start(10000) // 10 seconds chunks
+            streamRef.current = stream
+            mediaRecorderRef.current = recorder
+            setIsRecording(true)
+        } catch (err) {
+            console.error('Error starting transcription:', err)
+            if (err.name !== 'NotAllowedError') {
+                // alert(translate('Could not start recording: ') + err.message)
+            }
+        }
+    }
+
     return (
         <div
             id="toolbar-container"
@@ -1098,6 +1181,31 @@ export const EditorToolbar = ({
                                 <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Comment')}</Text>
                             )}
                             <Comment />
+                        </button>
+                    </span>
+
+                    <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
+                        <button onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
+                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Icon
+                                        name={isRecording ? 'mic-off' : 'mic'}
+                                        size={18}
+                                        color={isRecording ? colors.Red : colors.Text03}
+                                    />
+                                </View>
+                                {!tablet && (
+                                    <Text
+                                        style={[
+                                            styles.caption1,
+                                            localStyles.barIconText,
+                                            isRecording ? { color: colors.Red } : {},
+                                        ]}
+                                    >
+                                        {isRecording ? translate('Stop') : translate('Transcribe')}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
                         </button>
                     </span>
                 </span>
