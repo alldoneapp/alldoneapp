@@ -413,11 +413,13 @@ const NotesEditorView = ({
 
     useEffect(() => {
         return () => {
-            const deltaContent = quillRef.current.getContents()
-            for (let i = 0; i < deltaContent.ops.length; i++) {
-                const { hashtag } = deltaContent.ops[i].insert
-                if (hashtag) {
-                    Backend.unwatchHastagsColors(hashtag.id)
+            if (quillRef.current && typeof quillRef.current.getContents === 'function') {
+                const deltaContent = quillRef.current.getContents()
+                for (let i = 0; i < deltaContent.ops.length; i++) {
+                    const { hashtag } = deltaContent.ops[i].insert
+                    if (hashtag) {
+                        Backend.unwatchHastagsColors(hashtag.id)
+                    }
                 }
             }
         }
@@ -1087,7 +1089,7 @@ const NotesEditorView = ({
             {renderShortcuts()}
 
             <EditorToolbar
-                getEditor={() => quillRef.current && quillRef.current.getEditor()}
+                getEditor={() => quillRef.current}
                 renderTask={renderTask}
                 renderTimestamp={renderTimestamp}
                 editors={editors}
@@ -1127,7 +1129,6 @@ const NotesEditorView = ({
                 <ReactQuill
                     ref={el => {
                         reactQuillRef = el
-                        quillRef.current = el
                         exportRef = el
                     }}
                     theme="snow"
