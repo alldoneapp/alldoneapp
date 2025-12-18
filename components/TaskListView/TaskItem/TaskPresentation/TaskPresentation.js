@@ -28,6 +28,7 @@ import useGetTaskWorkflow from '../../../../utils/useGetTaskWorkflow'
 import CheckBoxWrapper from './CheckBoxContainer/CheckBoxWrapper'
 import TitleContainer from './TitleContainer/TitleContainer'
 import AlertTag from '../../../Tags/AlertTag'
+import TranscribeTag from '../../../Tags/TranscribeTag'
 import TaskTagsContainerByTime from './TaskTagsContainerByTime'
 import TaskTagsContainer from './TaskTagsContainer'
 
@@ -285,11 +286,21 @@ function TaskPresentation(
                                     />
                                 )}
                                 {!inMyDayAndNotSubtask && task?.alertEnabled && (
-                                    <AlertTag
-                                        task={task}
-                                        containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
-                                        onPress={onLeftSwipe}
-                                    />
+                                    <>
+                                        {task.calendarData ? (
+                                            <TranscribeTag
+                                                task={task}
+                                                projectId={projectId}
+                                                containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                            />
+                                        ) : (
+                                            <AlertTag
+                                                task={task}
+                                                containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                                onPress={onLeftSwipe}
+                                            />
+                                        )}
+                                    </>
                                 )}
                                 <TitleContainer
                                     task={task}

@@ -8,6 +8,7 @@ import TaskMoreButton from '../../UIComponents/FloatModals/MorePopupsOfEditModal
 import DueDateButton from '../../UIControls/DueDateButton'
 import CommentButton from '../../UIControls/CommentButton'
 import FollowUpButton from '../../UIControls/FollowUpButton'
+import TranscribeButton from '../../UIControls/TranscribeButton'
 import { FEED_PUBLIC_FOR_ALL, FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { translate } from '../../../i18n/TranslationService'
 import { useSelector, useDispatch } from 'react-redux'
@@ -160,18 +161,31 @@ export default function SecondaryButtonsArea({
                 !tmpTask.done &&
                 taskViewToggleSection !== 'Workflow' &&
                 !tmpTask.gmailData && (
-                    <DueDateButton
-                        task={tmpTask}
-                        projectId={projectId}
-                        style={buttonItemStyle}
-                        disabled={!hasName || !accessGranted || isLoadingGoal}
-                        inEditTask={true}
-                        saveDueDateBeforeSaveTask={loggedSetDueDateBeforeSave}
-                        setToBacklogBeforeSaveTask={loggedSetToBacklogBeforeSave}
-                        onDismissPopup={onDismissPopup}
-                        shortcutText={'R'}
-                        isObservedTask={isObservedTask}
-                    />
+                    <>
+                        {tmpTask.calendarData ? (
+                            <TranscribeButton
+                                task={tmpTask}
+                                projectId={projectId}
+                                style={buttonItemStyle}
+                                disabled={!hasName || !accessGranted || isLoadingGoal}
+                                shortcutText={'R'}
+                                onDismissPopup={onDismissPopup}
+                            />
+                        ) : (
+                            <DueDateButton
+                                task={tmpTask}
+                                projectId={projectId}
+                                style={buttonItemStyle}
+                                disabled={!hasName || !accessGranted || isLoadingGoal}
+                                inEditTask={true}
+                                saveDueDateBeforeSaveTask={loggedSetDueDateBeforeSave}
+                                setToBacklogBeforeSaveTask={loggedSetToBacklogBeforeSave}
+                                onDismissPopup={onDismissPopup}
+                                shortcutText={'R'}
+                                isObservedTask={isObservedTask}
+                            />
+                        )}
+                    </>
                 )}
 
             {adding ? (
