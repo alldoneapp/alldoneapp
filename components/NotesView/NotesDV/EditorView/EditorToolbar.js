@@ -1023,7 +1023,7 @@ export const EditorToolbar = ({
                 try {
                     const range = headerEditor.getSelection(true) || { index: headerEditor.getLength() }
                     const dateStr = moment().format(`${getDateFormat(false)} `)
-                    const headerText = `${dateStr} ${translate('Transcription')}`
+                    const headerText = `${dateStr} ${translate('transcription_header')}`
                     headerEditor.insertText(range.index, headerText, 'user')
                     headerEditor.insertText(range.index + headerText.length, '\n', { header: 1 }, 'user')
                     setTimeout(() => {
@@ -1195,7 +1195,7 @@ export const EditorToolbar = ({
                     }}
                 >
                     <Text style={{ color: 'white', fontWeight: '500', fontSize: 13 }}>
-                        {translate('Transcription active. Keep tab in the foreground')}
+                        {translate('transcription_active_banner')}
                     </Text>
                     <TouchableOpacity
                         onPress={stopRecording}

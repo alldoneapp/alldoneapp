@@ -1292,7 +1292,6 @@
     "Unlock modal description": "Every month you get 100 free Gold. You can earn more Gold for free by completing tasks or by chatting in the community. Or simply upgrade your account to Alldone Premium to get 1000 free Gold / month & more.",
     "Unlock tasks": "Unlock tasks (%{goldAmount} Gold)",
     "Unlock": "Unlock (%{goldAmount} Gold)",
-    "Not enough Gold": "Not enough Gold",
     "Not enough Gold description": "You currently do not have enough Gold to do this action. But don't worry it's easy to get more Gold:",
     "Earn gold option 1": "• Earn free Gold by completing tasks",
     "Earn gold option 2": "• Receive free Gold by chatting actively in the community",
@@ -1525,6 +1524,6 @@
     "Transcribe": "Transcribe",
     "Stop": "Stop",
     "Please ensure you share audio when selecting the screen/tab.": "Please ensure you share audio when selecting the screen/tab.",
-    "Transcription active. Keep tab in the foreground": "Transcription active. Keep tab in the foreground",
-    "Transcription": "Transcription"
+    "transcription_active_banner": "Transcription active. Keep tab in the foreground",
+    "transcription_header": "Transcription"
 }

@@ -1291,7 +1291,6 @@
     "Unlock modal description": "Cada mes obtienes 100 de oro. Puedes ganar más completando tareas o chateando en la comunidad. O simplemente actualice su cuenta a Alldone Premium para obtener 1000 oro gratis al mes y más.",
     "Unlock tasks": "Liberar tareas (%{goldAmount} Oro)",
     "Unlock": "Liberar (%{goldAmount} Oro)",
-    "Not enough Gold": "No tiene suficiente oro",
     "Not enough Gold description": "Actualmente no tienes suficiente oro para realizar esta acción. Pero no te preocupes, es fácil conseguir más oro:",
     "Earn gold option 1": "• Gana Oro gratis completando tareas",
     "Earn gold option 2": "• Reciba Oro gratis chateando activamente en la comunidad",
@@ -1506,6 +1505,6 @@
     "Transcribe": "Transcribir",
     "Stop": "Parar",
     "Please ensure you share audio when selecting the screen/tab.": "Asegúrese de compartir el audio al seleccionar la pantalla/pestaña.",
-    "Transcription active. Keep tab in the foreground": "Transcripción activa. Mantenga la pestaña en primer plano",
-    "Transcription": "Transcripción"
+    "transcription_active_banner": "Transcripción activa. Mantenga la pestaña en primer plano",
+    "transcription_header": "Transcripción"
 }

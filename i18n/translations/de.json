@@ -731,8 +731,6 @@
     "Amount member": "%{amount} Mitglied",
     "Type email or name to add person": "Trage die email oder den Namen ein, um eine Person hinzuzufügen",
     "Info": "Informationen",
-    "Connect calendar": "Kalender verbinden",
-    "Connect Gmail": "Gmail verbinden",
     "Google calendar account": "Google-Kalenderkonto",
     "Google calendar account description": "Dieses Konto wird verwendet, um Ereignisse aus Google Calendar zu synchronisieren und entsprechend Aufgaben in der Alldone-App zu erstellen",
     "Google gmail description": "Dies wird verwendet, um die ungelesenen E-Mails vom Google Gmail-Konto in der Alldone-App zu überprüfen",
@@ -1071,11 +1069,10 @@
     "onboarding_whatsapp_success_title": "Erfolg!",
     "onboarding_whatsapp_success_desc": "Bitte überprüfe dein WhatsApp. Anna hat dir gerade eine Nachricht gesendet!",
     "You can now attach audio files to your notes using the attachment button on the keyboard": "Sie können jetzt Audio-Dateien an Ihre Notizen anhängen, indem Sie den Anhang-Button auf der Tastatur verwenden",
-    "Not enough Gold": "Nicht genug Gold",
     "You do not have enough Gold to transcribe this audio. Please upgrade or buy more Gold.": "Sie haben nicht genug Gold, um dieses Audio zu transkribieren. Bitte upgraden Sie oder kaufen Sie mehr Gold.",
     "Transcribe": "Transkribieren",
     "Stop": "Stopp",
     "Please ensure you share audio when selecting the screen/tab.": "Bitte stellen Sie sicher, dass Sie Audio teilen, wenn Sie den Bildschirm/Tab auswählen.",
-    "Transcription active. Keep tab in the foreground": "Transkription aktiv. Tab im Vordergrund halten",
-    "Transcription": "Transkription"
+    "transcription_active_banner": "Transkription aktiv. Tab im Vordergrund halten",
+    "transcription_header": "Transkription"
 }
