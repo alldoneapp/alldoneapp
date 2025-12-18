@@ -41,10 +41,21 @@ export type GoogleService = 'calendar' | 'gmail'
  * @param service - The service to connect ('calendar' or 'gmail')
  * @returns Promise that resolves when OAuth is complete
  */
-export async function startServerSideAuth(projectId: string, service?: GoogleService): Promise<void> {
+export async function startServerSideAuth(
+    projectId: string,
+    service?: GoogleService,
+    returnUrl?: string
+): Promise<void> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthInitiate', { projectId, service })
+        const result = await runHttpsCallableFunction('googleOAuthInitiate', { projectId, service, returnUrl })
         const { authUrl } = result
+
+        if (returnUrl) {
+            // Redirect to OAuth URL (same window)
+            window.location.href = authUrl
+            // Promise will not resolve as page unloads
+            return new Promise(() => {})
+        }
 
         // Open OAuth URL in a popup window
         const width = 600

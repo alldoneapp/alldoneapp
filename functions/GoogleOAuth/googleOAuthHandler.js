@@ -80,7 +80,7 @@ const GMAIL_SCOPES = [
  * @param {string} projectId - The project ID
  * @param {string} service - 'calendar' or 'gmail' (optional, defaults to both for backward compatibility if needed, but we should enforce it)
  */
-async function initiateOAuth(userId, projectId, service) {
+async function initiateOAuth(userId, projectId, service, returnUrl) {
     const oauth2Client = getOAuth2Client()
 
     // Determine scopes based on service
@@ -109,6 +109,7 @@ async function initiateOAuth(userId, projectId, service) {
         userId,
         projectId,
         service: service || 'calendar',
+        returnUrl: returnUrl || null,
         createdAt: admin.firestore.Timestamp.now(),
         expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)), // 10 minutes
     }
@@ -119,6 +120,7 @@ async function initiateOAuth(userId, projectId, service) {
     console.log('[oauth] 🚀 Initiating OAuth flow...')
     console.log('[oauth] 📋 Service:', service)
     console.log('[oauth] 📋 Requested scopes:', scopes)
+    console.log('[oauth] 🔗 Return URL:', returnUrl)
 
     const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline', // Required to get refresh token
@@ -142,7 +144,7 @@ async function handleOAuthCallback(code, state) {
         throw new Error('Invalid or expired state parameter')
     }
 
-    const { userId, projectId, service, expiresAt } = stateDoc.data()
+    const { userId, projectId, service, expiresAt, returnUrl } = stateDoc.data()
 
     // Check if state is expired
     if (expiresAt.toDate() < new Date()) {
@@ -226,6 +228,7 @@ async function handleOAuthCallback(code, state) {
         projectId,
         service,
         email: userInfo.email,
+        returnUrl,
     }
 }
 

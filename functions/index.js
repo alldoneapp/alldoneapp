@@ -2386,11 +2386,11 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId, service } = data
+        const { projectId, service, returnUrl } = data
         const userId = auth.uid
 
         try {
-            const authUrl = await initiateOAuth(userId, projectId, service)
+            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)
@@ -2429,6 +2429,13 @@ exports.googleOAuthCallback = onRequest(
 
         try {
             const result = await handleOAuthCallback(code, state)
+
+            if (result.returnUrl) {
+                // Return to the app
+                res.redirect(result.returnUrl)
+                return
+            }
+
             res.send(`
                 <script>
                     window.opener.postMessage({ type: 'oauth_success', result: ${JSON.stringify(result)} }, '*');

@@ -110,6 +110,44 @@ export default function WhatsAppOnboarding({ navigation }) {
         }
     }, [])
 
+    useEffect(() => {
+        // Check for Google Auth redirect parameters
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('googleAuth') === 'success') {
+            const service = params.get('service')
+
+            // Set initial step based on service to show success message in the right context
+            if (service === 'calendar') {
+                setStep(1)
+                setShowSuccess('calendar')
+            } else if (service === 'gmail') {
+                setStep(2)
+                setShowSuccess('gmail')
+            }
+
+            startBlinking()
+
+            // Clean up URL
+            const url = new URL(window.location.href)
+            url.searchParams.delete('googleAuth')
+            url.searchParams.delete('service')
+            window.history.replaceState({}, '', url.toString())
+
+            // Auto advance
+            setTimeout(() => {
+                setShowSuccess(null)
+                blinkAnim.setValue(1) // Reset animation
+                if (service === 'calendar') {
+                    logEvent('onboarding_calendar_connected')
+                    setStep(2)
+                } else {
+                    logEvent('onboarding_gmail_connected')
+                    setStep(3)
+                }
+            }, 2000)
+        }
+    }, [])
+
     const handleContinue = async () => {
         if (saving) return
 
@@ -215,7 +253,16 @@ export default function WhatsAppOnboarding({ navigation }) {
     const connectService = async service => {
         setConnectingService(service)
         try {
-            await startServerSideAuth(projectId, service)
+            // Construct return URL for same-window redirect
+            const returnUrl = new URL(window.location.href)
+            returnUrl.searchParams.set('googleAuth', 'success')
+            returnUrl.searchParams.set('service', service)
+
+            await startServerSideAuth(projectId, service, returnUrl.toString())
+
+            // If we are redirecting, the code below won't execute immediately (or at all)
+            // But if we are in popup mode (fallback), it continues here
+
             setConnectingService(null)
             setShowSuccess(service)
             startBlinking()
