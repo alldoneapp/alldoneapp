@@ -950,6 +950,7 @@ export const EditorToolbar = ({
     disabled,
     scrollYPos,
     scrollRef,
+    getEditor,
 }) => {
     const usersInProject = useSelector(state => state.projectUsers[project.id])
     const loggedUser = useSelector(state => state.loggedUser)
@@ -1017,15 +1018,23 @@ export const EditorToolbar = ({
 
         try {
             // Insert Date + Transcription Header
-            const editor = exportRef.getEditor()
-            const range = editor.getSelection(true) || { index: editor.getLength() }
-            const dateStr = moment().format(`${getDateFormat(false)} `)
-            const headerText = `${dateStr} ${translate('Transcription')}`
-            editor.insertText(range.index, headerText, 'user')
-            editor.insertText(range.index + headerText.length, '\n', { header: 1 }, 'user')
-            setTimeout(() => {
-                editor.setSelection(range.index + headerText.length + 1, 0, 'user')
-            })
+            const headerEditor = getEditor ? getEditor() : exportRef ? exportRef.getEditor() : null
+            if (headerEditor) {
+                try {
+                    const range = headerEditor.getSelection(true) || { index: headerEditor.getLength() }
+                    const dateStr = moment().format(`${getDateFormat(false)} `)
+                    const headerText = `${dateStr} ${translate('Transcription')}`
+                    headerEditor.insertText(range.index, headerText, 'user')
+                    headerEditor.insertText(range.index + headerText.length, '\n', { header: 1 }, 'user')
+                    setTimeout(() => {
+                        headerEditor.setSelection(range.index + headerText.length + 1, 0, 'user')
+                    })
+                } catch (e) {
+                    console.error('Error inserting transcription header', e)
+                }
+            } else {
+                console.warn('No editor instance available for header insertion')
+            }
 
             // Request both System Audio and Microphone
             // We do this sequentially or parallel. Parallel is faster but let's be safe.
@@ -1162,7 +1171,7 @@ export const EditorToolbar = ({
         } catch (err) {
             console.error('Error starting transcription:', err)
             if (err.name !== 'NotAllowedError') {
-                // alert(translate('Could not start recording: ') + err.message)
+                alert(translate('Could not start recording: ') + err.message)
             }
         }
     }
@@ -1176,7 +1185,7 @@ export const EditorToolbar = ({
             {isRecording && (
                 <div
                     style={{
-                        backgroundColor: colors.Red, // or colors.Blue/Green depending on preference
+                        backgroundColor: colors.Red200, // or colors.Blue/Green depending on preference
                         width: '100%',
                         height: 32,
                         display: 'flex',
@@ -1330,7 +1339,7 @@ export const EditorToolbar = ({
                                     <Icon
                                         name={isRecording ? 'mic-off' : 'mic'}
                                         size={18}
-                                        color={isRecording ? colors.Red : colors.Text03}
+                                        color={isRecording ? colors.Red200 : colors.Text03}
                                     />
                                 </View>
                                 {!tablet && (
@@ -1338,7 +1347,7 @@ export const EditorToolbar = ({
                                         style={[
                                             styles.caption1,
                                             localStyles.barIconText,
-                                            isRecording ? { color: colors.Red } : {},
+                                            isRecording ? { color: colors.Red200 } : {},
                                         ]}
                                     >
                                         {isRecording ? translate('Stop') : translate('Transcribe')}

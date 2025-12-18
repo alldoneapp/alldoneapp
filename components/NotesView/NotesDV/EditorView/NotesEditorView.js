@@ -1087,6 +1087,7 @@ const NotesEditorView = ({
             {renderShortcuts()}
 
             <EditorToolbar
+                getEditor={() => quillRef.current && quillRef.current.getEditor()}
                 renderTask={renderTask}
                 renderTimestamp={renderTimestamp}
                 editors={editors}
@@ -1126,6 +1127,7 @@ const NotesEditorView = ({
                 <ReactQuill
                     ref={el => {
                         reactQuillRef = el
+                        quillRef.current = el
                         exportRef = el
                     }}
                     theme="snow"
