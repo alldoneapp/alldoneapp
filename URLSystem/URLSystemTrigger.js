@@ -75,6 +75,11 @@ class URLSystemTrigger {
             case URL_PRIVATE_RESOURCE:
                 return SettingsHelper.processURLPrivateResource(navigation)
             case URL_LOGIN:
+                // Check if returning from Google Auth
+                const urlParams = new URLSearchParams(window.location.search)
+                if (urlParams.get('googleAuth') === 'success') {
+                    return navigation.navigate('WhatsAppOnboarding')
+                }
                 return TasksHelper.processURLAllProjectsTasks(navigation)
             case URL_START_TRIAL:
                 return URLSystemTrigger.processStartTrial(navigation, pathname)
