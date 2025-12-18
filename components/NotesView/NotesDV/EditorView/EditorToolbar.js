@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { firebase } from '@firebase/app'
 import { Quill } from 'react-quill'
+import moment from 'moment'
 import v4 from 'uuid/v4'
+import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import styles, { colors } from '../../../styles/global'
 import QuillCursors from 'quill-cursors'
 // import { ImageDrop } from 'quill-image-drop-module'
@@ -1014,6 +1016,17 @@ export const EditorToolbar = ({
         }
 
         try {
+            // Insert Date + Transcription Header
+            const editor = exportRef.getEditor()
+            const range = editor.getSelection(true) || { index: editor.getLength() }
+            const dateStr = moment().format(`${getDateFormat(false)} `)
+            const headerText = `${dateStr} ${translate('Transcription')}`
+            editor.insertText(range.index, headerText, 'user')
+            editor.insertText(range.index + headerText.length, '\n', { header: 1 }, 'user')
+            setTimeout(() => {
+                editor.setSelection(range.index + headerText.length + 1, 0, 'user')
+            })
+
             // Request both System Audio and Microphone
             // We do this sequentially or parallel. Parallel is faster but let's be safe.
             // Note: getDisplayMedia must be triggered by user gesture, which we have.
