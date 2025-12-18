@@ -6,67 +6,33 @@ import Button from './Button'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import NavigationService from '../../utils/NavigationService'
-import TasksHelper from '../TaskListView/Utils/TasksHelper'
-import { uploadNewNote } from '../../utils/backends/Notes/notesFirestore'
-import { updateTaskData } from '../../utils/backends/Tasks/tasksFirestore'
-import { setSelectedNote } from '../../redux/actions'
-import Backend from '../../utils/BackendBridge'
-import { getId } from '../../utils/backends/firestore'
+import { setSelectedNavItem } from '../../redux/actions'
+import { DV_TAB_TASK_NOTE } from '../../utils/TabNavigationConstants'
 
 export default function TranscribeButton({ task, projectId, disabled, style, shortcutText, onDismissPopup }) {
     const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const buttonRef = React.useRef(null)
 
-    const startTranscription = async () => {
+    const openTaskNoteTab = () => {
         if (disabled) return
 
         // Dismiss the edit mode popup if provided
         if (onDismissPopup) onDismissPopup()
 
-        let noteId = task.noteId
-        if (noteId) {
-            const note = await Backend.getNoteMeta(projectId, noteId)
-            if (note) {
-                dispatch(setSelectedNote(note))
-                NavigationService.navigate('NotesDetailedView', {
-                    noteId: note.id,
-                    projectId: projectId,
-                    autoStartTranscription: true,
-                })
-            }
-        } else {
-            const newNote = TasksHelper.getNewDefaultNote()
-            const generatedId = getId()
-            newNote.id = generatedId
-            newNote.parentObject = { type: 'tasks', id: task.id }
-            newNote.linkedParentTasksIds = [task.id]
-            newNote.title = task.name
-
-            // Optimistically update
-            await updateTaskData(projectId, task.id, { noteId: generatedId })
-
-            // Upload note
-            await uploadNewNote(projectId, newNote)
-
-            // Setup navigation
-            const note = await Backend.getNoteMeta(projectId, generatedId)
-            if (note) {
-                dispatch(setSelectedNote(note))
-                NavigationService.navigate('NotesDetailedView', {
-                    noteId: generatedId,
-                    projectId: projectId,
-                    autoStartTranscription: true,
-                })
-            }
-        }
+        // Navigate to TaskDetailedView and select the Notes tab
+        NavigationService.navigate('TaskDetailedView', {
+            task: task,
+            projectId: projectId,
+        })
+        dispatch(setSelectedNavItem(DV_TAB_TASK_NOTE))
     }
 
     return (
         <Hotkeys
             keyName={`alt+${shortcutText}`}
             disabled={disabled}
-            onKeyDown={(sht, event) => execShortcutFn(buttonRef.current, startTranscription, event)}
+            onKeyDown={(sht, event) => execShortcutFn(buttonRef.current, openTaskNoteTab, event)}
             filter={e => true}
         >
             <Button
@@ -76,7 +42,7 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
                 noBorder={smallScreen}
                 icon={'microphone'}
                 buttonStyle={style}
-                onPress={startTranscription}
+                onPress={openTaskNoteTab}
                 disabled={disabled}
                 shortcutText={shortcutText}
             />
