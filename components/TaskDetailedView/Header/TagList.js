@@ -94,6 +94,9 @@ export default function TagList({ projectId, task }) {
                     navItem={DV_TAB_TASK_CHAT}
                     projectId={projectId}
                     assistantId={task.assistantId}
+                    objectId={task.id}
+                    objectType={FEED_TASK_OBJECT_TYPE}
+                    parentObject={task}
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>

@@ -56,6 +56,9 @@ export default function TagList({ projectId, note, disabled }) {
                     navItem={DV_TAB_NOTE_CHAT}
                     projectId={projectId}
                     assistantId={note.assistantId}
+                    objectId={note.id}
+                    objectType={FEED_NOTE_OBJECT_TYPE}
+                    parentObject={note}
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
