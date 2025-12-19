@@ -15,6 +15,9 @@ import CloseButton from '../../../FollowUp/CloseButton'
 import Line from '../GoalMilestoneModal/Line'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
+import store from '../../../../redux/store'
+import { setPreConfigTaskExecuting } from '../../../../redux/actions'
+import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
 
 export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
     const [values, setValues] = useState({})
@@ -86,7 +89,8 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
 
     useEffect(() => {
         const variablesWithValues = variables.map(variable => {
-            return { name: variable.name, value: (values[variable.name] || '').trim() }
+            const rawValue = (values[variable.name] || '').trim()
+            return { name: variable.name, value: cleanTextMetaData(rawValue) }
         })
 
         let generatedPrompt = prompt
