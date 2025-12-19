@@ -9,7 +9,7 @@ import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
-import { exitsOpenModals, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
+import { getModalParams, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 
 export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
     const dispatch = useDispatch()
@@ -37,7 +37,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     }
 
     const closeModal = () => {
-        if (exitsOpenModals([MENTION_MODAL_ID])) return
+        if (getModalParams(MENTION_MODAL_ID) !== undefined) return
         setIsOpen(false)
         dispatch(hideFloatPopup())
     }
