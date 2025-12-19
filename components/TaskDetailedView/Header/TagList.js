@@ -97,7 +97,7 @@ export default function TagList({ projectId, task, updateObjectState }) {
                     objectId={task.id}
                     objectType={FEED_TASK_OBJECT_TYPE}
                     parentObject={task}
-                    updateObjectState={props.updateObjectState}
+                    updateObjectState={updateObjectState}
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
