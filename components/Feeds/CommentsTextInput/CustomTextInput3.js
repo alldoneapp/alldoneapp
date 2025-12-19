@@ -126,6 +126,7 @@ function CustomTextInput3(
         chatAssistantData,
         setAssistantId,
         autoFocus,
+        onMentionSelected,
     },
     ref
 ) {
