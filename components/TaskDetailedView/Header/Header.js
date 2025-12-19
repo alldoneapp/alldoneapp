@@ -14,7 +14,7 @@ import { useSelector } from 'react-redux'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
-const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen }) => {
+const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, updateObjectState }) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const photoURL = useSelector(state => state.assignee.photoURL)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -61,7 +61,7 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen }) =>
                             <SVGGenericUser width={24} height={24} svgid={`ci_p_task_h_${projectId}`} />
                         </View>
                     )}
-                    <TagList projectId={projectId} task={task} updateObjectState={this.props.updateObjectState} />
+                    <TagList projectId={projectId} task={task} updateObjectState={updateObjectState} />
                 </View>
             )}
             {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && (
