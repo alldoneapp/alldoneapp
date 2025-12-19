@@ -63,6 +63,7 @@ export default function BotOptionsModal({
             setGoalAssistant(projectId, objectId, selectedAssistantId, true)
         }
         dispatch(setAssistantEnabled(true))
+        onSelectBotOption()
     }
 
     useEffect(() => {
