@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -17,57 +17,80 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
     const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const buttonRef = React.useRef(null)
+    const [isProcessing, setIsProcessing] = useState(false)
 
     const startTranscription = async () => {
-        if (disabled) return
+        if (disabled || isProcessing) return
 
-        // Dismiss the edit mode popup if provided
-        if (onDismissPopup) onDismissPopup()
+        console.log('[TranscribeButton] Starting transcription for task:', task?.id)
 
-        let noteId = task.noteId
-        if (noteId) {
-            // Note exists, navigate to it with autoStartTranscription
-            const note = await Backend.getNoteMeta(projectId, noteId)
-            if (note) {
-                dispatch(setSelectedNote(note))
-                NavigationService.navigate('NotesDetailedView', {
-                    noteId: note.id,
-                    projectId: projectId,
-                    autoStartTranscription: true,
-                })
+        // Dismiss the edit mode popup FIRST before any async operations
+        if (onDismissPopup) {
+            console.log('[TranscribeButton] Dismissing popup')
+            onDismissPopup()
+        }
+
+        setIsProcessing(true)
+
+        try {
+            let noteId = task?.noteId
+            console.log('[TranscribeButton] Task noteId:', noteId)
+
+            if (noteId) {
+                // Note exists, navigate to it with autoStartTranscription
+                console.log('[TranscribeButton] Note exists, fetching note meta...')
+                const note = await Backend.getNoteMeta(projectId, noteId)
+                console.log('[TranscribeButton] Got note:', note?.id)
+                if (note) {
+                    dispatch(setSelectedNote(note))
+                    NavigationService.navigate('NotesDetailedView', {
+                        noteId: note.id,
+                        projectId: projectId,
+                        autoStartTranscription: true,
+                    })
+                }
+            } else {
+                // Create new note
+                console.log('[TranscribeButton] Creating new note...')
+                const newNote = TasksHelper.getNewDefaultNote()
+                const generatedId = getId()
+                newNote.id = generatedId
+                newNote.parentObject = { type: 'tasks', id: task.id }
+                newNote.linkedParentTasksIds = [task.id]
+                newNote.title = task.name
+
+                console.log('[TranscribeButton] Updating task with noteId...')
+                // Optimistically update task with noteId
+                await updateTaskData(projectId, task.id, { noteId: generatedId })
+
+                console.log('[TranscribeButton] Uploading new note...')
+                // Upload new note
+                await uploadNewNote(projectId, newNote)
+
+                console.log('[TranscribeButton] Fetching created note meta...')
+                // Get the note and navigate with autoStartTranscription
+                const note = await Backend.getNoteMeta(projectId, generatedId)
+                console.log('[TranscribeButton] Got created note:', note?.id)
+                if (note) {
+                    dispatch(setSelectedNote(note))
+                    NavigationService.navigate('NotesDetailedView', {
+                        noteId: generatedId,
+                        projectId: projectId,
+                        autoStartTranscription: true,
+                    })
+                }
             }
-        } else {
-            // Create new note like "Start new note" button does
-            const newNote = TasksHelper.getNewDefaultNote()
-            const generatedId = getId()
-            newNote.id = generatedId
-            newNote.parentObject = { type: 'tasks', id: task.id }
-            newNote.linkedParentTasksIds = [task.id]
-            newNote.title = task.name
-
-            // Optimistically update task with noteId
-            await updateTaskData(projectId, task.id, { noteId: generatedId })
-
-            // Upload new note
-            await uploadNewNote(projectId, newNote)
-
-            // Get the note and navigate with autoStartTranscription
-            const note = await Backend.getNoteMeta(projectId, generatedId)
-            if (note) {
-                dispatch(setSelectedNote(note))
-                NavigationService.navigate('NotesDetailedView', {
-                    noteId: generatedId,
-                    projectId: projectId,
-                    autoStartTranscription: true,
-                })
-            }
+        } catch (error) {
+            console.error('[TranscribeButton] Error:', error)
+        } finally {
+            setIsProcessing(false)
         }
     }
 
     return (
         <Hotkeys
             keyName={`alt+${shortcutText}`}
-            disabled={disabled}
+            disabled={disabled || isProcessing}
             onKeyDown={(sht, event) => execShortcutFn(buttonRef.current, startTranscription, event)}
             filter={e => true}
         >
@@ -79,8 +102,10 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
                 icon={'mic'}
                 buttonStyle={style}
                 onPress={startTranscription}
-                disabled={disabled}
+                disabled={disabled || isProcessing}
                 shortcutText={shortcutText}
+                processing={isProcessing}
+                processingTitle={translate('Creating Note') + '...'}
             />
         </Hotkeys>
     )
