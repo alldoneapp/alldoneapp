@@ -1546,6 +1546,16 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 }
                 message += ` in project "${currentProjectName}"`
 
+                // Add content preview/confirmation so assistant knows exactly what was saved
+                // This prevents hallucination of a different summary in the final response
+                if (toolArgs.content) {
+                    const contentPreview =
+                        toolArgs.content.length > 500
+                            ? toolArgs.content.substring(0, 500) + '... (truncated for brevity)'
+                            : toolArgs.content
+                    message += `.\n\nContent added:\n"${contentPreview}"`
+                }
+
                 // Add search reasoning to the update result for transparency (MCP pattern)
                 if (searchResult.isAutoSelected) {
                     message += ` (${searchResult.reasoning})`
