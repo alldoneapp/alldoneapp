@@ -22,6 +22,7 @@ import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
 export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
     const [values, setValues] = useState({})
     const [generatedPrompt, setGeneratedPrompt] = useState(prompt)
+    const [previewPrompt, setPreviewPrompt] = useState(prompt)
     const [width, height] = useWindowSize()
 
     const inputRefs = useRef({})
@@ -89,17 +90,31 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
 
     useEffect(() => {
         const variablesWithValues = variables.map(variable => {
-            const rawValue = (values[variable.name] || '').trim()
-            return { name: variable.name, value: cleanTextMetaData(rawValue) }
+            const val = values[variable.name]
+            let rawValue = ''
+            let displayValue = ''
+
+            if (val && typeof val === 'object') {
+                rawValue = (val.raw || '').trim()
+                displayValue = (val.display || cleanTextMetaData(rawValue)).trim()
+            } else {
+                rawValue = (val || '').trim()
+                displayValue = cleanTextMetaData(rawValue).trim()
+            }
+            return { name: variable.name, raw: rawValue, display: displayValue }
         })
 
-        let generatedPrompt = prompt
+        let newGeneratedPrompt = prompt
+        let newPreviewPrompt = prompt
+
         variablesWithValues.forEach(variable => {
-            const { name, value } = variable
-            if (value.trim()) generatedPrompt = generatedPrompt.replaceAll(`$${name}`, value)
+            const { name, raw, display } = variable
+            if (raw) newGeneratedPrompt = newGeneratedPrompt.replaceAll(`$${name}`, raw)
+            if (display) newPreviewPrompt = newPreviewPrompt.replaceAll(`$${name}`, display)
         })
 
-        setGeneratedPrompt(generatedPrompt)
+        setGeneratedPrompt(newGeneratedPrompt)
+        setPreviewPrompt(newPreviewPrompt)
     }, [values])
 
     return (
@@ -123,7 +138,7 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
                     />
                 )}
                 <Line style={{ marginTop: 12, marginBottom: 16 }} />
-                <PromptArea generatedPrompt={generatedPrompt} assistantName={assistant.displayName} />
+                <PromptArea generatedPrompt={previewPrompt} assistantName={assistant.displayName} />
                 <ButtonsArea addTask={addTask} />
             </CustomScrollView>
         </View>

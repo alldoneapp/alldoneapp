@@ -38,6 +38,7 @@ export default function BotOptionsModal({
     setAssistantId,
     inMyDay,
     inChatTab,
+    parentObject,
     updateObjectState,
 }) {
     const dispatch = useDispatch()

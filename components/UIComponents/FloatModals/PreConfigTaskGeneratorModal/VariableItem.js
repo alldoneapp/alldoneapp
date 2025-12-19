@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
@@ -15,20 +15,32 @@ export default function VariableItem({ setInputRefs, setValue, name, value, proj
         setInputRefs(ref, name)
     }
 
+    const mentionItemRef = useRef(null)
+
+    const onMentionSelected = item => {
+        mentionItemRef.current = item
+    }
+
     return (
         <View style={localStyles.section}>
             <Text style={localStyles.text}>{`$${name}`}</Text>
             <CustomTextInput3
                 ref={setRef}
                 containerStyle={localStyles.input}
-                initialTextExtended={value}
+                initialTextExtended={value && value.raw ? value.raw : value}
                 placeholder={translate('Type the variable value')}
                 placeholderTextColor={colors.Text03}
                 multiline={false}
                 numberOfLines={1}
                 onChangeText={text => {
-                    setValue(name, text)
+                    if (mentionItemRef.current) {
+                        setValue(name, { raw: text, display: mentionItemRef.current.displayName })
+                        mentionItemRef.current = null
+                    } else {
+                        setValue(name, text)
+                    }
                 }}
+                onMentionSelected={onMentionSelected}
                 disabledTags={false}
                 projectId={projectId}
                 singleLine={false}

@@ -258,6 +258,7 @@ function CustomTextInput3(
     }
 
     const selectItemToMention = (item, activeTab) => {
+        if (onMentionSelected) onMentionSelected(item, activeTab)
         if (selectUserToMentionEditTag) {
             selectUserToMentionEditTag(item)
         } else if (activeTab === MENTION_MODAL_CONTACTS_TAB) {
