@@ -138,7 +138,11 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
                     />
                 )}
                 <Line style={{ marginTop: 12, marginBottom: 16 }} />
-                <PromptArea generatedPrompt={previewPrompt} assistantName={assistant.displayName} />
+                <PromptArea
+                    generatedPrompt={generatedPrompt}
+                    assistantName={assistant.displayName}
+                    projectId={projectId}
+                />
                 <ButtonsArea addTask={addTask} />
             </CustomScrollView>
         </View>

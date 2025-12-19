@@ -227,6 +227,16 @@ async function generatePreConfigTaskResult(
             userTimezoneOffset = user.preferredTimezone
         }
 
+        // fetch mentioned notes context
+        const { fetchMentionedNotesContext } = require('./noteContextHelper')
+        const notesContext = await fetchMentionedNotesContext(prompt, userId, projectId)
+
+        // Append notes context to the user prompt if available
+        let finalPrompt = prompt
+        if (notesContext) {
+            finalPrompt += notesContext
+        }
+
         // Step 2: Prepare context messages
         const step2Start = Date.now()
         addBaseInstructions(
@@ -237,7 +247,7 @@ async function generatePreConfigTaskResult(
             Array.isArray(settings.allowedTools) ? settings.allowedTools : [],
             userTimezoneOffset
         )
-        contextMessages.push(['user', parseTextForUseLiKePrompt(prompt)])
+        contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - Context preparation completed', {

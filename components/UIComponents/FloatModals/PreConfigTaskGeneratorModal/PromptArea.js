@@ -4,14 +4,21 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function PromptArea({ assistantName, generatedPrompt }) {
+import CommentElementsParser from '../../../../Feeds/TextParser/CommentElementsParser'
+
+export default function PromptArea({ assistantName, generatedPrompt, projectId }) {
     return (
         <View style={localStyles.section}>
             <Text style={localStyles.header}>{translate('Output')}</Text>
             <Text style={localStyles.text}>
                 {translate('You will get the following prompt to send to', { assistantName })}
             </Text>
-            <Text style={localStyles.prompt}>{generatedPrompt}</Text>
+            <CommentElementsParser
+                comment={generatedPrompt}
+                entryStyle={localStyles.prompt}
+                projectId={projectId}
+                inChat={true}
+            />
         </View>
     )
 }
