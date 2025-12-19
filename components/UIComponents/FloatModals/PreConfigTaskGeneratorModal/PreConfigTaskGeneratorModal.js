@@ -20,6 +20,7 @@ import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
     const [values, setValues] = useState({})
     const [generatedPrompt, setGeneratedPrompt] = useState(prompt)
+    const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [width, height] = useWindowSize()
 
     const inputRefs = useRef({})
@@ -57,7 +58,7 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
     }
 
     const onPressKey = event => {
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' && !mentionsModalActive) {
             event.preventDefault()
             event.stopPropagation()
             addTask()
@@ -115,6 +116,7 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
                         setValue={setValue}
                         values={values}
                         projectId={projectId}
+                        setMentionsModalActive={setMentionsModalActive}
                     />
                 )}
                 <Line style={{ marginTop: 12, marginBottom: 16 }} />
