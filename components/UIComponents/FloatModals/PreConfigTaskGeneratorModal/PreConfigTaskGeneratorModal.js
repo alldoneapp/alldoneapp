@@ -14,7 +14,7 @@ import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import CloseButton from '../../../FollowUp/CloseButton'
 import Line from '../GoalMilestoneModal/Line'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
-import { exitsOpenModals, MENTION_MODAL_ID } from '../../ModalsManager/modalsManager'
+import { exitsOpenModals, MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
 
 export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
     const [values, setValues] = useState({})
