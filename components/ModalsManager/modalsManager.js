@@ -72,11 +72,14 @@ export const removeModal = modalId => {
 export const exitsOpenModals = excludedModalsIds => {
     const { openModals } = store.getState()
     const modalsIds = Object.keys(openModals)
+
+    console.log('exitsOpenModals checking. Open modals:', modalsIds, 'Excluded:', excludedModalsIds)
+
     if (excludedModalsIds && excludedModalsIds.length > 0) {
         let excludedOpensCount = 0
         for (let i = 0; i < excludedModalsIds.length; i++) {
             const modalId = excludedModalsIds[i]
-            if (openModals[modalId]) {
+            if (Object.prototype.hasOwnProperty.call(openModals, modalId)) {
                 excludedOpensCount++
             }
         }
@@ -84,6 +87,13 @@ export const exitsOpenModals = excludedModalsIds => {
     } else {
         return modalsIds.length > 0
     }
+}
+
+export const isModalOpen = modalId => {
+    const { openModals } = store.getState()
+    const isOpen = Object.prototype.hasOwnProperty.call(openModals, modalId)
+    console.log(`isModalOpen checking ${modalId}: ${isOpen}`)
+    return isOpen
 }
 
 export const getModalParams = modalId => {

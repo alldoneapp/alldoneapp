@@ -6,7 +6,7 @@ import OptionButton from './OptionButton'
 import PreConfigTaskGeneratorModal from '../../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
 import RunOutOfGoldAssistantModal from '../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
-import { getModalParams, MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
+import { isModalOpen, MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
 
 export default function OptionButtonWrapper({ projectId, containerStyle, text, icon, task, assistant }) {
     const dispatch = useDispatch()
@@ -33,7 +33,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     }
 
     const closeModal = () => {
-        if (getModalParams(MENTION_MODAL_ID) !== undefined) return
+        if (isModalOpen(MENTION_MODAL_ID)) return
         safeSetIsOpen(false)
         dispatch(hideFloatPopup())
     }
