@@ -24,6 +24,7 @@ export default function NoteEditorContainer({
     objectId,
     object,
     navigation,
+    autoStartTranscription: autoStartTranscriptionProp,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [editorKey, setEditorKey] = useState(v4())
@@ -31,7 +32,9 @@ export default function NoteEditorContainer({
     const [connectionState, setConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
 
-    const autoStartTranscription = navigation ? navigation.getParam('autoStartTranscription') : false
+    // Use prop if provided, otherwise fall back to navigation param
+    const autoStartTranscription =
+        autoStartTranscriptionProp ?? (navigation ? navigation.getParam('autoStartTranscription') : false)
 
     const closeConnectionStateModal = () => {
         setConnectionState('')

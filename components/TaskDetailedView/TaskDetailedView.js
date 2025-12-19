@@ -305,6 +305,7 @@ const TaskDetailedView = ({ navigation }) => {
                                         objectType="tasks"
                                         hideCreateNoteSection={hideCreateNoteSection}
                                         creatorId={task.creatorId}
+                                        autoStartTranscription={navigation.getParam('autoStartTranscription', false)}
                                     />
                                 )}
                                 {selectedTab === DV_TAB_TASK_CHAT && (

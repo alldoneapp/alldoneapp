@@ -62,6 +62,7 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
             NavigationService.navigate('TaskDetailedView', {
                 task: { ...task, noteId }, // Include the noteId in case we just created it
                 projectId: projectId,
+                autoStartTranscription: true,
             })
             dispatch(setSelectedNavItem(DV_TAB_TASK_NOTE))
 

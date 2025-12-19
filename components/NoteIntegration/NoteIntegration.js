@@ -57,6 +57,7 @@ const NoteIntegration = ({
     hideCreateNoteSection,
     creatorId,
     isInGlobalProject,
+    autoStartTranscription,
 }) => {
     const dispatch = useDispatch()
     const openModals = useSelector(state => state.openModals)
@@ -167,6 +168,7 @@ const NoteIntegration = ({
                         objectType={objectType}
                         object={object}
                         objectId={objectId}
+                        autoStartTranscription={autoStartTranscription}
                     />
                 )
             )}
