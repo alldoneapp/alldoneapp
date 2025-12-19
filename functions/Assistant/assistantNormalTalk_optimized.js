@@ -7,6 +7,7 @@ const {
     storeBotAnswerStream,
     getAssistantForChat,
     reduceGoldWhenChatWithAI,
+    getMaxTokensForModel,
     COMPLETION_MAX_TOKENS,
     ENCODE_MESSAGE_GAP,
 } = require('./assistantHelper')
@@ -14,7 +15,6 @@ const {
 const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
-const TOTAL_MAX_TOKENS_IN_MODEL = 4096
 const ENCODE_INITIAL_GAP = 3
 
 // Pre-load heavy JSON and encoder at module load time (cold start)
@@ -124,7 +124,7 @@ async function askToOpenAIBotOptimized(
 
         // Step 3: Generate optimized context
         const step3Start = Date.now()
-        const contextMessages = generateContextOptimized(messages)
+        const contextMessages = generateContextOptimized(messages, model)
         const step3Duration = Date.now() - step3Start
 
         console.log('✅ [TIMING] Step 3 - Context generation', {
@@ -225,9 +225,11 @@ async function askToOpenAIBotOptimized(
 }
 
 // Optimized context generation with caching
-function generateContextOptimized(messages) {
+function generateContextOptimized(messages, model) {
     const encoder = getEncoder()
-    let unusedTokens = TOTAL_MAX_TOKENS_IN_MODEL - COMPLETION_MAX_TOKENS
+    const totalMaxTokens = getMaxTokensForModel(model) || 16000
+    // Reserve tokens for the completion response
+    let unusedTokens = totalMaxTokens - COMPLETION_MAX_TOKENS
     const contextMessages = []
 
     try {

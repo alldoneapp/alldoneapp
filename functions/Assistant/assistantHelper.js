@@ -124,6 +124,22 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_SONAR_DEEP_RESEARCH) return 10
 }
 
+const getMaxTokensForModel = modelKey => {
+    // Legacy/Low context models
+    if (modelKey === MODEL_GPT3_5) return 16000
+    if (modelKey === MODEL_GPT4) return 8000
+
+    // Modern High context models
+    if (modelKey === MODEL_GPT4O) return 128000
+    if (modelKey === MODEL_GPT5_1) return 128000
+
+    // Perplexity/Sonar models (generally high context)
+    if (modelKey && modelKey.startsWith('MODEL_SONAR')) return 128000
+
+    // Default fallback
+    return 128000
+}
+
 // Normalize model key for backward compatibility
 const normalizeModelKey = modelKey => {
     // Map deprecated MODEL_GPT5 to MODEL_GPT5_1
@@ -3006,4 +3022,5 @@ module.exports = {
     getCachedEnvFunctions,
     getOpenAIClient,
     getOptimizedContextMessages,
+    getMaxTokensForModel,
 }
