@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 
-import CommentElementsParser from '../../../../Feeds/TextParser/CommentElementsParser'
+import CommentElementsParser from '../../../Feeds/TextParser/CommentElementsParser'
 
 export default function PromptArea({ assistantName, generatedPrompt, projectId }) {
     return (
