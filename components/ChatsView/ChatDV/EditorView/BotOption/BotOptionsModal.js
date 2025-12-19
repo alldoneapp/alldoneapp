@@ -24,7 +24,9 @@ import { setNoteAssistant } from '../../../../../utils/backends/Notes/notesFires
 import { setContactAssistant } from '../../../../../utils/backends/Contacts/contactsFirestore'
 import { setUserAssistant } from '../../../../../utils/backends/Users/usersFirestore'
 import { setSkillAssistant } from '../../../../../utils/backends/Skills/skillsFirestore'
+
 import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFirestore'
+import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actions'
 
 export default function BotOptionsModal({
     objectType,
@@ -36,6 +38,7 @@ export default function BotOptionsModal({
     setAssistantId,
     inMyDay,
     inChatTab,
+    parentObject,
 }) {
     const dispatch = useDispatch()
     const [selectedTask, setSelectedTask] = useState(null)
@@ -62,6 +65,17 @@ export default function BotOptionsModal({
         } else if (objectType === 'goals') {
             setGoalAssistant(projectId, objectId, selectedAssistantId, true)
         }
+
+        // Optimistic update for UI
+        if (parentObject) {
+            const updatedObject = { ...parentObject, assistantId: selectedAssistantId }
+            if (objectType === 'tasks') {
+                dispatch(setTaskInDetailView(updatedObject))
+            } else if (objectType === 'notes') {
+                dispatch(setSelectedNote(updatedObject))
+            }
+        }
+
         dispatch(setAssistantEnabled(true))
         onSelectBotOption()
     }

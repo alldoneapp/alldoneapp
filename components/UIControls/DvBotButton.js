@@ -62,11 +62,11 @@ export default function DvBotButton({ style, navItem, projectId, assistantId, ob
                         closeModal={closeModal}
                         onSelectBotOption={onSelectBotOption}
                         assistantId={assistantId}
+                        parentObject={parentObject}
                         projectId={projectId}
                         objectId={objectId}
                         objectType={objectType}
                         inChatTab={false}
-                        parentObject={parentObject}
                     />
                 ) : (
                     <RunOutOfGoldAssistantModal closeModal={closeModal} />

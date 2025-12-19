@@ -76,7 +76,7 @@ export default function WrapperMentionsModal({
             onClickOutside={onClickOutside}
             contentLocation={finalLocation ? finalLocation : args => popoverToCenter(args, mobile)}
         >
-            <View />
+            <View onClick={e => e.stopPropagation()} />
         </Popover>
     )
 }
