@@ -12,6 +12,7 @@ import {
 } from './textInputHelper'
 import {
     COMMENT_MODAL_ID,
+    BOT_OPTION_MODAL_ID,
     exitsOpenModals,
     FOLLOW_UP_MODAL_ID,
     MANAGE_TASK_MODAL_ID,
@@ -100,6 +101,7 @@ export default function MentionsModal({
             !exitsOpenModals([
                 MENTION_MODAL_ID,
                 COMMENT_MODAL_ID,
+                BOT_OPTION_MODAL_ID,
                 MANAGE_TASK_MODAL_ID,
                 FOLLOW_UP_MODAL_ID,
                 WORKFLOW_MODAL_ID,

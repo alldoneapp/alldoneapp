@@ -7,6 +7,7 @@ import BotButtonInModal from './BotButtonInModal'
 import { setAssistantEnabled, setShowNotificationAboutTheBotBehavior } from '../../../../../redux/actions'
 import BotOptionsModal from './BotOptionsModal'
 import RunOutOfGoldAssistantModal from './RunOutOfGoldAssistantModal'
+import { isModalOpen, MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
 
 export default function BotButtonWrapper({
     onSelectBotOption,
@@ -32,6 +33,7 @@ export default function BotButtonWrapper({
     }
 
     const closeModal = () => {
+        if (isModalOpen(MENTION_MODAL_ID)) return
         setIsOpen(false)
     }
 

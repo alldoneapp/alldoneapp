@@ -9,6 +9,7 @@ import { getAssistantInProjectObject } from '../AdminPanel/Assistants/assistants
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import BotOptionsModal from '../ChatsView/ChatDV/EditorView/BotOption/BotOptionsModal'
 import RunOutOfGoldAssistantModal from '../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
+import { isModalOpen, MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 
 export default function DvBotButton({
     style,
@@ -60,6 +61,7 @@ export default function DvBotButton({
     }
 
     const closeModal = () => {
+        if (isModalOpen(MENTION_MODAL_ID)) return
         setIsOpen(false)
     }
 
