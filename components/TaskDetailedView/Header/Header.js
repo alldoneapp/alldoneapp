@@ -61,7 +61,7 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen }) =>
                             <SVGGenericUser width={24} height={24} svgid={`ci_p_task_h_${projectId}`} />
                         </View>
                     )}
-                    <TagList projectId={projectId} task={task} />
+                    <TagList projectId={projectId} task={task} updateObjectState={this.props.updateObjectState} />
                 </View>
             )}
             {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && (

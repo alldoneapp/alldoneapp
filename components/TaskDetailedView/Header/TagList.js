@@ -16,7 +16,7 @@ import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import DvBotButton from '../../UIControls/DvBotButton'
 import CalendarTag from '../../Tags/CalendarTag'
 
-export default function TagList({ projectId, task }) {
+export default function TagList({ projectId, task, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const tablet = useSelector(state => state.isMiddleScreen)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -97,6 +97,7 @@ export default function TagList({ projectId, task }) {
                     objectId={task.id}
                     objectType={FEED_TASK_OBJECT_TYPE}
                     parentObject={task}
+                    updateObjectState={props.updateObjectState}
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>

@@ -122,7 +122,12 @@ export default class Header extends Component {
 
                 {!isFullscreen && (
                     <View style={localStyles.bottomHeader}>
-                        <TagList projectId={projectId} note={this.props.note} disabled={disabled} />
+                        <TagList
+                            projectId={projectId}
+                            note={this.props.note}
+                            disabled={disabled}
+                            updateObjectState={this.props.updateObjectState}
+                        />
                     </View>
                 )}
                 {isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && (

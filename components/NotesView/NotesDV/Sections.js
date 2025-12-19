@@ -22,7 +22,7 @@ import { FOLLOWER_NOTES_TYPE } from '../../Followers/FollowerConstants'
 import ChatBoard from '../../ChatsView/ChatDV/ChatBoard'
 import useFollowingDataListener from '../../UIComponents/FloatModals/MorePopupsOfEditModals/Common/useFollowingDataListener'
 
-export default function Sections({ projectId, note, project, navigation }) {
+export default function Sections({ projectId, note, project, navigation, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -63,6 +63,7 @@ export default function Sections({ projectId, note, project, navigation }) {
                     (ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId) && loggedUser.uid !== note.creatorId)
                 }
                 setFullscreen={setFullscreen}
+                updateObjectState={updateObjectState}
             />
 
             {Object.keys(note) !== 0 && (

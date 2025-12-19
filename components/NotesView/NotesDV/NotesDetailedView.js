@@ -120,7 +120,9 @@ export default function NotesDetailedView({ navigation }) {
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
 
-            {note && <DvContainer navigation={navigation} projectId={projectId} note={note} />}
+            {note && (
+                <DvContainer navigation={navigation} projectId={projectId} note={note} updateObjectState={setNote} />
+            )}
 
             {!mobile && loggedUser.isAnonymous && <CustomSideMenu navigation={navigation} isWeb />}
             <GoldAnimationsContainer />

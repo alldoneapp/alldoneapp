@@ -24,7 +24,7 @@ import Sections from './Sections'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../../styles/global'
 import useCollapsibleSidebar from '../../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 
-export default function DvContainer({ projectId, note, navigation }) {
+export default function DvContainer({ projectId, note, navigation, updateObjectState }) {
     const openModals = useSelector(state => state.openModals)
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -65,7 +65,13 @@ export default function DvContainer({ projectId, note, navigation }) {
                         ]}
                     >
                         {!!note && !!project && (
-                            <Sections navigation={navigation} projectId={projectId} note={note} project={project} />
+                            <Sections
+                                navigation={navigation}
+                                projectId={projectId}
+                                note={note}
+                                project={project}
+                                updateObjectState={updateObjectState}
+                            />
                         )}
                         {showMentionPopup && (
                             <WrapperMentionsModal
@@ -104,7 +110,13 @@ export default function DvContainer({ projectId, note, navigation }) {
                     )}
 
                     {!!note && !!project && (
-                        <Sections navigation={navigation} projectId={projectId} note={note} project={project} />
+                        <Sections
+                            navigation={navigation}
+                            projectId={projectId}
+                            note={note}
+                            project={project}
+                            updateObjectState={updateObjectState}
+                        />
                     )}
                 </CustomView>
             )}

@@ -15,7 +15,7 @@ import { getUserPresentationDataInProject } from '../../ContactsView/Utils/Conta
 import { DV_TAB_NOTE_CHAT } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
 
-export default function TagList({ projectId, note, disabled }) {
+export default function TagList({ projectId, note, disabled, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreenNoteDV)
@@ -59,6 +59,7 @@ export default function TagList({ projectId, note, disabled }) {
                     objectId={note.id}
                     objectType={FEED_NOTE_OBJECT_TYPE}
                     parentObject={note}
+                    updateObjectState={updateObjectState}
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>

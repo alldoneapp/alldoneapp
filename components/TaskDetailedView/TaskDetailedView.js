@@ -268,6 +268,7 @@ const TaskDetailedView = ({ navigation }) => {
                                     navigation={navigation}
                                     isFullscreen={isFullscreen}
                                     setFullscreen={setFullscreen}
+                                    updateObjectState={setTask}
                                 />
                             )}
                             <View style={{ flex: 1 }}>

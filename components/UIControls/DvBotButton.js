@@ -10,7 +10,16 @@ import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import BotOptionsModal from '../ChatsView/ChatDV/EditorView/BotOption/BotOptionsModal'
 import RunOutOfGoldAssistantModal from '../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 
-export default function DvBotButton({ style, navItem, projectId, assistantId, objectId, objectType, parentObject }) {
+export default function DvBotButton({
+    style,
+    navItem,
+    projectId,
+    assistantId,
+    objectId,
+    objectType,
+    parentObject,
+    updateObjectState,
+}) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const mainChatEditor = useSelector(state => state.mainChatEditor)
@@ -67,6 +76,7 @@ export default function DvBotButton({ style, navItem, projectId, assistantId, ob
                         objectId={objectId}
                         objectType={objectType}
                         inChatTab={false}
+                        updateObjectState={updateObjectState}
                     />
                 ) : (
                     <RunOutOfGoldAssistantModal closeModal={closeModal} />

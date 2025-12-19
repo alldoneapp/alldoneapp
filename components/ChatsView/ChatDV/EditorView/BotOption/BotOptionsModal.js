@@ -37,8 +37,7 @@ export default function BotOptionsModal({
     projectId,
     setAssistantId,
     inMyDay,
-    inChatTab,
-    parentObject,
+    updateObjectState,
 }) {
     const dispatch = useDispatch()
     const [selectedTask, setSelectedTask] = useState(null)
@@ -74,6 +73,12 @@ export default function BotOptionsModal({
             } else if (objectType === 'notes') {
                 dispatch(setSelectedNote(updatedObject))
             }
+        }
+
+        // Optimistic update for UI via local state (prevents overwrite on tab change)
+        if (parentObject && updateObjectState) {
+            const updatedObject = { ...parentObject, assistantId: selectedAssistantId }
+            updateObjectState(updatedObject)
         }
 
         dispatch(setAssistantEnabled(true))
