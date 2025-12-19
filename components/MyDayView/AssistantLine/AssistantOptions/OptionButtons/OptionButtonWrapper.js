@@ -12,6 +12,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
     const [isOpen, setIsOpen] = useState(false)
+    const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const isUnmountedRef = useRef(false)
 
     useEffect(() => {
@@ -32,6 +33,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     }
 
     const closeModal = () => {
+        if (mentionsModalActive) return
         safeSetIsOpen(false)
         dispatch(hideFloatPopup())
     }
@@ -47,6 +49,8 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
                                 closeModal={closeModal}
                                 task={task}
                                 assistant={assistant}
+                                mentionsModalActive={mentionsModalActive}
+                                setMentionsModalActive={setMentionsModalActive}
                             />
                         ) : (
                             <RunOutOfGoldAssistantModal closeModal={closeModal} />

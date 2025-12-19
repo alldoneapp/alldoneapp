@@ -29,6 +29,8 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
         sendWhatsApp,
     } = task
 
+    const [mentionsModalActive, setMentionsModalActive] = useState(false)
+
     const openModal = () => {
         dismissAllPopups()
         setIsOpen(true)
@@ -36,6 +38,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     }
 
     const closeModal = () => {
+        if (mentionsModalActive) return
         setIsOpen(false)
         dispatch(hideFloatPopup())
     }
@@ -90,6 +93,8 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
                         closeModal={closeModal}
                         task={task}
                         assistant={assistant}
+                        mentionsModalActive={mentionsModalActive}
+                        setMentionsModalActive={setMentionsModalActive}
                     />
                 ) : (
                     <RunOutOfGoldAssistantModal closeModal={closeModal} />

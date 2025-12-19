@@ -17,10 +17,17 @@ import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 
-export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
+export default function PreConfigTaskGeneratorModal(props) {
+    const { projectId, closeModal, assistant, task, processPromp } = props
     const [values, setValues] = useState({})
     const [generatedPrompt, setGeneratedPrompt] = useState(prompt)
-    const [mentionsModalActive, setMentionsModalActive] = useState(false)
+    const [internalMentionsModalActive, setInternalMentionsModalActive] = useState(false)
+
+    const mentionsModalActive =
+        props.mentionsModalActive !== undefined ? props.mentionsModalActive : internalMentionsModalActive
+    const setMentionsModalActive =
+        props.setMentionsModalActive !== undefined ? props.setMentionsModalActive : setInternalMentionsModalActive
+
     const [width, height] = useWindowSize()
 
     const inputRefs = useRef({})
@@ -63,6 +70,9 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
             event.stopPropagation()
             addTask()
         } else if (event.key === 'Tab') {
+            if (mentionsModalActive) {
+                return
+            }
             const refs = Object.values(inputRefs.current)
             if (refs.length > 0) {
                 const focusedIndex = refs.findIndex(ref => ref.isFocused())
