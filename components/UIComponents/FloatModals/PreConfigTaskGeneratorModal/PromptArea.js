@@ -14,7 +14,7 @@ export default function PromptArea({ assistantName, generatedPrompt, projectId }
                 {translate('You will get the following prompt to send to', { assistantName })}
             </Text>
             <CommentElementsParser
-                comment={generatedPrompt}
+                comment={generatedPrompt || ''}
                 entryStyle={localStyles.prompt}
                 projectId={projectId}
                 inChat={true}
