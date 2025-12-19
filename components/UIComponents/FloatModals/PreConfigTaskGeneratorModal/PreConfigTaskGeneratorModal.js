@@ -109,7 +109,13 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
                     hideCloseButton={true}
                 />
                 {variables.length > 0 && (
-                    <VariablesArea inputRefs={inputRefs} variables={variables} setValue={setValue} values={values} />
+                    <VariablesArea
+                        inputRefs={inputRefs}
+                        variables={variables}
+                        setValue={setValue}
+                        values={values}
+                        projectId={projectId}
+                    />
                 )}
                 <Line style={{ marginTop: 12, marginBottom: 16 }} />
                 <PromptArea generatedPrompt={generatedPrompt} assistantName={assistant.displayName} />
