@@ -9,8 +9,8 @@ import NavigationService from '../../utils/NavigationService'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { uploadNewNote } from '../../utils/backends/Notes/notesFirestore'
 import { updateTaskData } from '../../utils/backends/Tasks/tasksFirestore'
-import { setSelectedNote } from '../../redux/actions'
-import Backend from '../../utils/BackendBridge'
+import { setSelectedNavItem } from '../../redux/actions'
+import { DV_TAB_TASK_NOTE } from '../../utils/TabNavigationConstants'
 import { getId } from '../../utils/backends/firestore'
 
 export default function TranscribeButton({ task, projectId, disabled, style, shortcutText, onDismissPopup }) {
@@ -36,21 +36,8 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
             let noteId = task?.noteId
             console.log('[TranscribeButton] Task noteId:', noteId)
 
-            if (noteId) {
-                // Note exists, navigate to it with autoStartTranscription
-                console.log('[TranscribeButton] Note exists, fetching note meta...')
-                const note = await Backend.getNoteMeta(projectId, noteId)
-                console.log('[TranscribeButton] Got note:', note?.id)
-                if (note) {
-                    dispatch(setSelectedNote(note))
-                    NavigationService.navigate('NotesDetailedView', {
-                        noteId: note.id,
-                        projectId: projectId,
-                        autoStartTranscription: true,
-                    })
-                }
-            } else {
-                // Create new note
+            // If no note exists, create one first
+            if (!noteId) {
                 console.log('[TranscribeButton] Creating new note...')
                 const newNote = TasksHelper.getNewDefaultNote()
                 const generatedId = getId()
@@ -60,26 +47,25 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
                 newNote.title = task.name
 
                 console.log('[TranscribeButton] Updating task with noteId...')
-                // Optimistically update task with noteId
+                // Update task with noteId
                 await updateTaskData(projectId, task.id, { noteId: generatedId })
 
                 console.log('[TranscribeButton] Uploading new note...')
                 // Upload new note
                 await uploadNewNote(projectId, newNote)
 
-                console.log('[TranscribeButton] Fetching created note meta...')
-                // Get the note and navigate with autoStartTranscription
-                const note = await Backend.getNoteMeta(projectId, generatedId)
-                console.log('[TranscribeButton] Got created note:', note?.id)
-                if (note) {
-                    dispatch(setSelectedNote(note))
-                    NavigationService.navigate('NotesDetailedView', {
-                        noteId: generatedId,
-                        projectId: projectId,
-                        autoStartTranscription: true,
-                    })
-                }
+                noteId = generatedId
             }
+
+            // Navigate to TaskDetailedView and select the Notes tab
+            console.log('[TranscribeButton] Navigating to TaskDetailedView with Notes tab...')
+            NavigationService.navigate('TaskDetailedView', {
+                task: { ...task, noteId }, // Include the noteId in case we just created it
+                projectId: projectId,
+            })
+            dispatch(setSelectedNavItem(DV_TAB_TASK_NOTE))
+
+            console.log('[TranscribeButton] Navigation complete')
         } catch (error) {
             console.error('[TranscribeButton] Error:', error)
         } finally {
