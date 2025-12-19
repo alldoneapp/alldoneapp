@@ -4,7 +4,7 @@ import { View } from 'react-native'
 import VariableItem from './VariableItem'
 import Line from '../GoalMilestoneModal/Line'
 
-export default function VariablesArea({ variables, inputRefs, setValue, values, projectId, setMentionsModalActive }) {
+export default function VariablesArea({ variables, inputRefs, setValue, values, projectId }) {
     const setInputRefs = (ref, name) => {
         if (ref) inputRefs.current[name] = ref
     }
@@ -22,7 +22,6 @@ export default function VariablesArea({ variables, inputRefs, setValue, values, 
                         setValue={setValue}
                         value={values[name]}
                         projectId={projectId}
-                        setMentionsModalActive={setMentionsModalActive}
                     />
                 )
             })}

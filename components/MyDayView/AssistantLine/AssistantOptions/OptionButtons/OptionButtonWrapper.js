@@ -6,13 +6,13 @@ import OptionButton from './OptionButton'
 import PreConfigTaskGeneratorModal from '../../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
 import RunOutOfGoldAssistantModal from '../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
+import { exitsOpenModals, MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
 
 export default function OptionButtonWrapper({ projectId, containerStyle, text, icon, task, assistant }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
     const [isOpen, setIsOpen] = useState(false)
-    const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const isUnmountedRef = useRef(false)
 
     useEffect(() => {
@@ -33,7 +33,7 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
     }
 
     const closeModal = () => {
-        if (mentionsModalActive) return
+        if (exitsOpenModals([MENTION_MODAL_ID])) return
         safeSetIsOpen(false)
         dispatch(hideFloatPopup())
     }
@@ -49,8 +49,6 @@ export default function OptionButtonWrapper({ projectId, containerStyle, text, i
                                 closeModal={closeModal}
                                 task={task}
                                 assistant={assistant}
-                                mentionsModalActive={mentionsModalActive}
-                                setMentionsModalActive={setMentionsModalActive}
                             />
                         ) : (
                             <RunOutOfGoldAssistantModal closeModal={closeModal} />

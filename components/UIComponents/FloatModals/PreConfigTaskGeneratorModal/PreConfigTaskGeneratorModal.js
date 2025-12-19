@@ -14,20 +14,11 @@ import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import CloseButton from '../../../FollowUp/CloseButton'
 import Line from '../GoalMilestoneModal/Line'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
-import store from '../../../../redux/store'
-import { setPreConfigTaskExecuting } from '../../../../redux/actions'
+import { exitsOpenModals, MENTION_MODAL_ID } from '../../ModalsManager/modalsManager'
 
-export default function PreConfigTaskGeneratorModal(props) {
-    const { projectId, closeModal, assistant, task, processPromp } = props
+export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
     const [values, setValues] = useState({})
     const [generatedPrompt, setGeneratedPrompt] = useState(prompt)
-    const [internalMentionsModalActive, setInternalMentionsModalActive] = useState(false)
-
-    const mentionsModalActive =
-        props.mentionsModalActive !== undefined ? props.mentionsModalActive : internalMentionsModalActive
-    const setMentionsModalActive =
-        props.setMentionsModalActive !== undefined ? props.setMentionsModalActive : setInternalMentionsModalActive
-
     const [width, height] = useWindowSize()
 
     const inputRefs = useRef({})
@@ -65,14 +56,13 @@ export default function PreConfigTaskGeneratorModal(props) {
     }
 
     const onPressKey = event => {
-        if (event.key === 'Enter' && !mentionsModalActive) {
+        if (exitsOpenModals([MENTION_MODAL_ID])) return
+
+        if (event.key === 'Enter') {
             event.preventDefault()
             event.stopPropagation()
             addTask()
         } else if (event.key === 'Tab') {
-            if (mentionsModalActive) {
-                return
-            }
             const refs = Object.values(inputRefs.current)
             if (refs.length > 0) {
                 const focusedIndex = refs.findIndex(ref => ref.isFocused())
@@ -126,7 +116,6 @@ export default function PreConfigTaskGeneratorModal(props) {
                         setValue={setValue}
                         values={values}
                         projectId={projectId}
-                        setMentionsModalActive={setMentionsModalActive}
                     />
                 )}
                 <Line style={{ marginTop: 12, marginBottom: 16 }} />

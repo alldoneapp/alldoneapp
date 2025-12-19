@@ -6,7 +6,7 @@ import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { COMMENT_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function VariableItem({ setInputRefs, setValue, name, value, projectId, setMentionsModalActive }) {
+export default function VariableItem({ setInputRefs, setValue, name, value, projectId }) {
     useEffect(() => {
         document.activeElement.blur()
     }, [])
@@ -34,7 +34,6 @@ export default function VariableItem({ setInputRefs, setValue, name, value, proj
                 singleLine={false}
                 styleTheme={COMMENT_MODAL_THEME}
                 disabledTabKey={true}
-                setMentionsModalActive={setMentionsModalActive}
             />
         </View>
     )

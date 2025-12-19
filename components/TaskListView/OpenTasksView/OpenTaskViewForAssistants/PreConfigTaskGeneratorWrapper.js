@@ -9,6 +9,7 @@ import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import { exitsOpenModals, MENTION_MODAL_ID } from '../../ModalsManager/modalsManager'
 
 export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
     const dispatch = useDispatch()
@@ -29,8 +30,6 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
         sendWhatsApp,
     } = task
 
-    const [mentionsModalActive, setMentionsModalActive] = useState(false)
-
     const openModal = () => {
         dismissAllPopups()
         setIsOpen(true)
@@ -38,7 +37,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     }
 
     const closeModal = () => {
-        if (mentionsModalActive) return
+        if (exitsOpenModals([MENTION_MODAL_ID])) return
         setIsOpen(false)
         dispatch(hideFloatPopup())
     }
@@ -93,8 +92,6 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
                         closeModal={closeModal}
                         task={task}
                         assistant={assistant}
-                        mentionsModalActive={mentionsModalActive}
-                        setMentionsModalActive={setMentionsModalActive}
                     />
                 ) : (
                     <RunOutOfGoldAssistantModal closeModal={closeModal} />
