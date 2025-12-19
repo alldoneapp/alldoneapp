@@ -61,7 +61,7 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
             onPress={startTranscription}
             style={[localStyles.container, containerStyle]}
         >
-            <Icon name={'microphone'} size={16} color={colors.White} style={localStyles.icon} />
+            <Icon name={'mic'} size={16} color={colors.White} style={localStyles.icon} />
             <Text style={[localStyles.text, windowTagStyle()]}>Transcribe</Text>
         </TouchableOpacity>
     )
