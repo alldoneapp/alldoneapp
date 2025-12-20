@@ -1557,11 +1557,25 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     message += ` (${searchResult.reasoning})`
                 }
 
+                // Fetch full content for accurate summary
+                let fullContent = ''
+                try {
+                    fullContent = await cachedNoteService.getStorageContent(currentProjectId, currentNote.id)
+                    console.log('Internal Assistant: Fetched full content for summary:', fullContent.length)
+                } catch (contentError) {
+                    console.warn('Internal Assistant: Failed to fetch full content:', contentError.message)
+                    // Fallback to what we have (might be truncated or empty)
+                    fullContent = toolArgs.content || ''
+                }
+
                 return {
                     success: true,
                     noteId: currentNote.id,
                     message,
-                    note: result.updatedNote || { id: currentNote.id, ...currentNote },
+                    note: {
+                        ...(result.updatedNote || { id: currentNote.id, ...currentNote }),
+                        content: fullContent, // Ensure full content is returned
+                    },
                     project: { id: currentProjectId, name: currentProjectName },
                     changes: changes,
                 }
