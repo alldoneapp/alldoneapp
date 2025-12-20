@@ -17,6 +17,7 @@ import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 import store from '../../../../redux/store'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
+import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
 
 export default function PreConfigTaskGeneratorModal({
     projectId,
