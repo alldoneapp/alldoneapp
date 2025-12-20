@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import { View, StyleSheet } from 'react-native'
 
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
@@ -102,8 +103,19 @@ export default function PreConfigTaskGeneratorModal({
             let hasChanges = false
             variables.forEach(variable => {
                 if (!newValues[variable.name]) {
+                    let rawValue = ''
+                    const type = defaultContext.type
+                    if (
+                        type &&
+                        ['tasks', 'notes', 'goals', 'skills', 'projects', 'assistants', 'topics'].includes(type)
+                    ) {
+                        rawValue = `${window.location.origin}${getDvMainTabLink(projectId, defaultContext.id, type)} `
+                    } else {
+                        rawValue = `@${defaultContext.name.replaceAll(' ', MENTION_SPACE_CODE)}#${defaultContext.id} `
+                    }
+
                     newValues[variable.name] = {
-                        raw: `@${defaultContext.name.replaceAll(' ', MENTION_SPACE_CODE)}#${defaultContext.id} `,
+                        raw: rawValue,
                         display: defaultContext.name,
                     }
                     hasChanges = true
