@@ -19,7 +19,14 @@ import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
 
-export default function PreConfigTaskGeneratorModal({ projectId, closeModal, assistant, task, processPromp }) {
+export default function PreConfigTaskGeneratorModal({
+    projectId,
+    closeModal,
+    assistant,
+    task,
+    processPromp,
+    defaultContext,
+}) {
     const [values, setValues] = useState({})
     const [generatedPrompt, setGeneratedPrompt] = useState(prompt)
     const [previewPrompt, setPreviewPrompt] = useState(prompt)
@@ -87,6 +94,26 @@ export default function PreConfigTaskGeneratorModal({ projectId, closeModal, ass
             document.removeEventListener('keydown', onPressKey)
         }
     })
+
+    useEffect(() => {
+        // Pre-fill values with defaultContext if available and values are empty
+        if (defaultContext && variables.length > 0) {
+            const newValues = { ...values }
+            let hasChanges = false
+            variables.forEach(variable => {
+                if (!newValues[variable.name]) {
+                    newValues[variable.name] = {
+                        raw: `@${defaultContext.name}#${defaultContext.id} `,
+                        display: defaultContext.name,
+                    }
+                    hasChanges = true
+                }
+            })
+            if (hasChanges) {
+                setValues(newValues)
+            }
+        }
+    }, [defaultContext])
 
     useEffect(() => {
         const variablesWithValues = variables.map(variable => {

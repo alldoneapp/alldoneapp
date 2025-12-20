@@ -119,6 +119,15 @@ export default function BotOptionsModal({
                         onSelectBotOption(prompt, selectedTask.name)
                         if (!inMyDay) dispatch(setAssistantEnabled(true))
                     }}
+                    defaultContext={
+                        parentObject
+                            ? {
+                                  name: parentObject.title || parentObject.name,
+                                  id: parentObject.id || parentObject.uid,
+                                  type: objectType,
+                              }
+                            : null
+                    }
                 />
             ) : (
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
