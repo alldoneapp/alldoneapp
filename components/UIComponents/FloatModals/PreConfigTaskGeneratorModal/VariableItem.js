@@ -11,28 +11,22 @@ export default function VariableItem({ setInputRefs, setValue, name, value, proj
         document.activeElement.blur()
     }, [])
 
+    const localInputRef = useRef(null)
+
     const setRef = ref => {
         setInputRefs(ref, name)
-        // If we have a value and the ref is ready, we might need to update it if it wasn't initial.
-        // However, CustomTextInput3 handles initialTextExtended on mount.
-        // We need to handle updates if the value changes later (e.g. pre-fill).
-        if (ref && value && value.raw && ref.clearAndSetContent) {
-            // Check if content is already set to avoid loops or overwrites?
-            // Actually, for pre-fill, we want to force it.
-            // But we need to be careful not to overwrite user input if they type something else.
-            // Since values state is controlled, we rely on value.raw.
-        }
+        localInputRef.current = ref
     }
 
     // We use a separate ref to track if we have already initialized the value to avoid overwriting user typing
     const initializedRef = useRef(false)
 
     useEffect(() => {
-        if (value && value.raw && !initializedRef.current && inputRefs.current[name]?.clearAndSetContent) {
-            inputRefs.current[name].clearAndSetContent(value.raw)
+        if (value && value.raw && !initializedRef.current && localInputRef.current?.clearAndSetContent) {
+            localInputRef.current.clearAndSetContent(value.raw)
             initializedRef.current = true
         }
-    }, [value, inputRefs.current[name]])
+    }, [value, localInputRef.current])
 
     const mentionItemRef = useRef(null)
 
