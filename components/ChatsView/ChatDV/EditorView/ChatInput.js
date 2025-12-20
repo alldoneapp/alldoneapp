@@ -19,6 +19,7 @@ import {
     setMainChatEditor,
     setQuotedNoteText,
     setQuotedText,
+    setTriggerChatSubmit,
 } from '../../../../redux/actions'
 import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
@@ -209,6 +210,37 @@ export default function ChatInput({
             chatEditor.setSelection(chatEditor.getLength(), 0)
         }
     }, [quotedText])
+
+    const triggerChatSubmit = useSelector(state => state.triggerChatSubmit)
+
+    useEffect(() => {
+        if (triggerChatSubmit && chatEditor) {
+            // Only process if the trigger is for the current chat or generic (null ID check if needed, but for now we assume global trigger is consumed by active chat)
+            // Ideally we should check if this chat is the intended target, but since we navigate to it, it should be fine.
+            // Using a specific payload structure: { text: "prompt", chatId: "..." } would be safer, but for now let's trust the navigation.
+
+            if (triggerChatSubmit.text) {
+                // Set text first
+                const Delta = ReactQuill.Quill.import('delta')
+                chatEditor.setContents(new Delta().insert(triggerChatSubmit.text + '\n'))
+
+                // Update input text state as well since onSubmit uses it
+                setInputText(triggerChatSubmit.text)
+
+                // Trigger submit
+                // We need to verify if we need to call updateNewAttachmentsData explicitly or if onSubmit handles it.
+                // onSubmit handles it.
+
+                // We fake an event object or make it optional in onSubmit
+                setTimeout(() => {
+                    onSubmit()
+                }, 100)
+            }
+
+            // Clear the trigger
+            dispatch(setTriggerChatSubmit(null))
+        }
+    }, [triggerChatSubmit, chatEditor])
 
     const handlePerplexityResponse = (editor, content) => {
         if (!editor || !content) {

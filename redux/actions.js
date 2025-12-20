@@ -802,6 +802,14 @@ export const setAddTaskRepeatMode = () => {
     return action
 }
 
+export const setTriggerChatSubmit = payload => {
+    const action = {
+        type: 'Trigger chat submit',
+        payload,
+    }
+    return action
+}
+
 export const unsetAddTaskRepeatMode = () => {
     const action = {
         type: 'Unset add task repeat mode',

@@ -346,6 +346,7 @@ export const initialState = {
     openTasksShowMoreData: { hasFutureTasks: false, hasSomedayTasks: false },
     navigationSource: null,
     showTaskCompletionAnimation: false,
+    triggerChatSubmit: null,
 }
 
 const checkIfNeedToJointToProject = initialUrl => {
@@ -3002,17 +3003,16 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, navigationSource: null }
 
         case 'Show task completion animation':
+        case 'Set show task completion animation':
             return {
                 ...state,
-                showTaskCompletionAnimation: true,
+                showTaskCompletionAnimation: action.showTaskCompletionAnimation,
             }
-
-        case 'Hide task completion animation':
+        case 'Trigger chat submit':
             return {
                 ...state,
-                showTaskCompletionAnimation: false,
+                triggerChatSubmit: action.payload,
             }
-
         default:
             return state
     }

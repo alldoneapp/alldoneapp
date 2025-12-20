@@ -3,7 +3,12 @@ import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
 import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
-import { setAssistantEnabled, setSelectedNavItem, setShowNotificationAboutTheBotBehavior } from '../../redux/actions'
+import {
+    setAssistantEnabled,
+    setSelectedNavItem,
+    setShowNotificationAboutTheBotBehavior,
+    setTriggerChatSubmit,
+} from '../../redux/actions'
 import { colors } from '../styles/global'
 import { getAssistantInProjectObject } from '../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
@@ -41,10 +46,7 @@ export default function DvBotButton({
         setTimeout(() => {
             dispatch(setAssistantEnabled(true))
             if (optionText) {
-                if (mainChatEditor) {
-                    mainChatEditor.setText(optionText)
-                    mainChatEditor.setSelection(optionText.length)
-                }
+                dispatch(setTriggerChatSubmit({ text: optionText }))
             } else {
                 if (mainChatEditor) {
                     mainChatEditor.getSelection(true)
