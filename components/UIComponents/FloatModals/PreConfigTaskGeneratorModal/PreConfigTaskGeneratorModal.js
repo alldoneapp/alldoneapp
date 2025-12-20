@@ -16,8 +16,7 @@ import Line from '../GoalMilestoneModal/Line'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 import store from '../../../../redux/store'
-import { setPreConfigTaskExecuting } from '../../../../redux/actions'
-import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
+import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 
 export default function PreConfigTaskGeneratorModal({
     projectId,
@@ -103,7 +102,7 @@ export default function PreConfigTaskGeneratorModal({
             variables.forEach(variable => {
                 if (!newValues[variable.name]) {
                     newValues[variable.name] = {
-                        raw: `@${defaultContext.name}#${defaultContext.id} `,
+                        raw: `@${defaultContext.name.replaceAll(' ', MENTION_SPACE_CODE)}#${defaultContext.id} `,
                         display: defaultContext.name,
                     }
                     hasChanges = true
