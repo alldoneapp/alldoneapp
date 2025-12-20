@@ -19,6 +19,7 @@ import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsMana
 import store from '../../../../redux/store'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
+import { setPreConfigTaskExecuting } from '../../../../redux/actions'
 
 export default function PreConfigTaskGeneratorModal({
     projectId,
