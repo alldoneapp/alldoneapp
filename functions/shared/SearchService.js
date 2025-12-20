@@ -676,6 +676,7 @@ class SearchService {
                         database: this.options.database,
                         moment: this.options.moment,
                         isCloudFunction: this.options.isCloudFunction,
+                        storageBucket: this.options.storageBucket, // Pass explicit bucket if provided
                     })
                     await noteService.initialize()
                     content = await noteService.getStorageContent(projectId, noteId)

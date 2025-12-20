@@ -144,6 +144,21 @@ async function fetchNoteContentAsMarkdown(projectId, noteId, userId, url = null)
             // Get bucket name from environment
             let bucketName = process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
 
+            // OVERRIDE: Explicitly check project ID to prevent dev bucket in prod
+            // This fixes permission errors when environment variables default to dev
+            try {
+                if (admin.app && admin.app().options && admin.app().options.projectId) {
+                    const projectId = admin.app().options.projectId
+                    if (projectId === 'alldonealeph') {
+                        bucketName = 'notescontentprod'
+                    } else if (projectId === 'alldonestaging') {
+                        bucketName = 'notescontentstaging'
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to check admin project ID for bucket override:', e)
+            }
+
             if (!bucketName) {
                 try {
                     const envHelper = require('../envFunctionsHelper')

@@ -1184,6 +1184,19 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
+                let storageBucket = null
+                try {
+                    // Explicitly detect bucket from admin app to avoid detection failures in NoteService
+                    const projectId = admin.app().options.projectId
+                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
+                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                    // Default/Dev will handle itself or fall back in NoteService
+                    if (storageBucket)
+                        console.log('Internal Assistant: Explicitly setting storage bucket:', storageBucket)
+                } catch (e) {
+                    console.warn('Internal Assistant: Failed to determine storage bucket from admin app', e)
+                }
+
                 cachedNoteService = new NoteService({
                     database: db,
                     moment: moment,
@@ -1191,6 +1204,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     enableFeeds: true,
                     enableValidation: true,
                     isCloudFunction: true,
+                    storageBucket: storageBucket,
                 })
                 await cachedNoteService.initialize()
             }
@@ -1450,6 +1464,20 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
             // Initialize or reuse SearchService instance (performance optimization)
             if (!cachedSearchService) {
+                let storageBucket = null
+                try {
+                    const projectId = admin.app().options.projectId
+                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
+                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                    if (storageBucket)
+                        console.log(
+                            'Internal Assistant: Explicitly setting storage bucket for SearchService:',
+                            storageBucket
+                        )
+                } catch (e) {
+                    console.warn('Internal Assistant: Failed to determine storage bucket from admin app', e)
+                }
+
                 cachedSearchService = new SearchService({
                     database: db,
                     moment: moment,
@@ -1457,6 +1485,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     enableNoteContent: true,
                     enableDateParsing: true,
                     isCloudFunction: true,
+                    storageBucket: storageBucket,
                 })
                 await cachedSearchService.initialize()
             }
@@ -1506,6 +1535,19 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
+                let storageBucket = null
+                try {
+                    // Explicitly detect bucket from admin app to avoid detection failures in NoteService
+                    const projectId = admin.app().options.projectId
+                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
+                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                    // Default/Dev will handle itself or fall back in NoteService
+                    if (storageBucket)
+                        console.log('Internal Assistant: Explicitly setting storage bucket:', storageBucket)
+                } catch (e) {
+                    console.warn('Internal Assistant: Failed to determine storage bucket from admin app', e)
+                }
+
                 cachedNoteService = new NoteService({
                     database: db,
                     moment: moment,
@@ -1513,6 +1555,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     enableFeeds: true,
                     enableValidation: false, // Skip validation since we already validated
                     isCloudFunction: true,
+                    storageBucket: storageBucket,
                 })
                 await cachedNoteService.initialize()
             }
@@ -1684,6 +1727,13 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const moment = require('moment')
 
             // Initialize SearchService for note retrieval
+            let storageBucket = null
+            try {
+                const projectId = admin.app().options.projectId
+                if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
+                else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+            } catch (e) {}
+
             const searchService = new SearchService({
                 database: admin.firestore(),
                 moment: moment,
@@ -1691,6 +1741,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 enableNoteContent: true,
                 enableDateParsing: true,
                 isCloudFunction: true,
+                storageBucket: storageBucket,
             })
             await searchService.initialize()
             console.log('📝 GET_NOTE TOOL: SearchService initialized')
