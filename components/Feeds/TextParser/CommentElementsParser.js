@@ -249,7 +249,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignContent: 'center',
-        alignItems: 'center',
+        alignItems: 'baseline',
     },
     element: {
         marginRight: 6,

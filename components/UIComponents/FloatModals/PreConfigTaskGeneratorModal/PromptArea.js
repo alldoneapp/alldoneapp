@@ -38,7 +38,8 @@ const localStyles = StyleSheet.create({
     },
     prompt: {
         ...styles.body2,
+        lineHeight: 20,
         color: colors.Grey200,
-        marginBottom: 16,
+        marginBottom: 8,
     },
 })
