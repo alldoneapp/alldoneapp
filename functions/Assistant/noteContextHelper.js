@@ -62,6 +62,19 @@ function extractMentionedNoteIds(commentText) {
                 url: match[0],
             })
         }
+
+        // Also look for mentions in the format @Note Name#noteId which is used in pre-configured tasks
+        const mentionPattern = /@([^#]+)#([a-zA-Z0-9_-]+)/g
+        let mentionMatch
+        while ((mentionMatch = mentionPattern.exec(commentText)) !== null) {
+            // We only have the noteId, not the projectId from the mention string itself
+            // But the calling function usually provides a fallbackProjectId
+            mentionedNotes.push({
+                noteId: mentionMatch[2],
+                projectId: null, // Project ID will be filled by fallbackProjectId in fetchMentionedNotesContext
+                url: null,
+            })
+        }
     }
 
     return mentionedNotes
