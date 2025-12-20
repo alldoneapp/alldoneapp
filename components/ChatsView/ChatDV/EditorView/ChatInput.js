@@ -98,8 +98,12 @@ export default function ChatInput({
         }
     }
 
-    const onSubmit = event => {
-        event?.preventDefault?.()
+    const onSubmit = eventOrText => {
+        const isEvent = eventOrText && eventOrText.preventDefault
+        if (isEvent) eventOrText.preventDefault()
+
+        const textToSubmit = typeof eventOrText === 'string' ? eventOrText : inputText
+
         if (assistantEnabled && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
@@ -112,7 +116,7 @@ export default function ChatInput({
                 // Re-enable auto-scroll when user sends a message
                 if (onMessageSent) onMessageSent()
 
-                updateNewAttachmentsData(projectId, inputText).then(commentWithAttachments => {
+                updateNewAttachmentsData(projectId, textToSubmit).then(commentWithAttachments => {
                     createObjectMessage(
                         projectId,
                         objectId,
@@ -232,8 +236,9 @@ export default function ChatInput({
                 // onSubmit handles it.
 
                 // We fake an event object or make it optional in onSubmit
+                const textToSubmit = triggerChatSubmit.text
                 setTimeout(() => {
-                    onSubmit()
+                    onSubmit(textToSubmit)
                 }, 100)
             }
 
