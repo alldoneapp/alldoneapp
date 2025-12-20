@@ -75,8 +75,7 @@ const localStyles = StyleSheet.create({
         marginBottom: 4,
     },
     input: {
-        ...styles.body1,
-        color: colors.Grey200,
+        // ...styles.body1, // Removed to avoid passing text styles to View
         paddingVertical: 3,
         paddingHorizontal: 16,
         borderWidth: 1,

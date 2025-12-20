@@ -105,11 +105,31 @@ export default function PreConfigTaskGeneratorModal({
                 if (!newValues[variable.name]) {
                     let rawValue = ''
                     const type = defaultContext.type
+                    const singularToPlural = {
+                        note: 'notes',
+                        task: 'tasks',
+                        goal: 'goals',
+                        skill: 'skills',
+                        project: 'projects',
+                        assistant: 'assistants',
+                        chat: 'chats',
+                        user: 'users',
+                        contact: 'contacts',
+                        topic: 'chats',
+                    }
+                    const pluralType = singularToPlural[type] || type
+
                     if (
-                        type &&
-                        ['tasks', 'notes', 'goals', 'skills', 'projects', 'assistants', 'topics'].includes(type)
+                        pluralType &&
+                        ['tasks', 'notes', 'goals', 'skills', 'projects', 'assistants', 'topics', 'chats'].includes(
+                            pluralType
+                        )
                     ) {
-                        rawValue = `${window.location.origin}${getDvMainTabLink(projectId, defaultContext.id, type)} `
+                        rawValue = `${window.location.origin}${getDvMainTabLink(
+                            projectId,
+                            defaultContext.id,
+                            pluralType
+                        )} `
                     } else {
                         rawValue = `@${defaultContext.name.replaceAll(' ', MENTION_SPACE_CODE)}#${defaultContext.id} `
                     }
