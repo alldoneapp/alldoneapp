@@ -1039,6 +1039,38 @@ function CustomTextInput3(
         isFocused: () => {
             return quillRef.current.hasFocus()
         },
+        clearAndSetContent: text => {
+            // Clear existing content
+            document.querySelector(`.ql-container-${editorId} .ql-editor`).innerHTML = ''
+            showMentionPopupRef.current = false
+            selectionRef.current = { index: 0, length: 0 }
+            mentionTextRef.current = ''
+            setSelectionBounds({ top: 0, left: 0 })
+            textRef.current = ''
+            setHtml('')
+            mentionStartIndexRef.current = 0
+            mentionLastHalfTextRef.current = ''
+
+            // Set new content
+            if (text && text.length > 0) {
+                const delta = processPastedFn(
+                    text,
+                    Delta,
+                    innerProjectId,
+                    editorId,
+                    userEditingTagsId,
+                    inGenericTask,
+                    genericData,
+                    quillRef.current,
+                    false,
+                    null,
+                    false
+                )
+                quillRef.current.updateContents(delta)
+                quillRef.current.setSelection(quillRef.current.getLength(), 0)
+                setInitialLinkedObject && getLinkedUrlInitialText()
+            }
+        },
     }))
 
     return (
