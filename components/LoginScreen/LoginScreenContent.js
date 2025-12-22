@@ -109,10 +109,28 @@ export default function LoginScreenContent() {
                                 overflow: 'hidden',
                                 marginBottom: 20,
                                 marginTop: 20,
+                                backgroundColor: '#000',
+                                // Fix for Safari border-radius clipping
+                                transform: 'translateZ(0)',
+                                WebkitMaskImage: '-webkit-radial-gradient(white, black)',
                             }}
                         >
                             <video
                                 src={require('../../assets/annasmile.mp4')}
+                                onLoadStart={e => console.log('[Video Debug] Load Start. Src:', e.target.currentSrc)}
+                                onLoadedData={() => console.log('[Video Debug] Data Loaded')}
+                                onError={e =>
+                                    console.error(
+                                        '[Video Debug] Error:',
+                                        e.target.error,
+                                        'NetworkState:',
+                                        e.target.networkState,
+                                        'ReadyState:',
+                                        e.target.readyState,
+                                        'Src:',
+                                        e.target.currentSrc
+                                    )
+                                }
                                 style={{
                                     width: '100%',
                                     height: '100%',
