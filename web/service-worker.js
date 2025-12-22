@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.6'
+const SW_VERSION = 'v1.7'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
