@@ -151,27 +151,18 @@ async function fetchNoteContentAsMarkdown(projectId, noteId, userId, url = null)
                 const gcpProject = process.env.GCP_PROJECT
                 const gcloudProject = process.env.GCLOUD_PROJECT
 
-                console.log('DEBUG: Bucket detection:', {
-                    adminProjectId,
-                    gcpProject,
-                    gcloudProject,
-                    initialBucket: bucketName,
-                })
-
                 if (
                     adminProjectId === 'alldonealeph' ||
                     gcpProject === 'alldonealeph' ||
                     gcloudProject === 'alldonealeph'
                 ) {
                     bucketName = 'notescontentprod'
-                    console.log('DEBUG: Forced bucket to notescontentprod')
                 } else if (
                     adminProjectId === 'alldonestaging' ||
                     gcpProject === 'alldonestaging' ||
                     gcloudProject === 'alldonestaging'
                 ) {
                     bucketName = 'notescontentstaging'
-                    console.log('DEBUG: Forced bucket to notescontentstaging')
                 }
             } catch (e) {
                 console.warn('Failed to check admin project ID for bucket override:', e)

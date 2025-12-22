@@ -1187,9 +1187,24 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 let storageBucket = null
                 try {
                     // Explicitly detect bucket from admin app to avoid detection failures in NoteService
-                    const projectId = admin.app().options.projectId
-                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
-                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                    const adminProjectId = admin.app && admin.app().options && admin.app().options.projectId
+                    const gcpProject = process.env.GCP_PROJECT
+                    const gcloudProject = process.env.GCLOUD_PROJECT
+
+                    if (
+                        adminProjectId === 'alldonealeph' ||
+                        gcpProject === 'alldonealeph' ||
+                        gcloudProject === 'alldonealeph'
+                    ) {
+                        storageBucket = 'notescontentprod'
+                    } else if (
+                        adminProjectId === 'alldonestaging' ||
+                        gcpProject === 'alldonestaging' ||
+                        gcloudProject === 'alldonestaging'
+                    ) {
+                        storageBucket = 'notescontentstaging'
+                    }
+
                     // Default/Dev will handle itself or fall back in NoteService
                     if (storageBucket)
                         console.log('Internal Assistant: Explicitly setting storage bucket:', storageBucket)
@@ -1466,16 +1481,31 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             if (!cachedSearchService) {
                 let storageBucket = null
                 try {
-                    const projectId = admin.app().options.projectId
-                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
-                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                    const adminProjectId = admin.app && admin.app().options && admin.app().options.projectId
+                    const gcpProject = process.env.GCP_PROJECT
+                    const gcloudProject = process.env.GCLOUD_PROJECT
+
+                    if (
+                        adminProjectId === 'alldonealeph' ||
+                        gcpProject === 'alldonealeph' ||
+                        gcloudProject === 'alldonealeph'
+                    ) {
+                        storageBucket = 'notescontentprod'
+                    } else if (
+                        adminProjectId === 'alldonestaging' ||
+                        gcpProject === 'alldonestaging' ||
+                        gcloudProject === 'alldonestaging'
+                    ) {
+                        storageBucket = 'notescontentstaging'
+                    }
+
                     if (storageBucket)
                         console.log(
                             'Internal Assistant: Explicitly setting storage bucket for SearchService:',
                             storageBucket
                         )
                 } catch (e) {
-                    console.warn('Internal Assistant: Failed to determine storage bucket from admin app', e)
+                    console.warn('Internal Assistant: Failed to determine storage bucket for SearchService', e)
                 }
 
                 cachedSearchService = new SearchService({
@@ -1538,9 +1568,24 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 let storageBucket = null
                 try {
                     // Explicitly detect bucket from admin app to avoid detection failures in NoteService
-                    const projectId = admin.app().options.projectId
-                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
-                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                    const adminProjectId = admin.app && admin.app().options && admin.app().options.projectId
+                    const gcpProject = process.env.GCP_PROJECT
+                    const gcloudProject = process.env.GCLOUD_PROJECT
+
+                    if (
+                        adminProjectId === 'alldonealeph' ||
+                        gcpProject === 'alldonealeph' ||
+                        gcloudProject === 'alldonealeph'
+                    ) {
+                        storageBucket = 'notescontentprod'
+                    } else if (
+                        adminProjectId === 'alldonestaging' ||
+                        gcpProject === 'alldonestaging' ||
+                        gcloudProject === 'alldonestaging'
+                    ) {
+                        storageBucket = 'notescontentstaging'
+                    }
+
                     // Default/Dev will handle itself or fall back in NoteService
                     if (storageBucket)
                         console.log('Internal Assistant: Explicitly setting storage bucket:', storageBucket)
