@@ -1133,8 +1133,8 @@ export const EditorToolbar = ({
                                 if (text && text.trim().length > 0) {
                                     const editor = exportRef.getEditor()
                                     const length = editor.getLength()
-                                    editor.insertText(length, `\n${text.trim()} `, 'user')
-                                    editor.setSelection(length + text.length + 2)
+                                    editor.insertText(length, `${text.trim()} `, 'user')
+                                    editor.setSelection(length + text.length + 1)
                                 }
                             } catch (err) {
                                 console.error('Transcription error:', err)
