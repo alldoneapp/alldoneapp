@@ -136,11 +136,13 @@ export default function LoginScreenContent() {
                                     height: '100%',
                                     objectFit: 'cover',
                                     display: 'block',
+                                    zIndex: 1,
                                 }}
                                 autoPlay
                                 loop
                                 muted
                                 playsInline
+                                webkit-playsinline="true"
                             />
                         </View>
                     )}
