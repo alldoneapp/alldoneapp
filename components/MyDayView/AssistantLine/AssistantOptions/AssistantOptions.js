@@ -16,6 +16,7 @@ import Button from '../../../UIControls/Button'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
+import Spinner from '../../../UIComponents/Spinner'
 
 export default function AssistantOptions({ amountOfButtonOptions }) {
     const dispatch = useDispatch()
@@ -159,8 +160,8 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                 />
                 <View style={localStyles.sendButtonWrapper}>
                     <Button
-                        title={sendButtonTitle}
-                        icon={'send'}
+                        title={isSending ? null : sendButtonTitle}
+                        icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
                         onPress={handleSendMessage}
                         disabled={!canSend}
                         buttonStyle={sendButtonStyle}
