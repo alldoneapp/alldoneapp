@@ -1,6 +1,6 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const OpenAI = require('openai')
+const { createClient } = require('@deepgram/sdk')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -56,16 +56,14 @@ exports.transcribeMeetingAudio = onCall(
         }
 
         const env = getEnvFunctions()
-        const apiKey = env.OPEN_AI_KEY
+        const apiKey = env.DEEPGRAM_API_KEY
 
         if (!apiKey) {
-            console.error('OpenAI API Key is missing')
-            throw new HttpsError('internal', 'OpenAI API Key is not configured')
+            console.error('Deepgram API Key is missing')
+            throw new HttpsError('internal', 'Deepgram API Key is not configured')
         }
 
-        const openai = new OpenAI({
-            apiKey: apiKey,
-        })
+        const deepgram = createClient(apiKey)
 
         // Create a temporary file to store the audio chunk
         const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}.webm`)
@@ -76,21 +74,72 @@ exports.transcribeMeetingAudio = onCall(
             // But we handle stripping it here just in case, using a regex that handles extra parameters like codecs
             const base64Data = audioChunk.replace(/^data:audio\/[a-zA-Z0-9-+\.]+;.*base64,/, '')
             const buffer = Buffer.from(base64Data, 'base64')
-            fs.writeFileSync(tempFilePath, buffer)
 
-            const transcription = await openai.audio.transcriptions.create({
-                file: fs.createReadStream(tempFilePath),
-                model: 'whisper-1',
+            // Deepgram accepts Buffer directly, so we don't strictly need the file if we use the buffer.
+            // However, the existing code used a file, and it might be safer for memory handling if chunks are large.
+            // But Deepgram SDK supports buffer sources. Let's use the buffer directly to simplify IO if possible,
+            // but the original code was file-based.
+            // Given cloud function memory limits (1GB), buffer is fine for chunks.
+            // Let's stick to the file approach for stability if buffer handling has edge cases,
+            // but Deepgram SDK is designed for buffers in Node.
+            // Actually, let's use the buffer directly to skip disk I/O, it's faster.
+
+            const { result, error } = await deepgram.listen.prerecorded.transcribeFile(buffer, {
+                model: 'nova-3',
+                smart_format: true,
+                diarize: true,
+                punctuate: true,
+                paragraphs: true,
             })
 
-            return { text: transcription.text }
+            if (error) {
+                console.error('Deepgram API error:', error)
+                throw new Error('Deepgram transcription failed')
+            }
+
+            // Format the transcript with speaker laels
+            // Nova-3 with paragraphs enabled returns structured paragraphs with speakers
+            let formattedTranscript = ''
+
+            if (
+                result.results &&
+                result.results.channels &&
+                result.results.channels[0].alternatives &&
+                result.results.channels[0].alternatives[0].paragraphs
+            ) {
+                const paragraphs = result.results.channels[0].alternatives[0].paragraphs.paragraphs
+                if (paragraphs) {
+                    formattedTranscript = paragraphs
+                        .map(p => {
+                            const speaker = p.speaker !== undefined ? `[Speaker ${p.speaker}]: ` : ''
+                            // Join sentences in the paragraph
+                            const text = p.sentences.map(s => s.text).join(' ')
+                            return `${speaker}${text}`
+                        })
+                        .join('\n\n')
+                }
+            } else if (
+                result.results &&
+                result.results.channels &&
+                result.results.channels[0].alternatives &&
+                result.results.channels[0].alternatives[0].transcript
+            ) {
+                // Fallback to raw transcript if paragraphs mapping fails
+                formattedTranscript = result.results.channels[0].alternatives[0].transcript
+            }
+
+            return { text: formattedTranscript }
         } catch (error) {
             console.error('Error transcribing audio:', error)
             throw new HttpsError('internal', 'Failed to transcribe audio', error)
         } finally {
-            // Clean up: delete the temp file
+            // Clean up: delete the temp file if we created it (we didn't used it above, but kept variable)
             if (fs.existsSync(tempFilePath)) {
-                fs.unlinkSync(tempFilePath)
+                try {
+                    fs.unlinkSync(tempFilePath)
+                } catch (e) {
+                    // ignore
+                }
             }
         }
     }

@@ -54,6 +54,7 @@ const getEnvFunctions = () => {
             GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
             GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                 process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+            DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -85,6 +86,7 @@ const getEnvFunctions = () => {
                     GOOGLE_ANALYTICS_KEY: envJson.GOOGLE_ANALYTICS_KEY || '',
                     GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                         envJson.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                    DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -116,6 +118,7 @@ const getEnvFunctions = () => {
                         GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                         GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                             process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                        DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                     }
                 }
             } catch (error) {
@@ -142,6 +145,7 @@ const getEnvFunctions = () => {
                     GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                     GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                         process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                    DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 }
             }
         } else {
@@ -168,6 +172,7 @@ const getEnvFunctions = () => {
                 GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                 GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                     process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             }
         }
     }
@@ -191,6 +196,9 @@ const getEnvFunctions = () => {
     }
     if (!envFunctions.SIB_API_KEY || isPlaceholderValue(envFunctions.SIB_API_KEY)) {
         console.warn('Warning: SIB_API_KEY is not set or is a placeholder')
+    }
+    if (!envFunctions.DEEPGRAM_API_KEY || isPlaceholderValue(envFunctions.DEEPGRAM_API_KEY)) {
+        console.warn('Warning: DEEPGRAM_API_KEY is not set or is a placeholder')
     }
 
     return envFunctions

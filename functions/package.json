@@ -13,6 +13,7 @@
         "node": "20"
     },
     "dependencies": {
+        "@deepgram/sdk": "^4.11.3",
         "@dqbd/tiktoken": "^1.0.7",
         "@ffmpeg-installer/ffmpeg": "^1.1.0",
         "@google-cloud/firestore": "^4.2.0",
