@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.5'
+const SW_VERSION = 'v1.6'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
@@ -22,14 +22,20 @@ self.addEventListener('activate', function (event) {
             }),
             // Take control of all clients immediately
             self.clients.claim(),
+            // Reload all windows to ensure they use the new SW immediately
+            self.clients.matchAll().then(clients => {
+                clients.forEach(client => client.postMessage({ type: 'NEW_SW_ACTIVATED' }))
+            }),
         ])
     )
 })
 
 self.addEventListener('fetch', function (event) {
     // Skip non-GET requests and external API calls
+    // Also skip MP4 files to allow browser Range requests to work correctly (fixes Safari video issues)
     if (
         event.request.method !== 'GET' ||
+        event.request.url.includes('.mp4') ||
         event.request.url.includes('firebasestorage.googleapis.com') ||
         event.request.url.includes('firestore.googleapis.com') ||
         event.request.url.includes('accounts.google.com') ||
