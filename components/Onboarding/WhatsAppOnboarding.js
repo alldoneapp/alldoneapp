@@ -139,7 +139,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 blinkAnim.setValue(1) // Reset animation
                 if (service === 'calendar') {
                     logEvent('onboarding_calendar_connected')
-                    setStep(3) // Skip Gmail (Step 2 -> 3)
+                    setStep(2)
                 } else {
                     logEvent('onboarding_gmail_connected')
                     setStep(3)
@@ -272,7 +272,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 blinkAnim.setValue(1) // Reset animation
                 if (service === 'calendar') {
                     logEvent('onboarding_calendar_connected')
-                    setStep(3) // Skip Gmail (Step 2 -> 3)
+                    setStep(2)
                 } else {
                     logEvent('onboarding_gmail_connected')
                     setStep(3)
@@ -497,7 +497,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                     style={[localStyles.secondaryButton, isMobile && { paddingVertical: 8 }]}
                     onPress={() => {
                         logEvent('onboarding_calendar_skipped')
-                        setStep(3) // Skip Gmail (Step 2 -> 3)
+                        setStep(2)
                     }}
                     disabled={connectingService === 'calendar'}
                 >
@@ -628,7 +628,7 @@ export default function WhatsAppOnboarding({ navigation }) {
             <ProgressBar current={step} total={5} />
             {step === 0 && renderWhatsAppStep()}
             {step === 1 && renderCalendarConnection()}
-            {/* {step === 2 && renderGmailConnection()} */}
+            {step === 2 && renderGmailConnection()}
             {step === 3 && renderMorningReminderStep()}
             {step === 4 && renderPushNotificationStep()}
         </SplitLayout>
