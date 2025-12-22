@@ -110,8 +110,10 @@ exports.transcribeMeetingAudio = onCall(
                 const paragraphs = result.results.channels[0].alternatives[0].paragraphs.paragraphs
                 if (paragraphs) {
                     formattedTranscript = paragraphs
-                        .map(p => {
-                            const speaker = p.speaker !== undefined ? `[Speaker ${p.speaker}]: ` : ''
+                        .map((p, index) => {
+                            const previousSpeaker = index > 0 ? paragraphs[index - 1].speaker : null
+                            const showSpeaker = index === 0 || p.speaker !== previousSpeaker
+                            const speaker = showSpeaker && p.speaker !== undefined ? `[Speaker ${p.speaker}]: ` : ''
                             // Join sentences in the paragraph
                             const text = p.sentences.map(s => s.text).join(' ')
                             return `${speaker}${text}`
