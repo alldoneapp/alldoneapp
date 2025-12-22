@@ -116,20 +116,24 @@ export default function LoginScreenContent() {
                             }}
                         >
                             <video
+                                src={require('../../assets/annasmile.mp4')}
+                                preload="auto"
                                 onLoadStart={e => console.log('[Video Debug] Load Start. Src:', e.target.currentSrc)}
                                 onLoadedData={() => console.log('[Video Debug] Data Loaded')}
-                                onError={e =>
+                                onCanPlay={() => console.log('[Video Debug] Can Play')}
+                                onError={e => {
+                                    const video = e.currentTarget
                                     console.error(
                                         '[Video Debug] Error:',
-                                        e.target.error,
+                                        video.error,
                                         'NetworkState:',
-                                        e.target.networkState,
+                                        video.networkState,
                                         'ReadyState:',
-                                        e.target.readyState,
+                                        video.readyState,
                                         'Src:',
-                                        e.target.currentSrc
+                                        video.currentSrc
                                     )
-                                }
+                                }}
                                 style={{
                                     width: '100%',
                                     height: '100%',
@@ -142,9 +146,7 @@ export default function LoginScreenContent() {
                                 muted
                                 playsInline
                                 webkit-playsinline="true"
-                            >
-                                <source src={require('../../assets/annasmile.mp4')} type="video/mp4" />
-                            </video>
+                            />
                         </View>
                     )}
                     {loginType === GUIDE_LOGIN && (
