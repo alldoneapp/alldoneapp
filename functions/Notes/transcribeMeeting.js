@@ -87,6 +87,7 @@ exports.transcribeMeetingAudio = onCall(
             const { result, error } = await deepgram.listen.prerecorded.transcribeFile(buffer, {
                 model: 'nova-3',
                 smart_format: true,
+                detect_language: true,
                 // Deactivate diarization for now because with our current file / chunk based approach
                 // who is which speaker will not be persisted across sessions.
                 diarize: false,
