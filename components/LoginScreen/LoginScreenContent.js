@@ -115,37 +115,23 @@ export default function LoginScreenContent() {
                                 WebkitMaskImage: '-webkit-radial-gradient(white, black)',
                             }}
                         >
-                            <video
-                                src={require('../../assets/annasmile.mp4')}
-                                preload="auto"
-                                onLoadStart={e => console.log('[Video Debug] Load Start. Src:', e.target.currentSrc)}
-                                onLoadedData={() => console.log('[Video Debug] Data Loaded')}
-                                onCanPlay={() => console.log('[Video Debug] Can Play')}
-                                onError={e => {
-                                    const video = e.currentTarget
-                                    console.error(
-                                        '[Video Debug] Error:',
-                                        video.error,
-                                        'NetworkState:',
-                                        video.networkState,
-                                        'ReadyState:',
-                                        video.readyState,
-                                        'Src:',
-                                        video.currentSrc
-                                    )
-                                }}
+                            <div
                                 style={{
                                     width: '100%',
                                     height: '100%',
-                                    objectFit: 'cover',
-                                    display: 'block',
-                                    zIndex: 1,
                                 }}
-                                autoPlay
-                                loop
-                                muted
-                                playsInline
-                                webkit-playsinline="true"
+                                dangerouslySetInnerHTML={{
+                                    __html: `<video 
+                                        style="width: 100%; height: 100%; object-fit: cover; display: block;"
+                                        autoplay
+                                        loop
+                                        muted
+                                        playsinline
+                                        webkit-playsinline
+                                    >
+                                        <source src="${require('../../assets/annasmile.mp4')}" type="video/mp4">
+                                    </video>`,
+                                }}
                             />
                         </View>
                     )}

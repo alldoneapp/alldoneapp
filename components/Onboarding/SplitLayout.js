@@ -27,21 +27,27 @@ export default function SplitLayout({
         <View style={[styles.container, isDesktop ? styles.containerDesktop : styles.containerMobile]}>
             {showVideo && (
                 <View style={[styles.videoSection, isDesktop ? styles.videoSectionDesktop : styles.videoSectionMobile]}>
-                    <video
+                    <div
                         style={{
                             width: '100%',
                             height: '100%',
-                            objectFit: 'cover',
-                            objectPosition: isDesktop ? 'center center' : 'center 20%',
-                            display: 'block',
+                            position: 'relative',
                         }}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                    >
-                        <source src={videoSrc} type="video/mp4" />
-                    </video>
+                        dangerouslySetInnerHTML={{
+                            __html: `<video 
+                                style="width: 100%; height: 100%; object-fit: cover; object-position: ${
+                                    isDesktop ? 'center center' : 'center 20%'
+                                }; display: block;"
+                                autoplay
+                                loop
+                                muted
+                                playsinline
+                                webkit-playsinline
+                            >
+                                <source src="${videoSrc}" type="video/mp4">
+                            </video>`,
+                        }}
+                    />
                 </View>
             )}
 
