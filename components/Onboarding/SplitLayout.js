@@ -28,7 +28,6 @@ export default function SplitLayout({
             {showVideo && (
                 <View style={[styles.videoSection, isDesktop ? styles.videoSectionDesktop : styles.videoSectionMobile]}>
                     <video
-                        src={videoSrc}
                         style={{
                             width: '100%',
                             height: '100%',
@@ -40,7 +39,9 @@ export default function SplitLayout({
                         loop
                         muted
                         playsInline
-                    />
+                    >
+                        <source src={videoSrc} type="video/mp4" />
+                    </video>
                 </View>
             )}
 

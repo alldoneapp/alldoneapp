@@ -116,7 +116,6 @@ export default function LoginScreenContent() {
                             }}
                         >
                             <video
-                                src={require('../../assets/annasmile.mp4')}
                                 onLoadStart={e => console.log('[Video Debug] Load Start. Src:', e.target.currentSrc)}
                                 onLoadedData={() => console.log('[Video Debug] Data Loaded')}
                                 onError={e =>
@@ -143,7 +142,9 @@ export default function LoginScreenContent() {
                                 muted
                                 playsInline
                                 webkit-playsinline="true"
-                            />
+                            >
+                                <source src={require('../../assets/annasmile.mp4')} type="video/mp4" />
+                            </video>
                         </View>
                     )}
                     {loginType === GUIDE_LOGIN && (
