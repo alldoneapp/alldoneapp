@@ -43,6 +43,7 @@ const MODEL_GPT4 = 'MODEL_GPT4'
 const MODEL_GPT4O = 'MODEL_GPT4O'
 const MODEL_GPT5 = 'MODEL_GPT5' // Deprecated, maps to MODEL_GPT5_1
 const MODEL_GPT5_1 = 'MODEL_GPT5_1'
+const MODEL_GPT5_2 = 'MODEL_GPT5_2'
 const MODEL_SONAR = 'MODEL_SONAR'
 const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
 const MODEL_SONAR_REASONING = 'MODEL_SONAR_REASONING'
@@ -57,6 +58,7 @@ const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
 
 const COMPLETION_MAX_TOKENS = 1000
 const COMPLETION_MAX_TOKENS_GPT5_1 = 2000 // GPT-5.1 needs more tokens due to stricter limits
+const COMPLETION_MAX_TOKENS_GPT5_2 = 2000 // GPT-5.2 needs more tokens due to stricter limits
 
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
@@ -98,7 +100,13 @@ function getOpenAIClient(apiKey) {
  */
 const modelSupportsNativeTools = modelKey => {
     // Only GPT models support native tool calling
-    return modelKey === MODEL_GPT3_5 || modelKey === MODEL_GPT4 || modelKey === MODEL_GPT4O || modelKey === MODEL_GPT5_1
+    return (
+        modelKey === MODEL_GPT3_5 ||
+        modelKey === MODEL_GPT4 ||
+        modelKey === MODEL_GPT4O ||
+        modelKey === MODEL_GPT5_1 ||
+        modelKey === MODEL_GPT5_2
+    )
 }
 
 /**
@@ -108,7 +116,7 @@ const modelSupportsNativeTools = modelKey => {
  */
 const modelSupportsCustomTemperature = modelKey => {
     // GPT-5.1 and some newer models only support default temperature (1.0)
-    if (modelKey === MODEL_GPT5_1) return false
+    if (modelKey === MODEL_GPT5_1 || modelKey === MODEL_GPT5_2) return false
     return true
 }
 
@@ -117,6 +125,7 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT4) return 10
     if (modelKey === MODEL_GPT4O) return 50
     if (modelKey === MODEL_GPT5_1) return 10
+    if (modelKey === MODEL_GPT5_2) return 10
     if (modelKey === MODEL_SONAR) return 100
     if (modelKey === MODEL_SONAR_PRO) return 50
     if (modelKey === MODEL_SONAR_REASONING) return 20
@@ -132,6 +141,7 @@ const getMaxTokensForModel = modelKey => {
     // Modern High context models
     if (modelKey === MODEL_GPT4O) return 128000
     if (modelKey === MODEL_GPT5_1) return 128000
+    if (modelKey === MODEL_GPT5_2) return 128000
 
     // Perplexity/Sonar models (generally high context)
     if (modelKey && modelKey.startsWith('MODEL_SONAR')) return 128000
@@ -144,8 +154,8 @@ const getMaxTokensForModel = modelKey => {
 const normalizeModelKey = modelKey => {
     // Map deprecated MODEL_GPT5 to MODEL_GPT5_1
     if (modelKey === MODEL_GPT5 || modelKey === 'MODEL_GPT5') return MODEL_GPT5_1
-    // Default to MODEL_GPT5_1 if no model specified or empty
-    if (!modelKey) return MODEL_GPT5_1
+    // Default to MODEL_GPT5_2 if no model specified or empty
+    if (!modelKey) return MODEL_GPT5_2
     return modelKey
 }
 
@@ -157,14 +167,15 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4) return 'gpt-4'
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
+    if (normalizedKey === MODEL_GPT5_2) return 'gpt-5.2'
     if (normalizedKey === MODEL_SONAR) return 'sonar'
     if (normalizedKey === MODEL_SONAR_PRO) return 'sonar-pro'
     if (normalizedKey === MODEL_SONAR_REASONING) return 'sonar-reasoning'
     if (normalizedKey === MODEL_SONAR_REASONING_PRO) return 'sonar-reasoning-pro'
     if (normalizedKey === MODEL_SONAR_DEEP_RESEARCH) return 'sonar-deep-research'
 
-    // Default fallback to gpt-5.1
-    return 'gpt-5.1'
+    // Default fallback to gpt-5.2
+    return 'gpt-5.2'
 }
 
 const getTemperature = temperatureKey => {
@@ -349,7 +360,7 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey) || 'gpt-5.1' // Fallback to gpt-5.1 if undefined
+    const model = getModel(modelKey) || 'gpt-5.2' // Fallback to gpt-5.2 if undefined
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart

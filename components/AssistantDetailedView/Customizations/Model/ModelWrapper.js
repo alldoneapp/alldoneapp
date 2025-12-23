@@ -13,6 +13,7 @@ import {
     MODEL_GPT4,
     MODEL_GPT4O,
     MODEL_GPT5_1,
+    MODEL_GPT5_2,
     MODEL_SONAR,
     MODEL_SONAR_PRO,
     MODEL_SONAR_REASONING,
@@ -48,6 +49,7 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
         if (model === MODEL_GPT4) return 'GPT 4'
         if (model === MODEL_GPT4O) return 'GPT 4o'
         if (model === MODEL_GPT5_1) return 'GPT 5_1'
+        if (model === MODEL_GPT5_2) return 'GPT 5_2'
         if (model === MODEL_SONAR) return 'Sonar'
         if (model === MODEL_SONAR_PRO) return 'Sonar Pro'
         if (model === MODEL_SONAR_REASONING) return 'Sonar Reasoning'
