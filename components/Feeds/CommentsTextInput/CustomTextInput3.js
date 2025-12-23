@@ -1071,6 +1071,13 @@ function CustomTextInput3(
                 setInitialLinkedObject && getLinkedUrlInitialText()
             }
         },
+        triggerMention: () => {
+            quillRef.current.focus()
+            const range = quillRef.current.getSelection()
+            const index = range ? range.index : quillRef.current.getLength()
+            quillRef.current.insertText(index, '@', 'user')
+            quillRef.current.setSelection(index + 1, 0)
+        },
     }))
 
     return (
