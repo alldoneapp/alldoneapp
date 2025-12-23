@@ -54,9 +54,12 @@ const TaskItemTags = ({
 
     const isMobile = smallScreenNavigation || smallScreenNavSidebarCollapsed
 
+    const thresholdData = task.calendarData ? 1 : 0
     const needSummarize = inMyDayAndNotSubtask
         ? amountTags > 0 && showSummarizeTagInByTime
-        : amountTags > 5 || (tablet && amountTags > 3) || (isMobile && amountTags > 2)
+        : amountTags > 5 - thresholdData ||
+          (tablet && amountTags > 3 - thresholdData) ||
+          (isMobile && amountTags > 2 - thresholdData)
 
     const toggleVisibleTags = e => {
         e.preventDefault()
