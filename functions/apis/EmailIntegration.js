@@ -1,13 +1,14 @@
+const moment = require('moment')
 const admin = require('firebase-admin')
 const { generateTask } = require('../GoogleCalendarTasks/calendarTasks')
 
 const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, email) => {
-    const date = new Date(currentDate)
-    const day = date.getDate()
-    const month = date.getMonth()
-    const year = date.getFullYear()
-    const min = new Date(year, month, day)
-    const max = new Date(year, month, day, 23, 59, 59)
+    const date = moment.parseZone(currentDate)
+    const day = date.date()
+    const month = date.month()
+    const year = date.year()
+    const min = date.clone().startOf('day').valueOf()
+    const max = date.clone().endOf('day').valueOf()
 
     Promise.all([
         admin

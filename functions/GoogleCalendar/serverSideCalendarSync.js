@@ -158,7 +158,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         }
 
         // Process events - add/update calendar tasks
-        await addCalendarEvents(events, projectId, userId, userEmail)
+        await addCalendarEvents(events, projectId, userId, userEmail, timezoneOffset)
 
         // Remove old/declined calendar tasks
         const simplifiedEvents = events.map(event => {

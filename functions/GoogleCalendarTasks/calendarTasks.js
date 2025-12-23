@@ -175,7 +175,7 @@ const createTasksMap = tasks => {
     return tasksMap
 }
 
-const addCalendarEvents = async (events, syncProjectId, userId, email) => {
+const addCalendarEvents = async (events, syncProjectId, userId, email, timezoneOffset = 0) => {
     const user = await getUserData(userId)
     if (!user) {
         return
@@ -183,7 +183,7 @@ const addCalendarEvents = async (events, syncProjectId, userId, email) => {
 
     // Search across ALL user projects to find existing calendar tasks
     // This prevents duplicates when users manually move tasks between projects
-    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true)
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true, timezoneOffset)
     const tasksMap = createTasksMap(tasks)
 
     const filteredEvents = filterEvents(events, email)
@@ -227,8 +227,8 @@ const getTasksBaseQuery = (projectId, userId, done) => {
         .where('done', '==', done)
 }
 
-const getTodayDoneCalendarTasksInProject = async (projectId, userId) => {
-    const startOfToday = moment().startOf('day').valueOf()
+const getTodayDoneCalendarTasksInProject = async (projectId, userId, timezoneOffset = 0) => {
+    const startOfToday = moment().utcOffset(timezoneOffset).startOf('day').valueOf()
     const tasksDocs = await getTasksBaseQuery(projectId, userId, true).where('completed', '>=', startOfToday).get()
     return convertDocsInTasks(projectId, tasksDocs)
 }
@@ -247,10 +247,10 @@ const getCalendarTasksInProject = async (projectId, userId, includeDone = false)
     return tasks
 }
 
-const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks) => {
+const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks, timezoneOffset = 0) => {
     const promises = []
     projectIds.forEach(projectId => {
-        if (needGetDoneTaks) promises.push(getTodayDoneCalendarTasksInProject(projectId, userId))
+        if (needGetDoneTaks) promises.push(getTodayDoneCalendarTasksInProject(projectId, userId, timezoneOffset))
         promises.push(getCalendarTasksInProject(projectId, userId))
     })
     const results = await Promise.all(promises)
