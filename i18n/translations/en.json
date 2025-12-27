@@ -1526,5 +1526,6 @@
     "Stop": "Stop",
     "Please ensure you share audio when selecting the screen/tab.": "Please ensure you share audio when selecting the screen/tab.",
     "transcription_active_banner": "Transcription active. Keep tab in the foreground",
-    "transcription_header": "Transcription"
+    "transcription_header": "Transcription",
+    "Iframe": "Iframe"
 }

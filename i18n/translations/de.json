@@ -1075,5 +1075,6 @@
     "Stop": "Stopp",
     "Please ensure you share audio when selecting the screen/tab.": "Bitte stellen Sie sicher, dass Sie Audio teilen, wenn Sie den Bildschirm/Tab auswählen.",
     "transcription_active_banner": "Transkription aktiv. Tab im Vordergrund halten",
-    "transcription_header": "Transkription"
+    "transcription_header": "Transkription",
+    "Iframe": "Iframe"
 }

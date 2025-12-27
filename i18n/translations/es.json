@@ -1507,5 +1507,6 @@
     "Stop": "Parar",
     "Please ensure you share audio when selecting the screen/tab.": "Asegúrese de compartir el audio al seleccionar la pantalla/pestaña.",
     "transcription_active_banner": "Transcripción activa. Mantenga la pestaña en primer plano",
-    "transcription_header": "Transcripción"
+    "transcription_header": "Transcripción",
+    "Iframe": "Iframe"
 }
