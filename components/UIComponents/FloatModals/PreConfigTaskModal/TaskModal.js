@@ -32,6 +32,7 @@ import TimePickerModal from '../../FloatModals/TimePickerModal/TimePickerModal'
 export const TASK_TYPE_PROMPT = 'prompt'
 export const TASK_TYPE_EXTERNAL_LINK = 'link'
 export const TASK_TYPE_WEBHOOK = 'webhook'
+export const TASK_TYPE_IFRAME = 'iframe'
 
 const MemoizedNameArea = memo(NameArea)
 
@@ -516,6 +517,11 @@ export default function TaskModal({
             value: TASK_TYPE_WEBHOOK,
             icon: 'link-2',
         },
+        {
+            label: translate('Iframe'),
+            value: TASK_TYPE_IFRAME,
+            icon: 'monitor',
+        },
     ]
 
     const nameInputRef = useRef()
@@ -537,6 +543,7 @@ export default function TaskModal({
         !name.trim() ||
         (taskType === TASK_TYPE_PROMPT && !prompt.trim()) ||
         (taskType === TASK_TYPE_EXTERNAL_LINK && !checkIfIsValidLink()) ||
+        (taskType === TASK_TYPE_IFRAME && !checkIfIsValidLink()) ||
         (taskType === TASK_TYPE_WEBHOOK && !checkIfIsValidWebhookUrl())
 
     // Debug logging for webhook validation

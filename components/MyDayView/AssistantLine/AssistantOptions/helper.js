@@ -1,5 +1,5 @@
 import { translate } from '../../../../i18n/TranslationService'
-import { TASK_TYPE_PROMPT } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import { TASK_TYPE_PROMPT, TASK_TYPE_IFRAME } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { shrinkTagText } from '../../../../functions/Utils/parseTextUtils'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { getAssistant, getAssistantInProject } from '../../../AdminPanel/Assistants/assistantsHelper'
@@ -19,7 +19,13 @@ const getOptions = (project, assistantId, tasks, selectedProjectId) => {
             icon: task.type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark',
             task,
             action: () => {
-                if (task.type !== TASK_TYPE_PROMPT) {
+                if (task.type === TASK_TYPE_IFRAME) {
+                    store.dispatch({
+                        type: 'Set iframe modal data',
+                        visible: true,
+                        url: task.link,
+                    })
+                } else if (task.type !== TASK_TYPE_PROMPT) {
                     window.open(task.link, '_blank')
                 } else if (task.variables.length === 0) {
                     store.dispatch(setPreConfigTaskExecuting(task.name))

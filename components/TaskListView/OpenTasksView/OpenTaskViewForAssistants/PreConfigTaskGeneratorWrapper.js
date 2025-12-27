@@ -8,7 +8,11 @@ import PreConfigTaskGeneratorModal from '../../../UIComponents/FloatModals/PreCo
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
-import { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
+import {
+    TASK_TYPE_PROMPT,
+    TASK_TYPE_WEBHOOK,
+    TASK_TYPE_IFRAME,
+} from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 
 export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
@@ -76,6 +80,12 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
         } else {
             if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
                 variables.length > 0 ? openModal() : addTask()
+            } else if (type === TASK_TYPE_IFRAME) {
+                dispatch({
+                    type: 'Set iframe modal data',
+                    visible: true,
+                    url: link,
+                })
             } else {
                 window.open(link, '_blank')
             }

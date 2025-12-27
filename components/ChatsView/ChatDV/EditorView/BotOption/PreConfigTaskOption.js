@@ -8,6 +8,7 @@ import {
     TASK_TYPE_PROMPT,
     TASK_TYPE_EXTERNAL_LINK,
     TASK_TYPE_WEBHOOK,
+    TASK_TYPE_IFRAME,
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import Icon from '../../../../Icon'
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
@@ -54,12 +55,20 @@ export default function PreConfigTaskOption({
                 return 'external-link'
             case TASK_TYPE_WEBHOOK:
                 return 'link-2'
+            case TASK_TYPE_IFRAME:
+                return 'monitor'
             default:
                 return 'cpu' // fallback
         }
     }
 
     const onPress = () => {
+        console.log('PreConfigTaskOption onPress - type check:', {
+            type,
+            TASK_TYPE_IFRAME,
+            isIframeType: type === TASK_TYPE_IFRAME,
+            link,
+        })
         if (type === TASK_TYPE_PROMPT) {
             if (variables.length > 0) {
                 selectTask(task)
@@ -86,6 +95,13 @@ export default function PreConfigTaskOption({
                 sendWhatsApp: !!sendWhatsApp,
             }
             generateTaskFromPreConfig(projectId, name, assistantId, prompt, aiSettings, mergedTaskMetadata)
+        } else if (type === TASK_TYPE_IFRAME) {
+            closeModal()
+            dispatch({
+                type: 'Set iframe modal data',
+                visible: true,
+                url: link,
+            })
         } else {
             closeModal()
             window.open(link, '_blank')

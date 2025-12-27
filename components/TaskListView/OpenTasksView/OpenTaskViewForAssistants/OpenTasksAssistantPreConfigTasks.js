@@ -8,7 +8,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
 import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
-import ChatWith from './ChatWith'
+import AssistantInputLine from './AssistantInputLine'
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
@@ -29,8 +29,8 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
 
     return (
         <View style={localStyles.container}>
+            <AssistantInputLine assistant={currentUser} projectId={projectId} />
             <Text style={localStyles.header}>{translate('Assistant tasks')}</Text>
-            <ChatWith assistant={currentUser} />
             {tasks.map(task => (
                 <PreConfigTaskGeneratorWrapper
                     projectId={projectId}

@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import moment from 'moment'
 
 import VariableModal from '../VariableModal/VariableModal'
-import TaskModal, { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK } from './TaskModal'
+import TaskModal, { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK, TASK_TYPE_IFRAME } from './TaskModal'
 import { updatePreConfigTask, uploadNewPreConfigTask } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PRE_CONFIG_TASK } from '../../ConfirmPopup'
 import { showConfirmPopup } from '../../../../redux/actions'
@@ -185,6 +185,16 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                           ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
                       },
                   }
+                : taskType === TASK_TYPE_IFRAME
+                ? {
+                      name,
+                      type: taskType,
+                      prompt: '',
+                      variables: [],
+                      link,
+                      recurrence,
+                      sendWhatsApp,
+                  }
                 : { name, type: taskType, prompt: '', variables: [], link, recurrence, sendWhatsApp }
         setTimeout(() => {
             uploadNewPreConfigTask(projectId, assistantId, newTask)
@@ -244,6 +254,17 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                               : { webhookAuthHeaderName: 'Authorization' }),
                           ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
                       },
+                  }
+                : taskType === TASK_TYPE_IFRAME
+                ? {
+                      ...task,
+                      name,
+                      type: taskType,
+                      prompt: '',
+                      variables: [],
+                      link,
+                      recurrence: recurrence ?? null,
+                      sendWhatsApp,
                   }
                 : {
                       ...task,

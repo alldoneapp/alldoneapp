@@ -347,6 +347,7 @@ export const initialState = {
     navigationSource: null,
     showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
+    iframeModalData: { visible: false, url: '' },
 }
 
 const checkIfNeedToJointToProject = initialUrl => {
@@ -794,6 +795,15 @@ export const theReducer = (state = initialState, action) => {
             const { projectId, invitations } = action
             const projectInvitations = { ...state.projectInvitations, [projectId]: invitations }
             return { ...state, projectInvitations }
+        }
+        case 'Set iframe modal data': {
+            return {
+                ...state,
+                iframeModalData: {
+                    visible: action.visible,
+                    url: action.url,
+                },
+            }
         }
         case 'Set chat notifications in projects': {
             const { projectId, notifications } = action

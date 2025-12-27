@@ -9,6 +9,7 @@ import {
     TASK_TYPE_PROMPT,
     TASK_TYPE_EXTERNAL_LINK,
     TASK_TYPE_WEBHOOK,
+    TASK_TYPE_IFRAME,
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import TaskRecurrence from '../../../Tags/TaskRecurrence'
 import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
@@ -29,6 +30,8 @@ export default function PreConfigTaskButton({ task, onPress, projectId, disabled
                 return 'external-link'
             case TASK_TYPE_WEBHOOK:
                 return 'link-2'
+            case TASK_TYPE_IFRAME:
+                return 'monitor'
             default:
                 return 'cpu' // fallback
         }
