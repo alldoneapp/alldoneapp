@@ -14,11 +14,6 @@ export default function IframeModal() {
 
     const loggedUser = useSelector(state => state.loggedUser)
 
-    if (!visible) return null
-
-    // Helper to add query param to URL - Removed by user request
-    // const getUrlWithEmail = (currentUrl) => ...
-
     const finalUrl = url
 
     const closeModal = () => {
@@ -26,6 +21,8 @@ export default function IframeModal() {
     }
 
     useEffect(() => {
+        if (!visible) return
+
         const handleMessage = async event => {
             // In the future for better security we can restrict origins here
             // if (!event.origin.includes('alldone.team')) return
@@ -83,7 +80,9 @@ export default function IframeModal() {
 
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [loggedUser, dispatch])
+    }, [visible, loggedUser, dispatch])
+
+    if (!visible) return null
 
     return (
         <View style={localStyles.overlay}>
