@@ -8,22 +8,12 @@ import { setIframeModalData } from '../../../../redux/actions'
 export default function IframeModal() {
     const dispatch = useDispatch()
     const iframeModalData = useSelector(state => state.iframeModalData)
-    const { visible, url } = iframeModalData
+    const { visible, url, name } = iframeModalData
 
     if (!visible) return null
 
     const closeModal = () => {
-        dispatch(setIframeModalData(false, ''))
-    }
-
-    // Extract domain from URL for display
-    const getDomainFromUrl = urlStr => {
-        try {
-            const urlObj = new URL(urlStr)
-            return urlObj.hostname
-        } catch {
-            return urlStr
-        }
+        dispatch(setIframeModalData(false, '', ''))
     }
 
     return (
@@ -33,7 +23,7 @@ export default function IframeModal() {
                     <View style={localStyles.headerLeft}>
                         <Icon name="monitor" size={18} color={colors.Text03} />
                         <Text style={localStyles.headerTitle} numberOfLines={1}>
-                            {getDomainFromUrl(url)}
+                            {name || 'Iframe'}
                         </Text>
                     </View>
                     <TouchableOpacity onPress={closeModal} style={localStyles.closeButton}>

@@ -24,6 +24,7 @@ const getOptions = (project, assistantId, tasks, selectedProjectId) => {
                         type: 'Set iframe modal data',
                         visible: true,
                         url: task.link,
+                        name: task.name,
                     })
                 } else if (task.type !== TASK_TYPE_PROMPT) {
                     window.open(task.link, '_blank')

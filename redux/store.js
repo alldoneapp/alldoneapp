@@ -347,7 +347,7 @@ export const initialState = {
     navigationSource: null,
     showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
-    iframeModalData: { visible: false, url: '' },
+    iframeModalData: { visible: false, url: '', name: '' },
 }
 
 const checkIfNeedToJointToProject = initialUrl => {
@@ -802,6 +802,7 @@ export const theReducer = (state = initialState, action) => {
                 iframeModalData: {
                     visible: action.visible,
                     url: action.url,
+                    name: action.name || '',
                 },
             }
         }

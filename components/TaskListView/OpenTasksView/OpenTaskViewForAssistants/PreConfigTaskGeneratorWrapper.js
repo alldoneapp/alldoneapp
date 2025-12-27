@@ -85,6 +85,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
                     type: 'Set iframe modal data',
                     visible: true,
                     url: link,
+                    name: name,
                 })
             } else {
                 window.open(link, '_blank')

@@ -101,6 +101,7 @@ export default function PreConfigTaskOption({
                 type: 'Set iframe modal data',
                 visible: true,
                 url: link,
+                name: name,
             })
         } else {
             closeModal()

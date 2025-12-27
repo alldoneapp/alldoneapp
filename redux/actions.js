@@ -603,11 +603,12 @@ export const setChatNotificationsInProject = (projectId, notifications) => {
     return action
 }
 
-export const setIframeModalData = (visible, url) => {
+export const setIframeModalData = (visible, url, name) => {
     const action = {
         type: 'Set iframe modal data',
         visible,
         url,
+        name,
     }
     return action
 }
