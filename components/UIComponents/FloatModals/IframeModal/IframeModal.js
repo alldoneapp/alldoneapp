@@ -10,11 +10,82 @@ export default function IframeModal() {
     const iframeModalData = useSelector(state => state.iframeModalData)
     const { visible, url, name } = iframeModalData
 
+    const loggedUser = useSelector(state => state.loggedUser)
+
     if (!visible) return null
+
+    // Helper to add query param to URL - Removed by user request
+    // const getUrlWithEmail = (currentUrl) => ...
+
+    const finalUrl = url
 
     const closeModal = () => {
         dispatch(setIframeModalData(false, '', ''))
     }
+
+    React.useEffect(() => {
+        const handleMessage = async event => {
+            // In the future for better security we can restrict origins here
+            // if (!event.origin.includes('alldone.team')) return
+
+            const { type, amount } = event.data
+
+            if (type === 'GET_USER_DATA') {
+                event.source.postMessage(
+                    {
+                        type: 'USER_DATA',
+                        user: {
+                            email: loggedUser?.email,
+                            name: loggedUser?.userName || loggedUser?.name,
+                            gold: loggedUser?.gold || 0,
+                        },
+                    },
+                    event.origin
+                )
+            }
+
+            if (type === 'DEDUCT_GOLD') {
+                try {
+                    // Lazy load firebase functions to ensure it's initialized
+                    const { firebase } = require('@firebase/app')
+                    require('@firebase/functions')
+
+                    const deductGoldFn = firebase.functions().httpsCallable('deductGoldSecondGen')
+                    const result = await deductGoldFn({ gold: amount })
+
+                    if (result.data.success) {
+                        event.source.postMessage(
+                            {
+                                type: 'DEDUCT_GOLD_SUCCESS',
+                                newBalance: result.data.newBalance,
+                            },
+                            event.origin
+                        )
+                    } else {
+                        event.source.postMessage(
+                            {
+                                type: 'DEDUCT_GOLD_ERROR',
+                                error: result.data.message,
+                            },
+                            event.origin
+                        )
+                    }
+                } catch (error) {
+                    console.error('Error deducting gold:', error)
+                    event.source.postMessage(
+                        {
+                            type: 'DEDUCT_GOLD_ERROR',
+                            error: error.message,
+                        },
+                        event.origin
+                    )
+                }
+            }
+        }
+
+        window.addEventListener('message', handleMessage)
+        return () => window.removeEventListener('message', handleMessage)
+    }, [loggedUser, dispatch])
 
     return (
         <View style={localStyles.overlay}>
@@ -32,7 +103,7 @@ export default function IframeModal() {
                 </View>
                 <View style={localStyles.content}>
                     <iframe
-                        src={url}
+                        src={finalUrl}
                         style={{
                             width: '100%',
                             height: '100%',

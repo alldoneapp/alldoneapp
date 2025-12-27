@@ -1160,6 +1160,25 @@ exports.earnGoldSecondGen = onCall(
     }
 )
 
+exports.deductGoldSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { deductGold } = require('./Gold/goldHelper')
+            const { gold } = data
+            return await deductGold(auth.uid, gold)
+        } else {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
 // "Every Day at 00:00."
 exports.resetDailyGoldLimitSecondGen = onSchedule(
     {

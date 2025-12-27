@@ -145,9 +145,28 @@ const resetDailyGoldLimit = async () => {
     await Promise.all(promises)
 }
 
+const deductGold = async (userId, gold) => {
+    const user = await getUserData(userId)
+    if (user) {
+        const { gold: currentGold } = user
+        if (currentGold >= gold) {
+            await adGoldToUser(userId, -gold)
+            await logEvent(userId, 'spend_gold', {
+                amount: gold,
+                userId: userId,
+            })
+            return { success: true, newBalance: currentGold - gold }
+        } else {
+            return { success: false, message: 'Insufficient gold', currentGold }
+        }
+    }
+    return { success: false, message: 'User not found' }
+}
+
 module.exports = {
     addMonthlyGoldToUser,
     addMonthlyGoldToAllUsers,
     earnGold,
     resetDailyGoldLimit,
+    deductGold,
 }
