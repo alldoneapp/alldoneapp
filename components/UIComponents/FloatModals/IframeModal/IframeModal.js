@@ -1,6 +1,8 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
+import { firebase } from '@firebase/app'
+import '@firebase/functions'
 import Icon from '../../../Icon'
 import { colors } from '../../../styles/global'
 import { setIframeModalData } from '../../../../redux/actions'
@@ -23,7 +25,7 @@ export default function IframeModal() {
         dispatch(setIframeModalData(false, '', ''))
     }
 
-    React.useEffect(() => {
+    useEffect(() => {
         const handleMessage = async event => {
             // In the future for better security we can restrict origins here
             // if (!event.origin.includes('alldone.team')) return
@@ -46,10 +48,6 @@ export default function IframeModal() {
 
             if (type === 'DEDUCT_GOLD') {
                 try {
-                    // Lazy load firebase functions to ensure it's initialized
-                    const { firebase } = require('@firebase/app')
-                    require('@firebase/functions')
-
                     const deductGoldFn = firebase.functions().httpsCallable('deductGoldSecondGen')
                     const result = await deductGoldFn({ gold: amount })
 
