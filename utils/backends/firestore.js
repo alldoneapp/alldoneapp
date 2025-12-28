@@ -1184,6 +1184,12 @@ export async function createDefaultProject(user) {
     project.creatorId = user.uid
     project.userIds = [user.uid]
     await uploadNewProject(project, user, [user.uid], true, false)
+
+    const workProject = ProjectHelper.getNewDefaultProject()
+    workProject.name = 'Work'
+    workProject.creatorId = user.uid
+    workProject.userIds = [user.uid]
+    await uploadNewProject(workProject, user, [user.uid], false, false)
 }
 
 const reloadApp = () => {

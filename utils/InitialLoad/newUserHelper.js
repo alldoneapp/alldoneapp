@@ -12,6 +12,7 @@ import {
     unwatch,
     getDb,
     getFirestoreTime,
+    uploadNewProject,
 } from '../backends/firestore'
 import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
 import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
@@ -271,6 +272,11 @@ export const processNewUser = async firebaseUser => {
 
     createUploadNewUserFeeds(mappedUser, userId, project.id, project, task.id, task)
     await uploadNewUser(userId, user, project, task, workstream, assistant)
+
+    // Create "Work" project
+    const workProject = generateInitialProject(userId, assistant?.uid)
+    workProject.name = 'Work'
+    await uploadNewProject(workProject, user, [userId], false, false)
 
     if (assistant && globalAssistant) {
         // Copy pre-configured tasks from the global assistant to the new assistant
