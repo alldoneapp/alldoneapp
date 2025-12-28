@@ -45,7 +45,7 @@ export default function IframeModal() {
 
             if (type === 'DEDUCT_GOLD') {
                 try {
-                    const deductGoldFn = firebase.functions().httpsCallable('deductGoldSecondGen')
+                    const deductGoldFn = firebase.app().functions('europe-west1').httpsCallable('deductGoldSecondGen')
                     const result = await deductGoldFn({ gold: amount })
 
                     if (result.data.success) {
