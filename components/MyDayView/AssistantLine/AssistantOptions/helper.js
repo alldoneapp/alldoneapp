@@ -2,7 +2,11 @@ import { translate } from '../../../../i18n/TranslationService'
 import { TASK_TYPE_PROMPT, TASK_TYPE_IFRAME } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { shrinkTagText } from '../../../../functions/Utils/parseTextUtils'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
-import { getAssistant, getAssistantInProject } from '../../../AdminPanel/Assistants/assistantsHelper'
+import {
+    getAssistant,
+    getAssistantInProject,
+    getAssistantProjectId,
+} from '../../../AdminPanel/Assistants/assistantsHelper'
 import ProjectHelper, { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
@@ -158,13 +162,9 @@ export const getAssistantLineData = (selectedProject, defaultAssistantId, defaul
     const assistant = getAssistant(assistantId)
 
     // Determine the actual project where the assistant lives
-    // If selected project has no assistantId, it's using the default project's assistant
-    const isUsingDefaultProjectAssistant =
-        selectedProject && !selectedProject.assistantId && selectedProject.id !== defaultProjectId && defaultProjectId
-    const assistantProject = isUsingDefaultProjectAssistant
-        ? ProjectHelper.getProjectById(defaultProjectId)
-        : selectedProject || ProjectHelper.getProjectById(defaultProjectId)
-    const assistantProjectId = assistantProject ? assistantProject.id : ''
+    const currentProjectId = selectedProject ? selectedProject.id : defaultProjectId
+    const assistantProjectId = getAssistantProjectId(assistantId, currentProjectId)
+    const assistantProject = ProjectHelper.getProjectById(assistantProjectId)
 
     return { assistant, assistantProject, assistantProjectId }
 }
