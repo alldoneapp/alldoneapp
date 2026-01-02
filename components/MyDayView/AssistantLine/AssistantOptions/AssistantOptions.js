@@ -116,7 +116,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         }
     }, [assistant, assistantProject, message])
 
-    if (!tasks || !assistant || !assistant.uid) {
+    if (!tasks || !assistant || !assistant.uid || !assistantProject) {
         return null
     }
 
