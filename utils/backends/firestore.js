@@ -44,6 +44,7 @@ import {
     GOOGLE_ADS_GUIDE_CONVERSION_TAG,
 } from 'react-native-dotenv'
 // END-ENVS
+export { GOOGLE_ANALYTICS_KEY }
 import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 

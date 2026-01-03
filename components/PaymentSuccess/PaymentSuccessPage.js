@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import { GOOGLE_ANALYTICS_KEY } from 'react-native-dotenv'
 import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, TouchableOpacity } from 'react-native'
 
 import Icon from '../Icon'
@@ -8,7 +7,7 @@ import URLSystem, { URL_PAYMENT_SUCCESS } from '../../URLSystem/URLSystem'
 import Colors from '../../Themes/Colors'
 import { useDispatch } from 'react-redux'
 import { setNavigationRoute } from '../../redux/actions'
-import { logEvent } from '../../utils/backends/firestore'
+import { logEvent, GOOGLE_ANALYTICS_KEY } from '../../utils/backends/firestore'
 
 export default function PaymentSuccessPage() {
     const dispatch = useDispatch()
