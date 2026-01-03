@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { GOOGLE_ANALYTICS_KEY } from 'react-native-dotenv'
 import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, TouchableOpacity } from 'react-native'
 
 import Icon from '../Icon'
@@ -27,12 +28,12 @@ export default function PaymentSuccessPage() {
             // Track the conversion event in Google Analytics with the specific measurement ID
             if (typeof gtag !== 'undefined') {
                 // Send conversion event to the specific Google Analytics property
-                gtag('config', 'G-HR3PWMHKQQ', {
+                gtag('config', GOOGLE_ANALYTICS_KEY, {
                     send_page_view: false,
                 })
 
                 gtag('event', 'conversion', {
-                    send_to: 'G-HR3PWMHKQQ',
+                    send_to: GOOGLE_ANALYTICS_KEY,
                     event_category: 'trial_conversion',
                     event_label: planType || 'unknown',
                     value: planType === 'yearly' ? 1 : 0.5, // Higher value for yearly plans
@@ -44,7 +45,7 @@ export default function PaymentSuccessPage() {
                 })
 
                 console.log('📊 Google Analytics conversion tracked:', {
-                    measurement_id: 'G-HR3PWMHKQQ',
+                    measurement_id: GOOGLE_ANALYTICS_KEY,
                     event: 'conversion',
                     plan_type: planType,
                     tracking_id_preview: trackingId?.substring(0, 20) + '...',
