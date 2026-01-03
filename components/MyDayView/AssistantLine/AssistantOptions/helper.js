@@ -164,18 +164,18 @@ export const getAssistantLineData = (selectedProject, defaultAssistantId, defaul
     // Determine the actual project where the assistant lives
     const currentProjectId = selectedProject ? selectedProject.id : defaultProjectId
     const assistantProjectId = getAssistantProjectId(assistantId, currentProjectId)
-    const assistantProject =
-        ProjectHelper.getProjectById(assistantProjectId) ||
-        (selectedProject && selectedProject.id === assistantProjectId ? selectedProject : null)
 
-    console.log('🔍 [getAssistantLineData] Result:', {
-        selectedProjectId: selectedProject?.id,
-        defaultAssistantId,
-        resolvedAssistantId: assistantId,
-        foundAssistant: !!assistant,
-        assistantProjectId,
-        foundAssistantProject: !!assistantProject,
-    })
+    // Try to get the project where the assistant is defined
+    let assistantProject = ProjectHelper.getProjectById(assistantProjectId)
+
+    // Fallback: If the project is not found (e.g. it's 'globalProject'), use the current project context
+    if (!assistantProject) {
+        if (selectedProject) {
+            assistantProject = selectedProject
+        } else if (defaultProjectId) {
+            assistantProject = ProjectHelper.getProjectById(defaultProjectId)
+        }
+    }
 
     return { assistant, assistantProject, assistantProjectId }
 }
