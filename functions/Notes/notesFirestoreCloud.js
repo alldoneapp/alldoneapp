@@ -70,9 +70,27 @@ const updateNoteLastCommentData = async (projectId, noteId, lastComment, lastCom
     }
 }
 
+const resetNoteLastCommentData = async (projectId, noteId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`noteItems/${projectId}/notes/${noteId}`)
+            const noteDoc = await transaction.get(ref)
+            if (noteDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.lastComment`]: null,
+                    [`commentsData.lastCommentType`]: null,
+                    [`commentsData.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
+
 module.exports = {
     deleteNote,
     getNoteByParentId,
     updateNoteEditionData,
     updateNoteLastCommentData,
+    resetNoteLastCommentData,
 }

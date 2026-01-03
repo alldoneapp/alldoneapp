@@ -318,6 +318,21 @@ export const updateNoteLastCommentData = async (projectId, noteId, lastComment, 
         })
 }
 
+export const resetNoteLastCommentData = async (projectId, noteId) => {
+    const ref = getDb().doc(`noteItems/${projectId}/notes/${noteId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData.amount > 0) {
+            ref.update({
+                [`commentsData.lastComment`]: null,
+                [`commentsData.lastCommentType`]: null,
+                [`commentsData.amount`]: 0,
+            })
+        }
+    }
+}
+
 export function increaseNoteViews(projectId, noteId) {
     getDb()
         .doc(`noteItems/${projectId}/notes/${noteId}`)

@@ -27,7 +27,7 @@ import BotMessagePlaceholder from './BotMessagePlaceholder'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { getDvChatTabLink } from '../../../../utils/LinkingHelper'
-import { markChatMessagesAsRead } from '../../../../utils/backends/Chats/chatsComments'
+import { markChatMessagesAsRead, repairChatMetadata } from '../../../../utils/backends/Chats/chatsComments'
 
 export default function RichCommentModal({
     projectId,
@@ -100,6 +100,12 @@ export default function RichCommentModal({
             closeModal()
         }
     }
+
+    useEffect(() => {
+        if (messages.loaded && messages.length === 0) {
+            repairChatMetadata(projectId, objectId, objectType)
+        }
+    }, [messages, messages.loaded])
 
     useEffect(() => {
         setAssistantId(externalAssistantId)

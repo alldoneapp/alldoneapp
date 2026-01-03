@@ -29,7 +29,25 @@ const updateSkillLastCommentData = async (projectId, skillId, lastComment, lastC
     }
 }
 
+const resetSkillLastCommentData = async (projectId, skillId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`skills/${projectId}/items/${skillId}`)
+            const skillDoc = await transaction.get(ref)
+            if (skillDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.lastComment`]: null,
+                    [`commentsData.lastCommentType`]: null,
+                    [`commentsData.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
+
 module.exports = {
     updateSkillEditionData,
     updateSkillLastCommentData,
+    resetSkillLastCommentData,
 }

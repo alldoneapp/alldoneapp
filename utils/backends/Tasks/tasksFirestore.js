@@ -1357,6 +1357,21 @@ export const updateTaskLastCommentData = async (projectId, taskId, lastComment, 
         })
 }
 
+export const resetTaskLastCommentData = async (projectId, taskId) => {
+    const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData.amount > 0) {
+            ref.update({
+                [`commentsData.lastComment`]: null,
+                [`commentsData.lastCommentType`]: null,
+                [`commentsData.amount`]: 0,
+            })
+        }
+    }
+}
+
 export async function setTaskAssignee(
     projectId,
     taskId,

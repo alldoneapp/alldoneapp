@@ -81,7 +81,9 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
         if (showSpinner) dispatch(resetLoadingData())
     }
 
-    return messages
+    const messagesWithLoaded = [...messages]
+    messagesWithLoaded.loaded = !firstFetch
+    return messagesWithLoaded
 }
 
 export default useGetMessages

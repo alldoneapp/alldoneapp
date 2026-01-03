@@ -73,11 +73,29 @@ const updateContactLastCommentData = async (projectId, contactId, lastComment, l
     }
 }
 
+const resetContactLastCommentData = async (projectId, contactId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`projectsContacts/${projectId}/contacts/${contactId}`)
+            const contactDoc = await transaction.get(ref)
+            if (contactDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.lastComment`]: null,
+                    [`commentsData.lastCommentType`]: null,
+                    [`commentsData.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
+
 module.exports = {
     getContactData,
     getProjectContacts,
     uploadNewContact,
     updateContactEditionData,
     updateContactLastCommentData,
+    resetContactLastCommentData,
     updateContactOpenTasksAmount,
 }

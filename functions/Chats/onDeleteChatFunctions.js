@@ -5,7 +5,10 @@ const { CHATS_OBJECTS_TYPE, deleteRecord } = require('../AlgoliaGlobalSearchHelp
 const { removeObjectFollowData } = require('../Followers/followersFirestoreCloud')
 const { deleteNote } = require('../Notes/notesFirestoreCloud')
 const { recursiveDeleteHelper } = require('../Utils/HelperFunctionsCloud')
-const { updateEditonDataOfChatParentObject } = require('../Utils/LastObjectEditionHelper')
+const {
+    updateEditonDataOfChatParentObject,
+    resetLastCommentDataOfChatParentObject,
+} = require('../Utils/LastObjectEditionHelper')
 const { deleteChatNotifications } = require('./chatsFirestoreCloud')
 
 const removeNewChatNotifications = async (projectId, chatId) => {
@@ -40,6 +43,7 @@ const onDeleteChat = async (projectId, chat) => {
         promises.push(deleteRecord(chatId, projectId, CHATS_OBJECTS_TYPE))
     } else {
         promises.push(updateEditonDataOfChatParentObject(projectId, chat.id, chat.type, chat.lastEditorId))
+        promises.push(resetLastCommentDataOfChatParentObject(projectId, chat.id, chat.type))
     }
     promises.push(removeNewChatNotifications(projectId, chatId))
     await Promise.all(promises)

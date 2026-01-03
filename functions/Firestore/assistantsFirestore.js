@@ -134,7 +134,22 @@ const updateAssistantLastCommentData = async (projectId, assistantId, lastCommen
     }
 }
 
-//OTHERS FUNCTIONS
+const resetAssistantLastCommentData = async (projectId, assistantId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`assistants/${projectId}/items/${assistantId}`)
+            const assistantDoc = await transaction.get(ref)
+            if (assistantDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.lastComment`]: null,
+                    [`commentsData.lastCommentType`]: null,
+                    [`commentsData.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
 
 async function addGlobalAssistantToAllProject(appAdmin, assistantId) {
     const projectDocs = (await appAdmin.firestore().collection(`projects`).get()).docs
@@ -167,4 +182,5 @@ module.exports = {
     getProjectAssistants,
     updateAssistantEditionData,
     updateAssistantLastCommentData,
+    resetAssistantLastCommentData,
 }

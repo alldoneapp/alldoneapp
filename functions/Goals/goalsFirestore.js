@@ -225,6 +225,23 @@ const updateGoalLastCommentData = async (projectId, goalId, lastComment, lastCom
     }
 }
 
+const resetGoalLastCommentData = async (projectId, goalId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`goals/${projectId}/items/${goalId}`)
+            const goalDoc = await transaction.get(ref)
+            if (goalDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.lastComment`]: null,
+                    [`commentsData.lastCommentType`]: null,
+                    [`commentsData.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
+
 module.exports = {
     getGoalData,
     getAllGoalsAssignedToUser,
@@ -236,4 +253,5 @@ module.exports = {
     checkIfDoneMilestoneIsEmpty,
     updateGoalEditionData,
     updateGoalLastCommentData,
+    resetGoalLastCommentData,
 }

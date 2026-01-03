@@ -74,11 +74,29 @@ const updateTaskLastCommentData = async (projectId, taskId, lastComment, lastCom
     }
 }
 
+const resetTaskLastCommentData = async (projectId, taskId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
+            const taskDoc = await transaction.get(ref)
+            if (taskDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.lastComment`]: null,
+                    [`commentsData.lastCommentType`]: null,
+                    [`commentsData.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
+
 module.exports = {
     deleteTask,
     deleteTasksFromAssignee,
     uploadTask,
     updateTaskEditionData,
     updateTaskLastCommentData,
+    resetTaskLastCommentData,
     deleteTaskMetaData,
 }

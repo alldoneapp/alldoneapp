@@ -135,6 +135,23 @@ const updateUserLastCommentData = async (projectId, userId, lastComment, lastCom
     }
 }
 
+const resetUserLastCommentData = async (projectId, userId) => {
+    try {
+        await admin.firestore().runTransaction(async transaction => {
+            const ref = admin.firestore().doc(`users/${userId}`)
+            const userDoc = await transaction.get(ref)
+            if (userDoc.exists)
+                transaction.update(ref, {
+                    [`commentsData.${projectId}.lastComment`]: null,
+                    [`commentsData.${projectId}.lastCommentType`]: null,
+                    [`commentsData.${projectId}.amount`]: 0,
+                })
+        })
+    } catch (e) {
+        console.log('Transaction failure:', e)
+    }
+}
+
 module.exports = {
     updateUserDailyGold,
     getUserData,
@@ -146,6 +163,7 @@ module.exports = {
     getUsersByIds,
     updateUserEditionData,
     updateUserLastCommentData,
+    resetUserLastCommentData,
     getLastActiveUsers,
     removeUserFcmTokens,
     getUserWithTaskActive,

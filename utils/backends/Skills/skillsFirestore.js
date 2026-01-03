@@ -369,6 +369,21 @@ export const updateSkillLastCommentData = async (projectId, skillId, lastComment
         })
 }
 
+export const resetSkillLastCommentData = async (projectId, skillId) => {
+    const ref = getDb().doc(`skills/${projectId}/items/${skillId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData.amount > 0) {
+            ref.update({
+                [`commentsData.lastComment`]: null,
+                [`commentsData.lastCommentType`]: null,
+                [`commentsData.amount`]: 0,
+            })
+        }
+    }
+}
+
 //OTHERS FUNCTIONS
 
 export function watchDefaultSkillsPrivacy(projectId, userId, watcherKey) {

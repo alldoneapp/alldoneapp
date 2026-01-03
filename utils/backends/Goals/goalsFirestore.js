@@ -867,6 +867,21 @@ export const updateGoalLastCommentData = async (projectId, goalId, lastComment, 
         })
 }
 
+export const resetGoalLastCommentData = async (projectId, goalId) => {
+    const ref = getDb().doc(`goals/${projectId}/items/${goalId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData.amount > 0) {
+            ref.update({
+                [`commentsData.lastComment`]: null,
+                [`commentsData.lastCommentType`]: null,
+                [`commentsData.amount`]: 0,
+            })
+        }
+    }
+}
+
 export async function updateGoalProgress(projectId, progress, goal) {
     const { loggedUser } = store.getState()
 

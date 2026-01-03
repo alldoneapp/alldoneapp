@@ -493,6 +493,21 @@ export const updateUserLastCommentData = async (projectId, userId, lastComment, 
         })
 }
 
+export const resetUserLastCommentData = async (projectId, userId) => {
+    const ref = getDb().doc(`users/${userId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData[projectId] && data.commentsData[projectId].amount > 0) {
+            ref.update({
+                [`commentsData.${projectId}.lastComment`]: null,
+                [`commentsData.${projectId}.lastCommentType`]: null,
+                [`commentsData.${projectId}.amount`]: 0,
+            })
+        }
+    }
+}
+
 export function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey, goalId, goalOwnerId) {
     updateUserData(
         goalOwnerId,

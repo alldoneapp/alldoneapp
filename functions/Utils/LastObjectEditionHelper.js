@@ -1,11 +1,11 @@
 const { updateChatEditionData } = require('../Chats/chatsFirestoreCloud')
-const { updateGoalEditionData } = require('../Goals/goalsFirestore')
-const { updateNoteEditionData } = require('../Notes/notesFirestoreCloud')
-const { updateSkillEditionData } = require('../Skills/skillsFirestore')
-const { updateTaskEditionData } = require('../Tasks/tasksFirestoreCloud')
-const { updateUserEditionData } = require('../Users/usersFirestore')
-const { updateAssistantEditionData } = require('../Firestore/assistantsFirestore')
-const { updateContactEditionData } = require('../Firestore/contactsFirestore')
+const { updateGoalEditionData, resetGoalLastCommentData } = require('../Goals/goalsFirestore')
+const { updateNoteEditionData, resetNoteLastCommentData } = require('../Notes/notesFirestoreCloud')
+const { updateSkillEditionData, resetSkillLastCommentData } = require('../Skills/skillsFirestore')
+const { updateTaskEditionData, resetTaskLastCommentData } = require('../Tasks/tasksFirestoreCloud')
+const { updateUserEditionData, resetUserLastCommentData } = require('../Users/usersFirestore')
+const { updateAssistantEditionData, resetAssistantLastCommentData } = require('../Firestore/assistantsFirestore')
+const { updateContactEditionData, resetContactLastCommentData } = require('../Firestore/contactsFirestore')
 
 const updateEditonDataOfNoteParentObject = async (projectId, objectId, type, editorId) => {
     if (type === 'topics') {
@@ -44,7 +44,27 @@ const updateEditonDataOfChatParentObject = async (projectId, objectId, type, edi
     }
 }
 
+const resetLastCommentDataOfChatParentObject = async (projectId, objectId, type) => {
+    if (type === 'assistants') {
+        await resetAssistantLastCommentData(projectId, objectId)
+    } else if (type === 'contacts') {
+        const promises = []
+        promises.push(resetContactLastCommentData(projectId, objectId))
+        promises.push(resetUserLastCommentData(projectId, objectId))
+        await Promise.all(promises)
+    } else if (type === 'skills') {
+        await resetSkillLastCommentData(projectId, objectId)
+    } else if (type === 'tasks') {
+        await resetTaskLastCommentData(projectId, objectId)
+    } else if (type === 'goals') {
+        await resetGoalLastCommentData(projectId, objectId)
+    } else if (type === 'notes') {
+        await resetNoteLastCommentData(projectId, objectId)
+    }
+}
+
 module.exports = {
     updateEditonDataOfNoteParentObject,
     updateEditonDataOfChatParentObject,
+    resetLastCommentDataOfChatParentObject,
 }

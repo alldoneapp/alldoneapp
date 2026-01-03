@@ -183,6 +183,21 @@ export const updateContactLastCommentData = async (projectId, contactId, lastCom
         })
 }
 
+export const resetContactLastCommentData = async (projectId, contactId) => {
+    const ref = getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData.amount > 0) {
+            ref.update({
+                [`commentsData.lastComment`]: null,
+                [`commentsData.lastCommentType`]: null,
+                [`commentsData.amount`]: 0,
+            })
+        }
+    }
+}
+
 export async function setProjectContactName(projectId, contact, contactId, newName, oldName) {
     let batch = new BatchWrapper(getDb())
     updateContactData(projectId, contactId, { displayName: newName }, batch)

@@ -6,9 +6,19 @@ import TasksHelper, {
     GENERIC_COMMENT_TYPE,
     MAX_GOLD_TO_EARN_BY_COMMENT,
 } from '../../../components/TaskListView/Utils/TasksHelper'
-import { updateAssistantLastCommentData } from '../Assistants/assistantsFirestore'
-import { getGoalData, setGoalAssistant, updateGoalLastCommentData } from '../Goals/goalsFirestore'
-import { getSkillData, setSkillAssistant, updateSkillLastCommentData } from '../Skills/skillsFirestore'
+import { updateAssistantLastCommentData, resetAssistantLastCommentData } from '../Assistants/assistantsFirestore'
+import {
+    getGoalData,
+    setGoalAssistant,
+    updateGoalLastCommentData,
+    resetGoalLastCommentData,
+} from '../Goals/goalsFirestore'
+import {
+    getSkillData,
+    setSkillAssistant,
+    updateSkillLastCommentData,
+    resetSkillLastCommentData,
+} from '../Skills/skillsFirestore'
 import {
     addFollowerWithoutFeeds,
     earnGold,
@@ -24,8 +34,13 @@ import {
     tryAddFollower,
 } from '../firestore'
 import { FEED_PUBLIC_FOR_ALL, FOLLOWED_TAB } from '../../../components/Feeds/Utils/FeedsConstants'
-import { setNoteAssistant, updateNoteLastCommentData } from '../Notes/notesFirestore'
-import { createGenericTaskWhenMention, setTaskAssistant, updateTaskLastCommentData } from '../Tasks/tasksFirestore'
+import { setNoteAssistant, updateNoteLastCommentData, resetNoteLastCommentData } from '../Notes/notesFirestore'
+import {
+    createGenericTaskWhenMention,
+    setTaskAssistant,
+    updateTaskLastCommentData,
+    resetTaskLastCommentData,
+} from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
@@ -37,8 +52,12 @@ import {
     getAssistantInProject,
     getAssistantInProjectObject,
 } from '../../../components/AdminPanel/Assistants/assistantsHelper'
-import { setUserAssistant, updateUserLastCommentData } from '../Users/usersFirestore'
-import { setContactAssistant, updateContactLastCommentData } from '../Contacts/contactsFirestore'
+import { setUserAssistant, updateUserLastCommentData, resetUserLastCommentData } from '../Users/usersFirestore'
+import {
+    setContactAssistant,
+    updateContactLastCommentData,
+    resetContactLastCommentData,
+} from '../Contacts/contactsFirestore'
 import { getLinkedParentChatUrl } from '../../../components/ChatsView/Utils/ChatHelper'
 import { PROJECT_TYPE_GUIDE } from '../../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -756,6 +775,26 @@ const updateLastCommentDataOfChatParentObject = async (projectId, objectId, type
         await updateGoalLastCommentData(projectId, objectId, cleanedComment, commentType)
     } else if (type === 'notes') {
         await updateNoteLastCommentData(projectId, objectId, cleanedComment, commentType)
+    }
+}
+
+export const repairChatMetadata = async (projectId, objectId, type) => {
+    if (type === 'assistants') {
+        await resetAssistantLastCommentData(projectId, objectId)
+    } else if (type === 'contacts') {
+        if (TasksHelper.getUserInProject(projectId, objectId)) {
+            resetUserLastCommentData(projectId, objectId)
+        } else if (TasksHelper.getContactInProject(projectId, objectId)) {
+            resetContactLastCommentData(projectId, objectId)
+        }
+    } else if (type === 'skills') {
+        await resetSkillLastCommentData(projectId, objectId)
+    } else if (type === 'tasks') {
+        await resetTaskLastCommentData(projectId, objectId)
+    } else if (type === 'goals') {
+        await resetGoalLastCommentData(projectId, objectId)
+    } else if (type === 'notes') {
+        await resetNoteLastCommentData(projectId, objectId)
     }
 }
 

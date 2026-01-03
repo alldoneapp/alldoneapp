@@ -619,6 +619,21 @@ export const updateAssistantLastCommentData = async (projectId, assistantId, las
         })
 }
 
+export const resetAssistantLastCommentData = async (projectId, assistantId) => {
+    const ref = getDb().doc(`assistants/${projectId}/items/${assistantId}`)
+    const doc = await ref.get()
+    if (doc.exists) {
+        const data = doc.data()
+        if (data.commentsData && data.commentsData.amount > 0) {
+            ref.update({
+                [`commentsData.lastComment`]: null,
+                [`commentsData.lastCommentType`]: null,
+                [`commentsData.amount`]: 0,
+            })
+        }
+    }
+}
+
 export function setAssistantLastVisitedBoardDate(
     projectId,
     assistant,
