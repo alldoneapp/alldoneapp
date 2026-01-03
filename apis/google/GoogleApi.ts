@@ -15,7 +15,13 @@ class GoogleApi {
     authCallback: any = null
     gmailAuthCallback: any = null
 
+    private initPromise: Promise<void>
+    private resolveInit: ((value: void | PromiseLike<void>) => void) | null = null
+
     constructor() {
+        this.initPromise = new Promise(resolve => {
+            this.resolveInit = resolve
+        })
         try {
             this.updateSigninStatus = this.updateSigninStatus.bind(this)
             this.initClient = this.initClient.bind(this)
@@ -130,9 +136,11 @@ class GoogleApi {
                 if (this.onLoadCallback) {
                     this.onLoadCallback()
                 }
+                if (this.resolveInit) this.resolveInit()
             })
             .catch((e: any) => {
                 console.log(e)
+                if (this.resolveInit) this.resolveInit()
             })
     }
 
@@ -180,6 +188,10 @@ class GoogleApi {
                 console.error('Error loading Google API script:', error)
                 console.error('Google Calendar and Gmail integrations will not be available')
             })
+    }
+
+    private async ensureInitialized() {
+        return this.initPromise
     }
 
     /**
@@ -307,8 +319,9 @@ class GoogleApi {
      * @param {string} calendarId to see by default use the calendar attribute
      * @returns {any}
      */
-    public listUpcomingEvents(maxResults: number, calendarId: string = this.calendar): any {
-        if (this.gapi) {
+    public async listUpcomingEvents(maxResults: number, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.calendar) {
             return this.gapi.client.calendar.events.list({
                 calendarId: calendarId,
                 timeMin: new Date().toISOString(),
@@ -329,7 +342,8 @@ class GoogleApi {
      * @param {string} calendarId to see by default use the calendar attribute
      * @returns {any}
      */
-    public listTodayEvents(maxResults: number, calendarId: string = this.calendar): any {
+    public async listTodayEvents(maxResults: number, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
         const date = new Date()
         const tomorrow = new Date()
         tomorrow.setDate(date.getDate() + 1)
@@ -363,8 +377,9 @@ class GoogleApi {
      * @param {string} calendarId to see by default use the calendar attribute
      * @returns {any}
      */
-    public listEvents(queryOptions: object, calendarId: string = this.calendar): any {
-        if (this.gapi) {
+    public async listEvents(queryOptions: object, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.calendar) {
             return this.gapi.client.calendar.events.list({
                 calendarId,
                 ...queryOptions,
@@ -376,7 +391,8 @@ class GoogleApi {
     }
 
     public async listGmail(): Promise<object> {
-        if (this.gapi) {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.gmail) {
             try {
                 const res = await this.gapi.client.gmail.users.labels.get({
                     userId: 'me',
@@ -433,8 +449,9 @@ class GoogleApi {
      * @param {object} event with start and end dateTime
      * @returns {any}
      */
-    public createEvent(event: object, calendarId: string = this.calendar): any {
-        if (this.gapi) {
+    public async createEvent(event: object, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.calendar) {
             return this.gapi.client.calendar.events.insert({
                 calendarId: calendarId,
                 resource: event,
@@ -453,8 +470,9 @@ class GoogleApi {
      * @param {string} calendarId where the event is.
      * @returns {any} Promise resolved when the event is deleted.
      */
-    deleteEvent(eventId: string, calendarId: string = this.calendar): any {
-        if (this.gapi) {
+    async deleteEvent(eventId: string, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.calendar) {
             return this.gapi.client.calendar.events.delete({
                 calendarId: calendarId,
                 eventId: eventId,
@@ -492,8 +510,9 @@ class GoogleApi {
      * @param {object} event with details to update, e.g. summary
      * @returns {any}
      */
-    updateEvent(event: object, eventId: string, calendarId: string = this.calendar): any {
-        if (this.gapi) {
+    async updateEvent(event: object, eventId: string, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.calendar) {
             return this.gapi.client.calendar.events.patch({
                 calendarId: calendarId,
                 eventId: eventId,
@@ -511,8 +530,9 @@ class GoogleApi {
      * @param {string} eventId specifies individual event
      * @returns {any}
      */
-    getEvent(eventId: string, calendarId: string = this.calendar): any {
-        if (this.gapi) {
+    async getEvent(eventId: string, calendarId: string = this.calendar): Promise<any> {
+        await this.ensureInitialized()
+        if (this.gapi?.client?.calendar) {
             return this.gapi.client.calendar.events.get({
                 calendarId: calendarId,
                 eventId: eventId,
