@@ -46,6 +46,10 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                 watcherKey,
                 setTasks
             )
+            console.log('🔍 [AssistantOptions] Watching assistant tasks:', {
+                projectId: isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : assistantProjectId,
+                assistantId: assistant.uid,
+            })
             return () => {
                 unwatch(watcherKey)
                 dispatch(stopLoadingData())
@@ -117,6 +121,13 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     }, [assistant, assistantProject, message])
 
     if (!tasks || !assistant || !assistant.uid || !assistantProject) {
+        console.warn('⚠️ [AssistantOptions] Missing required data, returning null:', {
+            hasTasks: !!tasks,
+            hasAssistant: !!assistant,
+            assistantId: assistant?.uid,
+            hasAssistantProject: !!assistantProject,
+            assistantProjectId: assistantProject?.id,
+        })
         return null
     }
 

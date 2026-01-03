@@ -168,5 +168,14 @@ export const getAssistantLineData = (selectedProject, defaultAssistantId, defaul
         ProjectHelper.getProjectById(assistantProjectId) ||
         (selectedProject && selectedProject.id === assistantProjectId ? selectedProject : null)
 
+    console.log('🔍 [getAssistantLineData] Result:', {
+        selectedProjectId: selectedProject?.id,
+        defaultAssistantId,
+        resolvedAssistantId: assistantId,
+        foundAssistant: !!assistant,
+        assistantProjectId,
+        foundAssistantProject: !!assistantProject,
+    })
+
     return { assistant, assistantProject, assistantProjectId }
 }

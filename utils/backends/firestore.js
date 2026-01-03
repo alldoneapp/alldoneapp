@@ -44,7 +44,8 @@ import {
     GOOGLE_ADS_GUIDE_CONVERSION_TAG,
 } from 'react-native-dotenv'
 // END-ENVS
-export { GOOGLE_ANALYTICS_KEY }
+const correctGoogleAnalyticsKey = GOOGLE_ANALYTICS_KEY === 'G-HR3PWMHKQQ' ? 'G-XJ2QRBHJWL' : GOOGLE_ANALYTICS_KEY
+export { correctGoogleAnalyticsKey as GOOGLE_ANALYTICS_KEY }
 import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 
@@ -360,7 +361,7 @@ const firebaseConfig = {
     storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID,
     appId: GOOGLE_FIREBASE_WEB_APP_ID,
-    measurementId: GOOGLE_ANALYTICS_KEY, // This is for production
+    measurementId: correctGoogleAnalyticsKey, // This is for production
 }
 
 // Helper function to determine if we should use Firebase Functions emulator
