@@ -1,12 +1,17 @@
-const moment = require('moment')
+const moment = require('moment-timezone')
 const admin = require('firebase-admin')
 const { generateTask } = require('../GoogleCalendarTasks/calendarTasks')
 
-const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, email) => {
-    const date = moment.parseZone(currentDate)
+const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, email, timezone) => {
+    // If timezone is provided, parse the date in that timezone
+    // Otherwise fallback to parseZone (which usually keeps the offset in the string if present, or local)
+    const date = timezone ? moment(currentDate).tz(timezone) : moment.parseZone(currentDate)
+
     const day = date.date()
     const month = date.month()
     const year = date.year()
+
+    // We want the start/end of the day in the USER'S timezone
     const min = date.clone().startOf('day').valueOf()
     const max = date.clone().endOf('day').valueOf()
 

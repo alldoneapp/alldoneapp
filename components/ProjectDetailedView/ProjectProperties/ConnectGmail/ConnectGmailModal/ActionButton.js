@@ -17,6 +17,7 @@ import {
 export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const userEmail = useSelector(state => state.loggedUser.email)
+    const timezone = useSelector(state => state.loggedUser.timezone)
     const [isLoading, setIsLoading] = useState(false)
 
     const isConnectedAndSignedIn = isConnected && isSignedIn
@@ -36,6 +37,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
                 uid: loggedUserId,
                 unreadMails: result.threadsTotal,
                 email,
+                timezone,
             })
         } catch (error) {
             console.error('[ConnectGmail] Error loading Gmail data:', error)

@@ -2101,8 +2101,8 @@ exports.createApiEmailTasksSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const { addUnreadMailsTask } = require('./apis/EmailIntegration')
-            const { projectId, date, uid, unreadMails, email } = data
-            await addUnreadMailsTask(projectId, uid, date, unreadMails, email)
+            const { projectId, date, uid, unreadMails, email, timezone } = data
+            await addUnreadMailsTask(projectId, uid, date, unreadMails, email, timezone)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
