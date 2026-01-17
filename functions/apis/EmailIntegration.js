@@ -33,7 +33,7 @@ const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, emai
     console.log(`[addUnreadMailsTask] calculated date (User TZ): ${date.format()}`)
     console.log(`[addUnreadMailsTask] min: ${min} (${moment(min).format()}), max: ${max} (${moment(max).format()})`)
 
-    return Promise.all([
+    const [openEmailTasks, todayEmailTasks] = await Promise.all([
         admin
             .firestore()
             .collection(`items/${projectId}/tasks`)
@@ -49,36 +49,45 @@ const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, emai
             .where('dueDate', '<=', max.valueOf())
             .where('userId', '==', uid)
             .get(),
-    ]).then(snap => {
-        const [openEmailTasks, todayEmailTasks] = snap
-        if (openEmailTasks.empty && todayEmailTasks.empty) {
-            const taskId = `emailTask-${uid}-${year}-${month}-${day}`
-            admin
-                .firestore()
-                .doc(`items/${projectId}/tasks/${taskId}`)
-                .set(
-                    generateTask(
-                        {
-                            isForEmail: true,
-                            gmailData: { email, unreadMails },
-                            name: 'Emails in inbox',
-                            extendedName: 'Emails in inbox',
-                            description: '',
-                            sortIndex: Date.now(),
-                        },
-                        uid
-                    )
+    ])
+
+    console.log(`[addUnreadMailsTask] openEmailTasks: ${openEmailTasks.size}, todayEmailTasks: ${todayEmailTasks.size}`)
+
+    if (openEmailTasks.empty && todayEmailTasks.empty) {
+        const taskId = `emailTask-${uid}-${year}-${month}-${day}`
+        console.log(`[addUnreadMailsTask] Creating new task: ${taskId}`)
+        await admin
+            .firestore()
+            .doc(`items/${projectId}/tasks/${taskId}`)
+            .set(
+                generateTask(
+                    {
+                        isForEmail: true,
+                        gmailData: { email, unreadMails },
+                        name: 'Emails in inbox',
+                        extendedName: 'Emails in inbox',
+                        description: '',
+                        sortIndex: Date.now(),
+                    },
+                    uid
                 )
-        } else if (!openEmailTasks.empty) {
-            const tasksIds = [...new Set([...snap[0].docs.map(i => i.id), ...snap[1].docs.map(i => i.id)])]
-            tasksIds.forEach(taskId => {
+            )
+        console.log(`[addUnreadMailsTask] Task created successfully`)
+    } else if (!openEmailTasks.empty) {
+        const tasksIds = [...new Set([...openEmailTasks.docs.map(i => i.id), ...todayEmailTasks.docs.map(i => i.id)])]
+        console.log(`[addUnreadMailsTask] Updating ${tasksIds.length} existing tasks: ${tasksIds.join(', ')}`)
+        await Promise.all(
+            tasksIds.map(taskId =>
                 admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).update({
                     gmailData: { email, unreadMails },
                     dueDate: Date.now(),
                 })
-            })
-        }
-    })
+            )
+        )
+        console.log(`[addUnreadMailsTask] Tasks updated successfully`)
+    } else {
+        console.log(`[addUnreadMailsTask] No action needed - todayEmailTasks exist but no open tasks`)
+    }
 }
 
 module.exports = { addUnreadMailsTask }
