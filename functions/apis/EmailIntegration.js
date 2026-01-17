@@ -33,7 +33,7 @@ const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, emai
     console.log(`[addUnreadMailsTask] calculated date (User TZ): ${date.format()}`)
     console.log(`[addUnreadMailsTask] min: ${min} (${moment(min).format()}), max: ${max} (${moment(max).format()})`)
 
-    Promise.all([
+    return Promise.all([
         admin
             .firestore()
             .collection(`items/${projectId}/tasks`)
