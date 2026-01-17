@@ -28,6 +28,11 @@ const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, emai
     const min = date.clone().startOf('day').valueOf()
     const max = date.clone().endOf('day').valueOf()
 
+    console.log(`[addUnreadMailsTask] projectId: ${projectId}, uid: ${uid}`)
+    console.log(`[addUnreadMailsTask] input timezone: ${JSON.stringify(timezone)}`)
+    console.log(`[addUnreadMailsTask] calculated date (User TZ): ${date.format()}`)
+    console.log(`[addUnreadMailsTask] min: ${min} (${moment(min).format()}), max: ${max} (${moment(max).format()})`)
+
     Promise.all([
         admin
             .firestore()
