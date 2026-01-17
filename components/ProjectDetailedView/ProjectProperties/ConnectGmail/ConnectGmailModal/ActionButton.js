@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
+import moment from 'moment-timezone'
 
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
@@ -17,7 +18,9 @@ import {
 export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const userEmail = useSelector(state => state.loggedUser.email)
-    const timezone = useSelector(state => state.loggedUser.timezone)
+    const storedTimezone = useSelector(state => state.loggedUser.timezone)
+    // Use stored timezone if set, otherwise detect from browser (same as UserTimezone.js display)
+    const timezone = storedTimezone || parseInt(moment().format('Z'))
     const [isLoading, setIsLoading] = useState(false)
 
     const isConnectedAndSignedIn = isConnected && isSignedIn
