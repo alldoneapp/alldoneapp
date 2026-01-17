@@ -2099,9 +2099,16 @@ exports.createApiEmailTasksSecondGen = onCall(
     },
     async request => {
         const { data, auth } = request
+        console.log(
+            '[createApiEmailTasksSecondGen] Function called, auth:',
+            !!auth,
+            'data keys:',
+            Object.keys(data || {})
+        )
         if (auth) {
             const { addUnreadMailsTask } = require('./apis/EmailIntegration')
             const { projectId, date, uid, unreadMails, email, timezone } = data
+            console.log('[createApiEmailTasksSecondGen] Calling addUnreadMailsTask with timezone:', timezone)
             await addUnreadMailsTask(projectId, uid, date, unreadMails, email, timezone)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
