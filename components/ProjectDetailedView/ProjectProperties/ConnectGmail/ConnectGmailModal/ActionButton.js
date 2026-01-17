@@ -31,7 +31,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             const result = await GoogleApi.listGmail()
             const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
 
-            connectToGmail({
+            await connectToGmail({
                 projectId,
                 date: Date.now(),
                 uid: loggedUserId,
