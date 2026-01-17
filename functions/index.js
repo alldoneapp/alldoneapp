@@ -2403,7 +2403,7 @@ exports.cleanupExpiredWebhookTasks = onSchedule(
 exports.googleOAuthInitiate = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -2431,7 +2431,7 @@ exports.googleOAuthInitiate = onCall(
 exports.googleOAuthCallback = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: {
             origin: true,
@@ -2514,7 +2514,7 @@ exports.googleOAuthGetToken = onCall(
 exports.googleOAuthRevoke = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
