@@ -2093,7 +2093,7 @@ exports.onCopyProjectSecondGen = onCall(
 exports.createApiEmailTasksSecondGen = onCall(
     {
         timeoutSeconds: 540,
-        memory: '256MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
