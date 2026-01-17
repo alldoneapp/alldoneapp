@@ -3,9 +3,22 @@ const admin = require('firebase-admin')
 const { generateTask } = require('../GoogleCalendarTasks/calendarTasks')
 
 const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, email, timezone) => {
-    // If timezone is provided, parse the date in that timezone
-    // Otherwise fallback to parseZone (which usually keeps the offset in the string if present, or local)
-    const date = timezone ? moment(currentDate).tz(timezone) : moment.parseZone(currentDate)
+    // Handle both string and numeric timezones (migrated from serverSideCalendarSync logic)
+    let date
+    if (typeof timezone === 'string') {
+        date = moment(currentDate).tz(timezone)
+    } else {
+        let timezoneOffset = 0
+        if (typeof timezone === 'number') {
+            // Range checks for valid hour offsets (typically -12 to +14) vs minutes
+            if (Math.abs(timezone) <= 16) {
+                timezoneOffset = timezone * 60
+            } else {
+                timezoneOffset = timezone
+            }
+        }
+        date = moment(currentDate).utcOffset(timezoneOffset)
+    }
 
     const day = date.date()
     const month = date.month()
