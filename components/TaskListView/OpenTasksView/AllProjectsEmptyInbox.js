@@ -9,8 +9,8 @@ export default function AllProjectsEmptyInbox() {
     return (
         <View style={localStyles.emptyInbox}>
             <AllProjectsEmptyInboxText />
-            <AllProjectsEmptyInboxPicture />
             <AllProjectsEmptyInboxTags />
+            <AllProjectsEmptyInboxPicture />
         </View>
     )
 }
