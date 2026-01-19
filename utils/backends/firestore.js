@@ -6892,7 +6892,9 @@ export async function checkIfGmailIsConnected(projectId) {
         return
     }
 
-    const { uid, apisConnected, email: userEmail } = store.getState().loggedUser
+    const { uid, apisConnected, email: userEmail, timezone: storedTimezone } = store.getState().loggedUser
+    // Use stored timezone if set, otherwise detect from browser (same as ActionButton.js)
+    const timezone = storedTimezone || parseInt(moment().format('Z'))
     if (__DEV__) {
         console.log('[Gmail Sync] apisConnected:', apisConnected)
         console.log('[Gmail Sync] userEmail:', userEmail)
@@ -6961,6 +6963,7 @@ export async function checkIfGmailIsConnected(projectId) {
                 uid,
                 unreadMails: result.threadsTotal,
                 email: email,
+                timezone,
             })
             if (__DEV__) console.log('[Gmail Sync] Successfully synced Gmail:', result.threadsTotal, 'unread threads')
         } else {
