@@ -54,6 +54,9 @@ export default function OpenTasksByDate({
         state.initialLoadingEndObservedTasks[instanceKey] ? state.initialLoadingEndObservedTasks[instanceKey] : false
     )
 
+    const openTasksShowMoreData = useSelector(state => state.openTasksShowMoreData[projectId])
+    const hasFutureTasks = openTasksShowMoreData?.hasFutureTasks
+
     const accessGranted = !isAnonymous && loggedUserProjectIds.includes(projectId)
 
     const dateIsToday = dateFormated === TODAY_DATE
@@ -88,7 +91,7 @@ export default function OpenTasksByDate({
         dateFormated === lastFormatedDate &&
         laterTasksExpanded &&
         !somedayTasksExpanded &&
-        (thereAreSomedayOpenTasksInProject || thereAreSomedayEmptyGoalsInProject)
+        (thereAreSomedayOpenTasksInProject || thereAreSomedayEmptyGoalsInProject || hasFutureTasks)
 
     useEffect(() => {
         return () => {

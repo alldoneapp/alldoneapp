@@ -6,9 +6,17 @@ import {
     unwatchIfNeedShowLaterOpenTasksButton,
     watchIfNeedShowLaterOpenTasksButton,
 } from '../../../utils/backends/Tasks/tasksShowMoreButton'
+import {
+    watchIfThereAreFutureTasksToAttend,
+    watchIfThereAreFutureAndSomedayObservedTasks,
+    watchIfThereAreFutureWorkstreamTasks,
+    watchIfThereAreFutureAndSomedayEmptyGoals,
+} from '../../../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
+import { globalWatcherUnsub } from '../../../utils/backends/firestore'
 
 export default function NeedShowMoreOpenTasksButton({ projectId }) {
     const userId = useSelector(state => state.currentUser.uid)
+    const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const userWorkstream = useSelector(
         state => state.currentUser.workstreams && state.currentUser.workstreams[projectId],
         shallowEqual
@@ -47,6 +55,25 @@ export default function NeedShowMoreOpenTasksButton({ projectId }) {
             true
         )
 
+        // START: Watchers for openTasksShowMoreData hasFutureTasks
+        const futureNormalWatcherKey = v4()
+        const futureObservedWatcherKey = v4()
+        const futureGoalsWatcherKey = v4()
+        const futureWorkstreamWatchersKeys = []
+
+        watchIfThereAreFutureTasksToAttend(projectId, userId, isAnonymous, userId, futureNormalWatcherKey)
+
+        watchIfThereAreFutureAndSomedayObservedTasks(projectId, userId, isAnonymous, userId, futureObservedWatcherKey)
+
+        watchIfThereAreFutureAndSomedayEmptyGoals(projectId, userId, isAnonymous, userId, futureGoalsWatcherKey)
+
+        userWorkstreamIds.forEach(wsId => {
+            const key = v4()
+            futureWorkstreamWatchersKeys.push(key)
+            watchIfThereAreFutureWorkstreamTasks(projectId, wsId, isAnonymous, userId, key)
+        })
+        // END: Watchers for openTasksShowMoreData hasFutureTasks
+
         return () => {
             unwatchIfNeedShowLaterOpenTasksButton(
                 projectId,
@@ -61,6 +88,14 @@ export default function NeedShowMoreOpenTasksButton({ projectId }) {
                 false,
                 true
             )
+
+            // Cleanup for future watchers
+            if (globalWatcherUnsub[futureNormalWatcherKey]) globalWatcherUnsub[futureNormalWatcherKey]()
+            if (globalWatcherUnsub[futureObservedWatcherKey]) globalWatcherUnsub[futureObservedWatcherKey]()
+            if (globalWatcherUnsub[futureGoalsWatcherKey]) globalWatcherUnsub[futureGoalsWatcherKey]()
+            futureWorkstreamWatchersKeys.forEach(key => {
+                if (globalWatcherUnsub[key]) globalWatcherUnsub[key]()
+            })
         }
     }, [projectId, userId, JSON.stringify(userWorkstreamIds)])
 
