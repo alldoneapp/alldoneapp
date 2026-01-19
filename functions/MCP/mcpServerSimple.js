@@ -544,6 +544,53 @@ class AlldoneSimpleMCPServer {
                     }
                 }
 
+                // Sliding window auto-extension for direct-login tokens
+                // If token is within 7 days of expiring, extend it by 30 days
+                const now = new Date()
+                const expiresAt = tokenData.expiresAt.toDate()
+                const daysUntilExpiry = (expiresAt - now) / (1000 * 60 * 60 * 24)
+                const RENEWAL_WINDOW_DAYS = 7
+                const EXTENSION_DAYS = 30
+
+                if (tokenData.grantType === 'direct-login' && daysUntilExpiry < RENEWAL_WINDOW_DAYS) {
+                    const newExpiresAt = admin.firestore.Timestamp.fromDate(
+                        new Date(Date.now() + EXTENSION_DAYS * 24 * 3600 * 1000)
+                    )
+
+                    // Non-blocking update to extend token expiration
+                    db.collection('oauthTokens')
+                        .doc(accessToken)
+                        .update({
+                            expiresAt: newExpiresAt,
+                            lastExtendedAt: admin.firestore.Timestamp.now(),
+                        })
+                        .catch(err => console.error('Failed to extend token:', err))
+
+                    // Also extend related session records
+                    if (tokenData.userId) {
+                        db.collection('mcpUserSessions')
+                            .doc(tokenData.userId)
+                            .update({
+                                expiresAt: newExpiresAt,
+                                lastUsed: admin.firestore.Timestamp.now(),
+                            })
+                            .catch(() => {})
+
+                        // Update mcpUserAuth if exists
+                        db.collection('mcpUserAuth')
+                            .where('userId', '==', tokenData.userId)
+                            .get()
+                            .then(snap => snap.docs.forEach(d => d.ref.update({ expiresAt: newExpiresAt })))
+                            .catch(() => {})
+                    }
+
+                    console.log(
+                        `🔄 Auto-extended direct-login token for user ${
+                            tokenData.userId
+                        }, new expiry: ${newExpiresAt.toDate().toISOString()}`
+                    )
+                }
+
                 return tokenData.userId
             } catch (oauthError) {
                 console.error('Token verification failed:', {
@@ -1746,7 +1793,7 @@ class AlldoneSimpleMCPServer {
                 
                 if (data.success) {
                     const expiresAt = new Date(data.expiresAt).toLocaleString();
-                    
+
                     showStatus(\`
                         <div style="font-weight: bold; color: #155724; margin-bottom: 12px;">
                             ✅ Authentication Successful!
@@ -1755,13 +1802,10 @@ class AlldoneSimpleMCPServer {
                             🎟️ Your MCP access token has been created and is ready to use.
                         </div>
                         <div style="margin-bottom: 12px;">
-                            ⏰ Token expires at: <strong>\${expiresAt}</strong> (30 days)
+                            ⏰ Initial token expiry: <strong>\${expiresAt}</strong>
                         </div>
-                        <div style="margin-bottom: 8px;">
-                            🔄 When your token expires after 30 days:
-                        </div>
-                        <div>
-                            Simply visit this page again: <a href="${baseUrl}/mcpServer/get-token" class="refresh-link" target="_blank">${baseUrl}/mcpServer/get-token</a>
+                        <div style="margin-bottom: 8px; background: #e7f3ff; padding: 10px; border-radius: 4px;">
+                            🔄 <strong>Auto-renewal enabled:</strong> Your token automatically extends each time you use MCP. As long as you use it at least once every 30 days, you'll never need to re-authenticate!
                         </div>
                         <div style="margin-top: 12px; font-size: 14px; color: #666;">
                             📝 Your access token is now available for MCP clients to use automatically.
