@@ -1,17 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { TouchableOpacity } from 'react-native-gesture-handler'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
-import { COMMENT_MODAL_THEME, NEW_TOPIC_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
+import {
+    COMMENT_MODAL_THEME,
+    MENTION_MODAL_CONTACTS_TAB,
+    NEW_TOPIC_MODAL_THEME,
+} from '../../Feeds/CommentsTextInput/textInputHelper'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import ProjectHelper, { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
+import { copyContactToProject } from '../../../utils/backends/Contacts/contactsFirestore'
 
 export default function ChangeContactInfoModal({
     currentRole,
@@ -26,6 +32,10 @@ export default function ChangeContactInfoModal({
     const [company, setCompany] = useState(currentCompany ? currentCompany : '')
     const [description, setDescription] = useState(currentDescription ? currentDescription : '')
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
+    const [showCopyContactModal, setShowCopyContactModal] = useState(false)
+    const [contactToCopy, setContactToCopy] = useState(null)
+
+    const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
 
     const roleInputRef = useRef()
     const companyInputRef = useRef()
@@ -45,7 +55,35 @@ export default function ChangeContactInfoModal({
     }
 
     const enterKeyAction = () => {
-        if (!mentionsModalActive) onPressSaveButton()
+        if (!mentionsModalActive && !showCopyContactModal) onPressSaveButton()
+    }
+
+    const onMentionSelected = (item, activeTab) => {
+        // Only check for contacts mentions
+        if (activeTab !== MENTION_MODAL_CONTACTS_TAB) return
+        // Skip if no projectId or if the contact is from the same project
+        if (!projectId || item.projectId === projectId) return
+        // Skip if it's an assistant
+        if (item.isAssistant) return
+        // Skip if the contact is a team member (has no recorderUserId)
+        if (!item.recorderUserId) return
+
+        // Contact is from a different project - ask if user wants to copy
+        setContactToCopy(item)
+        setShowCopyContactModal(true)
+    }
+
+    const handleCopyContact = async () => {
+        if (contactToCopy) {
+            await copyContactToProject(projectId, contactToCopy)
+        }
+        setShowCopyContactModal(false)
+        setContactToCopy(null)
+    }
+
+    const handleCancelCopy = () => {
+        setShowCopyContactModal(false)
+        setContactToCopy(null)
     }
 
     const onPressKey = event => {
@@ -149,8 +187,32 @@ export default function ChangeContactInfoModal({
                         forceTriggerEnterActionForBreakLines={enterKeyAction}
                         disabledEdition={disabled}
                         characterLimit={300}
+                        onMentionSelected={onMentionSelected}
                     />
                 </View>
+                {showCopyContactModal && contactToCopy && (
+                    <View style={localStyles.copyModalOverlay}>
+                        <View style={localStyles.copyModalContainer}>
+                            <Text style={localStyles.copyModalTitle}>{translate('Copy contact to this project?')}</Text>
+                            <Text style={localStyles.copyModalText}>
+                                {contactToCopy.displayName} {translate('is from')}{' '}
+                                {loggedUserProjectsMap[contactToCopy.projectId]?.name || translate('another project')}.
+                            </Text>
+                            <Text style={localStyles.copyModalSubtext}>
+                                {translate('Only basic contact info will be copied')}
+                            </Text>
+                            <View style={localStyles.copyModalButtons}>
+                                <Button
+                                    type={'secondary'}
+                                    title={translate('No')}
+                                    onPress={handleCancelCopy}
+                                    buttonStyle={{ marginRight: 8 }}
+                                />
+                                <Button type={'primary'} title={translate('Yes, copy')} onPress={handleCopyContact} />
+                            </View>
+                        </View>
+                    </View>
+                )}
                 <View style={localStyles.buttonContainer}>
                     <Button type={'primary'} title={translate(disabled ? 'Ok' : 'Save')} onPress={onPressSaveButton} />
                 </View>
@@ -217,5 +279,47 @@ const localStyles = StyleSheet.create({
     closeButton: {
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    copyModalOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 100,
+        borderRadius: 4,
+    },
+    copyModalContainer: {
+        backgroundColor: colors.Secondary400,
+        borderRadius: 4,
+        padding: 16,
+        margin: 16,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        elevation: 5,
+    },
+    copyModalTitle: {
+        ...styles.title7,
+        color: '#ffffff',
+        marginBottom: 8,
+    },
+    copyModalText: {
+        ...styles.body2,
+        color: colors.Text02,
+        marginBottom: 4,
+    },
+    copyModalSubtext: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginBottom: 16,
+    },
+    copyModalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
     },
 })

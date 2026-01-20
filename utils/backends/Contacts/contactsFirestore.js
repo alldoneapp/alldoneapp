@@ -147,6 +147,45 @@ export async function addContactToProject(projectId, contact, onComplete) {
     })
 }
 
+/**
+ * Copy a contact's basic info to a new project.
+ * Does NOT copy: contactStatusId, notes, comments, assistantId, etc.
+ */
+export async function copyContactToProject(targetProjectId, sourceContact, onComplete) {
+    const { loggedUser } = store.getState()
+
+    // Create new contact with basic info only
+    const newContact = {
+        displayName: sourceContact.displayName || '',
+        photoURL: sourceContact.photoURL || '',
+        photoURL50: sourceContact.photoURL50 || '',
+        photoURL300: sourceContact.photoURL300 || '',
+        company: sourceContact.company || '',
+        role: sourceContact.role || '',
+        description: sourceContact.description || '',
+        extendedDescription: sourceContact.extendedDescription || '',
+        email: sourceContact.email || '',
+        phone: sourceContact.phone || '',
+        // Default values for new contact in target project
+        hasStar: '#FFFFFF',
+        isPrivate: false,
+        isPublicFor: [FEED_PUBLIC_FOR_ALL, loggedUser.uid],
+        recorderUserId: loggedUser.uid,
+        lastEditorId: loggedUser.uid,
+        lastEditionDate: Date.now(),
+        noteId: null,
+        isPremium: false,
+        lastVisitBoard: {},
+        lastVisitBoardInGoals: {},
+        assistantId: '',
+        commentsData: null,
+        openTasksAmount: 0,
+        contactStatusId: null, // Don't copy status - it may not exist in target project
+    }
+
+    await addContactToProject(targetProjectId, newContact, onComplete)
+}
+
 export async function deleteProjectContact(projectId, contact, contactId) {
     const batch = new BatchWrapper(getDb())
     await createContactDeletedFeed(projectId, contact, contactId, batch)

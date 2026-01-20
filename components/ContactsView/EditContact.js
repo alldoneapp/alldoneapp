@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { Image, Keyboard, StyleSheet, Text, View } from 'react-native'
+import { Image, Keyboard, Modal, StyleSheet, Text, View } from 'react-native'
 import Button from '../UIControls/Button'
 import Icon from '../Icon'
 import store from '../../redux/store'
@@ -42,10 +42,12 @@ import { FORM_TYPE_EDIT, FORM_TYPE_NEW } from '../NotesView/NotesDV/EditorView/E
 import { translate } from '../../i18n/TranslationService'
 import {
     addContactToProject,
+    copyContactToProject,
     setProjectContactHighlight,
     setProjectContactName,
     setProjectContactPicture,
 } from '../../utils/backends/Contacts/contactsFirestore'
+import { MENTION_MODAL_CONTACTS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
 import { setUserHighlightInProject, setUserPrivacyInProject } from '../../utils/backends/Users/usersFirestore'
 
 export default class EditContact extends Component {
@@ -61,6 +63,7 @@ export default class EditContact extends Component {
         this.state = {
             loggedUserId: store.getState().loggedUser.uid,
             loggedUserProjects: storeState.loggedUserProjects,
+            loggedUserProjectsMap: storeState.loggedUserProjectsMap,
             loading: false,
             contact: contact,
             tmpContact: clonedContact,
@@ -68,6 +71,8 @@ export default class EditContact extends Component {
             contactChanged: false,
             showInfoModal: false,
             showPictureModal: false,
+            showCopyContactModal: false,
+            contactToCopy: null,
             smallScreen: storeState.smallScreen,
             isMiddleScreen: storeState.isMiddleScreen,
             unsubscribe: store.subscribe(this.updateState),
@@ -91,6 +96,7 @@ export default class EditContact extends Component {
         this.setState({
             smallScreen: storeState.smallScreen,
             isMiddleScreen: storeState.isMiddleScreen,
+            loggedUserProjectsMap: storeState.loggedUserProjectsMap,
         })
 
         if (storeState.showGlobalSearchPopup) {
@@ -188,6 +194,34 @@ export default class EditContact extends Component {
         this.updateContactField('displayName', text)
         this.setState({ isEmail: text !== '' && text.indexOf('@') >= 0 })
         if (isNew) store.dispatch(setTmpInputTextContact(text))
+    }
+
+    onMentionSelected = (item, activeTab) => {
+        const { projectId } = this.props
+        // Only check for contacts mentions
+        if (activeTab !== MENTION_MODAL_CONTACTS_TAB) return
+        // Skip if no projectId or if the contact is from the same project
+        if (!projectId || item.projectId === projectId) return
+        // Skip if it's an assistant
+        if (item.isAssistant) return
+        // Skip if the contact is a team member (has no recorderUserId)
+        if (!item.recorderUserId) return
+
+        // Contact is from a different project - ask if user wants to copy
+        this.setState({ contactToCopy: item, showCopyContactModal: true })
+    }
+
+    handleCopyContact = async () => {
+        const { projectId } = this.props
+        const { contactToCopy } = this.state
+        if (contactToCopy) {
+            await copyContactToProject(projectId, contactToCopy)
+        }
+        this.setState({ showCopyContactModal: false, contactToCopy: null })
+    }
+
+    handleCancelCopy = () => {
+        this.setState({ showCopyContactModal: false, contactToCopy: null })
     }
 
     changePicture = async value => {
@@ -324,6 +358,9 @@ export default class EditContact extends Component {
             contactChanged,
             showInfoModal,
             showPictureModal,
+            showCopyContactModal,
+            contactToCopy,
+            loggedUserProjectsMap,
             loading,
             loggedUserId,
         } = this.state
@@ -418,6 +455,7 @@ export default class EditContact extends Component {
                             projectId={projectId}
                             forceTriggerEnterActionForBreakLines={this.enterActionKey}
                             disabledEdition={!loggedUserCanUpdateObject}
+                            onMentionSelected={this.onMentionSelected}
                         />
                     )}
                 </View>
@@ -613,6 +651,44 @@ export default class EditContact extends Component {
                         />
                     </View>
                 </View>
+                {showCopyContactModal && contactToCopy && (
+                    <Modal
+                        visible={true}
+                        transparent={true}
+                        animationType="fade"
+                        onRequestClose={this.handleCancelCopy}
+                    >
+                        <View style={localStyles.copyModalOverlay}>
+                            <View style={localStyles.copyModalContainer}>
+                                <Text style={localStyles.copyModalTitle}>
+                                    {translate('Copy contact to this project?')}
+                                </Text>
+                                <Text style={localStyles.copyModalText}>
+                                    {contactToCopy.displayName} {translate('is from')}{' '}
+                                    {loggedUserProjectsMap[contactToCopy.projectId]?.name ||
+                                        translate('another project')}
+                                    .
+                                </Text>
+                                <Text style={localStyles.copyModalSubtext}>
+                                    {translate('Only basic contact info will be copied')}
+                                </Text>
+                                <View style={localStyles.copyModalButtons}>
+                                    <Button
+                                        type={'secondary'}
+                                        title={translate('No')}
+                                        onPress={this.handleCancelCopy}
+                                        buttonStyle={{ marginRight: 8 }}
+                                    />
+                                    <Button
+                                        type={'primary'}
+                                        title={translate('Yes, copy')}
+                                        onPress={this.handleCopyContact}
+                                    />
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
+                )}
             </View>
         )
     }
@@ -780,5 +856,42 @@ const localStyles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 100,
+    },
+    copyModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    copyModalContainer: {
+        backgroundColor: colors.Secondary400,
+        borderRadius: 4,
+        padding: 16,
+        margin: 16,
+        maxWidth: 320,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        elevation: 5,
+    },
+    copyModalTitle: {
+        ...styles.title7,
+        color: '#ffffff',
+        marginBottom: 8,
+    },
+    copyModalText: {
+        ...styles.body2,
+        color: colors.Text02,
+        marginBottom: 4,
+    },
+    copyModalSubtext: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginBottom: 16,
+    },
+    copyModalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
     },
 })
