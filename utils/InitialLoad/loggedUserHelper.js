@@ -2,7 +2,7 @@ import momentTz from 'moment-timezone'
 import moment from 'moment-timezone'
 
 import store from '../../redux/store'
-import { getUserData, updateUserData } from '../backends/Users/usersFirestore'
+import { getUserData, updateUserDataDirectly } from '../backends/Users/usersFirestore'
 import {
     initFCMonLoad,
     initGoogleTagManager,
@@ -217,7 +217,9 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
 
     store.dispatch(initLogInForLoggedUser({ ...loggedUser, ...userData }))
 
-    updateUserData(loggedUser.uid, userData, null)
+    // Use updateUserDataDirectly to avoid updating lastEditionDate on every login
+    // (which would cause the user to jump to the top of the contact list)
+    updateUserDataDirectly(loggedUser.uid, userData, null)
 
     store.dispatch(updateLoadingStep(2, getProgressLoadingMessage()))
     await loadInitialData()
