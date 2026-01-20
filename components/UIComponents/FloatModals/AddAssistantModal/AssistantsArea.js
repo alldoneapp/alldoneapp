@@ -96,7 +96,7 @@ export default function AssistantsArea({ closeModal, project }) {
             loggedUser
         )
 
-        const projects = [{ id: GLOBAL_PROJECT_ID, name: translate('Global') }, ...activeProjects, ...guideProjects]
+        const projects = [{ id: GLOBAL_PROJECT_ID, name: translate('Templates') }, ...activeProjects, ...guideProjects]
 
         const assistantsByProject = {}
         projects.forEach(assistantProject => {
