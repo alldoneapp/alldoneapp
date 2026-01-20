@@ -92,7 +92,9 @@ export default function EditAssistant({ projectId, adding, assistant, onCancelAc
                     />
                 )}
                 <CustomTextInput3
-                    placeholder={translate(adding ? 'Type to add new assistant' : 'Write the name of the assistant')}
+                    placeholder={translate(
+                        adding ? 'Type to add new assistant template' : 'Write the name of the assistant'
+                    )}
                     onChangeText={setName}
                     autoFocus={true}
                     containerStyle={[localStyles.textInputContainer, adding && localStyles.textInputContainerAdding]}

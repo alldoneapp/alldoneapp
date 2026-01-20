@@ -16,7 +16,7 @@ export default function Header({ assistantsAmount }) {
 
     return (
         <View style={localStyles.header}>
-            <Text style={[styles.title6, { color: colors.Text01 }]}>{translate('AI Assistants')}</Text>
+            <Text style={[styles.title6, { color: colors.Text01 }]}>{translate('AI Assistant Templates')}</Text>
             <View style={localStyles.headerCaption}>
                 <Text style={[styles.caption2, { color: colors.Text02 }]}>{parseText(assistantsAmount)}</Text>
             </View>

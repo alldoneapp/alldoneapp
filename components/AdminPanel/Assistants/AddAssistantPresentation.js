@@ -10,7 +10,7 @@ export default function AddAssistantPresentation({ onPress }) {
         <View style={localStyles.container}>
             <TouchableOpacity style={localStyles.placeholder} onPress={onPress}>
                 <Icon name="plus-square" size={24} color={colors.Primary100} />
-                <Text style={localStyles.text}>{translate('Type to add new assistant')}</Text>
+                <Text style={localStyles.text}>{translate('Type to add new assistant template')}</Text>
             </TouchableOpacity>
         </View>
     )
