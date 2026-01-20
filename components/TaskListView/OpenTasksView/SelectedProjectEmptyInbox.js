@@ -10,6 +10,16 @@ export default function SelectedProjectEmptyInbox({ projectId, instanceKey }) {
     const thereAreSomedayOpenTasksInProject = useSelector(state => state.thereAreSomedayOpenTasks[projectId])
     const thereAreSomedayEmptyGoalsInProject = useSelector(state => state.thereAreSomedayEmptyGoals[projectId])
 
+    const randomImage = React.useMemo(() => {
+        const images = [
+            require('../../../assets/anna_tasks_done_01.png'),
+            require('../../../assets/anna_tasks_done_02.png'),
+            require('../../../assets/anna_tasks_done_03.png'),
+        ]
+        const randomIndex = Math.floor(Math.random() * images.length)
+        return images[randomIndex]
+    }, [])
+
     return (
         <View
             style={[
@@ -23,9 +33,9 @@ export default function SelectedProjectEmptyInbox({ projectId, instanceKey }) {
             ]}
         >
             <ModernImage
-                srcWebp={require('../../../web/images/illustrations/Empty-Inbox.webp')}
-                fallback={require('../../../web/images/illustrations/Empty-Inbox.png')}
-                style={{ flex: 1, width: '100%', maxWidth: 432 }}
+                srcWebp={randomImage}
+                fallback={randomImage}
+                style={{ flex: 1, width: '100%', maxWidth: 432, borderRadius: 16 }}
                 alt={'Empty inbox'}
             />
         </View>
