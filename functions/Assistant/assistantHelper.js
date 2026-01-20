@@ -1685,11 +1685,16 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'search': {
+            // Only use projectId if explicitly provided by the LLM in toolArgs
+            // Do NOT default to current project - this allows searching across all user's projects
+            const searchProjectId = toolArgs.projectId || null
+
             console.log('🔍 SEARCH TOOL: Starting search execution', {
                 creatorId,
                 query: toolArgs.query,
                 type: toolArgs.type || 'all',
-                projectId: toolArgs.projectId || projectId,
+                projectId: searchProjectId,
+                currentProjectId: projectId,
                 dateRange: toolArgs.dateRange || null,
             })
 
@@ -1708,11 +1713,11 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             await searchService.initialize()
             console.log('🔍 SEARCH TOOL: SearchService initialized')
 
-            // Execute search
+            // Execute search - pass null projectId to search across all user's accessible projects
             const result = await searchService.search(creatorId, {
                 query: toolArgs.query,
                 type: toolArgs.type || 'all',
-                projectId: toolArgs.projectId || projectId,
+                projectId: searchProjectId,
                 dateRange: toolArgs.dateRange || null,
             })
             console.log('🔍 SEARCH TOOL: Search completed', {
