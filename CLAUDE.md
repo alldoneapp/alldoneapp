@@ -109,10 +109,18 @@ Note: Standard syntax checkers like `acorn` may fail on modern JavaScript featur
 
 ### Environment Configuration
 
--   `.env` - Current environment variables
+-   `.env` - Current environment variables (local development only)
 -   `envs/env.develop`, `envs/env.master` - Environment-specific configs
 -   `env_functions.json`, `env_functions_dev.json`, `env_functions_master.json` - Function configs
 -   Service accounts: `serviceAccountKey.json`, `serv_account_key_develop.json`, `serv_account_key_master.json`
+
+### CI/CD & Deployment
+
+-   **GitLab CI/CD**: All deployments are handled via GitLab pipelines (`.gitlab-ci.yml`)
+-   **Environment secrets**: Stored in GitLab CI/CD variables, not in the repository
+-   **Branches**: `develop` deploys to staging, `master` deploys to production
+-   **Build process**: `ci/replace-envs.sh` injects environment variables during build
+-   **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
 
 ### External Services
 

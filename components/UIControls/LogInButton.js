@@ -45,15 +45,23 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
         if (typeof gtag === 'function') {
             gtag('event', 'login_button_click', {
                 event_category: 'login',
-                event_label: 'google_signin_redirect_mobile',
+                event_label: 'google_signin_popup_mobile',
             })
         }
         try {
-            await Backend.signInWithGoogleRedirect()
-            // Page will redirect to Google, so no need to handle response here
+            const user = await Backend.signInWithGoogleRedirect()
+            // If we get here, popup succeeded and user is signed in
+            // The onAuthStateChanged listener will handle the rest
+            if (user) {
+                console.log('User signed in via popup:', user.email)
+            }
         } catch (error) {
-            console.error('Error initiating Google redirect:', error)
-            setIsLoading(false)
+            console.error('Error during Google sign-in:', error)
+            // If it was a redirect fallback, the page will reload
+            // Otherwise show the error
+            if (error.code !== 'auth/redirect-cancelled-by-user') {
+                setIsLoading(false)
+            }
         }
     }
 

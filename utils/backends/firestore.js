@@ -489,16 +489,26 @@ export async function initFirebase(onComplete) {
         .auth()
         .getRedirectResult()
         .then(result => {
-            if (result && result.user && result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
-                console.log('New user signed in via redirect')
-                store.dispatch(setRegisteredNewUser(true))
+            console.log('🔐 getRedirectResult called:', {
+                hasResult: !!result,
+                hasUser: !!result?.user,
+                email: result?.user?.email,
+                isNewUser: result?.additionalUserInfo?.isNewUser,
+            })
+            if (result && result.user) {
+                console.log('✅ User signed in via redirect:', result.user.email)
+                if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+                    console.log('🆕 New user signed in via redirect')
+                    store.dispatch(setRegisteredNewUser(true))
+                }
             }
         })
         .catch(error => {
-            console.warn('Error getting redirect result:', error)
+            console.error('❌ Error getting redirect result:', error.code, error.message)
         })
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
+        console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
         onComplete(firebaseUser)
     })
 
@@ -744,22 +754,58 @@ export function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
 }
 
-// Sign in with Google using redirect (for mobile)
+// Sign in with Google - on mobile uses redirect, on desktop uses popup
 export async function signInWithGoogleRedirect() {
     const provider = new firebase.auth.GoogleAuthProvider()
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-    return firebase.auth().signInWithRedirect(provider)
+
+    const isMobile = isMobileDevice()
+
+    if (isMobile) {
+        // Mobile: use redirect (better UX, no popup blockers)
+        console.log('🔄 Mobile detected - using Google sign-in with redirect...')
+        return firebase.auth().signInWithRedirect(provider)
+    }
+
+    // Desktop: try popup first, fall back to redirect if blocked
+    try {
+        console.log('🔐 Desktop - trying Google sign-in with popup...')
+        const result = await firebase.auth().signInWithPopup(provider)
+        console.log('✅ Popup sign-in successful:', result?.user?.email)
+        if (result && result.user) {
+            if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+                store.dispatch(setRegisteredNewUser(true))
+            }
+            return result.user
+        }
+        return null
+    } catch (error) {
+        console.log('⚠️ Popup failed:', error.code, '- falling back to redirect')
+        // If popup blocked or failed, fall back to redirect
+        if (
+            error.code === 'auth/popup-blocked' ||
+            error.code === 'auth/popup-closed-by-user' ||
+            error.code === 'auth/cancelled-popup-request'
+        ) {
+            console.log('🔄 Starting Google sign-in with redirect...')
+            return firebase.auth().signInWithRedirect(provider)
+        }
+        throw error
+    }
 }
 
 // Handle redirect result after returning from Google sign-in
 export async function handleGoogleRedirectResult() {
     try {
+        console.log('Checking for redirect result...')
         const result = await firebase.auth().getRedirectResult()
+        console.log('Redirect result:', result ? 'got result' : 'no result', result?.user?.email)
         if (result && result.user) {
             // User signed in via redirect
             if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+                console.log('New user detected from redirect')
                 store.dispatch(setRegisteredNewUser(true))
             }
             return result.user
