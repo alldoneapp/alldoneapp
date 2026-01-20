@@ -54,6 +54,11 @@ export const URL_START_TRIAL = 'START_TRIAL'
  */
 export const URL_PAYMENT_SUCCESS = 'PAYMENT_SUCCESS'
 
+/**
+ * /onboarding
+ */
+export const URL_ONBOARDING = 'ONBOARDING'
+
 class URLSystem {
     /**
      * Replace the history url

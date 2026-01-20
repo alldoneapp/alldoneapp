@@ -3,6 +3,7 @@ import {
     URL_FEEDS_NOT_FOLLOWED,
     URL_LOGIN,
     URL_LOGOUT,
+    URL_ONBOARDING,
     URL_PAYMENT_SUCCESS,
     URL_PRIVATE_RESOURCE,
     URL_PROJECT_FEEDS_FOLLOWED,
@@ -29,6 +30,7 @@ class URLSystemTrigger {
             [URL_PRIVATE_RESOURCE]: /^\/private-resource$/,
             [URL_LOGOUT]: /^\/logout$/,
             [URL_LOGIN]: /^\/login$/,
+            [URL_ONBOARDING]: /^\/onboarding$/,
             [URL_START_TRIAL]: /^\/starttrial(?:\?(.*))?$/,
             [URL_PAYMENT_SUCCESS]: /^\/paymentsuccess$/,
         }
@@ -81,6 +83,13 @@ class URLSystemTrigger {
                     return navigation.navigate('WhatsAppOnboarding')
                 }
                 return TasksHelper.processURLAllProjectsTasks(navigation)
+            case URL_ONBOARDING:
+                // Stay on onboarding - also handle Google Auth return
+                const onboardingParams = new URLSearchParams(window.location.search)
+                if (onboardingParams.get('googleAuth') === 'success') {
+                    return navigation.navigate('WhatsAppOnboarding')
+                }
+                return navigation.navigate('WhatsAppOnboarding')
             case URL_START_TRIAL:
                 return URLSystemTrigger.processStartTrial(navigation, pathname)
             case URL_PAYMENT_SUCCESS:

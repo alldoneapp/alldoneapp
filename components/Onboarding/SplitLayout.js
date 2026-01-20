@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     },
     videoSectionMobile: {
         width: '100%',
-        height: '20%',
+        height: '28%',
     },
     contentSection: {
         backgroundColor: Colors.White,

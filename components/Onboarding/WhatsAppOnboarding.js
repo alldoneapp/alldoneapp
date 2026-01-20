@@ -129,11 +129,8 @@ export default function WhatsAppOnboarding({ navigation }) {
 
             startBlinking()
 
-            // Clean up URL
-            const url = new URL(window.location.href)
-            url.searchParams.delete('googleAuth')
-            url.searchParams.delete('service')
-            window.history.replaceState({}, '', url.toString())
+            // Clean up URL - use /onboarding to stay in onboarding flow
+            window.history.replaceState({}, '', '/onboarding')
 
             // Auto advance
             setTimeout(() => {
@@ -258,7 +255,8 @@ export default function WhatsAppOnboarding({ navigation }) {
         setConnectingService(service)
         try {
             // Construct return URL for same-window redirect
-            const returnUrl = new URL(window.location.href)
+            // Use /onboarding path to ensure we stay in the onboarding flow
+            const returnUrl = new URL(window.location.origin + '/onboarding')
             returnUrl.searchParams.set('googleAuth', 'success')
             returnUrl.searchParams.set('service', service)
 
