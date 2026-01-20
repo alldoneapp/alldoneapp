@@ -34,6 +34,8 @@ import {
     setProjectContactPicture,
 } from '../../../utils/backends/Contacts/contactsFirestore'
 import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
+import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
+import { popoverToSafePosition } from '../../../utils/HelperFunctions'
 
 class ContactProperties extends Component {
     constructor(props) {
@@ -46,6 +48,7 @@ class ContactProperties extends Component {
             showPictureModal: false,
             showEmailModal: false,
             showPhoneModal: false,
+            showAddTaskModal: false,
             loggedUser: storeState.loggedUser,
             selectedTab: storeState.selectedNavItem,
             projectContacts: storeState.projectContacts,
@@ -154,6 +157,7 @@ class ContactProperties extends Component {
             showPictureModal,
             showEmailModal,
             showPhoneModal,
+            showAddTaskModal,
             loggedUser,
         } = this.state
         const { projectIndex, user: userProp, projectId } = this.props
@@ -468,6 +472,32 @@ class ContactProperties extends Component {
                             </View>
                             {accessGranted && loggedUserCanUpdateObject && (
                                 <View style={localStyles.bottomContainer}>
+                                    <View style={localStyles.addTaskButton}>
+                                        <Popover
+                                            content={
+                                                <RichCreateTaskModal
+                                                    initialProjectId={projectId}
+                                                    sourceType={FEED_CONTACT_OBJECT_TYPE}
+                                                    sourceId={user.uid}
+                                                    closeModal={() => this.setState({ showAddTaskModal: false })}
+                                                />
+                                            }
+                                            onClickOutside={() => this.setState({ showAddTaskModal: false })}
+                                            isOpen={showAddTaskModal}
+                                            padding={4}
+                                            position={['top', 'bottom', 'left', 'right']}
+                                            align={'end'}
+                                            contentLocation={args => popoverToSafePosition(args, mobileNav)}
+                                        >
+                                            <Button
+                                                icon={'check-square'}
+                                                title={translate('Add task with this contact')}
+                                                type={'ghost'}
+                                                onPress={() => this.setState({ showAddTaskModal: true })}
+                                                accessible={false}
+                                            />
+                                        </Popover>
+                                    </View>
                                     <ObjectRevisionHistory projectId={projectId} noteId={user.noteId} />
                                     <View style={localStyles.deleteButton}>
                                         <Button
@@ -527,6 +557,11 @@ const localStyles = StyleSheet.create({
     },
     bottomContainer: {
         marginTop: 32,
+    },
+    addTaskButton: {
+        flexDirection: 'row',
+        paddingVertical: 8,
+        justifyContent: 'flex-end',
     },
     deleteButton: {
         flexDirection: 'row',
