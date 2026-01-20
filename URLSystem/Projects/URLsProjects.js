@@ -48,6 +48,11 @@ export const URL_PROJECT_DETAILS_FEED = 'PROJECT_DETAILS_FEED'
 export const URL_PROJECT_DETAILS_STATISTICS = 'PROJECT_DETAILS_STATISTICS'
 
 /**
+ * /project/{projectId}/contact-statuses
+ */
+export const URL_PROJECT_DETAILS_CONTACT_STATUSES = 'PROJECT_DETAILS_CONTACT_STATUSES'
+
+/**
  * /project/{projectId}/archive
  */
 export const URL_PROJECT_ARCHIVE = 'PROJECT_ARCHIVE'
@@ -113,6 +118,8 @@ class URLsProjects {
                 return `project/${params[0]}/statistics`
             case URL_PROJECT_DETAILS_ASSISTANTS:
                 return `project/${params[0]}/assistants`
+            case URL_PROJECT_DETAILS_CONTACT_STATUSES:
+                return `project/${params[0]}/contact-statuses`
         }
     }
 
@@ -160,6 +167,10 @@ class URLsProjects {
             }
             case URL_PROJECT_DETAILS_STATISTICS: {
                 projectDetails(' - Statistics')
+                break
+            }
+            case URL_PROJECT_DETAILS_CONTACT_STATUSES: {
+                projectDetails(' - Contact Statuses')
                 break
             }
         }

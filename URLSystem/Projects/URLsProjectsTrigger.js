@@ -9,6 +9,7 @@ import {
     URL_PROJECT_DETAILS_STATISTICS,
     URL_PROJECT_DETAILS_WORKSTREAMS,
     URL_PROJECT_DETAILS_ASSISTANTS,
+    URL_PROJECT_DETAILS_CONTACT_STATUSES,
 } from './URLsProjects'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import {
@@ -19,6 +20,7 @@ import {
     DV_TAB_PROJECT_WORKSTREAMS,
     DV_TAB_PROJECT_STATISTICS,
     DV_TAB_PROJECT_ASSISTANTS,
+    DV_TAB_PROJECT_CONTACT_STATUSES,
 } from '../../utils/TabNavigationConstants'
 
 class URLsProjectsTrigger {
@@ -33,6 +35,7 @@ class URLsProjectsTrigger {
             [URL_PROJECT_DETAILS_FEED]: new RegExp('^/project/(?<projectId>[\\w-]+)/updates$'),
             [URL_PROJECT_DETAILS_STATISTICS]: new RegExp('^/project/(?<projectId>[\\w-]+)/statistics$'),
             [URL_PROJECT_DETAILS_ASSISTANTS]: new RegExp('^/project/(?<projectId>[\\w-]+)/assistants$'),
+            [URL_PROJECT_DETAILS_CONTACT_STATUSES]: new RegExp('^/project/(?<projectId>[\\w-]+)/contact-statuses$'),
             // [URL_PROJECT_ARCHIVE]: new RegExp('^/project/(?<projectId>[\\w-]+)/archive$'),
             // [URL_PROJECT_UNARCHIVE]: new RegExp('^/project/(?<projectId>[\\w-]+)/unarchive$'),
         }
@@ -105,6 +108,12 @@ class URLsProjectsTrigger {
                     DV_TAB_PROJECT_BACKLINKS,
                     params.projectId,
                     URL_PROJECT_DETAILS_BACKLINKS_NOTES
+                )
+            case URL_PROJECT_DETAILS_CONTACT_STATUSES:
+                return ProjectHelper.processURLProjectDetailsTab(
+                    navigation,
+                    DV_TAB_PROJECT_CONTACT_STATUSES,
+                    params.projectId
                 )
         }
     }

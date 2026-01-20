@@ -3489,6 +3489,7 @@ export function mapProjectData(projectId, project, customData) {
         lastActionDate: project.lastActionDate ? project.lastActionDate : Date.now(),
         autoEstimation: project.autoEstimation === false ? false : true,
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
+        contactStatuses: project.contactStatuses ? project.contactStatuses : {},
         ...customData,
     }
 }

@@ -18,6 +18,7 @@ import {
     DV_TAB_PROJECT_WORKSTREAMS,
     DV_TAB_PROJECT_STATISTICS,
     DV_TAB_PROJECT_ASSISTANTS,
+    DV_TAB_PROJECT_CONTACT_STATUSES,
 } from '../../utils/TabNavigationConstants'
 import { LINKED_OBJECT_TYPE_PROJECT } from '../../utils/LinkingHelper'
 import BacklinksView from '../BacklinksView/BacklinksView'
@@ -27,6 +28,7 @@ import SharedHelper from '../../utils/SharedHelper'
 import StatisticsView from './Statistics/StatisticsView'
 import LoadingData from '../UIComponents/LoadingData'
 import Assistants from './Assistants/Assistants'
+import ContactStatusSettings from './ProjectProperties/ContactStatusSettings/ContactStatusSettings'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 
@@ -56,6 +58,7 @@ const ProjectDetailedView = ({ navigation }) => {
         DV_TAB_PROJECT_TEAM_MEMBERS,
         DV_TAB_PROJECT_WORKSTREAMS,
         DV_TAB_PROJECT_ASSISTANTS,
+        DV_TAB_PROJECT_CONTACT_STATUSES,
         DV_TAB_PROJECT_UPDATES,
     ]
 
@@ -131,6 +134,8 @@ const ProjectDetailedView = ({ navigation }) => {
                                                 externalStyle={{ marginHorizontal: 0 }}
                                             />
                                         )
+                                    case DV_TAB_PROJECT_CONTACT_STATUSES:
+                                        return <ContactStatusSettings project={project} />
                                 }
                             })()}
                         </View>
