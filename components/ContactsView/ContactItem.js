@@ -21,6 +21,7 @@ import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFo
 import SwipeNewTaskWrapper from '../NotesView/SwipeNewTaskWrapper'
 import { LINKED_OBJECT_TYPE_CONTACT } from '../../utils/LinkingHelper'
 import ObjectNoteTag from '../Tags/ObjectNoteTag'
+import ContactStatusTag from '../Tags/ContactStatusTag'
 import { translate } from '../../i18n/TranslationService'
 import { setSelectedNavItem } from '../../redux/actions'
 import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_USER_PROFILE } from '../../utils/TabNavigationConstants'
@@ -317,6 +318,9 @@ export default class ContactItem extends Component {
                         </TouchableOpacity>
 
                         <View style={localStyles.buttonSection}>
+                            {!isMember && contact.contactStatusId && (
+                                <ContactStatusTag projectId={projectId} contactStatusId={contact.contactStatusId} />
+                            )}
                             {isMember && <MemberTag />}
                             {(contact.noteId || (contact.noteIdsByProject && contact.noteIdsByProject[projectId])) && (
                                 <ObjectNoteTag

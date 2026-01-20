@@ -33,6 +33,7 @@ import {
     setProjectContactPhone,
     setProjectContactPicture,
 } from '../../../utils/backends/Contacts/contactsFirestore'
+import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
 
 class ContactProperties extends Component {
     constructor(props) {
@@ -343,6 +344,12 @@ class ContactProperties extends Component {
                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
                                 objectId={user.uid}
                                 objectType={'contacts'}
+                            />
+                            <ContactStatusProperty
+                                projectId={projectId}
+                                contactStatusId={user.contactStatusId}
+                                disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                contact={user}
                             />
                             <View style={localStyles.propertyRow}>
                                 <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>

@@ -368,3 +368,17 @@ export function setContactLastVisitedBoardDate(projectId, contactId, lastVisitBo
         null
     )
 }
+
+export async function setProjectContactStatus(projectId, contact, contactId, newStatusId) {
+    await updateContactData(projectId, contactId, { contactStatusId: newStatusId }, null)
+
+    const batch = new BatchWrapper(getDb())
+    const followContactData = {
+        followObjectsType: FOLLOWER_CONTACTS_TYPE,
+        followObjectId: contactId,
+        followObject: contact,
+        feedCreator: store.getState().loggedUser,
+    }
+    await tryAddFollower(projectId, followContactData, batch)
+    batch.commit()
+}

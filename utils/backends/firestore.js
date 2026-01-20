@@ -3450,6 +3450,7 @@ export function mapContactData(contactId, contact) {
         assistantId: contact.assistantId ? contact.assistantId : '',
         commentsData: contact.commentsData ? contact.commentsData : null,
         openTasksAmount: contact.openTasksAmount ? contact.openTasksAmount : 0,
+        contactStatusId: contact.contactStatusId ? contact.contactStatusId : null,
     }
 }
 
