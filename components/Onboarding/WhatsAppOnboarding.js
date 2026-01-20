@@ -78,7 +78,7 @@ export default function WhatsAppOnboarding({ navigation }) {
 
     const titleStyle = [localStyles.title, isMobile && { fontSize: 24, marginBottom: 8 }]
 
-    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Gmail, 3: MorningReminder, 4: Push
+    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: MorningReminder, 3: Push (Gmail step disabled)
     const [connectingService, setConnectingService] = useState(null)
     const [showSuccess, setShowSuccess] = useState(null)
     const blinkAnim = useRef(new Animated.Value(1)).current
@@ -120,10 +120,12 @@ export default function WhatsAppOnboarding({ navigation }) {
             if (service === 'calendar') {
                 setStep(1)
                 setShowSuccess('calendar')
-            } else if (service === 'gmail') {
-                setStep(2)
-                setShowSuccess('gmail')
             }
+            // Gmail step is disabled, but handle redirect gracefully if it happens
+            // else if (service === 'gmail') {
+            //     setStep(2)
+            //     setShowSuccess('gmail')
+            // }
 
             startBlinking()
 
@@ -139,11 +141,13 @@ export default function WhatsAppOnboarding({ navigation }) {
                 blinkAnim.setValue(1) // Reset animation
                 if (service === 'calendar') {
                     logEvent('onboarding_calendar_connected')
-                    setStep(2)
-                } else {
-                    logEvent('onboarding_gmail_connected')
-                    setStep(3)
+                    setStep(2) // Skip Gmail, go to MorningReminder
                 }
+                // Gmail step is disabled
+                // else {
+                //     logEvent('onboarding_gmail_connected')
+                //     setStep(3)
+                // }
             }, 2000)
         }
     }, [])
@@ -272,11 +276,13 @@ export default function WhatsAppOnboarding({ navigation }) {
                 blinkAnim.setValue(1) // Reset animation
                 if (service === 'calendar') {
                     logEvent('onboarding_calendar_connected')
-                    setStep(2)
-                } else {
-                    logEvent('onboarding_gmail_connected')
-                    setStep(3)
+                    setStep(2) // Skip Gmail, go to MorningReminder
                 }
+                // Gmail step is disabled
+                // else {
+                //     logEvent('onboarding_gmail_connected')
+                //     setStep(3)
+                // }
             }, 2000)
         } catch (error) {
             console.error('Connection failed', error)
@@ -311,7 +317,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         } else {
             logEvent('onboarding_morning_reminder_enabled')
         }
-        setStep(4)
+        setStep(3) // Go to Push notifications step
     }
 
     const renderCountryPickerModal = () => {
@@ -497,7 +503,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                     style={[localStyles.secondaryButton, isMobile && { paddingVertical: 8 }]}
                     onPress={() => {
                         logEvent('onboarding_calendar_skipped')
-                        setStep(2)
+                        setStep(2) // Skip Gmail, go directly to MorningReminder
                     }}
                     disabled={connectingService === 'calendar'}
                 >
@@ -625,12 +631,12 @@ export default function WhatsAppOnboarding({ navigation }) {
 
     return (
         <SplitLayout>
-            <ProgressBar current={step} total={5} />
+            <ProgressBar current={step} total={4} />
             {step === 0 && renderWhatsAppStep()}
             {step === 1 && renderCalendarConnection()}
-            {step === 2 && renderGmailConnection()}
-            {step === 3 && renderMorningReminderStep()}
-            {step === 4 && renderPushNotificationStep()}
+            {/* Gmail step disabled: {step === 2 && renderGmailConnection()} */}
+            {step === 2 && renderMorningReminderStep()}
+            {step === 3 && renderPushNotificationStep()}
         </SplitLayout>
     )
 }
