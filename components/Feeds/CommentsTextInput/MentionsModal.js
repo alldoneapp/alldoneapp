@@ -27,7 +27,7 @@ import {
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
-import MentionsContacts from './MentionsModal/MentionsContacts'
+import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
 import MentionsItems from './MentionsModal/MentionsItems'
 import Header from './MentionsModal/Header'
 import EmptyMatch from './MentionsModal/EmptyMatch'
@@ -51,6 +51,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../Utils/FeedsConstants'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
 import useTextChange from './useTextChange'
+import store from '../../../redux/store'
 
 export default function MentionsModal({
     mentionText,
@@ -204,7 +205,10 @@ export default function MentionsModal({
     }
 
     const scrollToFocusItem = (key, up = false) => {
-        const id = activeTab === MENTION_MODAL_CONTACTS_TAB ? itemsRef.current[key].uid : itemsRef.current[key].id
+        const item = itemsRef.current[key]
+        if (!item) return
+
+        const id = activeTab === MENTION_MODAL_CONTACTS_TAB ? item.uid : item.id
 
         if (up && key - 1 === (showNewForm ? -2 : -1)) {
             scrollRef?.current?.scrollTo({ y: itemsRef.current.length * 48, animated: false })
@@ -212,7 +216,10 @@ export default function MentionsModal({
             scrollRef?.current?.scrollTo({ y: 0, animated: false })
         } else {
             const space = up ? 96 : 144
-            itemsComponentsRefs.current[id].measure((fx, fy, width, height, px, py) => {
+            const ref = itemsComponentsRefs.current[id]
+            if (!ref?.measure) return
+
+            ref.measure((fx, fy, width, height, px, py) => {
                 if (up && fy - space < offsets.current.top) {
                     scrollRef?.current?.scrollTo({ y: fy - space, animated: false })
                 } else if (up && fy > offsets.current.bottom) {
@@ -255,17 +262,8 @@ export default function MentionsModal({
                 ? `projectId:${projectId} AND ownerId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
                 : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            if (isGuide) {
-                let userFilters = ''
-                const lastIndex = userIds.length - 1
-                userIds.forEach((uid, index) => {
-                    const isLastUser = lastIndex === index
-                    userFilters += isLastUser ? `uid:${uid}` : `uid:${uid} OR `
-                })
-                filters = `(projectId:${projectId} OR projectId:${GLOBAL_PROJECT_ID}) AND (${userFilters} OR recorderUserId:${loggedUser.uid} OR isAssistant:true) AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
-            } else {
-                filters = `(projectId:${projectId} OR projectId:${GLOBAL_PROJECT_ID}) AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
-            }
+            // Search contacts across all projects the user has access to
+            filters = `(isPrivate:false OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
             filters = `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         }
@@ -275,11 +273,27 @@ export default function MentionsModal({
         let items = results.hits
 
         if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            const project = ProjectHelper.getProjectById(projectId)
-            items = items.filter(
-                item =>
-                    !item.isAssistant || item.projectId === projectId || project.globalAssistantIds.includes(item.uid)
-            )
+            // Filter out contacts from projects the user doesn't have access to
+            const { loggedUserProjectsMap } = store.getState()
+            items = items.filter(item => {
+                // Keep assistants from GLOBAL_PROJECT_ID or from projects user has access to
+                if (item.isAssistant) {
+                    if (item.projectId === GLOBAL_PROJECT_ID) return true
+                    if (loggedUserProjectsMap[item.projectId]) return true
+                    return false
+                }
+                // Keep contacts from projects the user has access to
+                return loggedUserProjectsMap[item.projectId]
+            })
+
+            // Sort: current project contacts first, then others
+            items.sort((a, b) => {
+                const aInCurrentProject = a.projectId === projectId
+                const bInCurrentProject = b.projectId === projectId
+                if (aInCurrentProject && !bInCurrentProject) return -1
+                if (!aInCurrentProject && bInCurrentProject) return 1
+                return 0
+            })
         }
 
         return items
@@ -378,11 +392,11 @@ export default function MentionsModal({
                 {itemsByTab[activeTab].length > 0 ? (
                     <View>
                         {activeTab === MENTION_MODAL_CONTACTS_TAB ? (
-                            <MentionsContacts
+                            <MentionsContactsGrouped
                                 key={activeTab}
-                                projectId={projectId}
+                                currentProjectId={projectId}
                                 selectUserToMention={selectItemToMention}
-                                users={itemsByTab[activeTab]}
+                                contacts={itemsByTab[activeTab]}
                                 activeUserIndex={activeItemIndex}
                                 usersComponentsRefs={itemsComponentsRefs}
                             />
