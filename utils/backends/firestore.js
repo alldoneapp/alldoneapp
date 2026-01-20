@@ -484,6 +484,20 @@ export async function initFirebase(onComplete) {
         console.log('🌐 Using production Firebase Functions')
     }
 
+    // Handle redirect result for mobile sign-in (must be called before onAuthStateChanged)
+    firebase
+        .auth()
+        .getRedirectResult()
+        .then(result => {
+            if (result && result.user && result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+                console.log('New user signed in via redirect')
+                store.dispatch(setRegisteredNewUser(true))
+            }
+        })
+        .catch(error => {
+            console.warn('Error getting redirect result:', error)
+        })
+
     firebase.auth().onAuthStateChanged(firebaseUser => {
         onComplete(firebaseUser)
     })
@@ -721,6 +735,40 @@ export const handleGSICredentialResponseOnLogin = async response => {
                 store.dispatch(setRegisteredNewUser(true))
             }
         })
+}
+
+// Helper to detect if running on mobile
+export function isMobileDevice() {
+    if (typeof window === 'undefined') return false
+    const userAgent = window.navigator.userAgent || ''
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
+}
+
+// Sign in with Google using redirect (for mobile)
+export async function signInWithGoogleRedirect() {
+    const provider = new firebase.auth.GoogleAuthProvider()
+    provider.addScope('email')
+    provider.addScope('profile')
+    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    return firebase.auth().signInWithRedirect(provider)
+}
+
+// Handle redirect result after returning from Google sign-in
+export async function handleGoogleRedirectResult() {
+    try {
+        const result = await firebase.auth().getRedirectResult()
+        if (result && result.user) {
+            // User signed in via redirect
+            if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+                store.dispatch(setRegisteredNewUser(true))
+            }
+            return result.user
+        }
+        return null
+    } catch (error) {
+        console.error('Error handling redirect result:', error)
+        return null
+    }
 }
 
 export function getDb() {

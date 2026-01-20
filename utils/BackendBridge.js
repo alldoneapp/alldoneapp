@@ -203,6 +203,18 @@ export default class Backend {
         return bridge.loginWithGoogleWeb()
     }
 
+    static isMobileDevice() {
+        return bridge.isMobileDevice()
+    }
+
+    static signInWithGoogleRedirect() {
+        return bridge.signInWithGoogleRedirect()
+    }
+
+    static handleGoogleRedirectResult() {
+        return bridge.handleGoogleRedirectResult()
+    }
+
     static logout(onComplete) {
         bridge.logoutWeb(onComplete)
     }
