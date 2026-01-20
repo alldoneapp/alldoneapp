@@ -754,24 +754,18 @@ export function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)
 }
 
-// Sign in with Google - on mobile uses redirect, on desktop uses popup
+// Sign in with Google using popup
+// Note: Redirect doesn't work on custom domains (my.alldone.app) because Firebase Auth
+// uses firebaseapp.com for the OAuth handler, and cookies don't transfer back properly.
+// Popup works because it handles everything in the popup window on the firebaseapp.com domain.
 export async function signInWithGoogleRedirect() {
     const provider = new firebase.auth.GoogleAuthProvider()
     provider.addScope('email')
     provider.addScope('profile')
     await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
 
-    const isMobile = isMobileDevice()
-
-    if (isMobile) {
-        // Mobile: use redirect (better UX, no popup blockers)
-        console.log('🔄 Mobile detected - using Google sign-in with redirect...')
-        return firebase.auth().signInWithRedirect(provider)
-    }
-
-    // Desktop: try popup first, fall back to redirect if blocked
     try {
-        console.log('🔐 Desktop - trying Google sign-in with popup...')
+        console.log('🔐 Trying Google sign-in with popup...')
         const result = await firebase.auth().signInWithPopup(provider)
         console.log('✅ Popup sign-in successful:', result?.user?.email)
         if (result && result.user) {
@@ -782,16 +776,7 @@ export async function signInWithGoogleRedirect() {
         }
         return null
     } catch (error) {
-        console.log('⚠️ Popup failed:', error.code, '- falling back to redirect')
-        // If popup blocked or failed, fall back to redirect
-        if (
-            error.code === 'auth/popup-blocked' ||
-            error.code === 'auth/popup-closed-by-user' ||
-            error.code === 'auth/cancelled-popup-request'
-        ) {
-            console.log('🔄 Starting Google sign-in with redirect...')
-            return firebase.auth().signInWithRedirect(provider)
-        }
+        console.error('❌ Popup sign-in failed:', error.code, error.message)
         throw error
     }
 }
