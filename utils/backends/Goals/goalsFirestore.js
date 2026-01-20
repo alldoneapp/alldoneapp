@@ -60,7 +60,7 @@ import {
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 
 import { createGoalAssistantChangedFeed } from './goalUpdates'
-import { createGenericTaskWhenMention } from '../Tasks/tasksFirestore'
+import { createGenericTaskWhenMention, setTaskProjectWithGoal } from '../Tasks/tasksFirestore'
 import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import {
     updateChatAssistantWithoutFeeds,
@@ -948,24 +948,31 @@ export async function updateGoalProject(oldProject, newProject, goal) {
         isPublicFor = usersWithAccess.map(user => user.uid)
     }
 
-    await uploadNewGoal(
-        newProjectId,
-        {
-            ...goal,
-            assigneesIds,
-            assigneesCapacity,
-            assigneesReminderDate,
-            parentDoneMilestoneIds: [],
-            progressByDoneMilestone: {},
-            isPublicFor,
-            dateByDoneMilestone: {},
-            sortIndexByMilestone: {},
-            creatorId: newProjectUsers.map(user => user.uid).includes(goal.creatorId) ? goal.creatorId : loggedUser.uid,
-        },
-        null,
-        false,
-        true
-    )
+    const updatedGoal = {
+        ...goal,
+        assigneesIds,
+        assigneesCapacity,
+        assigneesReminderDate,
+        parentDoneMilestoneIds: [],
+        progressByDoneMilestone: {},
+        isPublicFor,
+        dateByDoneMilestone: {},
+        sortIndexByMilestone: {},
+        creatorId: newProjectUsers.map(user => user.uid).includes(goal.creatorId) ? goal.creatorId : loggedUser.uid,
+    }
+
+    await uploadNewGoal(newProjectId, updatedGoal, null, false, true)
+
+    // Fetch all tasks associated with this goal and move them to the new project
+    const taskDocs = await getDb().collection(`items/${oldProjectId}/tasks`).where('parentGoalId', '==', goal.id).get()
+
+    const taskMovePromises = []
+    taskDocs.forEach(doc => {
+        const task = mapTaskData(doc.id, doc.data())
+        taskMovePromises.push(setTaskProjectWithGoal(oldProject, newProject, task, updatedGoal))
+    })
+    await Promise.all(taskMovePromises)
+
     deleteGoal(oldProjectId, goal, newProjectId)
 
     if (route === 'GoalDetailedView') {

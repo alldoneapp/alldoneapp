@@ -1748,6 +1748,84 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
     setTaskProjectFeedsChain(currentProject, newProject, task, oldAssignee, newAssignee)
 }
 
+export async function setTaskProjectWithGoal(currentProject, newProject, task, goal) {
+    const { loggedUser, projectUsers } = store.getState()
+
+    const newProjectUsers = projectUsers[newProject.id]
+
+    const taskCopy = { ...task }
+
+    if (task.suggestedBy) {
+        taskCopy.userId = loggedUser.uid
+        taskCopy.suggestedBy = null
+    }
+
+    taskCopy.stepHistory = [OPEN_STEP]
+    taskCopy.userIds = [task.userId]
+    taskCopy.currentReviewerId = task.done ? DONE_STEP : task.userId
+    taskCopy.observersIds = []
+    taskCopy.dueDateByObserversIds = {}
+    taskCopy.estimationsByObserverIds = {}
+
+    // Preserve the goal association with updated privacy settings
+    taskCopy.parentGoalId = goal.id
+    taskCopy.parentGoalIsPublicFor = goal.isPublicFor
+    taskCopy.lockKey = goal.lockKey || ''
+
+    // Preserve the sortIndex for calendar tasks based on their start time
+    if (taskCopy.calendarData && taskCopy.calendarData.start) {
+        const { start } = taskCopy.calendarData
+        taskCopy.sortIndex = start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
+    } else {
+        taskCopy.sortIndex = generateSortIndex()
+    }
+
+    // If this is a calendar task and the user manually moved it, pin it to the new project
+    if (taskCopy.calendarData) {
+        taskCopy.calendarData = {
+            ...taskCopy.calendarData,
+            pinnedToProjectId: newProject.id,
+        }
+    }
+
+    taskCopy.creatorId = newProjectUsers.map(user => user.uid).includes(taskCopy.creatorId)
+        ? taskCopy.creatorId
+        : loggedUser.uid
+    if (task.parentId) {
+        taskCopy.parentId = null
+        taskCopy.isSubtask = false
+        taskCopy.inDone = taskCopy.done
+        taskCopy.parentDone = false
+        taskCopy.completed = taskCopy.done ? Date.now() : null
+    }
+
+    const subtaskIds = taskCopy.subtaskIds
+    taskCopy.subtaskIds = []
+    taskCopy.subtaskNames = []
+
+    updateEditionData(taskCopy)
+
+    delete taskCopy.time
+    delete taskCopy.projectId
+    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(taskCopy)
+
+    const promises = []
+    promises.push(
+        createSubtasksCopies(currentProject.id, newProject.id, task.id, taskCopy, subtaskIds, null, false, false)
+    )
+    promises.push(
+        getDb().doc(`items/${currentProject.id}/tasks/${task.id}`).update({ movingToOtherProjectId: newProject.id })
+    )
+    await Promise.all(promises)
+
+    const batch = new BatchWrapper(getDb())
+    updateTaskData(currentProject.id, task.id, {}, batch)
+    batch.delete(getDb().doc(`items/${currentProject.id}/tasks/${task.id}`))
+    batch.commit()
+
+    setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
+}
+
 export async function setTaskParentGoal(projectId, taskId, task, goal, externalBatch) {
     const goalId = goal ? goal.id : null
     const parentGoalIsPublicFor = goal ? goal.isPublicFor : null

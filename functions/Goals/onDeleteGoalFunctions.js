@@ -79,7 +79,8 @@ const onDeleteGoal = async (projectId, goal) => {
     const promises = []
     promises.push(deleteChat(admin, projectId, goalId))
     if (noteId) promises.push(deleteNote(projectId, noteId, movingToOtherProjectId, admin))
-    promises.push(removeGoalFromTasks(projectId, goalId))
+    // Skip orphaning tasks when moving to another project - tasks are moved with the goal
+    if (!movingToOtherProjectId) promises.push(removeGoalFromTasks(projectId, goalId))
     promises.push(deleteOpenMilestoneIfIsEmpty(projectId, completionMilestoneDate, ownerId))
     promises.push(deleteDoneMilestonesIfAreEmpty(projectId, parentDoneMilestoneIds))
     if (!movingToOtherProjectId)
