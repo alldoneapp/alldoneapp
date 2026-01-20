@@ -1,22 +1,21 @@
 import React, { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import { OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 import DueDate from './DueDate'
 import Privacy from './Privacy'
-import Estimation from './Estimation'
 import DoneButton from './DoneButton'
 import ParentGoal from './ParentGoal'
 import MoreOptions from './MoreOptions'
+import Recurring from './Recurring'
 
 export default function ButtonsArea({
     projectId,
     task,
     showDueDate,
     showPrivacy,
-    showEstimation,
     showParentGoal,
     showMoreOptions,
+    showRecurring,
     enterKeyAction,
     done,
 }) {
@@ -32,7 +31,7 @@ export default function ButtonsArea({
         }
     })
 
-    const { name, isPrivate, estimations, parentGoalId } = task
+    const { name, isPrivate, parentGoalId } = task
     const disabled = name.trim() === ''
 
     return (
@@ -41,12 +40,7 @@ export default function ButtonsArea({
                 <DueDate showDueDate={showDueDate} disabled={disabled} />
                 <Privacy isPrivate={isPrivate} showPrivacy={showPrivacy} disabled={disabled} />
                 <ParentGoal parentGoalId={parentGoalId} showParentGoal={showParentGoal} disabled={disabled} />
-                <Estimation
-                    projectId={projectId}
-                    estimation={estimations[OPEN_STEP]}
-                    showEstimation={showEstimation}
-                    disabled={disabled}
-                />
+                <Recurring showRecurring={showRecurring} disabled={disabled} />
                 <MoreOptions showMoreOptions={showMoreOptions} disabled={disabled} />
             </View>
             <View style={localStyles.buttonsRight}>

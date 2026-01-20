@@ -18,7 +18,7 @@ export default function TaskEditForm({
     setMentions,
     showDueDate,
     showPrivacy,
-    showEstimation,
+    showRecurring,
     showParentGoal,
     showMoreOptions,
 }) {
@@ -119,7 +119,7 @@ export default function TaskEditForm({
                 task={task}
                 showDueDate={showDueDate}
                 showPrivacy={showPrivacy}
-                showEstimation={showEstimation}
+                showRecurring={showRecurring}
                 showParentGoal={showParentGoal}
                 showMoreOptions={showMoreOptions}
                 enterKeyAction={enterKeyAction}

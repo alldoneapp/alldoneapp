@@ -18,7 +18,7 @@ export default function MainModal({
     task,
     showAssigneeModal,
     showDueDate,
-    showEstimation,
+    showRecurring,
     showParentGoal,
     showPrivacy,
     showAssignee,
@@ -81,7 +81,7 @@ export default function MainModal({
                 setMentions={setMentions}
                 showDueDate={showDueDate}
                 showPrivacy={showPrivacy}
-                showEstimation={showEstimation}
+                showRecurring={showRecurring}
                 showParentGoal={showParentGoal}
                 showMoreOptions={showMoreOptions}
             />

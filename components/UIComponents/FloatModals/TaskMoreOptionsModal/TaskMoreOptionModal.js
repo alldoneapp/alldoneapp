@@ -12,12 +12,14 @@ import { translate } from '../../../../i18n/TranslationService'
 import ModalItem from '../MorePopupsOfEditModals/Common/ModalItem'
 import DescriptionModal from '../DescriptionModal/DescriptionModal'
 import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
-import RecurrenceModal from '../RecurrenceModal'
+import EstimationModal from '../EstimationModal/EstimationModal'
 import HighlightColorModal from '../HighlightColorModal/HighlightColorModal'
+import { getTaskAutoEstimation, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 
 export default function TaskMoreOptionModal({
     saveDescription,
-    saveRecurrence,
+    saveEstimation,
+    setAutoEstimation,
     saveHighlight,
     projectId,
     task,
@@ -26,7 +28,7 @@ export default function TaskMoreOptionModal({
     const dispatch = useDispatch()
     const [showDescriptionModal, setShowDescriptionModal] = useState(false)
     const [showHighlightModal, setShowHighlightModal] = useState(false)
-    const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
+    const [showEstimationModal, setShowEstimationModal] = useState(false)
 
     const showDescription = () => {
         setShowDescriptionModal(true)
@@ -36,8 +38,8 @@ export default function TaskMoreOptionModal({
         setShowHighlightModal(true)
     }
 
-    const showRecurrence = () => {
-        setShowRecurrenceModal(true)
+    const showEstimation = () => {
+        setShowEstimationModal(true)
     }
 
     useEffect(() => {
@@ -59,12 +61,17 @@ export default function TaskMoreOptionModal({
                     objectType={FEED_TASK_OBJECT_TYPE}
                     updateDescription={saveDescription}
                 />
-            ) : showRecurrenceModal ? (
-                <RecurrenceModal
-                    task={task}
+            ) : showEstimationModal ? (
+                <EstimationModal
                     projectId={projectId}
-                    saveRecurrenceBeforeSaveTask={saveRecurrence}
+                    estimation={task.estimations[OPEN_STEP]}
+                    setEstimationFn={saveEstimation}
                     closePopover={closeModal}
+                    showBackButton={true}
+                    autoEstimation={getTaskAutoEstimation(projectId, task.estimations[OPEN_STEP], task.autoEstimation)}
+                    setAutoEstimation={setAutoEstimation}
+                    showAutoEstimation={!task.isSubtask}
+                    disabled={!!task.calendarData}
                 />
             ) : showHighlightModal ? (
                 <HighlightColorModal onPress={saveHighlight} selectedColor={task.hasStar} responsive={true} />
@@ -73,7 +80,7 @@ export default function TaskMoreOptionModal({
                     <ModalHeader closeModal={closeModal} title={translate('More options')} description={''} />
                     <ModalItem icon={'droplet-off'} text={'Highlight'} shortcut="1" onPress={showHighlight} />
                     <ModalItem icon={'info'} text={'Description'} shortcut="2" onPress={showDescription} />
-                    <ModalItem icon={'rotate-cw'} text={'Recurring'} shortcut="3" onPress={showRecurrence} />
+                    <ModalItem icon={'clock'} text={'Estimation'} shortcut="3" onPress={showEstimation} />
                 </View>
             )}
         </CustomScrollView>

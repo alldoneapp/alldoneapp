@@ -4,11 +4,7 @@ import v4 from 'uuid/v4'
 
 import moment from 'moment'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
-import TasksHelper, {
-    OPEN_STEP,
-    getTaskAutoEstimation,
-    objectIsPublicForLoggedUser,
-} from '../../../TaskListView/Utils/TasksHelper'
+import TasksHelper, { OPEN_STEP, objectIsPublicForLoggedUser } from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import Backend from '../../../../utils/BackendBridge'
 import {
@@ -21,7 +17,7 @@ import {
     updateTaskSuggestedCommentModalData,
     hideWebSideBar,
 } from '../../../../redux/actions'
-import EstimationModal from '../EstimationModal/EstimationModal'
+import RecurrenceModal from '../RecurrenceModal'
 import DueDateModal from '../DueDateModal/DueDateModal'
 import {
     FEED_ASSISTANT_OBJECT_TYPE,
@@ -193,7 +189,7 @@ export default function RichCreateTaskModal({
     const [projectId, setProjectId] = useState(initialProjectId)
     const [activeGoal, setActiveGoal] = useState(null)
     const [showDueDateModal, setShowDueDateModal] = useState(false)
-    const [showEstimationModal, setShowEstimationModal] = useState(false)
+    const [showRecurrenceModal, setShowRecurrenceModal] = useState(false)
     const [showPrivacyModal, setShowPrivacyModal] = useState(false)
     const [showAssigneeModal, setShowAssigneeModal] = useState(false)
     const [showParentGoalModal, setShowParentGoalModal] = useState(false)
@@ -224,9 +220,9 @@ export default function RichCreateTaskModal({
         }
     }
 
-    const showEstimation = () => {
-        if (!showEstimationModal) {
-            setShowEstimationModal(true)
+    const showRecurring = () => {
+        if (!showRecurrenceModal) {
+            setShowRecurrenceModal(true)
             dispatch(showFloatPopup())
         }
     }
@@ -268,7 +264,17 @@ export default function RichCreateTaskModal({
 
     const saveRecurrence = recurrence => {
         setTask({ ...task, recurrence })
+        setShowRecurrenceModal(false)
+        dispatch(hideFloatPopup())
+    }
+
+    const saveEstimation = value => {
+        setTask({ ...task, estimations: { ...task.estimations, [OPEN_STEP]: value } })
         setShowMoreOptionsModal(false)
+    }
+
+    const setAutoEstimation = autoEstimation => {
+        setTask({ ...task, autoEstimation })
     }
 
     const saveHighlight = (e, data) => {
@@ -276,15 +282,6 @@ export default function RichCreateTaskModal({
         e?.stopPropagation()
         setTask({ ...task, hasStar: data.color })
         setShowMoreOptionsModal(false)
-    }
-
-    const saveEstimation = value => {
-        setTask({ ...task, estimations: { ...task.estimations, [OPEN_STEP]: value } })
-        dispatch(hideFloatPopup())
-    }
-
-    const setAutoEstimation = autoEstimation => {
-        setTask({ ...task, autoEstimation })
     }
 
     const saveParentGoal = goal => {
@@ -377,7 +374,7 @@ export default function RichCreateTaskModal({
 
     const delayClosePopup = () => {
         setTimeout(async () => {
-            setShowEstimationModal(false)
+            setShowRecurrenceModal(false)
             setShowPrivacyModal(false)
             setShowDueDateModal(false)
             setShowAssigneeModal(false)
@@ -615,17 +612,12 @@ export default function RichCreateTaskModal({
                     saveDueDateBeforeSaveTask={saveDueDate}
                     setToBacklogBeforeSaveTask={setToBacklog}
                 />
-            ) : showEstimationModal ? (
-                <EstimationModal
+            ) : showRecurrenceModal ? (
+                <RecurrenceModal
+                    task={task}
                     projectId={projectId}
-                    estimation={task.estimations[OPEN_STEP]}
-                    setEstimationFn={saveEstimation}
+                    saveRecurrenceBeforeSaveTask={saveRecurrence}
                     closePopover={delayClosePopup}
-                    showBackButton={true}
-                    autoEstimation={getTaskAutoEstimation(projectId, task.estimations[OPEN_STEP], task.autoEstimation)}
-                    setAutoEstimation={setAutoEstimation}
-                    showAutoEstimation={!task.isSubtask}
-                    disabled={!!task.calendarData}
                 />
             ) : showPrivacyModal ? (
                 <PrivacyModal
@@ -648,7 +640,8 @@ export default function RichCreateTaskModal({
             ) : showMoreOptionsModal ? (
                 <TaskMoreOptionModal
                     saveDescription={saveDescription}
-                    saveRecurrence={saveRecurrence}
+                    saveEstimation={saveEstimation}
+                    setAutoEstimation={setAutoEstimation}
                     saveHighlight={saveHighlight}
                     task={task}
                     projectId={projectId}
@@ -672,7 +665,7 @@ export default function RichCreateTaskModal({
                     task={task}
                     showAssigneeModal={showAssigneeModal}
                     showDueDate={showDueDate}
-                    showEstimation={showEstimation}
+                    showRecurring={showRecurring}
                     showParentGoal={showParentGoal}
                     showPrivacy={showPrivacy}
                     showAssignee={showAssignee}
