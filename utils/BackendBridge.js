@@ -731,8 +731,16 @@ export default class Backend {
         return goalsBridge.deleteAllGoalsInMilestone(projectId, goals)
     }
 
-    static updateGoalAssigneeReminderDate(projectId, goalId, userId, date) {
-        return goalsBridge.updateGoalAssigneeReminderDate(projectId, goalId, userId, date)
+    static updateGoalAssigneeReminderDate(projectId, goalId, userId, date, goal = null, cascadeToTasks = false) {
+        return goalsBridge.updateGoalAssigneeReminderDate(projectId, goalId, userId, date, goal, cascadeToTasks)
+    }
+
+    static autoReminderGoal(projectId, goal, userId, cascadeToTasks = true) {
+        return goalsBridge.autoReminderGoal(projectId, goal, userId, cascadeToTasks)
+    }
+
+    static getDateToMoveGoalInAutoReminder(timesPostponed) {
+        return goalsBridge.getDateToMoveGoalInAutoReminder(timesPostponed)
     }
 
     static async updateGoal(projectId, oldGoal, updatedGoal, avoidFollow) {

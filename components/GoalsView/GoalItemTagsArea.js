@@ -116,6 +116,15 @@ export default function GoalItemTagsArea({
                     onPress={navigateToChildrenTasksView}
                 />
             )}
+            {goal.timesPostponed >= 3 && (
+                <CounterTag
+                    icon={'coffee'}
+                    style={{ marginLeft: 8 }}
+                    counter={goal.timesPostponed}
+                    onPress={goToGoals}
+                    disabled={disableTagsActions}
+                />
+            )}
             {goal.noteId && (
                 <ObjectNoteTag
                     objectId={goal.id}

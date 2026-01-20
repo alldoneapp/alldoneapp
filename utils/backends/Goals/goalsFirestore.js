@@ -54,6 +54,7 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
+    startLoadingData,
     stopLoadingData,
     switchProject,
 } from '../../../redux/actions'
@@ -853,8 +854,99 @@ export async function updateGoalAssigneeCapacity(projectId, goal, oldCapacity, n
     updateGoalAssigneesCapacitiesFeedsChain(projectId, goal, oldCapacity, newCapacity, assigneeId)
 }
 
-export function updateGoalAssigneeReminderDate(projectId, goalId, userId, date) {
-    updateGoalData(projectId, goalId, { [`assigneesReminderDate.${userId}`]: date }, null)
+export async function updateGoalAssigneeReminderDate(
+    projectId,
+    goalId,
+    userId,
+    date,
+    goal = null,
+    cascadeToTasks = false
+) {
+    const goalData = goal || (await getGoalData(projectId, goalId))
+    const oldDate = goalData?.assigneesReminderDate?.[userId] || 0
+
+    const updates = { [`assigneesReminderDate.${userId}`]: date }
+
+    // Increment timesPostponed if date is being moved later (postponed)
+    if (date > oldDate && date !== BACKLOG_DATE_NUMERIC) {
+        updates.timesPostponed = firebase.firestore.FieldValue.increment(1)
+        logEvent('goal_postponed')
+    }
+
+    updateGoalData(projectId, goalId, updates, null)
+
+    // Cascade to child tasks if requested
+    if (cascadeToTasks) {
+        await updateChildTasksDueDate(projectId, goalId, date)
+    }
+}
+
+export const getDateToMoveGoalInAutoReminder = timesPostponed => {
+    let date = moment()
+
+    if (!timesPostponed) {
+        date.add(1, 'day')
+    } else if (timesPostponed === 1) {
+        date.add(2, 'day')
+    } else if (timesPostponed === 2) {
+        date.add(4, 'day')
+    } else if (timesPostponed === 3) {
+        date.add(8, 'day')
+    } else if (timesPostponed === 4) {
+        date.add(16, 'day')
+    } else if (timesPostponed === 5) {
+        date.add(32, 'day')
+    } else if (timesPostponed === 6) {
+        date.add(64, 'day')
+    } else if (timesPostponed === 7) {
+        date.add(128, 'day')
+    } else if (timesPostponed === 8) {
+        date.add(256, 'day')
+    } else {
+        date = BACKLOG_DATE_NUMERIC
+    }
+    return date
+}
+
+const updateChildTasksDueDate = async (projectId, goalId, newDate) => {
+    const endOfToday = moment().endOf('day').valueOf()
+
+    const docs = await getDb()
+        .collection(`/items/${projectId}/tasks`)
+        .where('parentGoalId', '==', goalId)
+        .where('done', '==', false)
+        .get()
+
+    if (docs.empty) return
+
+    const batch = new BatchWrapper(getDb())
+
+    for (const doc of docs.docs) {
+        const task = doc.data()
+        // Only update tasks whose dueDate is today or earlier
+        if (task.dueDate <= endOfToday) {
+            const taskUpdates = {
+                dueDate: newDate,
+                sortIndex: generateSortIndex(),
+                timesPostponed: firebase.firestore.FieldValue.increment(1),
+            }
+            batch.update(getDb().doc(`items/${projectId}/tasks/${doc.id}`), taskUpdates)
+        }
+    }
+
+    await batch.commit()
+}
+
+export async function autoReminderGoal(projectId, goal, userId, cascadeToTasks = true) {
+    store.dispatch(startLoadingData())
+
+    const date = getDateToMoveGoalInAutoReminder(goal.timesPostponed)
+    const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+
+    await updateGoalAssigneeReminderDate(projectId, goal.id, userId, dateTimestamp, goal, cascadeToTasks)
+
+    store.dispatch(stopLoadingData())
+    return dateTimestamp
 }
 
 export const updateGoalLastCommentData = async (projectId, goalId, lastComment, lastCommentType) => {

@@ -3209,6 +3209,7 @@ export function mapGoalData(goalId, goal) {
         lockKey: goal.lockKey ? goal.lockKey : '',
         assistantId: goal.assistantId ? goal.assistantId : '',
         commentsData: goal.commentsData ? goal.commentsData : '',
+        timesPostponed: goal.timesPostponed ?? 0,
     }
 }
 

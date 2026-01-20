@@ -91,6 +91,21 @@ Handle event propagation carefully. Set proper z-index and container `<div>` ele
 -   Tests in `__tests__/` mirror component structure
 -   Firebase mocks in `__mocks__/`
 -   Maintain 10% coverage thresholds
+-   Many tests fail due to native module mocking issues (ExpoLocalization, etc.) - this is a known limitation
+
+### Verifying Code Changes
+
+To verify syntax and compilation without running the full test suite:
+
+```bash
+# Start Metro bundler - this will catch syntax errors and import issues
+npm run start-clean
+
+# If Metro starts successfully without errors, the code compiles correctly
+# Look for "Running Metro Bundler on port 8081" message
+```
+
+Note: Standard syntax checkers like `acorn` may fail on modern JavaScript features (optional chaining `?.`, nullish coalescing `??`) that are fully supported by the project's Babel/Metro configuration.
 
 ### Environment Configuration
 

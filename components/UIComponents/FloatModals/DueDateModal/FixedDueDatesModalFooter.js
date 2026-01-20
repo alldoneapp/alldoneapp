@@ -21,6 +21,7 @@ export default function FixedDueDatesModalFooter({
     setVisibleCalendar,
     updateParentGoalReminderDate,
     showAutoReminder,
+    goal,
 }) {
     const lastSelectedDueDate = useSelector(state => state.lastSelectedDueDate)
 
@@ -54,6 +55,9 @@ export default function FixedDueDatesModalFooter({
                     tasks={tasks}
                     isObservedTabActive={isObservedTabActive}
                     closePopover={closePopover}
+                    goal={goal}
+                    updateParentGoalReminderDate={updateParentGoalReminderDate}
+                    inParentGoal={inParentGoal}
                 />
             )}
         </View>

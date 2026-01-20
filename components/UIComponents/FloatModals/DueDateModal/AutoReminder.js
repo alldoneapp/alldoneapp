@@ -14,14 +14,29 @@ import {
     getDateToMoveTaskInAutoTeminder,
     setTaskDueDate,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
+import { autoReminderGoal, getDateToMoveGoalInAutoReminder } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setLastSelectedDueDate } from '../../../../redux/actions'
 
-export default function AutoReminder({ projectId, task, tasks, isObservedTabActive, closePopover }) {
+export default function AutoReminder({
+    projectId,
+    task,
+    tasks,
+    isObservedTabActive,
+    closePopover,
+    goal,
+    updateParentGoalReminderDate,
+    inParentGoal,
+}) {
     const dispatch = useDispatch()
+    const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
-    const autoReminder = () => {
-        if (tasks) {
+    const autoReminder = async () => {
+        if (goal && updateParentGoalReminderDate) {
+            // Auto-remind goal and cascade to tasks
+            const dateTimestamp = await autoReminderGoal(projectId, goal, currentUserId, inParentGoal)
+            dispatch(setLastSelectedDueDate(dateTimestamp))
+        } else if (tasks) {
             autoReminderMultipleTasks(tasks)
         } else {
             const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
@@ -31,7 +46,12 @@ export default function AutoReminder({ projectId, task, tasks, isObservedTabActi
         closePopover()
     }
 
-    const date = tasks ? null : getDateToMoveTaskInAutoTeminder(task.timesPostponed, isObservedTabActive)
+    // Calculate date based on goal or task
+    const date = goal
+        ? getDateToMoveGoalInAutoReminder(goal.timesPostponed)
+        : tasks
+        ? null
+        : getDateToMoveTaskInAutoTeminder(task.timesPostponed, isObservedTabActive)
 
     return (
         <TouchableOpacity style={localStyles.dateSectionItem} onPress={autoReminder} accessible={false}>
