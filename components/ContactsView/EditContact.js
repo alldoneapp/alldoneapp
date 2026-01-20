@@ -52,7 +52,10 @@ export default class EditContact extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
-        const contact = this.props.isNew ? ContactsHelper.getDefaultContactInfo() : this.props.contact
+        // When creating a new contact, use the current contact status filter as the default status
+        const contact = this.props.isNew
+            ? ContactsHelper.getDefaultContactInfo(storeState.contactStatusFilter)
+            : this.props.contact
         const clonedContact = cloneDeep(contact)
 
         this.state = {

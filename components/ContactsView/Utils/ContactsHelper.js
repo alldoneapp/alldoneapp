@@ -471,7 +471,7 @@ class ContactsHelper {
         )
     }
 
-    static getDefaultContactInfo = () => {
+    static getDefaultContactInfo = (contactStatusId = null) => {
         const { loggedUser } = store.getState()
 
         return {
@@ -498,6 +498,7 @@ class ContactsHelper {
             assistantId: '',
             commentsData: null,
             openTasksAmount: 0,
+            contactStatusId: contactStatusId,
         }
     }
 
