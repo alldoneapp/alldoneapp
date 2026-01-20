@@ -653,6 +653,9 @@ export function createGenericTaskWhenMention(
         const generic = genericType === GENERIC_COMMENT_TYPE ? `&Comment of ` : ''
 
         nonDuplicatedMentionedUsersIds.forEach(async userId => {
+            // Skip creating mention task if user is mentioning themselves
+            if (userId === uid) return
+
             let isPrivate = false
             if (parentType === 'tasks') {
                 const task = await getTaskData(projectId, parentObjectId)
@@ -686,7 +689,8 @@ export function createGenericTaskWhenMention(
                 }
                 genericTask.sortIndex = generateSortIndex()
                 updateEditionData(genericTask)
-                uploadNewTask(projectId, genericTask, null, null, false, false)
+                // Pass notGenerateMentionTasks: true to prevent recursive mention task creation
+                uploadNewTask(projectId, genericTask, null, null, true, false)
             }
         })
     }
