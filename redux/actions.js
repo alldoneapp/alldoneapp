@@ -1753,6 +1753,19 @@ export const removeHashtagFilters = hashtag => {
     return action
 }
 
+export const clearContactStatusFilter = () => {
+    const action = { type: 'Clear contact status filter' }
+    return action
+}
+
+export const setContactStatusFilter = statusId => {
+    const action = {
+        type: 'Set contact status filter',
+        statusId,
+    }
+    return action
+}
+
 export const setTriggerGoldAnimation = (goldEarned, checkBoxId) => {
     const action = {
         type: 'Set gold earned',

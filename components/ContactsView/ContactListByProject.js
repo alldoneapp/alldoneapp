@@ -15,6 +15,7 @@ import ContactsHelper, { isSomeContactEditOpen } from './Utils/ContactsHelper'
 import { useDispatch, useSelector } from 'react-redux'
 import useSelectorHashtagFilters from '../HashtagFilters/UseSelectorHashtagFilters'
 import { filterContacts } from '../HashtagFilters/FilterHelpers/FilterContacts'
+import useSelectorContactStatusFilter from '../ContactStatusFilters/useSelectorContactStatusFilter'
 import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import NewContactSection from './NewContactSection'
 import ContactListEmptyProject from './ContactListEmptyProject'
@@ -34,6 +35,7 @@ export default function ContactListByProject({
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const lastAddNewContact = useSelector(state => state.lastAddNewContact)
     const [filters, filtersArray] = useSelectorHashtagFilters()
+    const [contactStatusFilter] = useSelectorContactStatusFilter()
     const [filteredMembers, setFilteredMembers] = useState(cloneDeep(members))
     const [filteredContacts, setFilteredContacts] = useState(cloneDeep(contacts))
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
@@ -61,17 +63,26 @@ export default function ContactListByProject({
     }, [filteredMembers, filteredContacts, onlyMembers, pressedShowMore])
 
     useEffect(() => {
+        let newMembers = members
+        let newContacts = contacts
+
+        // Apply hashtag filters
         if (filtersArray.length > 0) {
-            const newMembers = filterContacts(members, project.index)
-            const newContacts = filterContacts(contacts, project.index)
-            setFilteredMembers(newMembers)
-            setFilteredContacts(newContacts)
-        } else {
-            setFilteredMembers(cloneDeep(members))
-            setFilteredContacts(cloneDeep(contacts))
+            newMembers = filterContacts(members, project.index)
+            newContacts = filterContacts(contacts, project.index)
         }
+
+        // Apply contact status filter (only to contacts, not members)
+        // When filtering by contact status, hide members since they don't have statuses
+        if (contactStatusFilter) {
+            newMembers = []
+            newContacts = newContacts.filter(contact => contact.contactStatusId === contactStatusFilter)
+        }
+
+        setFilteredMembers(cloneDeep(newMembers))
+        setFilteredContacts(cloneDeep(newContacts))
         // Using plain "filtersArray" adds infinite re-renders here
-    }, [JSON.stringify(filtersArray), members, contacts])
+    }, [JSON.stringify(filtersArray), contactStatusFilter, members, contacts])
 
     useEffect(() => {
         updateLastAddNewContact()

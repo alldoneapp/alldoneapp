@@ -25,6 +25,7 @@ import { DV_TAB_ROOT_CONTACTS } from '../../utils/TabNavigationConstants'
 import ContactsHelper from './Utils/ContactsHelper'
 import NothingToShow from '../UIComponents/NothingToShow'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
+import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
 import { PROJECT_TYPE_GUIDE } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 
 export default function ContactsView() {
@@ -245,6 +246,8 @@ export default function ContactsView() {
             </View>
 
             <HashtagFiltersView />
+
+            <ContactStatusFiltersView projectContacts={projectContacts} />
 
             {contactsAmount > 0 ? (
                 inAllProjects ? (

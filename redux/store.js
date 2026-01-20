@@ -240,6 +240,7 @@ export const initialState = {
     todayEmptyGoalsTotalAmountInOpenTasksView: { total: 0 },
     goalsShowMoreExpanded: false,
     hashtagFilters: new Map(),
+    contactStatusFilter: null,
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -1385,6 +1386,20 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 hashtagFilters: newMap,
+            }
+        }
+
+        case 'Clear contact status filter': {
+            return {
+                ...state,
+                contactStatusFilter: null,
+            }
+        }
+
+        case 'Set contact status filter': {
+            return {
+                ...state,
+                contactStatusFilter: action.statusId,
             }
         }
 

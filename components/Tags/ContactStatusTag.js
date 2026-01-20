@@ -1,9 +1,11 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import { useSelector } from 'react-redux'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useDispatch, useSelector } from 'react-redux'
 import styles, { colors, windowTagStyle } from '../styles/global'
+import { setContactStatusFilter } from '../../redux/actions'
 
 const ContactStatusTag = ({ projectId, contactStatusId, style }) => {
+    const dispatch = useDispatch()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const projectsMap = useSelector(state => state.loggedUserProjectsMap)
     const project = projectsMap[projectId]
@@ -14,11 +16,18 @@ const ContactStatusTag = ({ projectId, contactStatusId, style }) => {
         return null
     }
 
+    const onPress = e => {
+        e.stopPropagation()
+        dispatch(setContactStatusFilter(contactStatusId))
+    }
+
     return (
-        <View style={[localStyles.container, style]}>
-            <View style={[localStyles.colorDot, { backgroundColor: status.color }]} />
-            {!mobile && <Text style={[localStyles.text, windowTagStyle()]}>{status.name}</Text>}
-        </View>
+        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+            <View style={[localStyles.container, style]}>
+                <View style={[localStyles.colorDot, { backgroundColor: status.color }]} />
+                {!mobile && <Text style={[localStyles.text, windowTagStyle()]}>{status.name}</Text>}
+            </View>
+        </TouchableOpacity>
     )
 }
 
