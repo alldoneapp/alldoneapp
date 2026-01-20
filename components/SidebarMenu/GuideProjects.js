@@ -3,7 +3,6 @@ import { useSelector } from 'react-redux'
 import { View, StyleSheet } from 'react-native'
 
 import styles from '../styles/global'
-import TemplatesMarketplace from './TemplatesMarketplace'
 import { checkIfUserIsGuideAdmin } from '../Guides/guidesHelper'
 import GuideProjectsListCreators from './GuideProjectsListCreators'
 import GuideProjectsListUsers from './GuideProjectsListUsers'
@@ -20,7 +19,6 @@ export default function GuideProjects({ navigation }) {
             ) : (
                 <GuideProjectsListUsers navigation={navigation} />
             )}
-            <TemplatesMarketplace />
         </View>
     )
 }

@@ -33,6 +33,8 @@ export default function GuideProjectsListUsers({ navigation }) {
 
     const theme = getTheme(Themes, loggedUser.themeName, 'CustomSideMenu.GuideProjects')
 
+    if (guideProjects.length === 0) return null
+
     return (
         <View>
             <View style={[localStyles.titleContainer, !expanded ? { paddingLeft: 18 } : null]}>
