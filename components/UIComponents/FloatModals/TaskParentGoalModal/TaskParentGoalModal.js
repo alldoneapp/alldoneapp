@@ -358,8 +358,16 @@ export default function TaskParentGoalModal({
         }
     })
 
+    const stopPropagation = e => {
+        e?.stopPropagation?.()
+    }
+
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: finalHeight }]}>
+        <View
+            style={[localStyles.container, applyPopoverWidth(), { maxHeight: finalHeight }]}
+            onClick={stopPropagation}
+            onMouseDown={stopPropagation}
+        >
             <CustomScrollView
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
