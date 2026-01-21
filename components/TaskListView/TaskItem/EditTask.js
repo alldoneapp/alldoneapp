@@ -588,7 +588,7 @@ export default function EditTask({
 
     const onKeyDown = event => {
         const { key } = event
-        if (key === 'Enter' && !event.defaultPrevented) onKeyEnterPressed()
+        if (key === 'Enter') onKeyEnterPressed(event)
     }
 
     useEffect(() => {

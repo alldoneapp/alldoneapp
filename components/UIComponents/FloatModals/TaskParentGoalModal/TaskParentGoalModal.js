@@ -352,9 +352,9 @@ export default function TaskParentGoalModal({
     }, [])
 
     useEffect(() => {
-        document.addEventListener('keydown', onKeyDown, true)
+        document.addEventListener('keydown', onKeyDown)
         return () => {
-            document.removeEventListener('keydown', onKeyDown, true)
+            document.removeEventListener('keydown', onKeyDown)
         }
     })
 

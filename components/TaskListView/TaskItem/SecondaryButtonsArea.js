@@ -245,14 +245,16 @@ export default function SecondaryButtonsArea({
             {loggedUserCanUpdateObject && !isAssistant && !tmpTask.isSubtask && hasName && accessGranted && (
                 <Popover
                     content={
-                        <TaskParentGoalModal
-                            activeGoal={goalForModalAtOpen || activeGoalForModal}
-                            setActiveGoal={handleSetParentGoal}
-                            projectId={projectId}
-                            closeModal={hideParentGoalPopup}
-                            notDelayClose={true}
-                            ownerId={tmpTask.userId}
-                        />
+                        showParentGoalModalUI ? (
+                            <TaskParentGoalModal
+                                activeGoal={goalForModalAtOpen || activeGoalForModal}
+                                setActiveGoal={handleSetParentGoal}
+                                projectId={projectId}
+                                closeModal={hideParentGoalPopup}
+                                notDelayClose={true}
+                                ownerId={tmpTask.userId}
+                            />
+                        ) : null
                     }
                     onClickOutside={hideParentGoalPopup}
                     isOpen={showParentGoalModalUI}
