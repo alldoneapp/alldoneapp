@@ -89,6 +89,7 @@ export default function MainSection({
     // Get optimistic focus task for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
+    const optimisticFocusGoalId = useSelector(state => state.optimisticFocusGoalId)
     const [tmpGoalsById, setTmpGoalsById] = useState({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
@@ -315,6 +316,11 @@ export default function MainSection({
         // if (!focusedTaskSectionId) { ... }
         // Check tmpGoals if necessary
         // if (!focusedTaskSectionId) { ... }
+    }
+
+    // Fallback: if no task-based section found, use optimistic goal ID to keep the goal pinned
+    if (!focusedTaskSectionId && optimisticFocusGoalId && optimisticFocusTaskProjectId === projectId) {
+        focusedTaskSectionId = optimisticFocusGoalId
     }
 
     if (focusedTaskSectionId) {

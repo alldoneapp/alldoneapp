@@ -2431,10 +2431,6 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
               batch
           )
 
-    batch.commit().then(() => {
-        moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
-    })
-
     const assignee = TasksHelper.getUserInProject(projectId, task.userId)
 
     // Debug logging for focus task selection
@@ -2452,6 +2448,16 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
         taskUserIds: task.userIds,
         isWorkflow: task.userIds.length > 1,
         focusTaskMatches: assignee?.inFocusTaskId === task.id,
+    })
+
+    // If this is the focus task being completed, pin the goal at the top BEFORE the batch commit
+    // This prevents the goal from jumping when the task is removed from the list
+    if (assignee && assignee.inFocusTaskId === task.id) {
+        store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId))
+    }
+
+    batch.commit().then(() => {
+        moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
     })
 
     if (assignee && assignee.inFocusTaskId === task.id) {

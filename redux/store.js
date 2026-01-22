@@ -331,6 +331,7 @@ export const initialState = {
     taskInFocus: null,
     optimisticFocusTaskId: null,
     optimisticFocusTaskProjectId: null,
+    optimisticFocusGoalId: null,
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
     myDaySortingSelectedTasks: [],
@@ -1112,6 +1113,7 @@ export const theReducer = (state = initialState, action) => {
                 ...state,
                 optimisticFocusTaskId: action.optimisticFocusTaskId,
                 optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
+                optimisticFocusGoalId: action.optimisticFocusGoalId,
             }
         }
         case 'Clear optimistic focus task': {
@@ -1119,6 +1121,7 @@ export const theReducer = (state = initialState, action) => {
                 ...state,
                 optimisticFocusTaskId: null,
                 optimisticFocusTaskProjectId: null,
+                optimisticFocusGoalId: null,
             }
         }
         case 'Set shared mode': {

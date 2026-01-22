@@ -2755,12 +2755,14 @@ export const setTaskInFocus = taskInFocus => {
  * this task at the top before Firestore confirms.
  * @param {string|null} taskId - Task ID to show as focused, or null to clear
  * @param {string|null} projectId - Project ID of the task
+ * @param {string|null} goalId - Goal ID to keep pinned at top during transition
  */
-export const setOptimisticFocusTask = (taskId, projectId) => {
+export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
     const action = {
         type: 'Set optimistic focus task',
         optimisticFocusTaskId: taskId,
         optimisticFocusTaskProjectId: projectId,
+        optimisticFocusGoalId: goalId || null,
     }
     return action
 }
