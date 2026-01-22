@@ -685,6 +685,24 @@ exports.giphyRandomGif = onCall(
     }
 )
 
+exports.enrichContactViaLinkedIn = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { enrichContactViaLinkedIn } = require('./Apify/enrichContactViaLinkedIn')
+            return await enrichContactViaLinkedIn(data, auth.uid)
+        } else {
+            throw new HttpsError('permission-denied', 'Authentication required')
+        }
+    }
+)
+
 exports.linkStripeAccount = onCall(
     {
         timeoutSeconds: 30,

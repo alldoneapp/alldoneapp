@@ -32,6 +32,8 @@ import {
     setProjectContactEmail,
     setProjectContactPhone,
     setProjectContactPicture,
+    setProjectContactLinkedInUrl,
+    enrichContactViaLinkedIn,
 } from '../../../utils/backends/Contacts/contactsFirestore'
 import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
@@ -48,6 +50,8 @@ class ContactProperties extends Component {
             showPictureModal: false,
             showEmailModal: false,
             showPhoneModal: false,
+            showLinkedInModal: false,
+            isEnriching: false,
             showAddTaskModal: false,
             loggedUser: storeState.loggedUser,
             selectedTab: storeState.selectedNavItem,
@@ -115,6 +119,9 @@ class ContactProperties extends Component {
             case 'phone':
                 setProjectContactPhone(projectId, contact, user.uid, value.trim(), contact.phone)
                 break
+            case 'linkedInUrl':
+                setProjectContactLinkedInUrl(projectId, contact, user.uid, value.trim())
+                break
         }
     }
 
@@ -140,6 +147,30 @@ class ContactProperties extends Component {
         return email === '' || HelperFunctions.isValidEmail(email)
     }
 
+    enrichContact = async () => {
+        const { projectContacts, loggedUser } = this.state
+        const { projectId, user: userProp } = this.props
+        const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
+
+        if (!contact?.linkedInUrl) return
+
+        if (loggedUser.gold < 30) {
+            alert(translate('Not enough Gold'))
+            return
+        }
+
+        this.setState({ isEnriching: true })
+        try {
+            const result = await enrichContactViaLinkedIn(projectId, contact, contact.uid)
+            if (result && result.error === 'insufficient_gold') {
+                alert(translate('Not enough Gold'))
+            }
+        } catch (error) {
+            console.error('LinkedIn enrichment failed:', error)
+        }
+        this.setState({ isEnriching: false })
+    }
+
     writeBrowserURL = () => {
         if (this.state.selectedTab === DV_TAB_CONTACT_PROPERTIES) {
             const { user, projectId } = this.props
@@ -157,6 +188,8 @@ class ContactProperties extends Component {
             showPictureModal,
             showEmailModal,
             showPhoneModal,
+            showLinkedInModal,
+            isEnriching,
             showAddTaskModal,
             loggedUser,
         } = this.state
@@ -470,6 +503,74 @@ class ContactProperties extends Component {
                                     </Popover>
                                 </View>
                             </View>
+
+                            <View style={localStyles.propertyRow}>
+                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
+                                    <Icon
+                                        name={'link'}
+                                        size={24}
+                                        color={colors.Text03}
+                                        style={{ marginHorizontal: 8 }}
+                                    />
+                                    {mobileNav ? (
+                                        <Text style={[styles.body1]} numberOfLines={1}>
+                                            {user.linkedInUrl === '' ? 'LinkedIn' : user.linkedInUrl}
+                                        </Text>
+                                    ) : (
+                                        <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
+                                            {translate('LinkedIn URL')}
+                                        </Text>
+                                    )}
+                                </View>
+                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
+                                    {!mobileNav && (
+                                        <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
+                                            {user.linkedInUrl === '' ? translate('No LinkedIn URL') : user.linkedInUrl}
+                                        </Text>
+                                    )}
+
+                                    <Popover
+                                        content={
+                                            <ChangeTextFieldModal
+                                                header={'Edit LinkedIn URL'}
+                                                subheader={'Type the LinkedIn profile URL'}
+                                                label={'LinkedIn URL'}
+                                                placeholder={'https://www.linkedin.com/in/...'}
+                                                closePopover={() => this.hideModal('showLinkedInModal')}
+                                                onSaveData={value => this.changePropertyValue('linkedInUrl', value)}
+                                                currentValue={user.linkedInUrl}
+                                            />
+                                        }
+                                        onClickOutside={() => this.hideModal('showLinkedInModal')}
+                                        isOpen={showLinkedInModal}
+                                        position={['bottom', 'left', 'right', 'top']}
+                                        padding={4}
+                                        align={'end'}
+                                        contentLocation={mobile ? null : undefined}
+                                    >
+                                        <Button
+                                            icon={'edit'}
+                                            type={'ghost'}
+                                            onPress={() => this.showModal('showLinkedInModal')}
+                                            disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                        />
+                                    </Popover>
+
+                                    {user.linkedInUrl !== '' && accessGranted && loggedUserCanUpdateObject && (
+                                        <Button
+                                            title={
+                                                isEnriching
+                                                    ? translate('Enriching...')
+                                                    : `${translate('Enrich via LinkedIn')} (30 Gold)`
+                                            }
+                                            type={'ghost'}
+                                            onPress={this.enrichContact}
+                                            disabled={isEnriching}
+                                        />
+                                    )}
+                                </View>
+                            </View>
+
                             {accessGranted && loggedUserCanUpdateObject && (
                                 <View style={localStyles.bottomContainer}>
                                     <View style={localStyles.addTaskButton}>

@@ -421,3 +421,40 @@ export async function setProjectContactStatus(projectId, contact, contactId, new
     await tryAddFollower(projectId, followContactData, batch)
     batch.commit()
 }
+
+export async function setProjectContactLinkedInUrl(projectId, contact, contactId, newUrl) {
+    await updateContactData(projectId, contactId, { linkedInUrl: newUrl }, null)
+}
+
+export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
+    const functions = firebase.app().functions('europe-west1')
+    const enrichFn = functions.httpsCallable('enrichContactViaLinkedIn')
+    const result = await enrichFn({ linkedInUrl: contact.linkedInUrl })
+
+    if (result.data.error === 'insufficient_gold') {
+        return { success: false, error: 'insufficient_gold' }
+    }
+
+    if (result.data.success) {
+        const enrichedData = result.data.data
+        const updates = {}
+
+        if (!contact.displayName && enrichedData.displayName) updates.displayName = enrichedData.displayName
+        if (!contact.company && enrichedData.company) updates.company = enrichedData.company
+        if (!contact.role && enrichedData.role) updates.role = enrichedData.role
+        if (!contact.email && enrichedData.email) updates.email = enrichedData.email
+        if (!contact.phone && enrichedData.phone) updates.phone = enrichedData.phone
+        if (!contact.description && enrichedData.description) {
+            updates.description = enrichedData.description
+            updates.extendedDescription = enrichedData.description
+        }
+
+        if (Object.keys(updates).length > 0) {
+            await updateContactData(projectId, contactId, updates, null)
+        }
+
+        return { success: true, updated: Object.keys(updates), data: enrichedData }
+    }
+
+    throw new Error('Enrichment failed')
+}

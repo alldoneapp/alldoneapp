@@ -56,6 +56,7 @@ const getEnvFunctions = () => {
                 process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
             DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+            APIFY_API_KEY: process.env.APIFY_API_KEY || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -89,6 +90,7 @@ const getEnvFunctions = () => {
                         envJson.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
                     DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
+                    APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -122,6 +124,7 @@ const getEnvFunctions = () => {
                             process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
                         DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                         TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                        APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                     }
                 }
             } catch (error) {
@@ -178,6 +181,7 @@ const getEnvFunctions = () => {
                     process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
                 DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                APIFY_API_KEY: process.env.APIFY_API_KEY || '',
             }
         }
     }

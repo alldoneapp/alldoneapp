@@ -3530,6 +3530,7 @@ export function mapContactData(contactId, contact) {
         commentsData: contact.commentsData ? contact.commentsData : null,
         openTasksAmount: contact.openTasksAmount ? contact.openTasksAmount : 0,
         contactStatusId: contact.contactStatusId ? contact.contactStatusId : null,
+        linkedInUrl: contact.linkedInUrl ? contact.linkedInUrl : '',
     }
 }
 
