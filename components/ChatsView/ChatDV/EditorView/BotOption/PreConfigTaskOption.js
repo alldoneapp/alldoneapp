@@ -80,6 +80,7 @@ export default function PreConfigTaskOption({
                     systemMessage: aiSystemMessage,
                 }
                 onSelectBotOption(prompt, name, aiSettings)
+                if (!inMyDay) dispatch(setAssistantEnabled(true))
             }
         } else if (type === TASK_TYPE_WEBHOOK) {
             closeModal()
