@@ -2450,6 +2450,15 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
     // before the batch commit to prevent UI jumping
     if (assignee && assignee.inFocusTaskId === task.id) {
         const optimisticNext = getOptimisticNextFocusTask(projectId, task)
+        console.log(`[moveTasksFromOpen] Optimistic focus task selection:`, {
+            completedTaskId: task.id,
+            completedTaskName: task.name,
+            completedTaskGoalId: task.parentGoalId,
+            optimisticNextId: optimisticNext?.id || null,
+            optimisticNextName: optimisticNext?.name || null,
+            optimisticNextGoalId: optimisticNext?.parentGoalId || null,
+            isWorkflow: optimisticNext?.userIds?.length > 1,
+        })
         if (optimisticNext) {
             store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId))
         } else {
@@ -2848,6 +2857,15 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
     const openMilestones = openMilestonesByProjectInTasks[projectId] || []
     const endOfToday = moment().endOf('day').valueOf()
 
+    console.log(`[getOptimisticNextFocusTask] Starting:`, {
+        projectId,
+        completedTaskId: completedTask.id,
+        completedTaskGoalId: completedTask.parentGoalId,
+        totalTasksInMap: Object.keys(projectTasks).length,
+        goalsCount: Object.keys(goalsById).length,
+        milestonesCount: openMilestones.length,
+    })
+
     // Get all candidate non-workflow tasks
     const candidateTasks = Object.values(projectTasks)
         .filter(
@@ -2861,12 +2879,26 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
         )
         .sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
 
+    console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
+        count: candidateTasks.length,
+        tasks: candidateTasks
+            .slice(0, 5)
+            .map(t => ({ id: t.id, name: t.name, goalId: t.parentGoalId, userIds: t.userIds?.length })),
+    })
+
     if (candidateTasks.length === 0) return null
 
     // Priority 1: Non-workflow tasks in the same goal
     if (completedTask.parentGoalId) {
         const sameGoalTask = candidateTasks.find(t => t.parentGoalId === completedTask.parentGoalId)
-        if (sameGoalTask) return sameGoalTask
+        if (sameGoalTask) {
+            console.log(`[getOptimisticNextFocusTask] Priority 1: Same goal task found:`, {
+                id: sameGoalTask.id,
+                name: sameGoalTask.name,
+            })
+            return sameGoalTask
+        }
+        console.log(`[getOptimisticNextFocusTask] Priority 1: No non-workflow tasks in same goal`)
     }
 
     // Priority 2: Pick from the highest-priority goal (by milestone ordering)
@@ -2886,6 +2918,12 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
             }
         }
 
+        console.log(`[getOptimisticNextFocusTask] Priority 2: Goal ordering:`, {
+            milestoneId,
+            completedGoalFound: !!completedGoal,
+            tasksWithGoalsCount: tasksWithGoals.length,
+        })
+
         if (milestoneId) {
             // Group tasks by goal
             const tasksByGoal = {}
@@ -2904,10 +2942,26 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
                 return sortB - sortA
             })
 
+            console.log(
+                `[getOptimisticNextFocusTask] Priority 2: Sorted goals:`,
+                sortedGoalIds.map(id => ({
+                    id,
+                    name: goalsById[id]?.name,
+                    sortIndex: goalsById[id]?.sortIndexByMilestone?.[milestoneId],
+                    taskCount: tasksByGoal[id]?.length,
+                }))
+            )
+
             // Pick first task from highest-priority goal
             for (const goalId of sortedGoalIds) {
                 if (tasksByGoal[goalId]?.length > 0) {
-                    return tasksByGoal[goalId][0]
+                    const selected = tasksByGoal[goalId][0]
+                    console.log(`[getOptimisticNextFocusTask] Priority 2: Selected from goal:`, {
+                        goalId,
+                        taskId: selected.id,
+                        taskName: selected.name,
+                    })
+                    return selected
                 }
             }
         }
@@ -2915,7 +2969,13 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
 
     // Priority 3: Any non-workflow task (tasks with goals first, then without)
     const tasksWithGoalsFallback = candidateTasks.filter(t => t.parentGoalId)
-    return tasksWithGoalsFallback[0] || candidateTasks[0]
+    const result = tasksWithGoalsFallback[0] || candidateTasks[0]
+    console.log(`[getOptimisticNextFocusTask] Priority 3: Fallback:`, {
+        id: result?.id,
+        name: result?.name,
+        goalId: result?.parentGoalId,
+    })
+    return result
 }
 
 async function findAndSetNewFocusedTask(
@@ -3149,6 +3209,14 @@ async function findAndSetNewFocusedTask(
 async function setNewFocusedTaskBatch(projectId, userId, task) {
     const batch = new BatchWrapper(getDb())
 
+    console.log(`[setNewFocusedTaskBatch] Setting new focus task:`, {
+        taskId: task.id,
+        taskName: task.name,
+        projectId,
+        goalId: task.parentGoalId,
+        isWorkflow: task.userIds?.length > 1,
+    })
+
     // Optimistically mark this task as the focus task BEFORE committing to Firestore
     // This prevents UI "jumping" by immediately showing the task at the top
     store.dispatch(setOptimisticFocusTask(task.id, projectId))
@@ -3171,6 +3239,7 @@ async function setNewFocusedTaskBatch(projectId, userId, task) {
     // Commit all changes in one batch
     await batch.commit()
 
+    console.log(`[setNewFocusedTaskBatch] Firestore confirmed, clearing optimistic state`)
     // Clear the optimistic state now that Firestore has confirmed
     // (The Firestore listener will have updated the actual sortIndex by now)
     store.dispatch(clearOptimisticFocusTask())

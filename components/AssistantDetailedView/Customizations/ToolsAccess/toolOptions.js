@@ -8,6 +8,7 @@ export const TOOL_OPTIONS = [
     { key: 'get_user_projects', labelKey: 'Get user projects' },
     { key: 'search', labelKey: 'Search content' },
     { key: 'get_note', labelKey: 'Get note content' },
+    { key: 'web_search', labelKey: 'Search the internet' },
 ]
 
 export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {

@@ -288,6 +288,31 @@ const toolSchemas = {
         },
     },
 
+    web_search: {
+        type: 'function',
+        function: {
+            name: 'web_search',
+            description:
+                'Search the internet for current information. Use this when the user asks about recent events, needs up-to-date information, or asks questions that require knowledge beyond your training data.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description: 'The search query to find information on the internet',
+                    },
+                    search_depth: {
+                        type: 'string',
+                        enum: ['basic', 'advanced'],
+                        description:
+                            'Search depth - "basic" for quick results, "advanced" for more thorough search. Defaults to "basic".',
+                    },
+                },
+                required: ['query'],
+            },
+        },
+    },
+
     get_note: {
         type: 'function',
         function: {

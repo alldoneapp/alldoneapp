@@ -55,7 +55,10 @@ function TaskPresentation(
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const taskViewToggleIndex = useSelector(state => state.taskViewToggleIndex)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const inFocusTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
+    const rawInFocusTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
+    const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
+    const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
+    const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
     const activeTaskId = useSelector(state => state.loggedUser.activeTaskId)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const unlockedKeysByGuides = useSelector(state => state.loggedUser.unlockedKeysByGuides)

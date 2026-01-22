@@ -1841,6 +1841,64 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             return result
         }
 
+        case 'web_search': {
+            console.log('🌐 WEB_SEARCH TOOL: Starting internet search', {
+                query: toolArgs.query,
+                search_depth: toolArgs.search_depth,
+            })
+
+            const envFunctions = getCachedEnvFunctions()
+            const tavilyApiKey = envFunctions.TAVILY_API_KEY
+
+            if (!tavilyApiKey || tavilyApiKey === '' || tavilyApiKey.startsWith('your_')) {
+                return {
+                    success: false,
+                    error: 'Web search is not configured. TAVILY_API_KEY is missing.',
+                }
+            }
+
+            try {
+                const { tavily } = require('@tavily/core')
+                const tvly = tavily({ apiKey: tavilyApiKey })
+
+                const searchDepth = toolArgs.search_depth || 'basic'
+                const response = await tvly.search(toolArgs.query, {
+                    searchDepth: searchDepth,
+                    maxResults: 5,
+                    includeAnswer: true,
+                })
+
+                console.log('🌐 WEB_SEARCH TOOL: Search completed', {
+                    query: toolArgs.query,
+                    resultCount: response.results?.length || 0,
+                    hasAnswer: !!response.answer,
+                })
+
+                const results = (response.results || []).map(r => ({
+                    title: r.title,
+                    url: r.url,
+                    content: r.content,
+                }))
+
+                return {
+                    success: true,
+                    answer: response.answer || null,
+                    results: results,
+                    query: toolArgs.query,
+                }
+            } catch (error) {
+                console.error('🌐 WEB_SEARCH TOOL: Search failed', {
+                    error: error.message,
+                    query: toolArgs.query,
+                })
+                return {
+                    success: false,
+                    error: `Web search failed: ${error.message}`,
+                    query: toolArgs.query,
+                }
+            }
+        }
+
         default:
             throw new Error(`Unknown tool: ${toolName}`)
     }

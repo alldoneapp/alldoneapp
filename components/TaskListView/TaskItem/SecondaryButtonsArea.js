@@ -59,7 +59,10 @@ export default function SecondaryButtonsArea({
     const smallScreen = useSelector(state => state.smallScreen)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
-    const inFocusTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
+    const rawInFocusTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
+    const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
+    const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
+    const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
     const blockShortcuts = useSelector(state => state.blockShortcuts)
 
     const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }

@@ -44,6 +44,7 @@
         "moment": "^2.24.0",
         "moment-timezone": "^0.6.0",
         "node-abort-controller": "^3.1.1",
+        "@tavily/core": "^0.0.2",
         "openai": "^4.47.3",
         "sib-api-v3-sdk": "^8.2.0",
         "stripe": "^14.21.0",
