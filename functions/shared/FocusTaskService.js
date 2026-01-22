@@ -341,15 +341,9 @@ class FocusTaskService {
                         } else {
                             newFocusedTask = nonWorkflowTasksInGroup[0]
                         }
-                    } else if (tasksInSameGroup.length > 0) {
-                        // If excludeTaskId is provided (force new), select random from top 10
-                        if (excludeTaskId) {
-                            const candidates = tasksInSameGroup.slice(0, 10)
-                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                        } else {
-                            newFocusedTask = tasksInSameGroup[0]
-                        }
                     }
+                    // If only workflow tasks remain in same goal, fall through to goal-order fallback
+                    // which will find non-workflow tasks in other goals first
                 }
 
                 // Fallback to any available task, prioritizing by goal order
@@ -432,6 +426,19 @@ class FocusTaskService {
                             } else {
                                 newFocusedTask = fallbackTasks[0]
                             }
+                        }
+                    }
+                }
+
+                // Last resort: if no non-workflow task was found, allow workflow tasks
+                if (!newFocusedTask && allFetchedTasks.length > 0) {
+                    const workflowTasks = allFetchedTasks.filter(task => task.userIds.length > 1)
+                    if (workflowTasks.length > 0) {
+                        if (excludeTaskId) {
+                            const candidates = workflowTasks.slice(0, 10)
+                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                        } else {
+                            newFocusedTask = workflowTasks[0]
                         }
                     }
                 }

@@ -2922,51 +2922,30 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
             .map(doc => ({ id: doc.id, ...doc.data() }))
             .filter(task => task.dueDate <= endOfToday && !task.calendarData) // Common filter applied once
 
-        // Attempt 1: Tasks with the same parentGoalId as the previous task (if previous had a specific one)
+        // Attempt 1: Non-workflow tasks with the same parentGoalId as the previous task
         if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
             const tasksInSameSpecificGroup = allFetchedTasksInCurrentProject.filter(
                 task => task.parentGoalId === previousTaskParentGoalId
             )
 
-            // Prioritize non-workflow tasks first
             const nonWorkflowTasksInGroup = tasksInSameSpecificGroup.filter(task => task.userIds.length === 1)
             if (nonWorkflowTasksInGroup.length > 0) {
                 newFocusedTask = nonWorkflowTasksInGroup[0] // Already sorted by sortIndex
-            } else if (tasksInSameSpecificGroup.length > 0) {
-                // Fallback to workflow tasks if no regular tasks available
-                newFocusedTask = tasksInSameSpecificGroup[0] // Already sorted by sortIndex
             }
+            // If only workflow tasks remain in same goal, fall through to check other goals first
         }
 
-        // Attempt 2: General tasks (parentGoalId is null/undefined)
-        // This is tried if:
-        //   a) No task was found in Attempt 1 (newFocusedTask is still null) AND
-        //      (previousTaskParentGoalId was null/undefined OR previousTaskParentGoalId was specific but group exhausted)
+        // Attempt 2: Non-workflow tasks in other goals or general tasks
         if (!newFocusedTask) {
-            const generalTasks = allFetchedTasksInCurrentProject.filter(
-                task => task.parentGoalId === null || task.parentGoalId === undefined
-            )
-
-            // Prioritize non-workflow tasks first
-            const nonWorkflowGeneralTasks = generalTasks.filter(task => task.userIds.length === 1)
-            if (nonWorkflowGeneralTasks.length > 0) {
-                newFocusedTask = nonWorkflowGeneralTasks[0] // Already sorted by sortIndex
-            } else if (generalTasks.length > 0) {
-                // Fallback to workflow tasks if no regular tasks available
-                newFocusedTask = generalTasks[0] // Already sorted by sortIndex
-            }
-        }
-
-        // Attempt 3: Any other task in the current project (general fallback if specific and general group searches yielded nothing)
-        if (!newFocusedTask && allFetchedTasksInCurrentProject.length > 0) {
-            // Prioritize non-workflow tasks first
             const nonWorkflowTasks = allFetchedTasksInCurrentProject.filter(task => task.userIds.length === 1)
             if (nonWorkflowTasks.length > 0) {
                 newFocusedTask = nonWorkflowTasks[0] // Already sorted by sortIndex
-            } else {
-                // Fallback to workflow tasks if no regular tasks available
-                newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to the best one by sortIndex from all valid tasks
             }
+        }
+
+        // Attempt 3: Last resort - workflow tasks if no non-workflow tasks available at all
+        if (!newFocusedTask && allFetchedTasksInCurrentProject.length > 0) {
+            newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to workflow tasks
         }
     }
 
