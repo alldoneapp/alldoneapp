@@ -2749,6 +2749,32 @@ export const setTaskInFocus = taskInFocus => {
     return action
 }
 
+/**
+ * Set the optimistic focus task ID. This is used to prevent UI "jumping"
+ * when selecting a new focus task. The task list will immediately show
+ * this task at the top before Firestore confirms.
+ * @param {string|null} taskId - Task ID to show as focused, or null to clear
+ * @param {string|null} projectId - Project ID of the task
+ */
+export const setOptimisticFocusTask = (taskId, projectId) => {
+    const action = {
+        type: 'Set optimistic focus task',
+        optimisticFocusTaskId: taskId,
+        optimisticFocusTaskProjectId: projectId,
+    }
+    return action
+}
+
+/**
+ * Clear the optimistic focus task (called when Firestore confirms the update)
+ */
+export const clearOptimisticFocusTask = () => {
+    const action = {
+        type: 'Clear optimistic focus task',
+    }
+    return action
+}
+
 export const setProjectsSortIndex = projectsMap => {
     const action = {
         type: 'Set projects sortIndex',

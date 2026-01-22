@@ -329,6 +329,8 @@ export const initialState = {
     activeChatData: { projectId: '', chatId: '', chatType: '' },
     quillTextInputProjectIdsByEditorId: {},
     taskInFocus: null,
+    optimisticFocusTaskId: null,
+    optimisticFocusTaskProjectId: null,
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
     myDaySortingSelectedTasks: [],
@@ -1102,6 +1104,22 @@ export const theReducer = (state = initialState, action) => {
         }
         case 'Set global data by project': {
             return { ...state, globalDataByProject: action.globalDataByProject }
+        }
+        case 'Set optimistic focus task': {
+            // Set the optimistic focus task ID for immediate UI update
+            // This prevents UI "jumping" when selecting a new focus task
+            return {
+                ...state,
+                optimisticFocusTaskId: action.optimisticFocusTaskId,
+                optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
+            }
+        }
+        case 'Clear optimistic focus task': {
+            return {
+                ...state,
+                optimisticFocusTaskId: null,
+                optimisticFocusTaskProjectId: null,
+            }
         }
         case 'Set shared mode': {
             return { ...state, inSharedMode: true }

@@ -23,10 +23,18 @@ export default function TasksList({
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
 
+    // Get the optimistic focus task ID for immediate UI update before Firestore confirms
+    const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
+    const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
+
     let sortedTaskList = [...taskList]
 
-    if (focusedTaskId && !isActiveOrganizeMode) {
-        const focusedTaskIndex = sortedTaskList.findIndex(task => task.id === focusedTaskId)
+    // Use optimistic focus task ID if it's in this project, otherwise use the confirmed focusedTaskId
+    const effectiveFocusTaskId =
+        optimisticFocusTaskId && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
+
+    if (effectiveFocusTaskId && !isActiveOrganizeMode) {
+        const focusedTaskIndex = sortedTaskList.findIndex(task => task.id === effectiveFocusTaskId)
         if (focusedTaskIndex > -1) {
             const [focusedTask] = sortedTaskList.splice(focusedTaskIndex, 1)
             sortedTaskList.unshift(focusedTask)

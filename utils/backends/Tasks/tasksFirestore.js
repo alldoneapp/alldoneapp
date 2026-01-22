@@ -70,6 +70,8 @@ import {
     startLoadingData,
     stopLoadingData,
     switchProject,
+    setOptimisticFocusTask,
+    clearOptimisticFocusTask,
 } from '../../../redux/actions'
 import {
     WORKSTREAM_ID_PREFIX,
@@ -3070,10 +3072,17 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
 async function setNewFocusedTaskBatch(projectId, userId, task) {
     const batch = new BatchWrapper(getDb())
 
+    // Optimistically mark this task as the focus task BEFORE committing to Firestore
+    // This prevents UI "jumping" by immediately showing the task at the top
+    store.dispatch(setOptimisticFocusTask(task.id, projectId))
+
+    // Generate the focus sortIndex
+    const focusSortIndex = generateSortIndexForTaskInFocusInTime()
+
     // Set the new task as focused
     await setTaskDueDate(projectId, task.id, moment().valueOf(), task, false, batch, true)
     batch.update(getDb().doc(`items/${projectId}/tasks/${task.id}`), {
-        sortIndex: generateSortIndexForTaskInFocusInTime(),
+        sortIndex: focusSortIndex,
     })
 
     // Update user's focused task
@@ -3084,6 +3093,10 @@ async function setNewFocusedTaskBatch(projectId, userId, task) {
 
     // Commit all changes in one batch
     await batch.commit()
+
+    // Clear the optimistic state now that Firestore has confirmed
+    // (The Firestore listener will have updated the actual sortIndex by now)
+    store.dispatch(clearOptimisticFocusTask())
 
     // Create feed after successful update
     createTaskFocusChangedFeed(projectId, task.id, true, null, TasksHelper.getUserInProject(projectId, userId))
