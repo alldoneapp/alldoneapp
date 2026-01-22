@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import store from '../../../redux/store'
 import PropTypes from 'prop-types'
 import Popover from 'react-tiny-popover'
@@ -257,62 +257,101 @@ class ContactProperties extends Component {
                 <View style={localStyles.container}>
                     <UserPropertiesHeader />
 
+                    {/* Profile Header: Big photo + Info */}
+                    <View style={[localStyles.profileHeader, mobile && localStyles.profileHeaderMobile]}>
+                        <View style={localStyles.profilePhotoContainer}>
+                            <Popover
+                                content={
+                                    <ImagePickerModal
+                                        closePopover={() => this.hideModal('showPictureModal')}
+                                        onSavePicture={value => this.changePropertyValue('picture', value)}
+                                        picture={userPhoto300 !== '' ? userPhoto300 : undefined}
+                                    />
+                                }
+                                onClickOutside={() => this.hideModal('showPictureModal')}
+                                isOpen={showPictureModal}
+                                position={['bottom', 'left', 'right', 'top']}
+                                padding={4}
+                                align={'end'}
+                                contentLocation={mobile ? null : undefined}
+                            >
+                                <TouchableOpacity
+                                    onPress={() => this.showModal('showPictureModal')}
+                                    disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                >
+                                    {userPhoto300 ? (
+                                        <Image source={{ uri: userPhoto300 }} style={localStyles.profilePhoto} />
+                                    ) : (
+                                        <View style={[localStyles.profilePhoto, localStyles.profilePhotoPlaceholder]}>
+                                            <Icon name={'user'} size={40} color={colors.Text03} />
+                                        </View>
+                                    )}
+                                    {accessGranted && loggedUserCanUpdateObject && (
+                                        <View style={localStyles.profilePhotoEditBadge}>
+                                            <Icon name={'image'} size={14} color={'#fff'} />
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            </Popover>
+                        </View>
+                        <View style={localStyles.profileInfo}>
+                            <View style={{ flex: 1 }}>
+                                {userRole ? (
+                                    <Text style={[styles.body1, { color: colors.Text03 }]} numberOfLines={1}>
+                                        {userRole}
+                                    </Text>
+                                ) : null}
+                                {userCompany ? (
+                                    <Text style={[styles.body1, { color: colors.Text03 }]} numberOfLines={1}>
+                                        {userCompany}
+                                    </Text>
+                                ) : null}
+                                {userDescription ? (
+                                    <Text
+                                        style={[styles.body2, { color: colors.Text03, marginTop: 4 }]}
+                                        numberOfLines={3}
+                                    >
+                                        {userDescription}
+                                    </Text>
+                                ) : null}
+                                {!userRole && !userCompany && !userDescription && (
+                                    <Text style={[styles.body2, { color: colors.Text03 }]}>
+                                        {translate('No info available')}
+                                    </Text>
+                                )}
+                            </View>
+                        </View>
+                        <Popover
+                            content={
+                                <ChangeContactInfoModal
+                                    projectId={projectId}
+                                    closePopover={() => this.hideModal('showInfoModal')}
+                                    onSaveData={value => this.changePropertyValue('info', value)}
+                                    currentRole={userRole ? userRole : ''}
+                                    currentCompany={userCompany ? userCompany : ''}
+                                    currentDescription={userDescription ? userDescription : ''}
+                                    disabled={!loggedUserCanUpdateObject}
+                                />
+                            }
+                            onClickOutside={() => this.hideModal('showInfoModal')}
+                            isOpen={showInfoModal}
+                            position={['bottom', 'left', 'right', 'top']}
+                            padding={4}
+                            align={'end'}
+                            contentLocation={mobile ? null : undefined}
+                        >
+                            <Button
+                                icon={'edit'}
+                                type={'ghost'}
+                                onPress={() => this.showModal('showInfoModal')}
+                                disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                buttonStyle={localStyles.profileEditButton}
+                            />
+                        </Popover>
+                    </View>
+
                     <View style={[localStyles.properties, mobile ? localStyles.propertiesMobile : undefined]}>
                         <View style={{ flex: 1, marginRight: mobile ? 0 : 72 }}>
-                            <View style={localStyles.propertyRow}>
-                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
-                                    <Icon
-                                        name={'info'}
-                                        size={24}
-                                        color={colors.Text03}
-                                        style={{ marginHorizontal: 8 }}
-                                    />
-                                    {mobileNav ? (
-                                        <Text style={[styles.body1]} numberOfLines={1}>
-                                            {userInfo}
-                                        </Text>
-                                    ) : (
-                                        <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
-                                            {translate('Info')}
-                                        </Text>
-                                    )}
-                                </View>
-                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                                    {!mobileNav && (
-                                        <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
-                                            {userInfo}
-                                        </Text>
-                                    )}
-
-                                    <Popover
-                                        content={
-                                            <ChangeContactInfoModal
-                                                projectId={projectId}
-                                                closePopover={() => this.hideModal('showInfoModal')}
-                                                onSaveData={value => this.changePropertyValue('info', value)}
-                                                currentRole={userRole ? userRole : ''}
-                                                currentCompany={userCompany ? userCompany : ''}
-                                                currentDescription={userDescription ? userDescription : ''}
-                                                disabled={!loggedUserCanUpdateObject}
-                                            />
-                                        }
-                                        onClickOutside={() => this.hideModal('showInfoModal')}
-                                        isOpen={showInfoModal}
-                                        position={['bottom', 'left', 'right', 'top']}
-                                        padding={4}
-                                        align={'end'}
-                                        contentLocation={mobile ? null : undefined}
-                                    >
-                                        <Button
-                                            icon={'edit'}
-                                            type={'ghost'}
-                                            onPress={() => this.showModal('showInfoModal')}
-                                            disabled={!accessGranted}
-                                        />
-                                    </Popover>
-                                </View>
-                            </View>
-
                             <View style={localStyles.propertyRow}>
                                 <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
                                     <Icon
@@ -558,44 +597,6 @@ class ContactProperties extends Component {
                             <View style={localStyles.propertyRow}>
                                 <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
                                     <Icon
-                                        name={'image'}
-                                        size={24}
-                                        color={colors.Text03}
-                                        style={{ marginHorizontal: 8 }}
-                                    />
-                                    <Text style={[styles.subtitle2, { color: colors.Text03 }]}>
-                                        {translate('Picture')}
-                                    </Text>
-                                </View>
-                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                                    <Popover
-                                        content={
-                                            <ImagePickerModal
-                                                closePopover={() => this.hideModal('showPictureModal')}
-                                                onSavePicture={value => this.changePropertyValue('picture', value)}
-                                                picture={userPhoto300 !== '' ? userPhoto300 : undefined}
-                                            />
-                                        }
-                                        onClickOutside={() => this.hideModal('showPictureModal')}
-                                        isOpen={showPictureModal}
-                                        position={['bottom', 'left', 'right', 'top']}
-                                        padding={4}
-                                        align={'end'}
-                                        contentLocation={mobile ? null : undefined}
-                                    >
-                                        <Button
-                                            icon={userPhoto50 === '' ? 'image' : <Picture photoURL={userPhoto50} />}
-                                            type={'ghost'}
-                                            onPress={() => this.showModal('showPictureModal')}
-                                            disabled={!accessGranted || !loggedUserCanUpdateObject}
-                                        />
-                                    </Popover>
-                                </View>
-                            </View>
-
-                            <View style={localStyles.propertyRow}>
-                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
-                                    <Icon
                                         name={'mail'}
                                         size={24}
                                         color={colors.Text03}
@@ -709,6 +710,50 @@ ContactProperties.propTypes = {
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
+    },
+    profileHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingVertical: 16,
+        paddingHorizontal: 8,
+        marginBottom: 8,
+    },
+    profileHeaderMobile: {
+        flexDirection: 'column',
+        alignItems: 'center',
+    },
+    profilePhotoContainer: {
+        position: 'relative',
+        marginRight: 16,
+    },
+    profilePhoto: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+    },
+    profilePhotoPlaceholder: {
+        backgroundColor: colors.Grey200,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    profilePhotoEditBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: colors.Primary100,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    profileInfo: {
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 120,
+    },
+    profileEditButton: {
+        alignSelf: 'flex-start',
     },
     properties: {
         flexDirection: 'row',
