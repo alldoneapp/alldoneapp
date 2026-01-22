@@ -514,7 +514,7 @@ class ContactProperties extends Component {
                                     />
                                     {mobileNav ? (
                                         <Text style={[styles.body1]} numberOfLines={1}>
-                                            {user.linkedInUrl === '' ? 'LinkedIn' : user.linkedInUrl}
+                                            {user.linkedInUrl === '' ? translate('LinkedIn URL') : user.linkedInUrl}
                                         </Text>
                                     ) : (
                                         <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
@@ -532,9 +532,9 @@ class ContactProperties extends Component {
                                     <Popover
                                         content={
                                             <ChangeTextFieldModal
-                                                header={'Edit LinkedIn URL'}
-                                                subheader={'Type the LinkedIn profile URL'}
-                                                label={'LinkedIn URL'}
+                                                header={translate('Edit LinkedIn URL')}
+                                                subheader={translate('Type the LinkedIn profile URL')}
+                                                label={translate('LinkedIn URL')}
                                                 placeholder={'https://www.linkedin.com/in/...'}
                                                 closePopover={() => this.hideModal('showLinkedInModal')}
                                                 onSaveData={value => this.changePropertyValue('linkedInUrl', value)}
