@@ -3,6 +3,7 @@ import { firebase } from '@firebase/app'
 import {
     addContactFeedsChain,
     callEnrichContactViaLinkedIn,
+    callSearchLinkedInProfile,
     deleteFolderFilesInStorage,
     getDb,
     getId,
@@ -473,4 +474,29 @@ export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
 
     console.error('[LinkedIn Enrichment Client] Enrichment failed - unexpected response')
     throw new Error('Enrichment failed')
+}
+
+export async function searchLinkedInProfile(projectId, contact, contactId) {
+    console.log('[LinkedIn Search Client] Searching for contact:', contact.displayName)
+    const result = await callSearchLinkedInProfile({
+        displayName: contact.displayName || '',
+        company: contact.company || '',
+        role: contact.role || '',
+        email: contact.email || '',
+    })
+    console.log('[LinkedIn Search Client] Search result:', JSON.stringify(result.data))
+
+    if (result.data.error === 'insufficient_gold') {
+        console.warn('[LinkedIn Search Client] Insufficient gold')
+        return { success: false, error: 'insufficient_gold' }
+    }
+
+    if (result.data.success && result.data.linkedInUrl) {
+        await updateContactData(projectId, contactId, { linkedInUrl: result.data.linkedInUrl }, null)
+        console.log('[LinkedIn Search Client] LinkedIn URL saved:', result.data.linkedInUrl)
+        return { success: true, linkedInUrl: result.data.linkedInUrl }
+    }
+
+    console.log('[LinkedIn Search Client] No LinkedIn profile found')
+    return { success: true, linkedInUrl: null }
 }

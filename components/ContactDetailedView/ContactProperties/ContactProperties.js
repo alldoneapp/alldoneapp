@@ -34,6 +34,7 @@ import {
     setProjectContactPicture,
     setProjectContactLinkedInUrl,
     enrichContactViaLinkedIn,
+    searchLinkedInProfile,
 } from '../../../utils/backends/Contacts/contactsFirestore'
 import ContactStatusProperty from '../../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusProperty'
 import RichCreateTaskModal from '../../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal'
@@ -52,6 +53,7 @@ class ContactProperties extends Component {
             showPhoneModal: false,
             showLinkedInModal: false,
             isEnriching: false,
+            isSearchingLinkedIn: false,
             showAddTaskModal: false,
             loggedUser: storeState.loggedUser,
             selectedTab: storeState.selectedNavItem,
@@ -171,6 +173,30 @@ class ContactProperties extends Component {
         this.setState({ isEnriching: false })
     }
 
+    searchLinkedIn = async () => {
+        const { projectContacts, loggedUser } = this.state
+        const { projectId, user: userProp } = this.props
+        const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
+
+        if (loggedUser.gold < 20) {
+            alert(translate('Not enough Gold'))
+            return
+        }
+
+        this.setState({ isSearchingLinkedIn: true })
+        try {
+            const result = await searchLinkedInProfile(projectId, contact, contact.uid)
+            if (result && result.error === 'insufficient_gold') {
+                alert(translate('Not enough Gold'))
+            } else if (result && result.success && !result.linkedInUrl) {
+                alert(translate('No LinkedIn profile found'))
+            }
+        } catch (error) {
+            console.error('LinkedIn search failed:', error)
+        }
+        this.setState({ isSearchingLinkedIn: false })
+    }
+
     writeBrowserURL = () => {
         if (this.state.selectedTab === DV_TAB_CONTACT_PROPERTIES) {
             const { user, projectId } = this.props
@@ -190,6 +216,7 @@ class ContactProperties extends Component {
             showPhoneModal,
             showLinkedInModal,
             isEnriching,
+            isSearchingLinkedIn,
             showAddTaskModal,
             loggedUser,
         } = this.state
@@ -374,6 +401,19 @@ class ContactProperties extends Component {
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
                                     </Popover>
+
+                                    {user.linkedInUrl === '' && accessGranted && loggedUserCanUpdateObject && (
+                                        <Button
+                                            title={
+                                                isSearchingLinkedIn
+                                                    ? translate('Loading')
+                                                    : `${translate('Search LinkedIn')} (20 Gold)`
+                                            }
+                                            type={'ghost'}
+                                            onPress={this.searchLinkedIn}
+                                            disabled={isSearchingLinkedIn}
+                                        />
+                                    )}
 
                                     {user.linkedInUrl !== '' && accessGranted && loggedUserCanUpdateObject && (
                                         <Button

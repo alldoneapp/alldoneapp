@@ -124,4 +124,73 @@ const enrichContactViaLinkedIn = async (data, userId) => {
     }
 }
 
-module.exports = { enrichContactViaLinkedIn, ENRICHMENT_GOLD_COST }
+const SEARCH_GOLD_COST = 20
+
+const searchLinkedInProfile = async (data, userId) => {
+    console.log('[LinkedIn Search] Starting search for user:', userId)
+    console.log('[LinkedIn Search] Input data:', JSON.stringify(data))
+
+    const { TAVILY_API_KEY } = getEnvFunctions()
+    const { displayName, company, role, email } = data
+
+    if (!TAVILY_API_KEY || TAVILY_API_KEY === '' || TAVILY_API_KEY.startsWith('your_')) {
+        console.error('[LinkedIn Search] TAVILY_API_KEY is not configured')
+        throw new Error('TAVILY_API_KEY is not configured')
+    }
+
+    if (!displayName && !email) {
+        console.error('[LinkedIn Search] No contact info provided')
+        throw new Error('At least a name or email is required to search')
+    }
+
+    console.log('[LinkedIn Search] Deducting', SEARCH_GOLD_COST, 'gold from user:', userId)
+    const goldResult = await deductGold(userId, SEARCH_GOLD_COST)
+    console.log('[LinkedIn Search] Gold deduction result:', JSON.stringify(goldResult))
+
+    if (!goldResult.success) {
+        console.warn('[LinkedIn Search] Insufficient gold for user:', userId)
+        return { success: false, error: 'insufficient_gold', message: goldResult.message }
+    }
+
+    // Build search query from contact info
+    const queryParts = []
+    if (displayName) queryParts.push(displayName)
+    if (company) queryParts.push(company)
+    if (role) queryParts.push(role)
+    const query = `${queryParts.join(' ')} LinkedIn profile site:linkedin.com/in/`
+
+    console.log('[LinkedIn Search] Search query:', query)
+
+    try {
+        const { tavily } = require('@tavily/core')
+        const tvly = tavily({ apiKey: TAVILY_API_KEY })
+
+        const response = await tvly.search(query, {
+            searchDepth: 'basic',
+            maxResults: 5,
+            includeDomains: ['linkedin.com'],
+        })
+
+        console.log('[LinkedIn Search] Tavily returned', response.results?.length || 0, 'results')
+
+        // Find the first linkedin.com/in/ URL
+        const linkedInResult = response.results?.find(r => r.url && r.url.includes('linkedin.com/in/'))
+
+        if (linkedInResult) {
+            console.log('[LinkedIn Search] Found LinkedIn URL:', linkedInResult.url)
+            return {
+                success: true,
+                linkedInUrl: linkedInResult.url,
+                title: linkedInResult.title || '',
+            }
+        }
+
+        console.log('[LinkedIn Search] No LinkedIn profile URL found in results')
+        return { success: true, linkedInUrl: null }
+    } catch (error) {
+        console.error('[LinkedIn Search] Tavily search failed:', error.message)
+        throw new Error('LinkedIn search failed: ' + error.message)
+    }
+}
+
+module.exports = { enrichContactViaLinkedIn, searchLinkedInProfile, ENRICHMENT_GOLD_COST, SEARCH_GOLD_COST }

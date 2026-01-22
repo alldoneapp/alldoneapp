@@ -6136,6 +6136,11 @@ export async function callEnrichContactViaLinkedIn(data) {
     return await enrichFn(data)
 }
 
+export async function callSearchLinkedInProfile(data) {
+    const searchFn = functions.httpsCallable('searchLinkedInProfile')
+    return await searchFn(data)
+}
+
 //MENTION ALL
 
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {

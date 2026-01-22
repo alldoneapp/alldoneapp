@@ -703,6 +703,24 @@ exports.enrichContactViaLinkedIn = onCall(
     }
 )
 
+exports.searchLinkedInProfile = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (auth) {
+            const { searchLinkedInProfile } = require('./Apify/enrichContactViaLinkedIn')
+            return await searchLinkedInProfile(data, auth.uid)
+        } else {
+            throw new HttpsError('permission-denied', 'Authentication required')
+        }
+    }
+)
+
 exports.linkStripeAccount = onCall(
     {
         timeoutSeconds: 30,
