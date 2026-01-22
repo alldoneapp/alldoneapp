@@ -40,11 +40,8 @@ export default function ContactStatusFiltersView({ projectContacts }) {
     const project = loggedUserProjects[selectedProjectIndex]
     const projectData = projectsMap[project?.id]
 
-    if (!projectData?.contactStatuses || Object.keys(projectData.contactStatuses).length === 0) {
-        return null
-    }
-
-    const statuses = Object.values(projectData.contactStatuses)
+    const hasContactStatuses = projectData?.contactStatuses && Object.keys(projectData.contactStatuses).length > 0
+    const statuses = hasContactStatuses ? Object.values(projectData.contactStatuses) : []
     const sortedStatuses = [...statuses].sort((a, b) => (a.sortIndex || 0) - (b.sortIndex || 0))
 
     // Count contacts per status

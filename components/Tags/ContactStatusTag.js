@@ -6,6 +6,7 @@ import styles, { colors, windowTagStyle } from '../styles/global'
 import { hideFloatPopup, setContactStatusFilter, showFloatPopup } from '../../redux/actions'
 import ContactStatusModal from '../UIComponents/FloatModals/ChangeContactStatusModal/ContactStatusModal'
 import { setProjectContactStatus } from '../../utils/backends/Contacts/contactsFirestore'
+import Icon from '../Icon'
 
 const ContactStatusTag = ({ projectId, contactStatusId, contact, style }) => {
     const dispatch = useDispatch()
@@ -41,8 +42,8 @@ const ContactStatusTag = ({ projectId, contactStatusId, contact, style }) => {
 
     const onPress = e => {
         e.stopPropagation()
-        // If the filter is already set to this status and we have contact data, open modal to change status
-        if (contactStatusFilter === contactStatusId && contact) {
+        // If no status is set, or filter is already set to this status and we have contact data, open modal to change status
+        if (!status || (contactStatusFilter === contactStatusId && contact)) {
             openModal()
         } else {
             dispatch(setContactStatusFilter(contactStatusId))
@@ -52,8 +53,14 @@ const ContactStatusTag = ({ projectId, contactStatusId, contact, style }) => {
     const tagContent = (
         <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
             <View style={[localStyles.container, style]}>
-                <View style={[localStyles.colorDot, { backgroundColor: status.color }]} />
-                {!mobile && <Text style={[localStyles.text, windowTagStyle()]}>{status.name}</Text>}
+                {status ? (
+                    <>
+                        <View style={[localStyles.colorDot, { backgroundColor: status.color }]} />
+                        {!mobile && <Text style={[localStyles.text, windowTagStyle()]}>{status.name}</Text>}
+                    </>
+                ) : (
+                    <Icon name="circle" size={12} color={colors.Text03} />
+                )}
             </View>
         </TouchableOpacity>
     )

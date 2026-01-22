@@ -745,6 +745,11 @@ class ProjectHelper {
             ['desc', 'asc']
         )
     }
+
+    static projectHasContactStatuses = projectId => {
+        const project = ProjectHelper.getProjectById(projectId)
+        return project?.contactStatuses && Object.keys(project.contactStatuses).length > 0
+    }
 }
 
 export default ProjectHelper
