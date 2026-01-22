@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import store from '../../../redux/store'
 import PropTypes from 'prop-types'
 import Popover from 'react-tiny-popover'
@@ -513,9 +513,28 @@ class ContactProperties extends Component {
                                         style={{ marginHorizontal: 8 }}
                                     />
                                     {mobileNav ? (
-                                        <Text style={[styles.body1]} numberOfLines={1}>
-                                            {user.linkedInUrl === '' ? translate('LinkedIn URL') : user.linkedInUrl}
-                                        </Text>
+                                        user.linkedInUrl !== '' ? (
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    if (window) {
+                                                        window.open(user.linkedInUrl, '_blank')
+                                                    } else {
+                                                        Linking.openURL(user.linkedInUrl)
+                                                    }
+                                                }}
+                                            >
+                                                <Text
+                                                    style={[styles.body1, { color: colors.Primary100 }]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {user.linkedInUrl}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <Text style={[styles.body1]} numberOfLines={1}>
+                                                {translate('LinkedIn URL')}
+                                            </Text>
+                                        )
                                     ) : (
                                         <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
                                             {translate('LinkedIn URL')}
@@ -523,11 +542,29 @@ class ContactProperties extends Component {
                                     )}
                                 </View>
                                 <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                                    {!mobileNav && (
-                                        <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
-                                            {user.linkedInUrl === '' ? translate('No LinkedIn URL') : user.linkedInUrl}
-                                        </Text>
-                                    )}
+                                    {!mobileNav &&
+                                        (user.linkedInUrl !== '' ? (
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    if (window) {
+                                                        window.open(user.linkedInUrl, '_blank')
+                                                    } else {
+                                                        Linking.openURL(user.linkedInUrl)
+                                                    }
+                                                }}
+                                            >
+                                                <Text
+                                                    style={[styles.body1, { marginRight: 8, color: colors.Primary100 }]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {user.linkedInUrl}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
+                                                {translate('No LinkedIn URL')}
+                                            </Text>
+                                        ))}
 
                                     <Popover
                                         content={
