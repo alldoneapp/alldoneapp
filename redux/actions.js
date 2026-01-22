@@ -2763,6 +2763,7 @@ export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
         optimisticFocusTaskId: taskId,
         optimisticFocusTaskProjectId: projectId,
         optimisticFocusGoalId: goalId || null,
+        optimisticFocusActive: true,
     }
     return action
 }

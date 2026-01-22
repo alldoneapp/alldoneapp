@@ -2446,10 +2446,15 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
         focusTaskMatches: assignee?.inFocusTaskId === task.id,
     })
 
-    // If this is the focus task being completed, pin the goal at the top BEFORE the batch commit
-    // This prevents the goal from jumping when the task is removed from the list
+    // If this is the focus task being completed, optimistically set the next focus task
+    // before the batch commit to prevent UI jumping
     if (assignee && assignee.inFocusTaskId === task.id) {
-        store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId))
+        const optimisticNext = getOptimisticNextFocusTask(projectId, task)
+        if (optimisticNext) {
+            store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId))
+        } else {
+            store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId))
+        }
     }
 
     batch.commit().then(() => {
@@ -2830,6 +2835,87 @@ export async function autoReminderMultipleTasks(tasks) {
     await batch.commit()
 
     store.dispatch([setSelectedTasks(null, true), stopLoadingData()])
+}
+
+/**
+ * Synchronously picks the next focus task from the Redux store using the same
+ * prioritization as the backend: same goal first, then goal ordering by milestone.
+ */
+function getOptimisticNextFocusTask(projectId, completedTask) {
+    const { openTasksMap, goalsByProjectInTasks, openMilestonesByProjectInTasks } = store.getState()
+    const projectTasks = openTasksMap[projectId] || {}
+    const goalsById = goalsByProjectInTasks[projectId] || {}
+    const openMilestones = openMilestonesByProjectInTasks[projectId] || []
+    const endOfToday = moment().endOf('day').valueOf()
+
+    // Get all candidate non-workflow tasks
+    const candidateTasks = Object.values(projectTasks)
+        .filter(
+            t =>
+                t.id !== completedTask.id &&
+                !t.done &&
+                !t.isSubtask &&
+                !t.calendarData &&
+                t.dueDate <= endOfToday &&
+                t.userIds?.length === 1
+        )
+        .sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+
+    if (candidateTasks.length === 0) return null
+
+    // Priority 1: Non-workflow tasks in the same goal
+    if (completedTask.parentGoalId) {
+        const sameGoalTask = candidateTasks.find(t => t.parentGoalId === completedTask.parentGoalId)
+        if (sameGoalTask) return sameGoalTask
+    }
+
+    // Priority 2: Pick from the highest-priority goal (by milestone ordering)
+    const tasksWithGoals = candidateTasks.filter(t => t.parentGoalId)
+    if (tasksWithGoals.length > 0 && openMilestones.length > 0) {
+        // Determine the milestone of the completed task's goal
+        const completedGoal = completedTask.parentGoalId ? goalsById[completedTask.parentGoalId] : null
+        let milestoneId = null
+        if (completedGoal) {
+            // Find which milestone this goal belongs to
+            for (const milestone of openMilestones) {
+                const { startingMilestoneDate, completionMilestoneDate } = completedGoal
+                if (startingMilestoneDate <= milestone.date && completionMilestoneDate >= milestone.date) {
+                    milestoneId = milestone.id
+                    break
+                }
+            }
+        }
+
+        if (milestoneId) {
+            // Group tasks by goal
+            const tasksByGoal = {}
+            for (const t of tasksWithGoals) {
+                if (!tasksByGoal[t.parentGoalId]) tasksByGoal[t.parentGoalId] = []
+                tasksByGoal[t.parentGoalId].push(t)
+            }
+
+            // Sort goals by sortIndexByMilestone (higher = first, matching UI order)
+            const goalIds = Object.keys(tasksByGoal)
+            const sortedGoalIds = goalIds.sort((a, b) => {
+                const goalA = goalsById[a]
+                const goalB = goalsById[b]
+                const sortA = goalA?.sortIndexByMilestone?.[milestoneId] || 0
+                const sortB = goalB?.sortIndexByMilestone?.[milestoneId] || 0
+                return sortB - sortA
+            })
+
+            // Pick first task from highest-priority goal
+            for (const goalId of sortedGoalIds) {
+                if (tasksByGoal[goalId]?.length > 0) {
+                    return tasksByGoal[goalId][0]
+                }
+            }
+        }
+    }
+
+    // Priority 3: Any non-workflow task (tasks with goals first, then without)
+    const tasksWithGoalsFallback = candidateTasks.filter(t => t.parentGoalId)
+    return tasksWithGoalsFallback[0] || candidateTasks[0]
 }
 
 async function findAndSetNewFocusedTask(

@@ -90,6 +90,7 @@ export default function MainSection({
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
     const optimisticFocusGoalId = useSelector(state => state.optimisticFocusGoalId)
+    const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const [tmpGoalsById, setTmpGoalsById] = useState({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
@@ -297,9 +298,10 @@ export default function MainSection({
     sortedMainTasks.sort((a, b) => goalsPositionId[a[0]] - goalsPositionId[b[0]])
 
     // --- Start: Focus logic ---
-    // Use optimistic focus task ID if it's in this project, otherwise use the confirmed focusedTaskId
+    // When optimistic state is active for this project, use it (even if taskId is null, meaning "no task focused yet")
+    // Only fall back to Firestore's focusedTaskId when optimistic state is not active
     const effectiveFocusTaskId =
-        optimisticFocusTaskId && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
+        optimisticFocusActive && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
 
     let focusedTaskSectionId = null
     if (effectiveFocusTaskId) {
