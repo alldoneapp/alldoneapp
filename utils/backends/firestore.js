@@ -6131,6 +6131,11 @@ export async function sendPushNotification(data) {
     sendPushNotification(data)
 }
 
+export async function callEnrichContactViaLinkedIn(data) {
+    const enrichFn = functions.httpsCallable('enrichContactViaLinkedIn')
+    return await enrichFn(data)
+}
+
 //MENTION ALL
 
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {

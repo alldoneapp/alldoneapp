@@ -2,6 +2,7 @@ import { firebase } from '@firebase/app'
 
 import {
     addContactFeedsChain,
+    callEnrichContactViaLinkedIn,
     deleteFolderFilesInStorage,
     getDb,
     getId,
@@ -427,11 +428,12 @@ export async function setProjectContactLinkedInUrl(projectId, contact, contactId
 }
 
 export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
-    const functions = firebase.app().functions('europe-west1')
-    const enrichFn = functions.httpsCallable('enrichContactViaLinkedIn')
-    const result = await enrichFn({ linkedInUrl: contact.linkedInUrl })
+    console.log('[LinkedIn Enrichment Client] Calling cloud function with URL:', contact.linkedInUrl)
+    const result = await callEnrichContactViaLinkedIn({ linkedInUrl: contact.linkedInUrl })
+    console.log('[LinkedIn Enrichment Client] Cloud function result:', JSON.stringify(result.data))
 
     if (result.data.error === 'insufficient_gold') {
+        console.warn('[LinkedIn Enrichment Client] Insufficient gold')
         return { success: false, error: 'insufficient_gold' }
     }
 
@@ -449,12 +451,17 @@ export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
             updates.extendedDescription = enrichedData.description
         }
 
+        console.log('[LinkedIn Enrichment Client] Fields to update:', Object.keys(updates))
         if (Object.keys(updates).length > 0) {
             await updateContactData(projectId, contactId, updates, null)
+            console.log('[LinkedIn Enrichment Client] Contact updated successfully')
+        } else {
+            console.log('[LinkedIn Enrichment Client] No empty fields to update')
         }
 
         return { success: true, updated: Object.keys(updates), data: enrichedData }
     }
 
+    console.error('[LinkedIn Enrichment Client] Enrichment failed - unexpected response')
     throw new Error('Enrichment failed')
 }
