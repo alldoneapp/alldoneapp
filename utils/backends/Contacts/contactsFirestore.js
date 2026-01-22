@@ -450,6 +450,11 @@ export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
             updates.description = enrichedData.description
             updates.extendedDescription = enrichedData.description
         }
+        if (!contact.photoURL && enrichedData.photoURL) {
+            updates.photoURL = enrichedData.photoURL
+            updates.photoURL50 = enrichedData.photoURL
+            updates.photoURL300 = enrichedData.photoURL
+        }
 
         console.log('[LinkedIn Enrichment Client] Fields to update:', Object.keys(updates))
         if (Object.keys(updates).length > 0) {

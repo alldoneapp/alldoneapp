@@ -560,7 +560,7 @@ class ContactProperties extends Component {
                                         <Button
                                             title={
                                                 isEnriching
-                                                    ? translate('Enriching...')
+                                                    ? translate('Loading')
                                                     : `${translate('Enrich via LinkedIn')} (30 Gold)`
                                             }
                                             type={'ghost'}

@@ -71,7 +71,8 @@ const enrichContactViaLinkedIn = async (data, userId) => {
         role: profile.jobTitle || profile.headline || '',
         email: profile.email || '',
         phone: profile.mobileNumber || '',
-        description: profile.summary || '',
+        description: profile.about || '',
+        photoURL: profile.profilePicHighQuality || profile.profilePic || '',
     }
 
     console.log('[LinkedIn Enrichment] Enriched data:', JSON.stringify(enrichedData))
