@@ -16,6 +16,7 @@ export default function ContactStatusFiltersView({ projectContacts }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const projectsMap = useSelector(state => state.loggedUserProjectsMap)
+    const projectUsers = useSelector(state => state.projectUsers)
     const currentUserUid = useSelector(state => state.currentUser.uid)
     const [contactStatusFilter, setFilter, clearFilter] = useSelectorContactStatusFilter()
 
@@ -44,10 +45,11 @@ export default function ContactStatusFiltersView({ projectContacts }) {
     const statuses = hasContactStatuses ? Object.values(projectData.contactStatuses) : []
     const sortedStatuses = [...statuses].sort((a, b) => (a.sortIndex || 0) - (b.sortIndex || 0))
 
-    // Count contacts per status
+    // Count contacts and members per status
     const contacts = projectContacts[project.id] || []
+    const members = projectUsers[project.id] || []
     const statusCounts = {}
-    let totalCount = contacts.length
+    let totalCount = contacts.length + members.length
 
     contacts.forEach(contact => {
         if (contact.contactStatusId) {
