@@ -56,6 +56,8 @@ const enrichContactViaLinkedIn = async (data, userId) => {
     }
 
     const profile = results[0]
+    console.log('[LinkedIn Enrichment] Raw profile keys:', Object.keys(profile))
+    console.log('[LinkedIn Enrichment] Raw profile data:', JSON.stringify(profile).substring(0, 2000))
     console.log('[LinkedIn Enrichment] Profile succeeded:', profile.succeeded !== false)
 
     if (profile.succeeded === false) {
