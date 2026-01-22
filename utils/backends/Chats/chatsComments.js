@@ -617,18 +617,24 @@ export async function createObjectMessage(
                     assistantId,
                 })
                 const functionCallStartTime = Date.now()
-                runHttpsCallableFunction('askToBotSecondGen', {
-                    userId: creatorId,
-                    messageId: commentId,
-                    projectId,
-                    objectType,
-                    objectId,
-                    userIdsToNotify: [...userIdsToNotify, creatorId],
-                    isPublicFor,
-                    language: window.navigator.language,
-                    assistantId,
-                    followerIds,
-                })
+                runHttpsCallableFunction(
+                    'askToBotSecondGen',
+                    {
+                        userId: creatorId,
+                        messageId: commentId,
+                        projectId,
+                        objectType,
+                        objectId,
+                        userIdsToNotify: [...userIdsToNotify, creatorId],
+                        isPublicFor,
+                        language: window.navigator.language,
+                        assistantId,
+                        followerIds,
+                    },
+                    {
+                        timeout: 540000, // 9 minutes to match backend timeout
+                    }
+                )
                     .then(result => {
                         const clientCallCompleteTime = Date.now()
                         const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
