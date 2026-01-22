@@ -153,6 +153,7 @@ class FocusTaskService {
      * @param {string} excludeTaskId - Task ID to exclude from selection (optional, used for "force new" feature).
      *                                 When provided, selects randomly from top 10 candidates for variety.
      * @param {number} timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
+     * @param {string} previousTaskMilestoneId - Previous task's milestone ID for goal ordering (optional)
      * @returns {Object|null} New focus task or null if none found
      */
     async findAndSetNewFocusTask(
@@ -160,7 +161,8 @@ class FocusTaskService {
         currentProjectId = null,
         previousTaskParentGoalId = null,
         excludeTaskId = null,
-        timezoneOffset = null
+        timezoneOffset = null,
+        previousTaskMilestoneId = null
     ) {
         await this.ensureInitialized()
 
@@ -350,24 +352,86 @@ class FocusTaskService {
                     }
                 }
 
-                // Fallback to any available task
+                // Fallback to any available task, prioritizing by goal order
                 if (!newFocusedTask) {
                     const nonWorkflowTasks = allFetchedTasks.filter(task => task.userIds.length === 1)
-                    if (nonWorkflowTasks.length > 0) {
-                        // If excludeTaskId is provided (force new), select random from top 10
-                        if (excludeTaskId) {
-                            const candidates = nonWorkflowTasks.slice(0, 10)
-                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                        } else {
-                            newFocusedTask = nonWorkflowTasks[0]
+                    const candidateTasks = nonWorkflowTasks.length > 0 ? nonWorkflowTasks : allFetchedTasks
+
+                    if (candidateTasks.length > 0) {
+                        // Separate tasks with goals from tasks without goals (tasks without goals are lowest priority)
+                        const tasksWithGoals = candidateTasks.filter(task => task.parentGoalId)
+                        const tasksWithoutGoals = candidateTasks.filter(task => !task.parentGoalId)
+
+                        // Try goal-order-aware selection if we have milestone context and tasks with goals
+                        if (tasksWithGoals.length > 0 && previousTaskMilestoneId) {
+                            // Group tasks by parentGoalId
+                            const tasksByGoal = {}
+                            for (const task of tasksWithGoals) {
+                                if (!tasksByGoal[task.parentGoalId]) {
+                                    tasksByGoal[task.parentGoalId] = []
+                                }
+                                tasksByGoal[task.parentGoalId].push(task)
+                            }
+
+                            const goalIds = Object.keys(tasksByGoal)
+
+                            try {
+                                // Fetch goal documents to get sortIndexByMilestone
+                                const goalDocs = await Promise.all(
+                                    goalIds.map(goalId =>
+                                        this.options.database.doc(`goals/${searchProjectId}/items/${goalId}`).get()
+                                    )
+                                )
+
+                                // Build goals with their sort indices for the milestone
+                                const goalsWithSort = goalDocs
+                                    .filter(doc => doc.exists)
+                                    .map(doc => ({
+                                        id: doc.id,
+                                        sortIndex: doc.data().sortIndexByMilestone?.[previousTaskMilestoneId] || 0,
+                                    }))
+                                    .sort((a, b) => b.sortIndex - a.sortIndex) // Higher = first (top of list)
+
+                                // Select task from highest-priority goal
+                                for (const goal of goalsWithSort) {
+                                    const tasksInGoal = tasksByGoal[goal.id]
+                                    if (tasksInGoal && tasksInGoal.length > 0) {
+                                        if (excludeTaskId) {
+                                            const candidates = tasksInGoal.slice(0, 10)
+                                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                                        } else {
+                                            newFocusedTask = tasksInGoal[0]
+                                        }
+                                        break
+                                    }
+                                }
+
+                                console.log(
+                                    `FocusTaskService: Goal-order selection used ${goalsWithSort.length} goals, milestone: ${previousTaskMilestoneId}`
+                                )
+                            } catch (goalFetchError) {
+                                console.warn(
+                                    'FocusTaskService: Failed to fetch goals for ordering, using default selection:',
+                                    goalFetchError.message
+                                )
+                            }
                         }
-                    } else if (allFetchedTasks.length > 0) {
-                        // If excludeTaskId is provided (force new), select random from top 10
-                        if (excludeTaskId) {
-                            const candidates = allFetchedTasks.slice(0, 10)
-                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                        } else {
-                            newFocusedTask = allFetchedTasks[0]
+
+                        // Fallback if goal-order selection didn't find a task
+                        // Priority: tasks with goals > tasks without goals
+                        if (!newFocusedTask) {
+                            const fallbackTasks =
+                                tasksWithGoals.length > 0
+                                    ? tasksWithGoals
+                                    : tasksWithoutGoals.length > 0
+                                    ? tasksWithoutGoals
+                                    : candidateTasks
+                            if (excludeTaskId) {
+                                const candidates = fallbackTasks.slice(0, 10)
+                                newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
+                            } else {
+                                newFocusedTask = fallbackTasks[0]
+                            }
                         }
                     }
                 }
@@ -672,6 +736,23 @@ class FocusTaskService {
     }
 
     /**
+     * Get milestone ID from goal data for goal ordering purposes
+     * @param {Object} goalData - Goal document data
+     * @param {string} projectId - Project ID
+     * @returns {string|null} Milestone ID or null
+     */
+    getMilestoneIdFromGoal(goalData, projectId) {
+        if (goalData?.sortIndexByMilestone) {
+            const milestoneIds = Object.keys(goalData.sortIndexByMilestone)
+            // Filter out backlog milestone if possible, prefer actual milestone
+            const backlogId = `backlog${projectId}`
+            const nonBacklog = milestoneIds.filter(id => !id.includes('backlog') && id !== backlogId)
+            return nonBacklog[0] || milestoneIds[0] || null
+        }
+        return null
+    }
+
+    /**
      * Get focus task for user - returns current focus task or finds/sets new one
      * @param {string} userId - User ID
      * @param {string} projectId - Current project context (optional)
@@ -695,8 +776,31 @@ class FocusTaskService {
         if (forceNew) {
             const excludeTaskId = currentFocusTask?.id || null
 
+            // Get milestone context from current focus task's goal for goal ordering
+            let previousMilestoneId = null
+            const previousParentGoalId = currentFocusTask?.parentGoalId || null
+            if (previousParentGoalId && currentFocusTask?.projectId) {
+                try {
+                    const goalDoc = await this.options.database
+                        .doc(`goals/${currentFocusTask.projectId}/items/${previousParentGoalId}`)
+                        .get()
+                    if (goalDoc.exists) {
+                        previousMilestoneId = this.getMilestoneIdFromGoal(goalDoc.data(), currentFocusTask.projectId)
+                    }
+                } catch (goalError) {
+                    console.warn('FocusTaskService: Could not fetch goal for milestone context:', goalError.message)
+                }
+            }
+
             // Try to find alternative task
-            const newTask = await this.findAndSetNewFocusTask(userId, projectId, null, excludeTaskId, timezoneOffset)
+            const newTask = await this.findAndSetNewFocusTask(
+                userId,
+                projectId,
+                previousParentGoalId,
+                excludeTaskId,
+                timezoneOffset,
+                previousMilestoneId
+            )
 
             // OPTION 1: If no alternative found, return current task with message
             if (!newTask && currentFocusTask) {
