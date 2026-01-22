@@ -429,7 +429,11 @@ export async function setProjectContactLinkedInUrl(projectId, contact, contactId
 
 export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
     console.log('[LinkedIn Enrichment Client] Calling cloud function with URL:', contact.linkedInUrl)
-    const result = await callEnrichContactViaLinkedIn({ linkedInUrl: contact.linkedInUrl })
+    const result = await callEnrichContactViaLinkedIn({
+        linkedInUrl: contact.linkedInUrl,
+        projectId,
+        contactId,
+    })
     console.log('[LinkedIn Enrichment Client] Cloud function result:', JSON.stringify(result.data))
 
     if (result.data.error === 'insufficient_gold') {

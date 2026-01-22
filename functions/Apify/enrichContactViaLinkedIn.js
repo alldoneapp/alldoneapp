@@ -1,14 +1,42 @@
+const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { deductGold } = require('../Gold/goldHelper')
 
 const ENRICHMENT_GOLD_COST = 30
+
+async function uploadLinkedInPhoto(photoUrl, projectId, contactId) {
+    console.log('[LinkedIn Enrichment] Downloading photo from:', photoUrl)
+    const photoResponse = await fetch(photoUrl)
+    if (!photoResponse.ok) {
+        console.warn('[LinkedIn Enrichment] Failed to download photo:', photoResponse.status)
+        return null
+    }
+
+    const contentType = photoResponse.headers.get('content-type') || 'image/jpeg'
+    const buffer = Buffer.from(await photoResponse.arrayBuffer())
+    console.log('[LinkedIn Enrichment] Photo downloaded, size:', buffer.length, 'bytes')
+
+    const bucket = admin.storage().bucket()
+    const timestamp = Date.now()
+    const filePath = `projectsContacts/${projectId}/${contactId}/${contactId}@${timestamp}`
+
+    const file = bucket.file(filePath)
+    await file.save(buffer, {
+        metadata: { contentType },
+    })
+    await file.makePublic()
+
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`
+    console.log('[LinkedIn Enrichment] Photo uploaded to:', publicUrl)
+    return publicUrl
+}
 
 const enrichContactViaLinkedIn = async (data, userId) => {
     console.log('[LinkedIn Enrichment] Starting enrichment for user:', userId)
     console.log('[LinkedIn Enrichment] Input data:', JSON.stringify(data))
 
     const { APIFY_API_KEY } = getEnvFunctions()
-    const { linkedInUrl } = data
+    const { linkedInUrl, projectId, contactId } = data
 
     if (!APIFY_API_KEY) {
         console.error('[LinkedIn Enrichment] APIFY_API_KEY is not configured')
@@ -72,7 +100,19 @@ const enrichContactViaLinkedIn = async (data, userId) => {
         email: profile.email || '',
         phone: profile.mobileNumber || '',
         description: profile.about || '',
-        photoURL: profile.profilePicHighQuality || profile.profilePic || '',
+    }
+
+    // Upload LinkedIn photo to Firebase Storage if available
+    const linkedInPhotoUrl = profile.profilePicHighQuality || profile.profilePic || ''
+    if (linkedInPhotoUrl && projectId && contactId) {
+        try {
+            const storageUrl = await uploadLinkedInPhoto(linkedInPhotoUrl, projectId, contactId)
+            if (storageUrl) {
+                enrichedData.photoURL = storageUrl
+            }
+        } catch (photoError) {
+            console.warn('[LinkedIn Enrichment] Photo upload failed:', photoError.message)
+        }
     }
 
     console.log('[LinkedIn Enrichment] Enriched data:', JSON.stringify(enrichedData))
