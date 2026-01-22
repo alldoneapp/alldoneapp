@@ -289,6 +289,110 @@ class ContactProperties extends Component {
                             <View style={localStyles.propertyRow}>
                                 <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
                                     <Icon
+                                        name={'link'}
+                                        size={24}
+                                        color={colors.Text03}
+                                        style={{ marginHorizontal: 8 }}
+                                    />
+                                    {mobileNav ? (
+                                        user.linkedInUrl !== '' ? (
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    if (window) {
+                                                        window.open(user.linkedInUrl, '_blank')
+                                                    } else {
+                                                        Linking.openURL(user.linkedInUrl)
+                                                    }
+                                                }}
+                                            >
+                                                <Text
+                                                    style={[styles.body1, { color: colors.Primary100 }]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {user.linkedInUrl}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <Text style={[styles.body1]} numberOfLines={1}>
+                                                {translate('LinkedIn URL')}
+                                            </Text>
+                                        )
+                                    ) : (
+                                        <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
+                                            {translate('LinkedIn URL')}
+                                        </Text>
+                                    )}
+                                </View>
+                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
+                                    {!mobileNav &&
+                                        (user.linkedInUrl !== '' ? (
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    if (window) {
+                                                        window.open(user.linkedInUrl, '_blank')
+                                                    } else {
+                                                        Linking.openURL(user.linkedInUrl)
+                                                    }
+                                                }}
+                                            >
+                                                <Text
+                                                    style={[styles.body1, { marginRight: 8, color: colors.Primary100 }]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {user.linkedInUrl}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
+                                                {translate('No LinkedIn URL')}
+                                            </Text>
+                                        ))}
+
+                                    <Popover
+                                        content={
+                                            <ChangeTextFieldModal
+                                                header={translate('Edit LinkedIn URL')}
+                                                subheader={translate('Type the LinkedIn profile URL')}
+                                                label={translate('LinkedIn URL')}
+                                                placeholder={'https://www.linkedin.com/in/...'}
+                                                closePopover={() => this.hideModal('showLinkedInModal')}
+                                                onSaveData={value => this.changePropertyValue('linkedInUrl', value)}
+                                                currentValue={user.linkedInUrl}
+                                            />
+                                        }
+                                        onClickOutside={() => this.hideModal('showLinkedInModal')}
+                                        isOpen={showLinkedInModal}
+                                        position={['bottom', 'left', 'right', 'top']}
+                                        padding={4}
+                                        align={'end'}
+                                        contentLocation={mobile ? null : undefined}
+                                    >
+                                        <Button
+                                            icon={'edit'}
+                                            type={'ghost'}
+                                            onPress={() => this.showModal('showLinkedInModal')}
+                                            disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                        />
+                                    </Popover>
+
+                                    {user.linkedInUrl !== '' && accessGranted && loggedUserCanUpdateObject && (
+                                        <Button
+                                            title={
+                                                isEnriching
+                                                    ? translate('Loading')
+                                                    : `${translate('Enrich via LinkedIn')} (30 Gold)`
+                                            }
+                                            type={'ghost'}
+                                            onPress={this.enrichContact}
+                                            disabled={isEnriching}
+                                        />
+                                    )}
+                                </View>
+                            </View>
+
+                            <View style={localStyles.propertyRow}>
+                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
+                                    <Icon
                                         name={'lock'}
                                         size={24}
                                         color={colors.Text03}
@@ -501,110 +605,6 @@ class ContactProperties extends Component {
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
                                     </Popover>
-                                </View>
-                            </View>
-
-                            <View style={localStyles.propertyRow}>
-                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
-                                    <Icon
-                                        name={'link'}
-                                        size={24}
-                                        color={colors.Text03}
-                                        style={{ marginHorizontal: 8 }}
-                                    />
-                                    {mobileNav ? (
-                                        user.linkedInUrl !== '' ? (
-                                            <TouchableOpacity
-                                                onPress={() => {
-                                                    if (window) {
-                                                        window.open(user.linkedInUrl, '_blank')
-                                                    } else {
-                                                        Linking.openURL(user.linkedInUrl)
-                                                    }
-                                                }}
-                                            >
-                                                <Text
-                                                    style={[styles.body1, { color: colors.Primary100 }]}
-                                                    numberOfLines={1}
-                                                >
-                                                    {user.linkedInUrl}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ) : (
-                                            <Text style={[styles.body1]} numberOfLines={1}>
-                                                {translate('LinkedIn URL')}
-                                            </Text>
-                                        )
-                                    ) : (
-                                        <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
-                                            {translate('LinkedIn URL')}
-                                        </Text>
-                                    )}
-                                </View>
-                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                                    {!mobileNav &&
-                                        (user.linkedInUrl !== '' ? (
-                                            <TouchableOpacity
-                                                onPress={() => {
-                                                    if (window) {
-                                                        window.open(user.linkedInUrl, '_blank')
-                                                    } else {
-                                                        Linking.openURL(user.linkedInUrl)
-                                                    }
-                                                }}
-                                            >
-                                                <Text
-                                                    style={[styles.body1, { marginRight: 8, color: colors.Primary100 }]}
-                                                    numberOfLines={1}
-                                                >
-                                                    {user.linkedInUrl}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ) : (
-                                            <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
-                                                {translate('No LinkedIn URL')}
-                                            </Text>
-                                        ))}
-
-                                    <Popover
-                                        content={
-                                            <ChangeTextFieldModal
-                                                header={translate('Edit LinkedIn URL')}
-                                                subheader={translate('Type the LinkedIn profile URL')}
-                                                label={translate('LinkedIn URL')}
-                                                placeholder={'https://www.linkedin.com/in/...'}
-                                                closePopover={() => this.hideModal('showLinkedInModal')}
-                                                onSaveData={value => this.changePropertyValue('linkedInUrl', value)}
-                                                currentValue={user.linkedInUrl}
-                                            />
-                                        }
-                                        onClickOutside={() => this.hideModal('showLinkedInModal')}
-                                        isOpen={showLinkedInModal}
-                                        position={['bottom', 'left', 'right', 'top']}
-                                        padding={4}
-                                        align={'end'}
-                                        contentLocation={mobile ? null : undefined}
-                                    >
-                                        <Button
-                                            icon={'edit'}
-                                            type={'ghost'}
-                                            onPress={() => this.showModal('showLinkedInModal')}
-                                            disabled={!accessGranted || !loggedUserCanUpdateObject}
-                                        />
-                                    </Popover>
-
-                                    {user.linkedInUrl !== '' && accessGranted && loggedUserCanUpdateObject && (
-                                        <Button
-                                            title={
-                                                isEnriching
-                                                    ? translate('Loading')
-                                                    : `${translate('Enrich via LinkedIn')} (30 Gold)`
-                                            }
-                                            type={'ghost'}
-                                            onPress={this.enrichContact}
-                                            disabled={isEnriching}
-                                        />
-                                    )}
                                 </View>
                             </View>
 
