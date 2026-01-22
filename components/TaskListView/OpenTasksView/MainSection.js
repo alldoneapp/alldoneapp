@@ -86,6 +86,9 @@ export default function MainSection({
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const emptyGoals = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX])
     const focusedTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
+    // Get optimistic focus task for immediate UI update before Firestore confirms
+    const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
+    const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
     const [tmpGoalsById, setTmpGoalsById] = useState({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
@@ -293,13 +296,17 @@ export default function MainSection({
     sortedMainTasks.sort((a, b) => goalsPositionId[a[0]] - goalsPositionId[b[0]])
 
     // --- Start: Focus logic ---
+    // Use optimistic focus task ID if it's in this project, otherwise use the confirmed focusedTaskId
+    const effectiveFocusTaskId =
+        optimisticFocusTaskId && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
+
     let focusedTaskSectionId = null
-    if (focusedTaskId) {
+    if (effectiveFocusTaskId) {
         // Check mainTasks for goals AND general tasks
         for (const goalTasksData of mainTasks) {
             const goalId = goalTasksData[0]
             const taskList = goalTasksData[1]
-            if (taskList.some(task => task.id === focusedTaskId)) {
+            if (taskList.some(task => task.id === effectiveFocusTaskId)) {
                 focusedTaskSectionId = goalId // This will be NOT_PARENT_GOAL_INDEX for general tasks
                 break
             }
@@ -409,7 +416,7 @@ export default function MainSection({
                                 amountToRender={amountToRenderForGeneral}
                                 instanceKey={instanceKey}
                                 inParentGoal={false}
-                                focusedTaskId={focusedTaskId}
+                                focusedTaskId={effectiveFocusTaskId}
                             />
                             {accessGranted &&
                                 loggedUserCanUpdateObject &&
@@ -432,7 +439,7 @@ export default function MainSection({
                                                 ? expandTasks
                                                 : undefined
                                         }
-                                        focusedTaskId={focusedTaskId}
+                                        focusedTaskId={effectiveFocusTaskId}
                                     />
                                 ))}
                         </View>
@@ -475,7 +482,7 @@ export default function MainSection({
                                     : undefined
                             }
                             isTemplateProject={isTemplateProject}
-                            focusedTaskId={focusedTaskId}
+                            focusedTaskId={effectiveFocusTaskId}
                         />
                     )
                 }
