@@ -152,12 +152,11 @@ const searchLinkedInProfile = async (data, userId) => {
         return { success: false, error: 'insufficient_gold', message: goldResult.message }
     }
 
-    // Build search query from contact info
+    // Build search query - name + company is most effective for finding the right person
     const queryParts = []
-    if (displayName) queryParts.push(displayName)
+    if (displayName) queryParts.push(`"${displayName}"`)
     if (company) queryParts.push(company)
-    if (role) queryParts.push(role)
-    const query = `${queryParts.join(' ')} LinkedIn profile site:linkedin.com/in/`
+    const query = `${queryParts.join(' ')} site:linkedin.com/in/`
 
     console.log('[LinkedIn Search] Search query:', query)
 
@@ -166,9 +165,8 @@ const searchLinkedInProfile = async (data, userId) => {
         const tvly = tavily({ apiKey: TAVILY_API_KEY })
 
         const response = await tvly.search(query, {
-            searchDepth: 'basic',
+            searchDepth: 'advanced',
             maxResults: 5,
-            includeDomains: ['linkedin.com'],
         })
 
         console.log('[LinkedIn Search] Tavily returned', response.results?.length || 0, 'results')
