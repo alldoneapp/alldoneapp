@@ -1968,11 +1968,7 @@ export async function setTaskDueDate(
 
     // If the postponed task was the focus task, find and set a new one now
     if (shouldFindNewFocusTask) {
-        // REMOVE LOGGING HERE
-        // console.log(
-        //     `[setTaskDueDate] Task ${taskId} was postponed focus task. Calling findAndSetNewFocusedTask for user ${task.userId}.`
-        // )
-        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId)
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, taskId)
     }
 
     setTaskDueDateFeedsChain(projectId, taskId, dueDate, task, isObservedTask)
@@ -2289,7 +2285,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     const assignee = TasksHelper.getUserInProject(projectId, task.userId)
     if (assignee && assignee.inFocusTaskId === task.id) {
         if (stepToMoveId === DONE_STEP) {
-            await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId)
+            await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, task.id)
         } else {
             await updateFocusedTask(task.userId, projectId, null, null, null)
         }
@@ -2464,7 +2460,7 @@ export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, 
         // When a user completes their part of a task (either to DONE_STEP or workflow step),
         // they should get a new focus task since they're done with the current one
         console.log(`[moveTasksFromOpen] User completed their part of task - calling findAndSetNewFocusedTask`)
-        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId)
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, task.id)
     } else {
         console.log(`[moveTasksFromOpen] NOT calling focus task functions - conditions not met`)
     }
@@ -2652,7 +2648,7 @@ export async function setTaskStatus(
 
     if (assignee && assignee.inFocusTaskId === taskId && isDone) {
         console.log(`[setTaskStatus] Calling findAndSetNewFocusedTask for workflow task`)
-        await findAndSetNewFocusedTask(projectId, taskOwnerUid, task.parentGoalId)
+        await findAndSetNewFocusedTask(projectId, taskOwnerUid, task.parentGoalId, taskId)
     } else if (isDone) {
         console.log(`[setTaskStatus] NOT calling findAndSetNewFocusedTask - conditions not met`)
     }
@@ -2836,9 +2832,14 @@ export async function autoReminderMultipleTasks(tasks) {
     store.dispatch([setSelectedTasks(null, true), stopLoadingData()])
 }
 
-async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskParentGoalId = null) {
+async function findAndSetNewFocusedTask(
+    currentProjectId,
+    userId,
+    previousTaskParentGoalId = null,
+    excludeTaskId = null
+) {
     console.log(
-        `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}`
+        `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}, excludeTaskId: ${excludeTaskId}`
     )
 
     const currentTime = moment()
@@ -2920,7 +2921,10 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
     if (!openTasksSnapshot.empty) {
         const allFetchedTasksInCurrentProject = openTasksSnapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(task => task.dueDate <= endOfToday && !task.calendarData) // Common filter applied once
+            .filter(
+                task =>
+                    task.dueDate <= endOfToday && !task.calendarData && (!excludeTaskId || task.id !== excludeTaskId)
+            )
 
         // Attempt 1: Non-workflow tasks with the same parentGoalId as the previous task
         if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
@@ -2953,6 +2957,8 @@ async function findAndSetNewFocusedTask(currentProjectId, userId, previousTaskPa
         console.log(`[findAndSetNewFocusedTask] Found new focus task in current project:`, {
             taskId: newFocusedTask.id,
             taskName: newFocusedTask.name,
+            isWorkflowTask: newFocusedTask.userIds?.length > 1,
+            parentGoalId: newFocusedTask.parentGoalId,
         })
         await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask)
         return true
