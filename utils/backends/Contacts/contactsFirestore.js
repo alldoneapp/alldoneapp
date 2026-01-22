@@ -309,6 +309,14 @@ export async function setProjectContactDescription(projectId, contact, contactId
 }
 
 export async function setProjectContactPicture(projectId, contact, contactId, pictureFile) {
+    if (!pictureFile) {
+        store.dispatch(startLoadingData())
+        await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
+        await updateContactData(projectId, contactId, { photoURL: '', photoURL50: '', photoURL300: '' }, null)
+        store.dispatch(stopLoadingData())
+        return
+    }
+
     const pictures = await proccessPictureForAvatar(pictureFile)
 
     if (pictures.length > 0) {

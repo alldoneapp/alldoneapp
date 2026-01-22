@@ -201,15 +201,19 @@ class ImagePickerModal extends Component {
     }
 
     onClosePicture = index => {
-        this.setState({ pictures: [], height: 0 })
+        this.setState({ pictures: [], height: 0, changed: true })
     }
 
     onPressSaveButton = () => {
         const { pictures, changed } = this.state
         const { onSavePicture, closePopover } = this.props
 
-        if (pictures.length > 0 && changed) {
-            onSavePicture(pictures[0].file)
+        if (changed) {
+            if (pictures.length > 0) {
+                onSavePicture(pictures[0].file)
+            } else {
+                onSavePicture(null)
+            }
         }
         closePopover()
     }
