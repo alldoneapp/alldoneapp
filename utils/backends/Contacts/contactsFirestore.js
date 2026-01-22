@@ -454,16 +454,16 @@ export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
         const enrichedData = result.data.data
         const updates = {}
 
-        if (!contact.displayName && enrichedData.displayName) updates.displayName = enrichedData.displayName
-        if (!contact.company && enrichedData.company) updates.company = enrichedData.company
-        if (!contact.role && enrichedData.role) updates.role = enrichedData.role
-        if (!contact.email && enrichedData.email) updates.email = enrichedData.email
-        if (!contact.phone && enrichedData.phone) updates.phone = enrichedData.phone
-        if (!contact.description && enrichedData.description) {
+        if (enrichedData.displayName) updates.displayName = enrichedData.displayName
+        if (enrichedData.company) updates.company = enrichedData.company
+        if (enrichedData.role) updates.role = enrichedData.role
+        if (enrichedData.email) updates.email = enrichedData.email
+        if (enrichedData.phone) updates.phone = enrichedData.phone
+        if (enrichedData.description) {
             updates.description = enrichedData.description
             updates.extendedDescription = enrichedData.description
         }
-        if (!contact.photoURL && enrichedData.photoURL) {
+        if (enrichedData.photoURL) {
             updates.photoURL = enrichedData.photoURL
             updates.photoURL50 = enrichedData.photoURL
             updates.photoURL300 = enrichedData.photoURL
