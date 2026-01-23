@@ -152,35 +152,57 @@ const searchLinkedInProfile = async (data, userId) => {
         return { success: false, error: 'insufficient_gold', message: goldResult.message }
     }
 
-    // Build search query - name + company is most effective for finding the right person
-    const queryParts = []
-    if (displayName) queryParts.push(`"${displayName}"`)
-    if (company) queryParts.push(company)
-    const query = `${queryParts.join(' ')} site:linkedin.com/in/`
-
-    console.log('[LinkedIn Search] Search query:', query)
-
     try {
         const { tavily } = require('@tavily/core')
         const tvly = tavily({ apiKey: TAVILY_API_KEY })
 
-        const response = await tvly.search(query, {
-            searchDepth: 'basic',
-            maxResults: 5,
-        })
+        // Build search queries with fallback strategy
+        const queries = []
 
-        console.log('[LinkedIn Search] Tavily returned', response.results?.length || 0, 'results')
-        if (response.results) {
-            response.results.forEach((r, i) => {
-                console.log(`[LinkedIn Search] Result ${i}: ${r.url} - ${r.title}`)
-            })
+        // Primary: name + company with domain filter
+        if (displayName && company) {
+            queries.push(`"${displayName}" "${company}" LinkedIn profile`)
+            queries.push(`"${displayName}" ${company} LinkedIn`)
         }
 
-        // Find the first linkedin.com/in/ URL
-        const linkedInResult = response.results?.find(r => r.url && r.url.includes('linkedin.com/in/'))
+        // Fallback: name only with domain filter
+        if (displayName) {
+            queries.push(`"${displayName}" LinkedIn profile`)
+        }
+
+        // Fallback: email-based search
+        if (email) {
+            queries.push(`"${email}" LinkedIn`)
+        }
+
+        let linkedInResult = null
+
+        for (const query of queries) {
+            console.log('[LinkedIn Search] Trying query:', query)
+
+            const response = await tvly.search(query, {
+                searchDepth: 'basic',
+                maxResults: 5,
+                includeDomains: ['linkedin.com'],
+            })
+
+            console.log('[LinkedIn Search] Tavily returned', response.results?.length || 0, 'results')
+            if (response.results) {
+                response.results.forEach((r, i) => {
+                    console.log(`[LinkedIn Search] Result ${i}: ${r.url} - ${r.title}`)
+                })
+            }
+
+            // Find the first linkedin.com/in/ URL
+            linkedInResult = response.results?.find(r => r.url && r.url.includes('linkedin.com/in/'))
+
+            if (linkedInResult) {
+                console.log('[LinkedIn Search] Found LinkedIn URL:', linkedInResult.url)
+                break
+            }
+        }
 
         if (linkedInResult) {
-            console.log('[LinkedIn Search] Found LinkedIn URL:', linkedInResult.url)
             return {
                 success: true,
                 linkedInUrl: linkedInResult.url,
@@ -188,7 +210,7 @@ const searchLinkedInProfile = async (data, userId) => {
             }
         }
 
-        console.log('[LinkedIn Search] No LinkedIn profile URL found in results')
+        console.log('[LinkedIn Search] No LinkedIn profile URL found after all attempts')
         return { success: true, linkedInUrl: null }
     } catch (error) {
         console.error('[LinkedIn Search] Tavily search failed:', error.message)
