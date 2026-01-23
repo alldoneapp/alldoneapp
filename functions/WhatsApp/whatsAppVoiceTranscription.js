@@ -6,7 +6,7 @@ const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assista
  * @param {string} mediaUrl - Twilio media URL for the voice message
  * @param {string} twilioAccountSid - Twilio Account SID for auth
  * @param {string} twilioAuthToken - Twilio Auth Token for auth
- * @returns {Promise<string>} Transcribed text
+ * @returns {Promise<{text: string, duration: number}>} Transcribed text and duration
  */
 async function transcribeWhatsAppVoiceMessage(mediaUrl, twilioAccountSid, twilioAuthToken) {
     console.log('WhatsApp Voice: Starting transcription', { mediaUrl: mediaUrl.substring(0, 80) })
@@ -30,16 +30,19 @@ async function transcribeWhatsAppVoiceMessage(mediaUrl, twilioAccountSid, twilio
     const transcription = await openai.audio.transcriptions.create({
         model: 'whisper-1',
         file: file,
+        response_format: 'verbose_json',
     })
 
     const text = transcription.text || ''
-    console.log('WhatsApp Voice: Transcription complete', { textLength: text.length })
+    const duration = transcription.duration || 0
+
+    console.log('WhatsApp Voice: Transcription complete', { textLength: text.length, duration })
 
     if (!text.trim()) {
         throw new Error('Transcription returned empty text')
     }
 
-    return text.trim()
+    return { text: text.trim(), duration }
 }
 
 /**

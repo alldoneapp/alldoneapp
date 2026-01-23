@@ -7,7 +7,7 @@ const path = require('path')
 
 const admin = require('firebase-admin')
 
-const TRANSCRIPTION_COST = 1 // Gold per chunk
+const TRANSCRIPTION_COST = 0.1 // Gold per chunk
 
 exports.transcribeMeetingAudio = onCall(
     {

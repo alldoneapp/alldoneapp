@@ -99,12 +99,26 @@ async function handleIncomingWhatsAppMessage(req, res) {
             // Voice message - transcribe
             console.log('WhatsApp Incoming: Processing voice message', { mediaContentType0 })
             try {
-                messageText = await transcribeWhatsAppVoiceMessage(
+                const { text, duration } = await transcribeWhatsAppVoiceMessage(
                     mediaUrl0,
                     envFunctions.TWILIO_ACCOUNT_SID,
                     envFunctions.TWILIO_AUTH_TOKEN
                 )
+                messageText = text
                 isVoice = true
+
+                // Calculate gold cost: 1 Gold per 10 seconds (min 1 Gold)
+                const voiceCost = Math.max(1, Math.ceil(duration / 10))
+
+                console.log('WhatsApp Incoming: Deducting gold for voice', { duration, cost: voiceCost })
+
+                // Deduct gold
+                await admin
+                    .firestore()
+                    .doc(`users/${userId}`)
+                    .update({
+                        gold: admin.firestore.FieldValue.increment(-voiceCost),
+                    })
             } catch (error) {
                 console.error('WhatsApp Incoming: Voice transcription failed:', error.message)
                 await service.sendWhatsAppMessage(
