@@ -54,7 +54,9 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
         'You are responding via WhatsApp. Keep responses concise (under 1000 characters when possible). ' +
             'Use *bold* and _italic_ for emphasis (WhatsApp formatting). ' +
             'Do not use markdown headers (#), code blocks (```), or tables. ' +
-            'Use simple bullet points with - for lists.',
+            'Use simple bullet points with - for lists. ' +
+            'Only use tools when the user explicitly asks you to perform an action (create a task, search, etc.). ' +
+            'Do NOT use tools for simple greetings or casual conversation.',
     ])
 
     // Add conversation history

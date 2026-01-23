@@ -12,7 +12,7 @@ function createNoteObject(params) {
         projectId,
         now = Date.now(),
         isPrivate = false,
-        isPublicFor = ['FEED_PUBLIC_FOR_ALL'],
+        isPublicFor = [0],
     } = params
 
     return {

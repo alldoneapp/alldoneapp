@@ -3,7 +3,7 @@
  * Mock implementation for testing purposes
  */
 
-const FEED_PUBLIC_FOR_ALL = 'FEED_PUBLIC_FOR_ALL'
+const FEED_PUBLIC_FOR_ALL = 0
 
 function createTaskEventFeed(eventType, params) {
     const { projectId, taskId: noteId, feedUser, moment } = params

@@ -10,9 +10,9 @@
  * - Any other task creation contexts
  */
 
-// Import constants that are used across different environments
+// Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
-const FEED_PUBLIC_FOR_ALL = 'FEED_PUBLIC_FOR_ALL'
+const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
 
 /**
  * Builds a complete task object with all required fields

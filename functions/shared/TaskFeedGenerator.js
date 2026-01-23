@@ -5,11 +5,11 @@
  * across all platforms and contexts (MCP Server, Assistant, Frontend, Cloud Functions).
  */
 
-// Constants - these should match the constants used in the main app
+// Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const FEED_TASK_CREATED = 'FEED_TASK_CREATED'
 const FEED_TASK_FOLLOWED = 'FEED_TASK_FOLLOWED'
 const FEED_TASK_UPDATED = 'FEED_TASK_UPDATED'
-const FEED_PUBLIC_FOR_ALL = 'FEED_PUBLIC_FOR_ALL'
+const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
 
 /**

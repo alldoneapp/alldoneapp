@@ -12,9 +12,9 @@
 
 const moment = require('moment-timezone')
 
-// Import constants that are used across different environments
+// Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
-const FEED_PUBLIC_FOR_ALL = 'FEED_PUBLIC_FOR_ALL'
+const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
 
 class TaskRetrievalService {
     constructor(options = {}) {
