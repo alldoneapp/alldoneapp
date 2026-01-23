@@ -39,7 +39,7 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
     const user = await getUserData(userId)
     const firstName = getFirstName(user?.displayName || 'User')
     const dateStr = moment().format('DD MMM YYYY')
-    const title = `Daily Recap <> ${firstName} ${dateStr}`
+    const title = `Daily Whatsapp <> ${firstName} ${dateStr}`
 
     const now = Date.now()
     const chatData = {
