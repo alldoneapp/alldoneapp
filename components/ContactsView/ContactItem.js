@@ -407,6 +407,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 100,
     },
     userData: {
+        flex: 1,
         alignSelf: 'flex-start',
         marginLeft: 8,
     },
