@@ -16,13 +16,16 @@ const { getUserData } = require('../Users/usersFirestore')
 async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
     const today = moment().format('YYYYMMDD')
     const chatId = `BotChat${today}${userId}`
+    console.log('WhatsApp DailyTopic: Checking topic', { chatId, projectId, userId })
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
 
     const chatDoc = await chatRef.get()
     if (chatDoc.exists) {
+        console.log('WhatsApp DailyTopic: Topic exists, checking stickyData')
         // Ensure existing topics have required fields for the app's query
         const data = chatDoc.data()
         if (!data.stickyData || data.stickyData.days === undefined) {
+            console.log('WhatsApp DailyTopic: Patching missing stickyData')
             await chatRef.update({
                 stickyData: { days: 0, stickyEndDate: 0 },
                 hasStar: data.hasStar || '#ffffff',
@@ -30,6 +33,7 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
         }
         return { chatId, isNew: false }
     }
+    console.log('WhatsApp DailyTopic: Creating new topic')
 
     // Fetch user name for topic title
     const user = await getUserData(userId)
@@ -74,6 +78,12 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
  * @returns {Promise<string>} commentId
  */
 async function storeUserMessageInTopic(projectId, chatId, userId, messageText, isVoice = false) {
+    console.log('WhatsApp DailyTopic: Storing user message', {
+        projectId,
+        chatId,
+        userId,
+        messageLength: messageText.length,
+    })
     const commentId = uuidv4()
     const now = Date.now()
 
