@@ -152,6 +152,12 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
  * @returns {Promise<string>} commentId
  */
 async function storeAssistantMessageInTopic(projectId, chatId, assistantId, responseText) {
+    console.log('WhatsApp DailyTopic: Storing assistant message', {
+        projectId,
+        chatId,
+        assistantId,
+        responseLength: responseText.length,
+    })
     const commentId = uuidv4()
     const now = Date.now()
 
@@ -168,17 +174,32 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
 
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
 
-    await Promise.all([
-        commentRef.set(comment),
-        chatRef.update({
-            lastEditionDate: now,
-            lastEditorId: assistantId,
-            'commentsData.lastComment': responseText.substring(0, 200),
-            'commentsData.lastCommentOwnerId': assistantId,
-            'commentsData.lastCommentType': STAYWARD_COMMENT,
-            'commentsData.amount': admin.firestore.FieldValue.increment(1),
-        }),
-    ])
+    try {
+        await Promise.all([
+            commentRef.set(comment),
+            chatRef.update({
+                lastEditionDate: now,
+                lastEditorId: assistantId,
+                'commentsData.lastComment': responseText.substring(0, 200),
+                'commentsData.lastCommentOwnerId': assistantId,
+                'commentsData.lastCommentType': STAYWARD_COMMENT,
+                'commentsData.amount': admin.firestore.FieldValue.increment(1),
+            }),
+        ])
+        console.log('WhatsApp DailyTopic: Assistant message stored successfully', { commentId })
+    } catch (error) {
+        console.error('WhatsApp DailyTopic: FAILED to store assistant message', {
+            error: error.message,
+            code: error.code,
+        })
+        // Still try to store just the comment if update failed
+        try {
+            await commentRef.set(comment)
+            console.log('WhatsApp DailyTopic: Assistant comment stored without chat update')
+        } catch (e) {
+            console.error('WhatsApp DailyTopic: Assistant comment storage also failed', { error: e.message })
+        }
+    }
 
     return commentId
 }
