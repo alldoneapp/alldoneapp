@@ -352,9 +352,9 @@ export default function TaskParentGoalModal({
     }, [])
 
     useEffect(() => {
-        document.addEventListener('keydown', onKeyDown)
+        document.addEventListener('keydown', onKeyDown, true)
         return () => {
-            document.removeEventListener('keydown', onKeyDown)
+            document.removeEventListener('keydown', onKeyDown, true)
         }
     })
 
@@ -367,6 +367,8 @@ export default function TaskParentGoalModal({
             style={[localStyles.container, applyPopoverWidth(), { maxHeight: finalHeight }]}
             onClick={stopPropagation}
             onMouseDown={stopPropagation}
+            onTouchStart={stopPropagation}
+            onTouchEnd={stopPropagation}
         >
             <CustomScrollView
                 ref={scrollRef}
