@@ -84,8 +84,8 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
         userId
     )
 
-    // Store AI response in topic
-    await storeAssistantMessageInTopic(projectId, chatId, assistant.uid || assistantId, responseText)
+    // Store AI response in topic and update lastAssistantCommentData for AssistantLine
+    await storeAssistantMessageInTopic(projectId, chatId, assistant.uid || assistantId, responseText, userId)
 
     // Deduct gold
     try {

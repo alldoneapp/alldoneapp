@@ -149,9 +149,10 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
  * @param {string} chatId
  * @param {string} assistantId
  * @param {string} responseText
+ * @param {string} userId - The user who owns the topic (for updating AssistantLine)
  * @returns {Promise<string>} commentId
  */
-async function storeAssistantMessageInTopic(projectId, chatId, assistantId, responseText) {
+async function storeAssistantMessageInTopic(projectId, chatId, assistantId, responseText, userId) {
     console.log('WhatsApp DailyTopic: Storing assistant message', {
         projectId,
         chatId,
@@ -198,6 +199,32 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
             console.log('WhatsApp DailyTopic: Assistant comment stored without chat update')
         } catch (e) {
             console.error('WhatsApp DailyTopic: Assistant comment storage also failed', { error: e.message })
+        }
+    }
+
+    // Update lastAssistantCommentData on the user doc so the AssistantLine shows this topic
+    if (userId) {
+        try {
+            const updateData = {
+                objectType: 'topics',
+                objectId: chatId,
+                creatorId: assistantId,
+                creatorType: 'user',
+                date: now,
+            }
+            await admin
+                .firestore()
+                .doc(`users/${userId}`)
+                .update({
+                    [`lastAssistantCommentData.${projectId}`]: updateData,
+                    ['lastAssistantCommentData.allProjects']: {
+                        ...updateData,
+                        projectId,
+                    },
+                })
+            console.log('WhatsApp DailyTopic: Updated lastAssistantCommentData for user', { userId })
+        } catch (error) {
+            console.error('WhatsApp DailyTopic: Failed to update lastAssistantCommentData', { error: error.message })
         }
     }
 
