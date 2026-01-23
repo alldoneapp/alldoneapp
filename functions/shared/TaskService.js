@@ -407,6 +407,15 @@ class TaskService {
                                         }
                                     )
                                 }
+                                // Pre-commit cleanup: trim feedsCount documents to prevent index limit errors
+                                try {
+                                    const { cleanGlobalFeeds } = require('../Feeds/globalFeedsHelper')
+                                    if (cleanGlobalFeeds) {
+                                        await cleanGlobalFeeds(finalProjectId)
+                                    }
+                                } catch (cleanError) {
+                                    console.warn('TaskService: Pre-commit feed cleanup failed:', cleanError.message)
+                                }
                                 if (feedsBatch.commit) {
                                     await feedsBatch.commit()
                                 }
@@ -977,6 +986,15 @@ class TaskService {
                                         entryText: feedData.feed.entryText,
                                     }
                                 )
+                                // Pre-commit cleanup: trim feedsCount documents to prevent index limit errors
+                                try {
+                                    const { cleanGlobalFeeds } = require('../Feeds/globalFeedsHelper')
+                                    if (cleanGlobalFeeds) {
+                                        await cleanGlobalFeeds(finalProjectId)
+                                    }
+                                } catch (cleanError) {
+                                    console.warn('TaskService: Pre-commit feed cleanup failed:', cleanError.message)
+                                }
                                 if (feedsBatch.commit) {
                                     await feedsBatch.commit()
                                 }
