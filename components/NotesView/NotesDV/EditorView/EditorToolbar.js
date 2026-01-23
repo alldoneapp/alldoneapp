@@ -1012,7 +1012,6 @@ export const EditorToolbar = ({
     }
 
     const toggleTranscription = async () => {
-        console.log('[EditorToolbar] toggleTranscription called. isRecording:', isRecording)
         if (isRecording) {
             stopRecording()
             return
@@ -1021,12 +1020,9 @@ export const EditorToolbar = ({
         try {
             // Insert Date + Transcription Header
             const headerEditor = getEditor ? getEditor() : exportRef ? exportRef.getEditor() : null
-            console.log('[EditorToolbar] headerEditor found:', !!headerEditor)
-
             if (headerEditor) {
                 try {
                     const range = headerEditor.getSelection(true) || { index: headerEditor.getLength() }
-                    console.log('[EditorToolbar] Inserting header at index:', range.index)
                     const dateStr = moment().format(`${getDateFormat(false)} `)
                     const headerText = `${dateStr} ${translate('transcription_header')}`
                     headerEditor.insertText(range.index, headerText, 'user')
@@ -1184,25 +1180,28 @@ export const EditorToolbar = ({
     const hasAutoStartedRef = useRef(false)
 
     useEffect(() => {
-        console.log('[EditorToolbar] autoStartTranscription effect', {
-            autoStartTranscription,
-            disabled,
-            hasAutoStarted: hasAutoStartedRef.current,
-            isRecording,
-        })
-        if (autoStartTranscription && !disabled && !hasAutoStartedRef.current && !isRecording) {
-            console.log('[EditorToolbar] Triggering auto-start')
+        if (autoStartTranscription && !hasAutoStartedRef.current && !isRecording) {
             hasAutoStartedRef.current = true
-            // Use a short timeout to let the editor mount
-            setTimeout(() => {
-                const editor = getEditor ? getEditor() : null
-                console.log('[EditorToolbar] Executing toggleTranscription. Editor available:', !!editor)
-                toggleTranscription().catch(e => {
-                    console.warn('Auto-start transcription failed:', e)
-                })
-            }, 500)
+
+            // Retry function to wait for editor to be ready
+            const tryStartTranscription = (retriesLeft = 10) => {
+                const editor = getEditor ? getEditor() : exportRef ? exportRef.getEditor() : null
+                if (editor) {
+                    toggleTranscription().catch(e => {
+                        console.warn('Auto-start transcription failed:', e)
+                    })
+                } else if (retriesLeft > 0) {
+                    // Editor not ready yet, retry after delay
+                    setTimeout(() => tryStartTranscription(retriesLeft - 1), 300)
+                } else {
+                    console.warn('Auto-start transcription: Editor never became available')
+                }
+            }
+
+            // Initial delay to let the component mount
+            setTimeout(() => tryStartTranscription(), 500)
         }
-    }, [autoStartTranscription, disabled])
+    }, [autoStartTranscription])
 
     return (
         <div
