@@ -2951,7 +2951,10 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         messages.push([
             'system',
-            `IMPORTANT: You are action-oriented. When users ask you to do something, DO IT IMMEDIATELY - don't just talk about doing it.`,
+            `IMPORTANT: You are action-oriented. When users ask you to do something, DO IT IMMEDIATELY - don't just talk about doing it. ` +
+                `However, do NOT call any tools for casual conversation like greetings ("hello", "hi", "hey", "how are you"), thank-yous, or small talk. ` +
+                `Only use tools when the user clearly intends an action (e.g. "create a task called X", "add X to my tasks", "search for Y", "remind me to Z"). ` +
+                `When in doubt whether the user wants an action or is just chatting, respond with text only.`,
         ])
     }
     messages.push([

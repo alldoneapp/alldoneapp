@@ -48,17 +48,14 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
     const messages = []
     addBaseInstructions(messages, displayName, user.language, instructions, allowedTools, userTimezoneOffset)
 
-    // Add WhatsApp-specific instruction
+    // Add WhatsApp-specific formatting rules
     messages.push([
         'system',
-        'IMPORTANT - WhatsApp context rules (these override any previous instructions about being action-oriented):\n' +
+        'WhatsApp formatting rules:\n' +
             '- Keep responses concise (under 1000 characters when possible).\n' +
             '- Use *bold* and _italic_ for emphasis (WhatsApp formatting).\n' +
             '- Do not use markdown headers (#), code blocks (```), or tables.\n' +
-            '- Use simple bullet points with - for lists.\n' +
-            '- CRITICAL: Do NOT call any tools unless the user EXPLICITLY and CLEARLY asks you to perform a specific action like "create a task called X" or "search for Y". ' +
-            'Messages like "hello", "hi", "how are you", "thanks", or any casual conversation must NEVER trigger tool calls. ' +
-            'When in doubt, just respond with text - do not use tools.',
+            '- Use simple bullet points with - for lists.',
     ])
 
     // Add conversation history
