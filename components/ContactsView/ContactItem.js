@@ -306,7 +306,6 @@ export default class ContactItem extends Component {
                                                 : backColor
                                         }
                                         projectId={projectId}
-                                        wrapText
                                     >
                                         {userInfo}
                                     </SocialText>
