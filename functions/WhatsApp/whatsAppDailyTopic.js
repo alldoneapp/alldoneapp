@@ -91,6 +91,7 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
             lastEditorId: userId,
             'commentsData.lastComment': messageText.substring(0, 200),
             'commentsData.lastCommentOwnerId': userId,
+            'commentsData.lastCommentType': STAYWARD_COMMENT,
             'commentsData.amount': admin.firestore.FieldValue.increment(1),
         }),
     ])
@@ -131,6 +132,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
             lastEditorId: assistantId,
             'commentsData.lastComment': responseText.substring(0, 200),
             'commentsData.lastCommentOwnerId': assistantId,
+            'commentsData.lastCommentType': STAYWARD_COMMENT,
             'commentsData.amount': admin.firestore.FieldValue.increment(1),
         }),
     ])
