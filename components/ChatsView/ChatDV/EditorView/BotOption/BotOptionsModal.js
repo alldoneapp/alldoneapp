@@ -123,8 +123,8 @@ export default function BotOptionsModal({
                         parentObject
                             ? {
                                   name: parentObject.title || parentObject.name,
-                                  id: parentObject.id || parentObject.uid,
-                                  type: objectType,
+                                  id: parentObject.noteId || parentObject.id || parentObject.uid,
+                                  type: parentObject.noteId ? 'note' : objectType,
                               }
                             : null
                     }
