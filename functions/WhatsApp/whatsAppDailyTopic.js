@@ -42,6 +42,8 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
         lastEditorId: userId,
         usersFollowing: [userId],
         members: [userId],
+        hasStar: '#ffffff',
+        stickyData: { days: 0, stickyEndDate: 0 },
         commentsData: {
             amount: 0,
             lastComment: '',
