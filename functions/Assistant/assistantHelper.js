@@ -3208,6 +3208,7 @@ module.exports = {
     generateSearchSummary,
     getCommonData, // Export for parallel fetching to reduce time-to-first-token
     normalizeModelKey, // Export for model normalization and backward compatibility
+    executeToolNatively, // Export for WhatsApp assistant bridge
     // Optimized functions with caching
     getCachedEnvFunctions,
     getOpenAIClient,

@@ -2602,3 +2602,16 @@ exports.googleOAuthCheckCredentials = onCall(
 )
 
 exports.transcribeMeetingAudio = require('./Notes/transcribeMeeting').transcribeMeetingAudio
+
+// WHATSAPP INCOMING MESSAGE - Receives messages from Twilio WhatsApp webhook
+exports.whatsAppIncomingMessage = onRequest(
+    {
+        timeoutSeconds: 540,
+        memory: '2GiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleIncomingWhatsAppMessage } = require('./WhatsApp/whatsAppIncomingHandler')
+        await handleIncomingWhatsAppMessage(req, res)
+    }
+)

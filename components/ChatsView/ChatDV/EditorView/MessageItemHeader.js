@@ -3,6 +3,7 @@ import { Image, View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import global, { colors } from '../../../styles/global'
+import Icon from '../../../Icon'
 import { getTimestampInMilliseconds, parseLastEdited } from '../../Utils/ChatHelper'
 import ContactsHelper from '../../../ContactsView/Utils/ContactsHelper'
 import NavigationService from '../../../../utils/NavigationService'
@@ -13,7 +14,7 @@ import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistants
 export default function MessageItemHeader({ projectId, message, serverTime, creatorData, highlight }) {
     const dispatch = useDispatch()
 
-    const { lastChangeDate, creatorId } = message
+    const { lastChangeDate, creatorId, isVoiceTranscription, source } = message
 
     const { photoURL, displayName, isProjectUser, isUnknownUser } = creatorData
 
@@ -41,6 +42,12 @@ export default function MessageItemHeader({ projectId, message, serverTime, crea
                 <Text style={localStyles.userName}>{displayName}</Text>
             </TouchableOpacity>
             <Text style={localStyles.datetime}> • {parseLastEdited(serverTime, accurateTime)}</Text>
+            {isVoiceTranscription && (
+                <View style={localStyles.voiceIndicator}>
+                    <Icon name="mic" size={12} color={colors.Text03} />
+                </View>
+            )}
+            {source === 'whatsapp' && <Text style={localStyles.sourceLabel}> • WhatsApp</Text>}
         </View>
     )
 }
@@ -71,6 +78,15 @@ const localStyles = StyleSheet.create({
         borderRadius: 100,
         marginRight: 7,
         marginLeft: -13,
+        alignSelf: 'center',
+    },
+    voiceIndicator: {
+        marginLeft: 6,
+        alignSelf: 'center',
+    },
+    sourceLabel: {
+        ...global.caption2,
+        color: colors.Text03,
         alignSelf: 'center',
     },
 })

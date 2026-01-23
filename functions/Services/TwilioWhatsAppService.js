@@ -832,6 +832,18 @@ Powered by Alldone Assistant 🚀`
             }
         }
     }
+
+    /**
+     * Validate an incoming Twilio webhook signature.
+     * @param {string} signature - The X-Twilio-Signature header value
+     * @param {string} url - The full webhook URL
+     * @param {Object} params - The POST body params
+     * @returns {boolean} Whether the signature is valid
+     */
+    validateWebhookSignature(signature, url, params) {
+        const twilio = require('twilio')
+        return twilio.validateRequest(this.twilioAuthToken, signature, url, params)
+    }
 }
 
 module.exports = TwilioWhatsAppService
