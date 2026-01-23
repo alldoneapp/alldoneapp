@@ -18,7 +18,7 @@ export default function AllProjectsEmptyInbox() {
 const localStyles = {
     emptyInbox: {
         flex: 1,
-        marginTop: 32,
+        marginTop: 12,
         alignItems: 'center',
     },
 }
