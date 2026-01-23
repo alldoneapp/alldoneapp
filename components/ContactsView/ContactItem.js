@@ -296,19 +296,9 @@ export default class ContactItem extends Component {
                                 </SocialText>
 
                                 {!!userInfo && (
-                                    <SocialText
-                                        showEllipsis
-                                        style={localStyles.description}
-                                        numberOfLines={1}
-                                        bgColor={
-                                            contactHighlightColor.toLowerCase() !== '#ffffff'
-                                                ? backColorHighlight
-                                                : backColor
-                                        }
-                                        projectId={projectId}
-                                    >
+                                    <Text style={localStyles.description} numberOfLines={1}>
                                         {userInfo}
-                                    </SocialText>
+                                    </Text>
                                 )}
 
                                 <Text style={[styles.caption2, localStyles.updatedInfo]} numberOfLines={1}>
