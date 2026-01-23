@@ -10,7 +10,7 @@ export const STATISTIC_RANGE_CUSTOM = 'Custom' // Custom
 export const STATISTIC_RANGE_ALL = 'All' // All
 
 export function parseNumberToUseThousand(number) {
-    return number.toLocaleString()
+    return Math.floor(number).toLocaleString()
 }
 
 export function getStatisticsFilterData(filterOption, customDateRange) {

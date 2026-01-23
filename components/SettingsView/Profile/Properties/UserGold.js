@@ -15,7 +15,7 @@ export default function UserGold({ gold }) {
                 <Gold width={24} height={24} id="statisticsSection" />
                 {mobileNav ? (
                     <Text style={[styles.body1, { marginLeft: 8 }]} numberOfLines={1}>
-                        {gold}
+                        {Math.floor(gold)}
                     </Text>
                 ) : (
                     <Text style={[styles.subtitle2, { color: colors.Text03, marginLeft: 8 }]} numberOfLines={1}>
@@ -26,7 +26,7 @@ export default function UserGold({ gold }) {
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
                 {!mobileNav && (
                     <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
-                        {gold}
+                        {Math.floor(gold)}
                     </Text>
                 )}
             </View>

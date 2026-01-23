@@ -260,7 +260,7 @@ export default function EndDayStatisticsModal() {
                                         style={{ width: 24, height: 24 }}
                                     />
                                     <Text style={localStyles.text}>{translate('Gold earned:')}</Text>
-                                    <Text style={[localStyles.text, localStyles.value]}>{gold}</Text>
+                                    <Text style={[localStyles.text, localStyles.value]}>{Math.floor(gold)}</Text>
                                 </View>
                             </View>
                         </View>
