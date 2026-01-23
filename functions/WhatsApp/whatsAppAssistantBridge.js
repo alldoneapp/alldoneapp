@@ -10,7 +10,7 @@ const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
 
 const MAX_TOOL_ITERATIONS = 10
-const MAX_WHATSAPP_RESPONSE_LENGTH = 4000
+const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
 
 /**
  * Process a WhatsApp message through the AI assistant pipeline.
@@ -52,7 +52,7 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
     messages.push([
         'system',
         'WhatsApp formatting rules:\n' +
-            '- Keep responses concise (under 1000 characters when possible).\n' +
+            '- IMPORTANT: Keep responses under 1400 characters. Longer messages get truncated.\n' +
             '- Use *bold* and _italic_ for emphasis (WhatsApp formatting).\n' +
             '- Do not use markdown headers (#), code blocks (```), or tables.\n' +
             '- Use simple bullet points with - for lists.',
@@ -95,12 +95,26 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
         console.error('WhatsApp: Error deducting gold:', error.message)
     }
 
-    // Truncate if too long for WhatsApp
-    if (responseText.length > MAX_WHATSAPP_RESPONSE_LENGTH) {
-        return responseText.substring(0, MAX_WHATSAPP_RESPONSE_LENGTH) + '...'
+    // Truncate if too long for WhatsApp (1600 char limit)
+    if (responseText.length > MAX_WHATSAPP_MESSAGE_LENGTH) {
+        const baseUrl = getBaseUrl()
+        const topicLink = `${baseUrl}/projects/${projectId}/chats/${chatId}/chat`
+        return responseText.substring(0, MAX_WHATSAPP_MESSAGE_LENGTH) + `...\n\nRead full message: ${topicLink}`
     }
 
     return responseText
+}
+
+function getBaseUrl() {
+    let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+    if (!projectId) {
+        try {
+            const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+            if (cfg && cfg.projectId) projectId = cfg.projectId
+        } catch (_) {}
+    }
+    if (projectId === 'alldonestaging') return 'https://mystaging.alldone.app'
+    return 'https://my.alldone.app'
 }
 
 /**
