@@ -1180,7 +1180,7 @@ export const EditorToolbar = ({
     const hasAutoStartedRef = useRef(false)
 
     useEffect(() => {
-        if (autoStartTranscription && !hasAutoStartedRef.current && !isRecording) {
+        if (autoStartTranscription && !disabled && !hasAutoStartedRef.current && !isRecording) {
             hasAutoStartedRef.current = true
             // Use a short timeout to let the editor mount
             setTimeout(() => {
@@ -1189,7 +1189,7 @@ export const EditorToolbar = ({
                 })
             }, 500)
         }
-    }, [autoStartTranscription])
+    }, [autoStartTranscription, disabled])
 
     return (
         <div
