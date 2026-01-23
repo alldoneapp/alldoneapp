@@ -20,6 +20,14 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
 
     const chatDoc = await chatRef.get()
     if (chatDoc.exists) {
+        // Ensure existing topics have required fields for the app's query
+        const data = chatDoc.data()
+        if (!data.stickyData || data.stickyData.days === undefined) {
+            await chatRef.update({
+                stickyData: { days: 0, stickyEndDate: 0 },
+                hasStar: data.hasStar || '#ffffff',
+            })
+        }
         return { chatId, isNew: false }
     }
 

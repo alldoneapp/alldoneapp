@@ -51,12 +51,14 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
     // Add WhatsApp-specific instruction
     messages.push([
         'system',
-        'You are responding via WhatsApp. Keep responses concise (under 1000 characters when possible). ' +
-            'Use *bold* and _italic_ for emphasis (WhatsApp formatting). ' +
-            'Do not use markdown headers (#), code blocks (```), or tables. ' +
-            'Use simple bullet points with - for lists. ' +
-            'Only use tools when the user explicitly asks you to perform an action (create a task, search, etc.). ' +
-            'Do NOT use tools for simple greetings or casual conversation.',
+        'IMPORTANT - WhatsApp context rules (these override any previous instructions about being action-oriented):\n' +
+            '- Keep responses concise (under 1000 characters when possible).\n' +
+            '- Use *bold* and _italic_ for emphasis (WhatsApp formatting).\n' +
+            '- Do not use markdown headers (#), code blocks (```), or tables.\n' +
+            '- Use simple bullet points with - for lists.\n' +
+            '- CRITICAL: Do NOT call any tools unless the user EXPLICITLY and CLEARLY asks you to perform a specific action like "create a task called X" or "search for Y". ' +
+            'Messages like "hello", "hi", "how are you", "thanks", or any casual conversation must NEVER trigger tool calls. ' +
+            'When in doubt, just respond with text - do not use tools.',
     ])
 
     // Add conversation history
