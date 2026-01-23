@@ -165,11 +165,16 @@ const searchLinkedInProfile = async (data, userId) => {
         const tvly = tavily({ apiKey: TAVILY_API_KEY })
 
         const response = await tvly.search(query, {
-            searchDepth: 'advanced',
+            searchDepth: 'basic',
             maxResults: 5,
         })
 
         console.log('[LinkedIn Search] Tavily returned', response.results?.length || 0, 'results')
+        if (response.results) {
+            response.results.forEach((r, i) => {
+                console.log(`[LinkedIn Search] Result ${i}: ${r.url} - ${r.title}`)
+            })
+        }
 
         // Find the first linkedin.com/in/ URL
         const linkedInResult = response.results?.find(r => r.url && r.url.includes('linkedin.com/in/'))
