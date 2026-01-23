@@ -42,7 +42,7 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
     const title = `Daily Recap <> ${firstName} ${dateStr}`
 
     const now = Date.now()
-    await chatRef.set({
+    const chatData = {
         id: chatId,
         title,
         type: 'topics',
@@ -62,7 +62,18 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
             lastCommentOwnerId: '',
             lastCommentType: '',
         },
+    }
+    console.log('WhatsApp DailyTopic: Writing chat document', {
+        path: `chatObjects/${projectId}/chats/${chatId}`,
+        title,
     })
+    try {
+        await chatRef.set(chatData)
+        console.log('WhatsApp DailyTopic: Chat document created successfully')
+    } catch (error) {
+        console.error('WhatsApp DailyTopic: FAILED to create chat document', { error: error.message, code: error.code })
+        throw error
+    }
 
     return { chatId, isNew: true }
 }
@@ -104,17 +115,29 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
 
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
 
-    await Promise.all([
-        commentRef.set(comment),
-        chatRef.update({
-            lastEditionDate: now,
-            lastEditorId: userId,
-            'commentsData.lastComment': messageText.substring(0, 200),
-            'commentsData.lastCommentOwnerId': userId,
-            'commentsData.lastCommentType': STAYWARD_COMMENT,
-            'commentsData.amount': admin.firestore.FieldValue.increment(1),
-        }),
-    ])
+    try {
+        await Promise.all([
+            commentRef.set(comment),
+            chatRef.update({
+                lastEditionDate: now,
+                lastEditorId: userId,
+                'commentsData.lastComment': messageText.substring(0, 200),
+                'commentsData.lastCommentOwnerId': userId,
+                'commentsData.lastCommentType': STAYWARD_COMMENT,
+                'commentsData.amount': admin.firestore.FieldValue.increment(1),
+            }),
+        ])
+        console.log('WhatsApp DailyTopic: User message stored successfully', { commentId })
+    } catch (error) {
+        console.error('WhatsApp DailyTopic: FAILED to store user message', { error: error.message, code: error.code })
+        // Still try to store just the comment if update failed
+        try {
+            await commentRef.set(comment)
+            console.log('WhatsApp DailyTopic: Comment stored without chat update')
+        } catch (e) {
+            console.error('WhatsApp DailyTopic: Comment storage also failed', { error: e.message })
+        }
+    }
 
     return commentId
 }
