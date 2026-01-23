@@ -1180,7 +1180,8 @@ export const EditorToolbar = ({
     const hasAutoStartedRef = useRef(false)
 
     useEffect(() => {
-        if (autoStartTranscription && !hasAutoStartedRef.current && !isRecording) {
+        // Only start when peersSynced is true (Yjs data has loaded)
+        if (autoStartTranscription && peersSynced && !hasAutoStartedRef.current && !isRecording) {
             hasAutoStartedRef.current = true
 
             // Retry function to wait for editor to be ready
@@ -1201,7 +1202,7 @@ export const EditorToolbar = ({
             // Initial delay to let the component mount
             setTimeout(() => tryStartTranscription(), 500)
         }
-    }, [autoStartTranscription])
+    }, [autoStartTranscription, peersSynced])
 
     return (
         <div
