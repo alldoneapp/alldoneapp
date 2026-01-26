@@ -3112,6 +3112,11 @@ async function getOptimizedContextMessages(
 
     // Add open task count context if available
     if (openTaskCount !== null && typeof openTaskCount === 'number') {
+        console.log('📋 [ASSISTANT CONTEXT] Open tasks for today (including overdue):', {
+            userId,
+            projectId,
+            openTaskCount,
+        })
         messages.push([
             'system',
             `Today (including overdue) the user still has ${openTaskCount} open task${
