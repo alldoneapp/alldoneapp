@@ -550,7 +550,35 @@ const NotesEditorView = ({
 
         editorElement.addEventListener('paste', event => {
             if (!readOnlyRef.current) {
+                const textData = (event.clipboardData || window.clipboardData).getData('text')
                 const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
+
+                // Check if plain text contains markdown - if so, prioritize markdown conversion
+                if (textData && containsMarkdown(textData)) {
+                    const parsedDelta = markdownToDelta(textData, Delta)
+
+                    if (parsedDelta) {
+                        const editor = exportRef.getEditor()
+                        const selection = editor.getSelection(true)
+
+                        if (selection.length > 0) {
+                            parsedDelta.ops.unshift({ delete: selection.length })
+                        }
+                        if (selection.index > 0) {
+                            parsedDelta.ops.unshift({ retain: selection.index })
+                        }
+
+                        const previousLenght = editor.getLength()
+                        editor.updateContents(parsedDelta, 'user')
+                        const newLenght = editor.getLength()
+                        editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
+
+                        event.preventDefault()
+                        return
+                    }
+                }
+
+                // Fall back to HTML processing if available
                 if (htmlData) {
                     const pastedDelta = exportRef.getEditor().clipboard.convert(htmlData)
                     const finalDelta = { ops: [] }
@@ -598,51 +626,38 @@ const NotesEditorView = ({
                     editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
 
                     event.preventDefault()
-                } else {
-                    const textData = (event.clipboardData || window.clipboardData).getData('text')
+                } else if (textData) {
+                    // Plain text paste without HTML (markdown already handled above)
+                    const parsedDelta = processPastedTextWithBreakLines(
+                        textData,
+                        Delta,
+                        projectId,
+                        note.id,
+                        null,
+                        false,
+                        '',
+                        exportRef.getEditor(),
+                        true,
+                        null,
+                        true
+                    )
 
-                    if (textData) {
-                        // Check if the pasted text contains markdown syntax
-                        let parsedDelta
-                        if (containsMarkdown(textData)) {
-                            // Convert markdown to Quill Delta
-                            parsedDelta = markdownToDelta(textData, Delta)
-                        }
+                    const editor = exportRef.getEditor()
+                    const selection = editor.getSelection(true)
 
-                        // Fall back to original processing if no markdown or conversion failed
-                        if (!parsedDelta) {
-                            parsedDelta = processPastedTextWithBreakLines(
-                                textData,
-                                Delta,
-                                projectId,
-                                note.id,
-                                null,
-                                false,
-                                '',
-                                exportRef.getEditor(),
-                                true,
-                                null,
-                                true
-                            )
-                        }
-
-                        const editor = exportRef.getEditor()
-                        const selection = editor.getSelection(true)
-
-                        if (selection.length > 0) {
-                            parsedDelta.ops.unshift({ delete: selection.length })
-                        }
-                        if (selection.index > 0) {
-                            parsedDelta.ops.unshift({ retain: selection.index })
-                        }
-
-                        const previousLenght = editor.getLength()
-                        editor.updateContents(parsedDelta, 'user')
-                        const newLenght = editor.getLength()
-                        editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
-
-                        event.preventDefault()
+                    if (selection.length > 0) {
+                        parsedDelta.ops.unshift({ delete: selection.length })
                     }
+                    if (selection.index > 0) {
+                        parsedDelta.ops.unshift({ retain: selection.index })
+                    }
+
+                    const previousLenght = editor.getLength()
+                    editor.updateContents(parsedDelta, 'user')
+                    const newLenght = editor.getLength()
+                    editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
+
+                    event.preventDefault()
                 }
             }
         })

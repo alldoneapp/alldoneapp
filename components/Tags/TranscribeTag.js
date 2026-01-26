@@ -14,20 +14,15 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
         return `${window.location.origin}${getDvMainTabLink(projectId, noteId, 'notes')}?autoStartTranscription=true`
     }
 
-    const startTranscription = async () => {
+    const startTranscription = () => {
         if (disabled) return
-
-        // Open the new tab immediately to avoid popup blocker
-        // Browser blocks window.open if called after async operations
-        const newTab = window.open('about:blank', '_blank')
 
         let noteId = task.noteId
         if (noteId) {
-            const note = await Backend.getNoteMeta(projectId, noteId)
-            if (note && newTab) {
-                newTab.location.href = getNoteUrl(note.id)
-            }
+            // Task already has a note, just open it
+            window.open(getNoteUrl(noteId), '_blank')
         } else {
+            // Create new note and open it immediately
             const newNote = TasksHelper.getNewDefaultNote()
             const generatedId = getId()
             newNote.id = generatedId
@@ -35,16 +30,12 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
             newNote.linkedParentTasksIds = [task.id]
             newNote.title = task.name
 
-            // Optimistically update
-            await updateTaskData(projectId, task.id, { noteId: generatedId })
+            // Open the new tab immediately
+            window.open(getNoteUrl(generatedId), '_blank')
 
-            // Upload note
-            await uploadNewNote(projectId, newNote)
-
-            // Navigate the already-open tab to the note
-            if (newTab) {
-                newTab.location.href = getNoteUrl(generatedId)
-            }
+            // Create the note in the background (no await needed)
+            updateTaskData(projectId, task.id, { noteId: generatedId })
+            uploadNewNote(projectId, newNote)
         }
     }
 
