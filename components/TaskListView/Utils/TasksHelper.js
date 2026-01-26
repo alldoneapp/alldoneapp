@@ -84,6 +84,7 @@ import {
     DV_TAB_SKILL_BACKLINKS,
     DV_TAB_SKILL_PROPERTIES,
     DV_TAB_TASK_BACKLINKS,
+    DV_TAB_TASK_NOTE,
     DV_TAB_TASK_PROPERTIES,
     DV_TAB_TASK_SUBTASKS,
     ROOT_ROUTES,
@@ -1241,6 +1242,23 @@ class TasksHelper {
                 setSelectedNote(note),
             ])
             navigation.navigate('NotesDetailedView', data)
+        } else if (note && inSelectedProject && note.parentObject?.type === 'tasks') {
+            // Note is attached to a task - navigate to the task's note tab
+            const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
+            console.log(
+                '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
+                autoStartTranscription
+            )
+            store.dispatch([
+                switchProject(projectIndex),
+                setSelectedNavItem(DV_TAB_TASK_NOTE),
+                setSelectedTypeOfProject(projectType),
+            ])
+            navigation.navigate('TaskDetailedView', {
+                taskId: note.parentObject.id,
+                projectId,
+                autoStartTranscription,
+            })
         } else if (inSelectedProject) {
             const { loggedUser } = store.getState()
             let data = {

@@ -1043,17 +1043,25 @@ class NoteService {
             currentPosition += dateStamp.length
             console.log(`NoteService: Inserted date stamp at position ${insertPosition}, length: ${dateStamp.length}`)
 
-            // Step 2: Insert newline with Header 1 formatting + extra line break (like the toolbar button)
-            ytext.insert(currentPosition, '\n\n', { header: 1 })
-            currentPosition += 2
-            console.log(`NoteService: Inserted header newlines at position ${currentPosition - 2}`)
+            // Step 2: Insert newline with Header 1 formatting (only for the date line) + extra line break
+            // In Quill, the header attribute on \n applies to the preceding line
+            ytext.insert(currentPosition, '\n', { header: 1 })
+            currentPosition += 1
+            // Add a plain newline for spacing
+            ytext.insert(currentPosition, '\n')
+            currentPosition += 1
+            console.log(`NoteService: Inserted header newline at position ${currentPosition - 2}`)
 
             // Step 3: Insert new content - check if it contains markdown and convert if so
-            if (markdownToYjs && markdownToYjs.containsMarkdown(newContent)) {
+            const hasMarkdown = markdownToYjs && markdownToYjs.containsMarkdown(newContent)
+            console.log(`NoteService: Content markdown check: ${hasMarkdown}`)
+            console.log(`NoteService: Content preview (first 200 chars): ${newContent.substring(0, 200)}`)
+
+            if (hasMarkdown) {
                 console.log(`NoteService: Detected markdown in content, converting to formatted text`)
                 const contentStart = currentPosition
                 currentPosition = markdownToYjs.insertMarkdownToYjs(ytext, currentPosition, newContent)
-                // Add extra line breaks after content
+                // Add extra line breaks after content (plain, no formatting)
                 ytext.insert(currentPosition, '\n\n\n')
                 currentPosition += 3
                 console.log(
@@ -1062,8 +1070,8 @@ class NoteService {
                     }`
                 )
             } else {
-                // Plain text insertion
-                ytext.insert(currentPosition, `${newContent}\n\n\n`, { header: null })
+                // Plain text insertion - no formatting attributes
+                ytext.insert(currentPosition, `${newContent}\n\n\n`)
                 currentPosition += newContent.length + 3
                 console.log(
                     `NoteService: Inserted plain content at position ${
