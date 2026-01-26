@@ -8,7 +8,7 @@ const REGEX_HEADER_1 = /^# (.+)$/
 const REGEX_HEADER_2 = /^## (.+)$/
 const REGEX_HEADER_3 = /^### (.+)$/
 const REGEX_BULLET_LIST = /^[-*] (.+)$/
-const REGEX_NUMBERED_LIST = /^(\d+)\. (.+)$/
+const REGEX_NUMBERED_LIST = /^(\d+)[.\)] (.+)$/ // Support both "1." and "1)" formats
 const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
 const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
 const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
@@ -30,6 +30,9 @@ export const containsMarkdown = text => {
     const lines = text.split('\n')
     for (const line of lines) {
         const trimmed = line.trim()
+        // Skip empty lines
+        if (!trimmed) continue
+
         // Check line-level markdown
         if (
             REGEX_HEADER_1.test(trimmed) ||
@@ -204,6 +207,11 @@ const parseLineType = line => {
     const trimmed = line.trim()
     const indent = getIndentLevel(line)
 
+    // Empty line - preserve as blank line (not a list item)
+    if (!trimmed) {
+        return { type: 'empty', text: '', indent: 0 }
+    }
+
     // Horizontal rule
     if (REGEX_HORIZONTAL_RULE.test(trimmed)) {
         return { type: 'hr', text: '', indent: 0 }
@@ -239,7 +247,7 @@ const parseLineType = line => {
         return { type: 'bullet', text: bulletMatch[1], indent }
     }
 
-    // Numbered list
+    // Numbered list (supports both "1." and "1)" formats)
     const numberedMatch = trimmed.match(REGEX_NUMBERED_LIST)
     if (numberedMatch) {
         return { type: 'ordered', text: numberedMatch[2], number: numberedMatch[1], indent }
@@ -267,7 +275,12 @@ export const markdownToDelta = (text, Delta) => {
         const parsed = parseLineType(line)
         const isLastLine = lineIndex === lines.length - 1
 
-        if (parsed.type === 'hr') {
+        if (parsed.type === 'empty') {
+            // Empty line - just insert a newline (no list formatting)
+            if (!isLastLine) {
+                delta.insert('\n')
+            }
+        } else if (parsed.type === 'hr') {
             // Insert a divider/horizontal rule - Quill doesn't have native HR, use a styled block
             delta.insert('───────────────────────────────────────')
             if (!isLastLine) {

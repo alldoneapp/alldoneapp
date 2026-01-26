@@ -8,7 +8,7 @@ const REGEX_HEADER_1 = /^# (.+)$/
 const REGEX_HEADER_2 = /^## (.+)$/
 const REGEX_HEADER_3 = /^### (.+)$/
 const REGEX_BULLET_LIST = /^[-*] (.+)$/
-const REGEX_NUMBERED_LIST = /^(\d+)\. (.+)$/
+const REGEX_NUMBERED_LIST = /^(\d+)[.\)] (.+)$/ // Support both "1." and "1)" formats
 const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
 const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
 const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
@@ -24,6 +24,9 @@ function containsMarkdown(text) {
     const lines = text.split('\n')
     for (const line of lines) {
         const trimmed = line.trim()
+        // Skip empty lines
+        if (!trimmed) continue
+
         // Check line-level markdown
         if (
             REGEX_HEADER_1.test(trimmed) ||
@@ -162,6 +165,11 @@ function parseLineType(line) {
     const trimmed = line.trim()
     const indent = getIndentLevel(line)
 
+    // Empty line - preserve as blank line (not a list item)
+    if (!trimmed) {
+        return { type: 'empty', text: '', indent: 0 }
+    }
+
     // Horizontal rule
     if (REGEX_HORIZONTAL_RULE.test(trimmed)) {
         return { type: 'hr', text: '', indent: 0 }
@@ -230,7 +238,13 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
         const parsed = parseLineType(line)
         const isLastLine = lineIndex === lines.length - 1
 
-        if (parsed.type === 'hr') {
+        if (parsed.type === 'empty') {
+            // Empty line - just insert a newline (no list formatting)
+            if (!isLastLine) {
+                ytext.insert(currentPosition, '\n')
+                currentPosition += 1
+            }
+        } else if (parsed.type === 'hr') {
             // Horizontal rule - insert visual divider
             const hrText = '───────────────────────────────────────'
             ytext.insert(currentPosition, hrText)
