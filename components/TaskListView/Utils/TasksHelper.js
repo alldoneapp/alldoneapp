@@ -1198,6 +1198,8 @@ class TasksHelper {
         filterConstant,
         autoStartTranscription = false
     ) => {
+        console.log('[TasksHelper] processURLNoteDetailsTab called')
+        console.log('[TasksHelper] autoStartTranscription:', autoStartTranscription)
         const { loggedUser, selectedSidebarTab } = store.getState()
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
@@ -1212,6 +1214,16 @@ class TasksHelper {
                 : tab
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
+        console.log(
+            '[TasksHelper] note:',
+            !!note,
+            'inSelectedProject:',
+            inSelectedProject,
+            'user:',
+            !!user,
+            'note.parentObject:',
+            note?.parentObject
+        )
         if (note && inSelectedProject && user != null && !note.parentObject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             let data = {
@@ -1219,6 +1231,7 @@ class TasksHelper {
                 projectId,
                 autoStartTranscription,
             }
+            console.log('[TasksHelper] Navigating to NotesDetailedView with data:', data)
             store.dispatch([
                 switchProject(projectIndex),
                 storeCurrentUser(user),

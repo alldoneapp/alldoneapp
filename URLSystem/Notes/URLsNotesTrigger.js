@@ -72,6 +72,9 @@ class URLsNotesTrigger {
         // Extract query parameters
         const urlParams = new URLSearchParams(window.location.search)
         const autoStartTranscription = urlParams.get('autoStartTranscription') === 'true'
+        console.log('[URLsNotesTrigger] trigger called, pathname:', pathname)
+        console.log('[URLsNotesTrigger] matchedObj.key:', matchedObj.key)
+        console.log('[URLsNotesTrigger] autoStartTranscription:', autoStartTranscription)
 
         // This Switch will have CASEs as elements have the "regexList" const
         switch (matchedObj.key) {
