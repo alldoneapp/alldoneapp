@@ -1066,8 +1066,8 @@ class NoteService {
                 console.log(`[NoteService] Using markdown conversion for content insertion`)
                 const contentStartPos = currentPosition
                 currentPosition = insertMarkdownToYjs(ytext, currentPosition, newContent)
-                // Add trailing newlines
-                ytext.insert(currentPosition, '\n\n\n')
+                // Add trailing newlines with explicit list:null to break any list context
+                ytext.insert(currentPosition, '\n\n\n', { list: null })
                 currentPosition += 3
                 console.log(`[NoteService] Inserted markdown content from pos ${contentStartPos} to ${currentPosition}`)
             } else {

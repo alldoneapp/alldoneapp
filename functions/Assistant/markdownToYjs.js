@@ -170,6 +170,12 @@ function parseLineType(line) {
         return { type: 'empty', text: '', indent: 0 }
     }
 
+    // Skip lines that are just bullet markers with no content (e.g., "- " or "* ")
+    if (/^[-*]\s*$/.test(trimmed)) {
+        console.log(`[markdownToYjs] Skipping empty bullet marker: "${trimmed}"`)
+        return { type: 'empty', text: '', indent: 0 }
+    }
+
     // Horizontal rule
     if (REGEX_HORIZONTAL_RULE.test(trimmed)) {
         return { type: 'hr', text: '', indent: 0 }

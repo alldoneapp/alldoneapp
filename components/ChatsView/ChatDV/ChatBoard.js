@@ -61,6 +61,10 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
 
+    // Check if any recent message is from an assistant (for hiding placeholder synchronously)
+    const hasRecentAssistantMessage =
+        messages.length > 0 && messages.slice(-3).some(msg => getAssistant(msg?.creatorId))
+
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
@@ -143,21 +147,16 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     useEffect(() => {
         if (!waitingForBotAnswer || messages.length === 0) return
 
-        const lastMessage = messages[messages.length - 1]
-        const messageCreator = lastMessage?.creatorId
-        const isAssistantMessage = !!getAssistant(messageCreator)
-
-        if (!isAssistantMessage) return
-
-        const trimmedText = (lastMessage?.commentText || '').trim()
-        const isEmpty = trimmedText === ''
-
-        // Hide placeholder as soon as any assistant message appears
-        // The MessageItem component handles the loading state with its own spinner,
-        // so we don't need BotMessagePlaceholder once a message exists
-        if (isEmpty) return
-
-        setWaitingForBotAnswer(false)
+        // Check if any recent assistant message exists (check last few messages for race conditions)
+        // Hide placeholder as soon as any assistant message is found
+        // The MessageItem component handles the loading state with its own spinner
+        for (let i = messages.length - 1; i >= Math.max(0, messages.length - 3); i--) {
+            const message = messages[i]
+            if (getAssistant(message?.creatorId)) {
+                setWaitingForBotAnswer(false)
+                return
+            }
+        }
     }, [messages])
 
     useEffect(() => {
@@ -247,7 +246,9 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                             />
                         )
                     })}
-                    {waitingForBotAnswer && <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />}
+                    {waitingForBotAnswer && !hasRecentAssistantMessage && (
+                        <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
+                    )}
                 </View>
             </CustomScrollView>
             {!isAnonymous && (
