@@ -264,9 +264,16 @@ export default function TaskParentGoalModal({
         setFlag(flag => !flag)
     }, [activeTab])
 
-    const selectGoal = (goal, tabIndex, projectId, isNewGoal) => {
+    const dismissClickThroughEditModes = () => {
         // Dismiss any task edit modes that may have been triggered by click-through
-        dispatch(toggleDismissibleActive(false))
+        // Use setTimeout to ensure this runs after any accidental edit mode activation
+        setTimeout(() => {
+            dispatch(toggleDismissibleActive(false))
+        }, 50)
+    }
+
+    const selectGoal = (goal, tabIndex, projectId, isNewGoal) => {
+        dismissClickThroughEditModes()
 
         // Check if we're clicking on the same goal that's already selected
         // We need to check both the effective active goal and the prop active goal
@@ -294,8 +301,7 @@ export default function TaskParentGoalModal({
     }
 
     const unselectGoal = () => {
-        // Dismiss any task edit modes that may have been triggered by click-through
-        dispatch(toggleDismissibleActive(false))
+        dismissClickThroughEditModes()
 
         if (fromAddTaskSection) {
             dispatch(setSelectedGoalDataInTasksListWhenAddTask({ projectId, goal: null, dateFormated }))
