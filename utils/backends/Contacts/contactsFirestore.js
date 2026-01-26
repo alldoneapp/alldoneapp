@@ -410,12 +410,9 @@ export async function setProjectContactHighlight(projectId, contact, contactId, 
 
 export function setContactLastVisitedBoardDate(projectId, contactId, lastVisitBoardProperty) {
     const { loggedUser } = store.getState()
-    updateContactData(
-        projectId,
-        contactId,
-        { [`${lastVisitBoardProperty}.${projectId}.${loggedUser.uid}`]: Date.now() },
-        null
-    )
+    // Update directly without triggering lastEditionDate change
+    const ref = getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`)
+    ref.update({ [`${lastVisitBoardProperty}.${projectId}.${loggedUser.uid}`]: Date.now() })
 }
 
 export async function setProjectContactStatus(projectId, contact, contactId, newStatusId) {
