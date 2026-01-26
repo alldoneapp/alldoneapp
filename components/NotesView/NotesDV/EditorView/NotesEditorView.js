@@ -78,6 +78,7 @@ import {
     resetMentionsData,
 } from './mentionsHelper'
 import { getNotePreviewText, getScrollTolerance } from '../../NotesHelper'
+import { markdownToDelta, containsMarkdown } from './markdownToDelta'
 import { updateNewAttachmentsDataInNotes } from '../../../Feeds/Utils/HelperFunctions'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKGROUND_COLORS, TEXT_COLORS } from '../../../../utils/ColorConstants'
@@ -601,19 +602,29 @@ const NotesEditorView = ({
                     const textData = (event.clipboardData || window.clipboardData).getData('text')
 
                     if (textData) {
-                        const parsedDelta = processPastedTextWithBreakLines(
-                            textData,
-                            Delta,
-                            projectId,
-                            note.id,
-                            null,
-                            false,
-                            '',
-                            exportRef.getEditor(),
-                            true,
-                            null,
-                            true
-                        )
+                        // Check if the pasted text contains markdown syntax
+                        let parsedDelta
+                        if (containsMarkdown(textData)) {
+                            // Convert markdown to Quill Delta
+                            parsedDelta = markdownToDelta(textData, Delta)
+                        }
+
+                        // Fall back to original processing if no markdown or conversion failed
+                        if (!parsedDelta) {
+                            parsedDelta = processPastedTextWithBreakLines(
+                                textData,
+                                Delta,
+                                projectId,
+                                note.id,
+                                null,
+                                false,
+                                '',
+                                exportRef.getEditor(),
+                                true,
+                                null,
+                                true
+                            )
+                        }
 
                         const editor = exportRef.getEditor()
                         const selection = editor.getSelection(true)
