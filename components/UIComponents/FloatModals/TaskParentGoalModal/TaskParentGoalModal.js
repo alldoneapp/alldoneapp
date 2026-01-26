@@ -21,6 +21,7 @@ import {
     showFloatPopup,
     hideFloatPopup,
     setSelectedGoalDataInTasksListWhenAddTask,
+    toggleDismissibleActive,
 } from '../../../../redux/actions'
 import ActiveGoal from './ActiveGoal'
 import { GOALS_INDEX_NAME_PREFIX } from '../../../GlobalSearchAlgolia/searchHelper'
@@ -264,6 +265,9 @@ export default function TaskParentGoalModal({
     }, [activeTab])
 
     const selectGoal = (goal, tabIndex, projectId, isNewGoal) => {
+        // Dismiss any task edit modes that may have been triggered by click-through
+        dispatch(toggleDismissibleActive(false))
+
         // Check if we're clicking on the same goal that's already selected
         // We need to check both the effective active goal and the prop active goal
         // to handle all different modal contexts
@@ -290,6 +294,9 @@ export default function TaskParentGoalModal({
     }
 
     const unselectGoal = () => {
+        // Dismiss any task edit modes that may have been triggered by click-through
+        dispatch(toggleDismissibleActive(false))
+
         if (fromAddTaskSection) {
             dispatch(setSelectedGoalDataInTasksListWhenAddTask({ projectId, goal: null, dateFormated }))
         } else {
@@ -362,6 +369,8 @@ export default function TaskParentGoalModal({
         e?.stopPropagation?.()
     }
 
+    const claimResponder = () => true
+
     return (
         <View
             style={[localStyles.container, applyPopoverWidth(), { maxHeight: finalHeight }]}
@@ -369,6 +378,9 @@ export default function TaskParentGoalModal({
             onMouseDown={stopPropagation}
             onTouchStart={stopPropagation}
             onTouchEnd={stopPropagation}
+            onStartShouldSetResponder={claimResponder}
+            onMoveShouldSetResponder={claimResponder}
+            onResponderTerminationRequest={() => false}
         >
             <CustomScrollView
                 ref={scrollRef}
