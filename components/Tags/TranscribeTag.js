@@ -10,23 +10,22 @@ import { getId } from '../../utils/backends/firestore'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
 
 export default function TranscribeTag({ task, projectId, containerStyle, disabled }) {
-    const openNoteInNewTab = noteId => {
-        const noteUrl = `${window.location.origin}${getDvMainTabLink(
-            projectId,
-            noteId,
-            'notes'
-        )}?autoStartTranscription=true`
-        window.open(noteUrl, '_blank')
+    const getNoteUrl = noteId => {
+        return `${window.location.origin}${getDvMainTabLink(projectId, noteId, 'notes')}?autoStartTranscription=true`
     }
 
     const startTranscription = async () => {
         if (disabled) return
 
+        // Open the new tab immediately to avoid popup blocker
+        // Browser blocks window.open if called after async operations
+        const newTab = window.open('about:blank', '_blank')
+
         let noteId = task.noteId
         if (noteId) {
             const note = await Backend.getNoteMeta(projectId, noteId)
-            if (note) {
-                openNoteInNewTab(note.id)
+            if (note && newTab) {
+                newTab.location.href = getNoteUrl(note.id)
             }
         } else {
             const newNote = TasksHelper.getNewDefaultNote()
@@ -42,8 +41,10 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
             // Upload note
             await uploadNewNote(projectId, newNote)
 
-            // Open the note in a new tab
-            openNoteInNewTab(generatedId)
+            // Navigate the already-open tab to the note
+            if (newTab) {
+                newTab.location.href = getNoteUrl(generatedId)
+            }
         }
     }
 
