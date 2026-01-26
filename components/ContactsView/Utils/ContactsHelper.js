@@ -80,7 +80,7 @@ import { updateUserLastVisitedBoardDate } from '../../../utils/backends/Users/us
 
 export const PHOTO_SIZE_50 = '50'
 export const PHOTO_SIZE_300 = '300'
-export const DAILY_GOLD_LIMIT = 150
+export const DAILY_GOLD_LIMIT = 100
 
 class ContactsHelper {
     static matchContactSearch = (contact, searchText, projectIndex) => {

@@ -49,7 +49,7 @@ const getUsersByPremiumStatus = async (status, getOnlyDocs) => {
 }
 
 const getUsersThatEarnedSomeGoldToday = async getOnlyDocs => {
-    const DAILY_GOLD_LIMIT = 150
+    const DAILY_GOLD_LIMIT = 100
     const docs = (await admin.firestore().collection(`users`).where('dailyGold', '!=', DAILY_GOLD_LIMIT).get()).docs
     if (getOnlyDocs) return docs
     return getOnlyDocs ? docs : convertUserDocsInUsers(docs)

@@ -5505,7 +5505,7 @@ async function setDailyGoldInUsers(appAdmin) {
 
         promises.push(
             appAdmin.firestore().doc(`users/${user.uid}`).update({
-                dailyGold: 150,
+                dailyGold: 100,
             })
         )
 

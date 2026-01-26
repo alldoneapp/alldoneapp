@@ -135,7 +135,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate) =
 }
 
 const resetDailyGoldLimit = async () => {
-    const DAILY_GOLD_LIMIT = 150
+    const DAILY_GOLD_LIMIT = 100
     const userDocs = await getUsersThatEarnedSomeGoldToday(true)
 
     const promises = []
