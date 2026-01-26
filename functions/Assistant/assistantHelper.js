@@ -3028,11 +3028,13 @@ async function getOpenTasksForAllProjects(userId, userTimezoneOffset = null) {
         }
 
         // Fetch project data and task counts in parallel
+        // Count both reviewer tasks AND observed tasks (same as sidebar)
         const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
 
         const projectPromises = activeProjectIds.map(async projectId => {
-            const [projectDoc, tasksSnapshot] = await Promise.all([
+            const [projectDoc, reviewerTasksSnapshot, observedTasksSnapshot] = await Promise.all([
                 admin.firestore().collection('projects').doc(projectId).get(),
+                // Query 1: Tasks where user is the current reviewer
                 admin
                     .firestore()
                     .collection(`items/${projectId}/tasks`)
@@ -3042,18 +3044,58 @@ async function getOpenTasksForAllProjects(userId, userTimezoneOffset = null) {
                     .where('dueDate', '<=', dateEndToday)
                     .where('isPublicFor', 'array-contains-any', allowUserIds)
                     .get(),
+                // Query 2: Tasks where user is an observer
+                // Note: Cannot combine with isPublicFor filter (Firestore only allows one array operation per query)
+                admin
+                    .firestore()
+                    .collection(`items/${projectId}/tasks`)
+                    .where('inDone', '==', false)
+                    .where('parentId', '==', null)
+                    .where('observersIds', 'array-contains', userId)
+                    .get(),
             ])
 
             if (!projectDoc.exists) {
                 return null
             }
 
+            // Count reviewer tasks
+            const reviewerCount = reviewerTasksSnapshot.docs.length
+
+            // Count observed tasks where the observer's due date is today or earlier
+            // and the task is visible to the user (isPublicFor check)
+            let observedCount = 0
+            const reviewerTaskIds = new Set(reviewerTasksSnapshot.docs.map(doc => doc.id))
+
+            observedTasksSnapshot.docs.forEach(doc => {
+                // Skip if already counted as reviewer task
+                if (reviewerTaskIds.has(doc.id)) {
+                    return
+                }
+
+                const data = doc.data()
+
+                // Check isPublicFor (since we couldn't filter it in the query)
+                const isPublic =
+                    data.isPublicFor &&
+                    (data.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || data.isPublicFor.includes(userId))
+                if (!isPublic) {
+                    return
+                }
+
+                // Check if the observer's specific due date is today or earlier
+                const observerDueDate = data.dueDateByObserversIds?.[userId]
+                if (observerDueDate && observerDueDate <= dateEndToday) {
+                    observedCount++
+                }
+            })
+
             const projectData = projectDoc.data()
             return {
                 id: projectId,
                 name: projectData.name || 'Unnamed Project',
                 sortIndex: projectData.sortIndexByUser?.[userId] || 0,
-                openTaskCount: tasksSnapshot.docs.length,
+                openTaskCount: reviewerCount + observedCount,
             }
         })
 
