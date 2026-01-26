@@ -96,7 +96,7 @@ export const REGEX_GENERIC = /^(&[\S]+)$/i
 export const REGEX_HASHTAG = /(^|\s)(#[\S]+)$/i
 export const REGEX_MENTION = /^(@[\S]+)$/i
 export const REGEX_EMAIL = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)([,.])?/i
-export const REGEX_URL = /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%](?:\.[^\s.]{2,})+(?!\.)|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%](?:\.[^\s.]{2,})+(?!\.)|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+(?:\.[^\s.]{2,})+(?!\.)|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+(?:\.[^\s.]{2,})+(?!\.)|^http:\/\/localhost:[0-9]+\/[^\s.]{2,}(?!\.)$/i
+export const REGEX_URL = /^((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([\S]+\.[a-zA-Z]{2,}[\S]*))$|^http:\/\/localhost:[0-9]+\/[^\s.]{2,}(?!\.)$/i
 
 export const REGEX_BOT_CODE = /```(.*?)```/g
 export const REGEX_BOT_BOLD = /\*\*(.*?)\*\*/g
