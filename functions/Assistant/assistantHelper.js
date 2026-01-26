@@ -122,10 +122,10 @@ const modelSupportsCustomTemperature = modelKey => {
 
 const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT3_5) return 100
-    if (modelKey === MODEL_GPT4) return 10
+    if (modelKey === MODEL_GPT4) return 50
     if (modelKey === MODEL_GPT4O) return 50
-    if (modelKey === MODEL_GPT5_1) return 10
-    if (modelKey === MODEL_GPT5_2) return 10
+    if (modelKey === MODEL_GPT5_1) return 50
+    if (modelKey === MODEL_GPT5_2) return 50
     if (modelKey === MODEL_SONAR) return 100
     if (modelKey === MODEL_SONAR_PRO) return 50
     if (modelKey === MODEL_SONAR_REASONING) return 20
