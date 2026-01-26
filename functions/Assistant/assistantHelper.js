@@ -2938,14 +2938,26 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
 
     // Generate current date/time in user's timezone if available
     let currentDateTime
+    let timezoneInfo
     if (userTimezoneOffset !== null && typeof userTimezoneOffset === 'number') {
         // userTimezoneOffset is in minutes
         currentDateTime = moment().utcOffset(userTimezoneOffset)
+        // Format timezone as UTC+X or UTC-X
+        const hours = Math.floor(Math.abs(userTimezoneOffset) / 60)
+        const minutes = Math.abs(userTimezoneOffset) % 60
+        const sign = userTimezoneOffset >= 0 ? '+' : '-'
+        timezoneInfo = minutes > 0 ? `UTC${sign}${hours}:${minutes.toString().padStart(2, '0')}` : `UTC${sign}${hours}`
     } else {
         // Fallback to UTC if no timezone provided
         currentDateTime = moment().utc()
+        timezoneInfo = 'UTC'
     }
-    messages.push(['system', `The current date is ${currentDateTime.format('dddd, MMMM Do YYYY, h:mm:ss a')}`])
+    messages.push([
+        'system',
+        `The current date and time for the user is ${currentDateTime.format(
+            'dddd, MMMM Do YYYY, h:mm:ss a'
+        )} (${timezoneInfo}).`,
+    ])
 
     // Add emphasis on immediate action for tool-enabled assistants
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
