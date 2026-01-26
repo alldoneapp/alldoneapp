@@ -2992,9 +2992,15 @@ function parseTextForUseLiKePrompt(text) {
 async function getOpenTasksForAllProjects(userId, userTimezoneOffset = null) {
     try {
         // Calculate end of today in user's timezone
+        // userTimezoneOffset can be in hours (e.g., 1 for UTC+1) or minutes (e.g., 60 for UTC+1)
+        // We need to match the n8n approach: UTC end of day minus timezone offset in ms
         let dateEndToday
         if (userTimezoneOffset !== null && typeof userTimezoneOffset === 'number') {
-            dateEndToday = moment().utcOffset(userTimezoneOffset).endOf('day').valueOf()
+            // Determine if offset is in hours or minutes (if abs value < 24, assume hours)
+            const offsetInHours = Math.abs(userTimezoneOffset) < 24 ? userTimezoneOffset : userTimezoneOffset / 60
+            // End of day in UTC, then adjust for user's timezone
+            // For UTC+1: end of day is 23:59:59 local = 22:59:59 UTC, so subtract 1 hour from UTC end of day
+            dateEndToday = new Date().setUTCHours(23, 59, 59, 999) - offsetInHours * 60 * 60 * 1000
         } else {
             dateEndToday = moment().endOf('day').valueOf()
         }
