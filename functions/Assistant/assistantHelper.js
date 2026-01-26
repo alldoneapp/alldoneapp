@@ -3000,32 +3000,25 @@ async function countOpenTasksForToday(projectId, userId, userTimezoneOffset = nu
             dateEndToday = moment().endOf('day').valueOf()
         }
 
-        // Query for tasks assigned to this user that are:
-        // - Not done
+        // Query for tasks where user is the current reviewer that are:
+        // - Not in done (inDone == false)
         // - Due today or earlier (overdue)
         // - Parent tasks only (not subtasks)
         // - Visible to this user
+        // Note: Uses 'inDone' and 'currentReviewerId' fields (same as WhatsApp service and n8n)
         const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
 
         const tasksSnapshot = await admin
             .firestore()
             .collection(`items/${projectId}/tasks`)
-            .where('done', '==', false)
-            .where('dueDate', '<=', dateEndToday)
+            .where('inDone', '==', false)
             .where('parentId', '==', null)
+            .where('currentReviewerId', '==', userId)
+            .where('dueDate', '<=', dateEndToday)
             .where('isPublicFor', 'array-contains-any', allowUserIds)
             .get()
 
-        // Count only tasks assigned to this specific user
-        let count = 0
-        tasksSnapshot.docs.forEach(doc => {
-            const task = doc.data()
-            if (task.userId === userId) {
-                count++
-            }
-        })
-
-        return count
+        return tasksSnapshot.docs.length
     } catch (error) {
         console.error('Error counting open tasks for today:', error)
         return null // Return null on error so we don't add misleading info to context
