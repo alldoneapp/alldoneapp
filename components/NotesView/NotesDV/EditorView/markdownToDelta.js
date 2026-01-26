@@ -282,6 +282,7 @@ export const markdownToDelta = (text, Delta) => {
     const delta = new Delta()
     const lines = text.split('\n')
     let previousWasList = false
+    let previousWasHeader = false
 
     console.log('[markdownToDelta] Split into', lines.length, 'lines')
 
@@ -291,10 +292,17 @@ export const markdownToDelta = (text, Delta) => {
         const isListItem = parsed.type === 'bullet' || parsed.type === 'ordered' || parsed.type === 'checkbox'
 
         console.log(
-            `[markdownToDelta] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}`
+            `[markdownToDelta] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}, previousWasHeader: ${previousWasHeader}`
         )
 
         if (parsed.type === 'empty') {
+            // Skip empty lines immediately after headers to avoid excessive spacing
+            if (previousWasHeader) {
+                console.log(`[markdownToDelta]   -> Skipping empty line after header`)
+                previousWasHeader = false
+                previousWasList = false
+                return // Skip this empty line
+            }
             // Empty line after a list needs explicit list:null to break the list context
             // Quill may otherwise inherit list formatting from the previous line
             if (!isLastLine) {
@@ -307,6 +315,7 @@ export const markdownToDelta = (text, Delta) => {
                 }
             }
             previousWasList = false
+            previousWasHeader = false
         } else if (parsed.type === 'hr') {
             // Horizontal rule - if coming after a list, explicitly break list formatting
             console.log(`[markdownToDelta]   -> Inserting HR`)
@@ -321,29 +330,37 @@ export const markdownToDelta = (text, Delta) => {
                 }
             }
             previousWasList = false
+            previousWasHeader = false
         } else if (parsed.type === 'header') {
             // Parse inline formatting within the header text
             console.log(`[markdownToDelta]   -> Inserting header level ${parsed.level}: "${parsed.text}"`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Quill Delta, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null/false to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                delta.insert(segment.text, attrs)
             })
             // Header formatting is applied via newline attributes in Quill
             delta.insert('\n', { header: parsed.level })
             previousWasList = false
+            previousWasHeader = true
         } else if (parsed.type === 'bullet') {
             console.log(`[markdownToDelta]   -> Inserting bullet: "${parsed.text}", indent: ${parsed.indent}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                delta.insert(segment.text, attrs)
             })
             // Apply indent level for nested lists
             const listAttrs = { list: 'bullet' }
@@ -353,15 +370,18 @@ export const markdownToDelta = (text, Delta) => {
             console.log(`[markdownToDelta]   -> Bullet newline attrs:`, JSON.stringify(listAttrs))
             delta.insert('\n', listAttrs)
             previousWasList = true
+            previousWasHeader = false
         } else if (parsed.type === 'ordered') {
             console.log(`[markdownToDelta]   -> Inserting ordered: "${parsed.text}", indent: ${parsed.indent}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                delta.insert(segment.text, attrs)
             })
             // Apply indent level for nested lists
             const listAttrs = { list: 'ordered' }
@@ -371,18 +391,21 @@ export const markdownToDelta = (text, Delta) => {
             console.log(`[markdownToDelta]   -> Ordered newline attrs:`, JSON.stringify(listAttrs))
             delta.insert('\n', listAttrs)
             previousWasList = true
+            previousWasHeader = false
         } else if (parsed.type === 'checkbox') {
             // Quill doesn't have native checkboxes, convert to bullet with indicator
             console.log(`[markdownToDelta]   -> Inserting checkbox: "${parsed.text}", checked: ${parsed.checked}`)
             const prefix = parsed.checked ? '☑ ' : '☐ '
-            delta.insert(prefix)
+            delta.insert(prefix, { bold: null, italic: null, strike: null })
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike || parsed.checked) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike || parsed.checked ? true : null,
+                }
+                delta.insert(segment.text, attrs)
             })
             // Apply indent level for nested checkboxes
             const listAttrs = { list: 'bullet' }
@@ -391,16 +414,19 @@ export const markdownToDelta = (text, Delta) => {
             }
             delta.insert('\n', listAttrs)
             previousWasList = true
+            previousWasHeader = false
         } else {
             // Regular text - parse inline formatting
             console.log(`[markdownToDelta]   -> Inserting regular text: "${parsed.text}"`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                delta.insert(segment.text, attrs)
             })
             if (!isLastLine) {
                 // If previous line was a list, explicitly remove list formatting
@@ -413,6 +439,7 @@ export const markdownToDelta = (text, Delta) => {
                 }
             }
             previousWasList = false
+            previousWasHeader = false
         }
     })
 

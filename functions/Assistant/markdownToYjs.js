@@ -246,6 +246,7 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
     let currentPosition = startPosition
     const lines = markdownContent.split('\n')
     let previousWasList = false
+    let previousWasHeader = false
 
     console.log('[markdownToYjs] Split into', lines.length, 'lines')
 
@@ -254,10 +255,17 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
         const isLastLine = lineIndex === lines.length - 1
 
         console.log(
-            `[markdownToYjs] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}`
+            `[markdownToYjs] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}, previousWasHeader: ${previousWasHeader}`
         )
 
         if (parsed.type === 'empty') {
+            // Skip empty lines immediately after headers to avoid excessive spacing
+            if (previousWasHeader) {
+                console.log(`[markdownToYjs]   -> Skipping empty line after header`)
+                previousWasHeader = false
+                previousWasList = false
+                return // Skip this empty line
+            }
             // Empty line after a list needs explicit list:null to break the list context
             if (!isLastLine) {
                 if (previousWasList) {
@@ -270,6 +278,7 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
                 currentPosition += 1
             }
             previousWasList = false
+            previousWasHeader = false
         } else if (parsed.type === 'hr') {
             // Horizontal rule - insert visual divider
             console.log(`[markdownToYjs]   -> Inserting HR at pos ${currentPosition}`)
@@ -287,6 +296,7 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
                 currentPosition += 1
             }
             previousWasList = false
+            previousWasHeader = false
         } else if (parsed.type === 'header') {
             // Insert header text with inline formatting
             console.log(
@@ -294,17 +304,22 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
                 currentPosition += segment.text.length
             })
             // Insert newline with header formatting
             ytext.insert(currentPosition, '\n', { header: parsed.level })
             currentPosition += 1
             previousWasList = false
+            previousWasHeader = true
         } else if (parsed.type === 'bullet' || parsed.type === 'ordered') {
             // Insert list item text with inline formatting
             console.log(
@@ -312,11 +327,15 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
                 currentPosition += segment.text.length
             })
             // Insert newline with list formatting
@@ -328,22 +347,27 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             ytext.insert(currentPosition, '\n', listAttrs)
             currentPosition += 1
             previousWasList = true
+            previousWasHeader = false
         } else if (parsed.type === 'checkbox') {
             // Insert checkbox indicator + text
             console.log(
                 `[markdownToYjs]   -> Inserting checkbox: "${parsed.text}", checked: ${parsed.checked} at pos ${currentPosition}`
             )
             const prefix = parsed.checked ? '☑ ' : '☐ '
-            ytext.insert(currentPosition, prefix)
+            ytext.insert(currentPosition, prefix, { bold: null, italic: null, strike: null })
             currentPosition += prefix.length
 
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike || parsed.checked) attrs.strike = true
-                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike || parsed.checked ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
                 currentPosition += segment.text.length
             })
             // Insert newline with bullet formatting
@@ -355,16 +379,21 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             ytext.insert(currentPosition, '\n', listAttrs)
             currentPosition += 1
             previousWasList = true
+            previousWasHeader = false
         } else {
             // Regular text - parse inline formatting
             console.log(`[markdownToYjs]   -> Inserting regular text: "${parsed.text}" at pos ${currentPosition}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = {}
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                // Explicitly set all formatting attributes to prevent inheritance
+                // In Yjs, passing undefined allows attribute inheritance from adjacent text
+                // We must explicitly set attributes to null to clear them
+                const attrs = {
+                    bold: segment.bold ? true : null,
+                    italic: segment.italic ? true : null,
+                    strike: segment.strike ? true : null,
+                }
+                ytext.insert(currentPosition, segment.text, attrs)
                 currentPosition += segment.text.length
             })
             if (!isLastLine) {
@@ -378,6 +407,7 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
                 currentPosition += 1
             }
             previousWasList = false
+            previousWasHeader = false
         }
     })
 
