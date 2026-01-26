@@ -2983,14 +2983,13 @@ function parseTextForUseLiKePrompt(text) {
 }
 
 /**
- * Count open tasks (today + overdue) for a user in a project
- * This mirrors the logic in utils/backends/Tasks/taskNumbers.js watchSidebarTasksAmount
- * @param {string} projectId - The project ID
+ * Get all active projects for a user with open task counts (today + overdue)
+ * Projects are sorted in the same order as shown in the sidebar (by sortIndexByUser desc, then name asc)
  * @param {string} userId - The user ID
  * @param {number|null} userTimezoneOffset - User's timezone offset in minutes
- * @returns {Promise<number>} The count of open tasks for today (including overdue)
+ * @returns {Promise<{projects: Array<{id: string, name: string, openTaskCount: number}>, totalCount: number}|null>}
  */
-async function countOpenTasksForToday(projectId, userId, userTimezoneOffset = null) {
+async function getOpenTasksForAllProjects(userId, userTimezoneOffset = null) {
     try {
         // Calculate end of today in user's timezone
         let dateEndToday
@@ -3000,28 +2999,83 @@ async function countOpenTasksForToday(projectId, userId, userTimezoneOffset = nu
             dateEndToday = moment().endOf('day').valueOf()
         }
 
-        // Query for tasks where user is the current reviewer that are:
-        // - Not in done (inDone == false)
-        // - Due today or earlier (overdue)
-        // - Parent tasks only (not subtasks)
-        // - Visible to this user
-        // Note: Uses 'inDone' and 'currentReviewerId' fields (same as WhatsApp service and n8n)
+        // Get user data to find their active projects
+        const userDoc = await admin.firestore().collection('users').doc(userId).get()
+        if (!userDoc.exists) {
+            console.error('User not found for open tasks count:', userId)
+            return null
+        }
+
+        const userData = userDoc.data()
+        const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
+        const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
+        const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
+        const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
+
+        // Filter to only active projects (same logic as sidebar)
+        const activeProjectIds = projectIds.filter(
+            id => !archivedProjectIds.includes(id) && !templateProjectIds.includes(id) && !guideProjectIds.includes(id)
+        )
+
+        if (activeProjectIds.length === 0) {
+            return { projects: [], totalCount: 0 }
+        }
+
+        // Fetch project data and task counts in parallel
         const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
 
-        const tasksSnapshot = await admin
-            .firestore()
-            .collection(`items/${projectId}/tasks`)
-            .where('inDone', '==', false)
-            .where('parentId', '==', null)
-            .where('currentReviewerId', '==', userId)
-            .where('dueDate', '<=', dateEndToday)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
-            .get()
+        const projectPromises = activeProjectIds.map(async projectId => {
+            const [projectDoc, tasksSnapshot] = await Promise.all([
+                admin.firestore().collection('projects').doc(projectId).get(),
+                admin
+                    .firestore()
+                    .collection(`items/${projectId}/tasks`)
+                    .where('inDone', '==', false)
+                    .where('parentId', '==', null)
+                    .where('currentReviewerId', '==', userId)
+                    .where('dueDate', '<=', dateEndToday)
+                    .where('isPublicFor', 'array-contains-any', allowUserIds)
+                    .get(),
+            ])
 
-        return tasksSnapshot.docs.length
+            if (!projectDoc.exists) {
+                return null
+            }
+
+            const projectData = projectDoc.data()
+            return {
+                id: projectId,
+                name: projectData.name || 'Unnamed Project',
+                sortIndex: projectData.sortIndexByUser?.[userId] || 0,
+                openTaskCount: tasksSnapshot.docs.length,
+            }
+        })
+
+        const projectResults = await Promise.all(projectPromises)
+
+        // Filter out null results and sort like the sidebar (sortIndex desc, then name asc)
+        const projects = projectResults
+            .filter(p => p !== null)
+            .sort((a, b) => {
+                // First sort by sortIndex descending
+                if (b.sortIndex !== a.sortIndex) {
+                    return b.sortIndex - a.sortIndex
+                }
+                // Then by name ascending (case-insensitive)
+                return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+            })
+            .map(p => ({
+                id: p.id,
+                name: p.name,
+                openTaskCount: p.openTaskCount,
+            }))
+
+        const totalCount = projects.reduce((sum, p) => sum + p.openTaskCount, 0)
+
+        return { projects, totalCount }
     } catch (error) {
-        console.error('Error counting open tasks for today:', error)
-        return null // Return null on error so we don't add misleading info to context
+        console.error('Error getting open tasks for all projects:', error)
+        return null
     }
 }
 
@@ -3071,14 +3125,14 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
-    // Fetch open task count for today (including overdue) in parallel
-    if (userId && projectId) {
-        parallelPromises.push(countOpenTasksForToday(projectId, userId, userTimezoneOffset))
+    // Fetch open task counts for all projects (including overdue) in parallel
+    if (userId) {
+        parallelPromises.push(getOpenTasksForAllProjects(userId, userTimezoneOffset))
     } else {
         parallelPromises.push(Promise.resolve(null))
     }
 
-    const [commentDocs, chatData, notesContext, openTaskCount] = await Promise.all(parallelPromises)
+    const [commentDocs, chatData, notesContext, openTasksData] = await Promise.all(parallelPromises)
 
     // Collect messages from conversation history
     const messages = []
@@ -3110,19 +3164,29 @@ async function getOptimizedContextMessages(
         ])
     }
 
-    // Add open task count context if available
-    if (openTaskCount !== null && typeof openTaskCount === 'number') {
+    // Add open task counts context if available
+    if (openTasksData && openTasksData.projects) {
+        const { projects, totalCount } = openTasksData
         console.log('📋 [ASSISTANT CONTEXT] Open tasks for today (including overdue):', {
             userId,
-            projectId,
-            openTaskCount,
+            totalCount,
+            projectCount: projects.length,
+            projects: projects.map(p => ({ name: p.name, count: p.openTaskCount })),
         })
-        messages.push([
-            'system',
-            `Today (including overdue) the user still has ${openTaskCount} open task${
-                openTaskCount !== 1 ? 's' : ''
-            } to do.`,
-        ])
+
+        // Build the task summary message
+        let taskSummary = `The user has ${projects.length} active project${projects.length !== 1 ? 's' : ''}. `
+        taskSummary += `Today (including overdue) the user has ${totalCount} open task${
+            totalCount !== 1 ? 's' : ''
+        } in total.`
+
+        if (projects.length > 0 && totalCount > 0) {
+            taskSummary += ` Open tasks per project (in sidebar order): `
+            taskSummary += projects.map(p => `"${p.name}": ${p.openTaskCount}`).join(', ')
+            taskSummary += '.'
+        }
+
+        messages.push(['system', taskSummary])
     }
 
     const reversedMessages = messages.reverse()

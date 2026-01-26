@@ -1,6 +1,6 @@
 /**
- * Markdown to Quill Delta converter
- * Converts markdown syntax to Quill Delta operations for rich text rendering
+ * Markdown to Yjs Converter
+ * Converts markdown syntax to Yjs text insertions with Quill-compatible formatting
  */
 
 // Regex patterns for markdown detection
@@ -13,18 +13,12 @@ const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
 const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
 const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
 
-// Inline markdown patterns
-const REGEX_BOLD_ITALIC = /\*\*\*(.+?)\*\*\*/g
-const REGEX_BOLD = /\*\*(.+?)\*\*/g
-const REGEX_ITALIC = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g
-const REGEX_STRIKETHROUGH = /~~(.+?)~~/g
-
 /**
  * Check if text contains markdown syntax that should be converted
  * @param {string} text - Text to check
  * @returns {boolean} - True if contains convertible markdown
  */
-export const containsMarkdown = text => {
+function containsMarkdown(text) {
     if (!text) return false
 
     const lines = text.split('\n')
@@ -46,12 +40,7 @@ export const containsMarkdown = text => {
     }
 
     // Check inline markdown
-    if (
-        /\*\*\*.+?\*\*\*/.test(text) ||
-        /\*\*.+?\*\*/.test(text) ||
-        /(?<!\*)\*(?!\*).+?(?<!\*)\*(?!\*)/.test(text) ||
-        /~~.+?~~/.test(text)
-    ) {
+    if (/\*\*\*.+?\*\*\*/.test(text) || /\*\*.+?\*\*/.test(text) || /~~.+?~~/.test(text)) {
         return true
     }
 
@@ -59,11 +48,24 @@ export const containsMarkdown = text => {
 }
 
 /**
- * Parse inline formatting and return array of segments with their formatting
+ * Calculate indentation level from leading whitespace
+ * @param {string} line - Line to check
+ * @returns {number} - Indent level (0, 1, 2, etc.)
+ */
+function getIndentLevel(line) {
+    const match = line.match(/^(\s*)/)
+    if (!match) return 0
+    const whitespace = match[1]
+    const spaces = whitespace.replace(/\t/g, '    ').length
+    return Math.floor(spaces / 2)
+}
+
+/**
+ * Parse inline formatting and return array of segments
  * @param {string} text - Text to parse
  * @returns {array} - Array of { text, bold, italic, strike } objects
  */
-const parseInlineFormatting = text => {
+function parseInlineFormatting(text) {
     if (!text) return [{ text: '', bold: false, italic: false, strike: false }]
 
     const segments = []
@@ -72,7 +74,7 @@ const parseInlineFormatting = text => {
     const findNextMatch = str => {
         const matches = []
 
-        // Bold+Italic (must check first)
+        // Bold+Italic
         const boldItalicMatch = /\*\*\*(.+?)\*\*\*/.exec(str)
         if (boldItalicMatch) {
             matches.push({
@@ -100,36 +102,6 @@ const parseInlineFormatting = text => {
                     strike: false,
                 })
             }
-        }
-
-        // Italic
-        let italicSearchStart = 0
-        let italicMatch = null
-        while (italicSearchStart < str.length) {
-            const searchStr = str.substring(italicSearchStart)
-            const match = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/.exec(searchStr)
-            if (match) {
-                const actualIndex = italicSearchStart + match.index
-                const before = str.substring(0, actualIndex)
-                const after = str.substring(actualIndex + match[0].length)
-                if (!before.endsWith('*') && !after.startsWith('*')) {
-                    italicMatch = {
-                        index: actualIndex,
-                        length: match[0].length,
-                        text: match[1],
-                        bold: false,
-                        italic: true,
-                        strike: false,
-                    }
-                    break
-                }
-                italicSearchStart = actualIndex + 1
-            } else {
-                break
-            }
-        }
-        if (italicMatch) {
-            matches.push(italicMatch)
         }
 
         // Strikethrough
@@ -182,25 +154,11 @@ const parseInlineFormatting = text => {
 }
 
 /**
- * Calculate indentation level from leading whitespace
- * @param {string} line - Line to check
- * @returns {number} - Indent level (0, 1, 2, etc.)
- */
-const getIndentLevel = line => {
-    const match = line.match(/^(\s*)/)
-    if (!match) return 0
-    const whitespace = match[1]
-    // Count spaces (2-4 spaces = 1 indent level) or tabs
-    const spaces = whitespace.replace(/\t/g, '    ').length
-    return Math.floor(spaces / 2) // Every 2+ spaces is one indent level
-}
-
-/**
  * Parse a line and determine its markdown type
  * @param {string} line - Line to parse
- * @returns {object} - { type, text, number?, checked?, indent? }
+ * @returns {object} - { type, text, level?, indent? }
  */
-const parseLineType = line => {
+function parseLineType(line) {
     const trimmed = line.trim()
     const indent = getIndentLevel(line)
 
@@ -250,89 +208,91 @@ const parseLineType = line => {
 }
 
 /**
- * Convert markdown text to Quill Delta operations
- * @param {string} text - Markdown text to convert
- * @param {function} Delta - Quill Delta constructor
- * @returns {Delta} - Quill Delta with converted content
+ * Insert markdown-formatted content into a Yjs Y.Text at a given position
+ * Converts markdown syntax to Quill-compatible formatting attributes
+ *
+ * @param {Y.Text} ytext - The Yjs text object
+ * @param {number} startPosition - Position to start inserting
+ * @param {string} markdownContent - Markdown text to convert and insert
+ * @returns {number} - The new position after all insertions
  */
-export const markdownToDelta = (text, Delta) => {
-    if (!text || !containsMarkdown(text)) {
-        return null // Return null if no markdown to convert
+function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
+    if (!markdownContent || !containsMarkdown(markdownContent)) {
+        // No markdown, insert as plain text
+        ytext.insert(startPosition, markdownContent)
+        return startPosition + markdownContent.length
     }
 
-    const delta = new Delta()
-    const lines = text.split('\n')
+    let currentPosition = startPosition
+    const lines = markdownContent.split('\n')
 
     lines.forEach((line, lineIndex) => {
         const parsed = parseLineType(line)
         const isLastLine = lineIndex === lines.length - 1
 
         if (parsed.type === 'hr') {
-            // Insert a divider/horizontal rule - Quill doesn't have native HR, use a styled block
-            delta.insert('───────────────────────────────────────')
+            // Horizontal rule - insert visual divider
+            const hrText = '───────────────────────────────────────'
+            ytext.insert(currentPosition, hrText)
+            currentPosition += hrText.length
             if (!isLastLine) {
-                delta.insert('\n')
+                ytext.insert(currentPosition, '\n')
+                currentPosition += 1
             }
         } else if (parsed.type === 'header') {
-            // Parse inline formatting within the header text
-            const segments = parseInlineFormatting(parsed.text)
-            segments.forEach(segment => {
-                const attrs = { header: parsed.level }
-                if (segment.bold) attrs.bold = true
-                if (segment.italic) attrs.italic = true
-                if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, attrs)
-            })
-            // Header formatting is applied via newline attributes in Quill
-            delta.insert('\n', { header: parsed.level })
-        } else if (parsed.type === 'bullet') {
+            // Insert header text with inline formatting
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
                 if (segment.bold) attrs.bold = true
                 if (segment.italic) attrs.italic = true
                 if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                currentPosition += segment.text.length
             })
-            // Apply indent level for nested lists
-            const listAttrs = { list: 'bullet' }
-            if (parsed.indent > 0) {
-                listAttrs.indent = Math.min(parsed.indent, 8) // Quill supports up to 8 indent levels
-            }
-            delta.insert('\n', listAttrs)
-        } else if (parsed.type === 'ordered') {
+            // Insert newline with header formatting
+            ytext.insert(currentPosition, '\n', { header: parsed.level })
+            currentPosition += 1
+        } else if (parsed.type === 'bullet' || parsed.type === 'ordered') {
+            // Insert list item text with inline formatting
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
                 if (segment.bold) attrs.bold = true
                 if (segment.italic) attrs.italic = true
                 if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                currentPosition += segment.text.length
             })
-            // Apply indent level for nested lists
-            const listAttrs = { list: 'ordered' }
+            // Insert newline with list formatting
+            const listAttrs = { list: parsed.type === 'bullet' ? 'bullet' : 'ordered' }
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
-            delta.insert('\n', listAttrs)
+            ytext.insert(currentPosition, '\n', listAttrs)
+            currentPosition += 1
         } else if (parsed.type === 'checkbox') {
-            // Quill doesn't have native checkboxes, convert to bullet with indicator
+            // Insert checkbox indicator + text
             const prefix = parsed.checked ? '☑ ' : '☐ '
-            delta.insert(prefix)
+            ytext.insert(currentPosition, prefix)
+            currentPosition += prefix.length
+
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
                 if (segment.bold) attrs.bold = true
                 if (segment.italic) attrs.italic = true
                 if (segment.strike || parsed.checked) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                currentPosition += segment.text.length
             })
-            // Apply indent level for nested checkboxes
+            // Insert newline with bullet formatting
             const listAttrs = { list: 'bullet' }
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
-            delta.insert('\n', listAttrs)
+            ytext.insert(currentPosition, '\n', listAttrs)
+            currentPosition += 1
         } else {
             // Regular text - parse inline formatting
             const segments = parseInlineFormatting(parsed.text)
@@ -341,33 +301,22 @@ export const markdownToDelta = (text, Delta) => {
                 if (segment.bold) attrs.bold = true
                 if (segment.italic) attrs.italic = true
                 if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                ytext.insert(currentPosition, segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
+                currentPosition += segment.text.length
             })
             if (!isLastLine) {
-                delta.insert('\n')
+                ytext.insert(currentPosition, '\n')
+                currentPosition += 1
             }
         }
     })
 
-    return delta
+    return currentPosition
 }
 
-/**
- * Process pasted text, converting markdown if detected
- * Falls back to original processing if no markdown found
- * @param {string} text - Pasted text
- * @param {function} Delta - Quill Delta constructor
- * @param {function} fallbackProcessor - Original paste processor function
- * @param {array} fallbackArgs - Arguments for fallback processor
- * @returns {Delta} - Processed Delta
- */
-export const processMarkdownPaste = (text, Delta, fallbackProcessor, fallbackArgs) => {
-    const markdownDelta = markdownToDelta(text, Delta)
-
-    if (markdownDelta) {
-        return markdownDelta
-    }
-
-    // No markdown detected, use original processor
-    return fallbackProcessor(...fallbackArgs)
+module.exports = {
+    containsMarkdown,
+    insertMarkdownToYjs,
+    parseInlineFormatting,
+    parseLineType,
 }

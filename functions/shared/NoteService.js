@@ -998,6 +998,14 @@ class NoteService {
                 return
             }
 
+            // Import markdown converter for formatting assistant content
+            let markdownToYjs = null
+            try {
+                markdownToYjs = require('../Assistant/markdownToYjs')
+            } catch (error) {
+                console.warn('NoteService: markdownToYjs not available, will insert plain text')
+            }
+
             // Load existing Yjs document and replicate toolbar date button behavior
             const bucketName = await this.getBucketName()
             console.log('NoteService: Using bucket name for update:', bucketName)
@@ -1040,14 +1048,29 @@ class NoteService {
             currentPosition += 2
             console.log(`NoteService: Inserted header newlines at position ${currentPosition - 2}`)
 
-            // Step 3: Insert new content with normal formatting + extra line break after
-            ytext.insert(currentPosition, `${newContent}\n\n\n`, { header: null })
-            currentPosition += newContent.length + 3
-            console.log(
-                `NoteService: Inserted content with normal formatting at position ${
-                    currentPosition - newContent.length - 3
-                }, length: ${newContent.length}`
-            )
+            // Step 3: Insert new content - check if it contains markdown and convert if so
+            if (markdownToYjs && markdownToYjs.containsMarkdown(newContent)) {
+                console.log(`NoteService: Detected markdown in content, converting to formatted text`)
+                const contentStart = currentPosition
+                currentPosition = markdownToYjs.insertMarkdownToYjs(ytext, currentPosition, newContent)
+                // Add extra line breaks after content
+                ytext.insert(currentPosition, '\n\n\n')
+                currentPosition += 3
+                console.log(
+                    `NoteService: Inserted markdown-formatted content at position ${contentStart}, length: ${
+                        currentPosition - contentStart
+                    }`
+                )
+            } else {
+                // Plain text insertion
+                ytext.insert(currentPosition, `${newContent}\n\n\n`, { header: null })
+                currentPosition += newContent.length + 3
+                console.log(
+                    `NoteService: Inserted plain content at position ${
+                        currentPosition - newContent.length - 3
+                    }, length: ${newContent.length}`
+                )
+            }
 
             console.log(`NoteService: Total document length after insertions: ${ytext.length}`)
 
@@ -1132,6 +1155,14 @@ class NoteService {
                 return
             }
 
+            // Import markdown converter for formatting assistant content
+            let markdownToYjs = null
+            try {
+                markdownToYjs = require('../Assistant/markdownToYjs')
+            } catch (error) {
+                console.warn('NoteService: markdownToYjs not available, will insert plain text')
+            }
+
             // Load existing Yjs document and insert at beginning (atomic operation)
             const bucketName = await this.getBucketName()
             const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
@@ -1155,8 +1186,13 @@ class NoteService {
             const ytext = doc.getText('quill')
             console.log(`NoteService: Current document length: ${ytext.length}`)
 
-            // Insert new content at the beginning (atomic Yjs operation)
-            ytext.insert(0, contentToAdd)
+            // Insert new content at the beginning - check if it contains markdown and convert if so
+            if (markdownToYjs && markdownToYjs.containsMarkdown(contentToAdd)) {
+                console.log(`NoteService: Detected markdown in content, converting to formatted text`)
+                markdownToYjs.insertMarkdownToYjs(ytext, 0, contentToAdd)
+            } else {
+                ytext.insert(0, contentToAdd)
+            }
             console.log(`NoteService: Inserted content at beginning, new length: ${ytext.length}`)
 
             // Get the full document state (not just the update)

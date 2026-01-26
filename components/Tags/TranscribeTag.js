@@ -15,12 +15,19 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
     }
 
     const startTranscription = () => {
+        console.log('[TranscribeTag] startTranscription called, disabled:', disabled)
         if (disabled) return
 
         let noteId = task.noteId
+        console.log('[TranscribeTag] task.noteId:', noteId)
+        console.log('[TranscribeTag] projectId:', projectId)
+
         if (noteId) {
             // Task already has a note, just open it
-            window.open(getNoteUrl(noteId), '_blank')
+            const url = getNoteUrl(noteId)
+            console.log('[TranscribeTag] Opening existing note URL:', url)
+            const newWindow = window.open(url, '_blank')
+            console.log('[TranscribeTag] window.open result:', newWindow)
         } else {
             // Create new note and open it immediately
             const newNote = TasksHelper.getNewDefaultNote()
@@ -31,7 +38,10 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
             newNote.title = task.name
 
             // Open the new tab immediately
-            window.open(getNoteUrl(generatedId), '_blank')
+            const url = getNoteUrl(generatedId)
+            console.log('[TranscribeTag] Opening new note URL:', url)
+            const newWindow = window.open(url, '_blank')
+            console.log('[TranscribeTag] window.open result:', newWindow)
 
             // Create the note in the background (no await needed)
             updateTaskData(projectId, task.id, { noteId: generatedId })
