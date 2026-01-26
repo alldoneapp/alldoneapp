@@ -152,9 +152,10 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
         const trimmedText = (lastMessage?.commentText || '').trim()
         const isEmpty = trimmedText === ''
 
-        // Hide placeholder when any assistant message appears (including status messages like "Processing...")
-        // Status messages are rendered via MessageItem, so we don't need the placeholder anymore
-        if (lastMessage?.isLoading || isEmpty) return
+        // Hide placeholder as soon as any assistant message appears
+        // The MessageItem component handles the loading state with its own spinner,
+        // so we don't need BotMessagePlaceholder once a message exists
+        if (isEmpty) return
 
         setWaitingForBotAnswer(false)
     }, [messages])
