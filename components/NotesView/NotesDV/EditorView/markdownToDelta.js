@@ -264,41 +264,73 @@ const parseLineType = line => {
  * @returns {Delta} - Quill Delta with converted content
  */
 export const markdownToDelta = (text, Delta) => {
+    console.log('[markdownToDelta] ========== START ==========')
+    console.log('[markdownToDelta] Input text:', JSON.stringify(text))
+    console.log('[markdownToDelta] Contains markdown:', containsMarkdown(text))
+
     if (!text || !containsMarkdown(text)) {
+        console.log('[markdownToDelta] No markdown detected, returning null')
         return null // Return null if no markdown to convert
     }
 
     const delta = new Delta()
     const lines = text.split('\n')
+    let previousWasList = false
+
+    console.log('[markdownToDelta] Split into', lines.length, 'lines')
 
     lines.forEach((line, lineIndex) => {
         const parsed = parseLineType(line)
         const isLastLine = lineIndex === lines.length - 1
+        const isListItem = parsed.type === 'bullet' || parsed.type === 'ordered' || parsed.type === 'checkbox'
+
+        console.log(
+            `[markdownToDelta] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}`
+        )
 
         if (parsed.type === 'empty') {
-            // Empty line - just insert a newline (no list formatting)
+            // Empty line after a list needs explicit list:null to break the list context
+            // Quill may otherwise inherit list formatting from the previous line
             if (!isLastLine) {
-                delta.insert('\n')
+                if (previousWasList) {
+                    console.log(`[markdownToDelta]   -> Inserting empty line with {list: null} to break list context`)
+                    delta.insert('\n', { list: null })
+                } else {
+                    console.log(`[markdownToDelta]   -> Inserting empty line (plain \\n)`)
+                    delta.insert('\n')
+                }
             }
+            previousWasList = false
         } else if (parsed.type === 'hr') {
-            // Insert a divider/horizontal rule - Quill doesn't have native HR, use a styled block
+            // Horizontal rule - if coming after a list, explicitly break list formatting
+            console.log(`[markdownToDelta]   -> Inserting HR`)
             delta.insert('───────────────────────────────────────')
             if (!isLastLine) {
-                delta.insert('\n')
+                if (previousWasList) {
+                    console.log(`[markdownToDelta]   -> HR newline with {list: null}`)
+                    delta.insert('\n', { list: null })
+                } else {
+                    console.log(`[markdownToDelta]   -> HR newline (plain)`)
+                    delta.insert('\n')
+                }
             }
+            previousWasList = false
         } else if (parsed.type === 'header') {
             // Parse inline formatting within the header text
+            console.log(`[markdownToDelta]   -> Inserting header level ${parsed.level}: "${parsed.text}"`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
-                const attrs = { header: parsed.level }
+                const attrs = {}
                 if (segment.bold) attrs.bold = true
                 if (segment.italic) attrs.italic = true
                 if (segment.strike) attrs.strike = true
-                delta.insert(segment.text, attrs)
+                delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
             })
             // Header formatting is applied via newline attributes in Quill
             delta.insert('\n', { header: parsed.level })
+            previousWasList = false
         } else if (parsed.type === 'bullet') {
+            console.log(`[markdownToDelta]   -> Inserting bullet: "${parsed.text}", indent: ${parsed.indent}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
@@ -312,8 +344,11 @@ export const markdownToDelta = (text, Delta) => {
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8) // Quill supports up to 8 indent levels
             }
+            console.log(`[markdownToDelta]   -> Bullet newline attrs:`, JSON.stringify(listAttrs))
             delta.insert('\n', listAttrs)
+            previousWasList = true
         } else if (parsed.type === 'ordered') {
+            console.log(`[markdownToDelta]   -> Inserting ordered: "${parsed.text}", indent: ${parsed.indent}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
@@ -327,9 +362,12 @@ export const markdownToDelta = (text, Delta) => {
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
+            console.log(`[markdownToDelta]   -> Ordered newline attrs:`, JSON.stringify(listAttrs))
             delta.insert('\n', listAttrs)
+            previousWasList = true
         } else if (parsed.type === 'checkbox') {
             // Quill doesn't have native checkboxes, convert to bullet with indicator
+            console.log(`[markdownToDelta]   -> Inserting checkbox: "${parsed.text}", checked: ${parsed.checked}`)
             const prefix = parsed.checked ? '☑ ' : '☐ '
             delta.insert(prefix)
             const segments = parseInlineFormatting(parsed.text)
@@ -346,8 +384,10 @@ export const markdownToDelta = (text, Delta) => {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
             delta.insert('\n', listAttrs)
+            previousWasList = true
         } else {
             // Regular text - parse inline formatting
+            console.log(`[markdownToDelta]   -> Inserting regular text: "${parsed.text}"`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
@@ -357,11 +397,21 @@ export const markdownToDelta = (text, Delta) => {
                 delta.insert(segment.text, Object.keys(attrs).length > 0 ? attrs : undefined)
             })
             if (!isLastLine) {
-                delta.insert('\n')
+                // If previous line was a list, explicitly remove list formatting
+                if (previousWasList) {
+                    console.log(`[markdownToDelta]   -> Text newline with {list: null} to break list`)
+                    delta.insert('\n', { list: null })
+                } else {
+                    console.log(`[markdownToDelta]   -> Text newline (plain)`)
+                    delta.insert('\n')
+                }
             }
+            previousWasList = false
         }
     })
 
+    console.log('[markdownToDelta] Final delta ops:', JSON.stringify(delta.ops, null, 2))
+    console.log('[markdownToDelta] ========== END ==========')
     return delta
 }
 

@@ -1243,22 +1243,25 @@ class TasksHelper {
             ])
             navigation.navigate('NotesDetailedView', data)
         } else if (note && inSelectedProject && note.parentObject?.type === 'tasks') {
-            // Note is attached to a task - navigate to the task's note tab
-            const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
-            console.log(
-                '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
-                autoStartTranscription
-            )
-            store.dispatch([
-                switchProject(projectIndex),
-                setSelectedNavItem(DV_TAB_TASK_NOTE),
-                setSelectedTypeOfProject(projectType),
-            ])
-            navigation.navigate('TaskDetailedView', {
-                taskId: note.parentObject.id,
-                projectId,
-                autoStartTranscription,
-            })
+            // Note is attached to a task - fetch the task and navigate to the task's note tab
+            const task = await Backend.getTask(projectId, note.parentObject.id)
+            if (task) {
+                const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
+                console.log(
+                    '[TasksHelper] Navigating to TaskDetailedView note tab with autoStartTranscription:',
+                    autoStartTranscription
+                )
+                store.dispatch([
+                    switchProject(projectIndex),
+                    setSelectedNavItem(DV_TAB_TASK_NOTE),
+                    setSelectedTypeOfProject(projectType),
+                ])
+                navigation.navigate('TaskDetailedView', {
+                    task,
+                    projectId,
+                    autoStartTranscription,
+                })
+            }
         } else if (inSelectedProject) {
             const { loggedUser } = store.getState()
             let data = {

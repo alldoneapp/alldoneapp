@@ -225,36 +225,67 @@ function parseLineType(line) {
  * @returns {number} - The new position after all insertions
  */
 function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
+    console.log('[markdownToYjs] ========== START ==========')
+    console.log('[markdownToYjs] Input content:', JSON.stringify(markdownContent))
+    console.log('[markdownToYjs] Start position:', startPosition)
+    console.log('[markdownToYjs] Contains markdown:', containsMarkdown(markdownContent))
+
     if (!markdownContent || !containsMarkdown(markdownContent)) {
         // No markdown, insert as plain text
+        console.log('[markdownToYjs] No markdown detected, inserting as plain text')
         ytext.insert(startPosition, markdownContent)
         return startPosition + markdownContent.length
     }
 
     let currentPosition = startPosition
     const lines = markdownContent.split('\n')
+    let previousWasList = false
+
+    console.log('[markdownToYjs] Split into', lines.length, 'lines')
 
     lines.forEach((line, lineIndex) => {
         const parsed = parseLineType(line)
         const isLastLine = lineIndex === lines.length - 1
 
+        console.log(
+            `[markdownToYjs] Line ${lineIndex}: "${line}" -> type: ${parsed.type}, previousWasList: ${previousWasList}`
+        )
+
         if (parsed.type === 'empty') {
-            // Empty line - just insert a newline (no list formatting)
+            // Empty line after a list needs explicit list:null to break the list context
             if (!isLastLine) {
-                ytext.insert(currentPosition, '\n')
+                if (previousWasList) {
+                    console.log(`[markdownToYjs]   -> Inserting empty line with {list: null} at pos ${currentPosition}`)
+                    ytext.insert(currentPosition, '\n', { list: null })
+                } else {
+                    console.log(`[markdownToYjs]   -> Inserting empty line (plain \\n) at pos ${currentPosition}`)
+                    ytext.insert(currentPosition, '\n')
+                }
                 currentPosition += 1
             }
+            previousWasList = false
         } else if (parsed.type === 'hr') {
             // Horizontal rule - insert visual divider
+            console.log(`[markdownToYjs]   -> Inserting HR at pos ${currentPosition}`)
             const hrText = '───────────────────────────────────────'
             ytext.insert(currentPosition, hrText)
             currentPosition += hrText.length
             if (!isLastLine) {
-                ytext.insert(currentPosition, '\n')
+                if (previousWasList) {
+                    console.log(`[markdownToYjs]   -> HR newline with {list: null} at pos ${currentPosition}`)
+                    ytext.insert(currentPosition, '\n', { list: null })
+                } else {
+                    console.log(`[markdownToYjs]   -> HR newline (plain) at pos ${currentPosition}`)
+                    ytext.insert(currentPosition, '\n')
+                }
                 currentPosition += 1
             }
+            previousWasList = false
         } else if (parsed.type === 'header') {
             // Insert header text with inline formatting
+            console.log(
+                `[markdownToYjs]   -> Inserting header level ${parsed.level}: "${parsed.text}" at pos ${currentPosition}`
+            )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
@@ -267,8 +298,12 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             // Insert newline with header formatting
             ytext.insert(currentPosition, '\n', { header: parsed.level })
             currentPosition += 1
+            previousWasList = false
         } else if (parsed.type === 'bullet' || parsed.type === 'ordered') {
             // Insert list item text with inline formatting
+            console.log(
+                `[markdownToYjs]   -> Inserting ${parsed.type}: "${parsed.text}", indent: ${parsed.indent} at pos ${currentPosition}`
+            )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
@@ -283,10 +318,15 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
+            console.log(`[markdownToYjs]   -> List newline attrs:`, JSON.stringify(listAttrs))
             ytext.insert(currentPosition, '\n', listAttrs)
             currentPosition += 1
+            previousWasList = true
         } else if (parsed.type === 'checkbox') {
             // Insert checkbox indicator + text
+            console.log(
+                `[markdownToYjs]   -> Inserting checkbox: "${parsed.text}", checked: ${parsed.checked} at pos ${currentPosition}`
+            )
             const prefix = parsed.checked ? '☑ ' : '☐ '
             ytext.insert(currentPosition, prefix)
             currentPosition += prefix.length
@@ -305,10 +345,13 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
             }
+            console.log(`[markdownToYjs]   -> Checkbox newline attrs:`, JSON.stringify(listAttrs))
             ytext.insert(currentPosition, '\n', listAttrs)
             currentPosition += 1
+            previousWasList = true
         } else {
             // Regular text - parse inline formatting
+            console.log(`[markdownToYjs]   -> Inserting regular text: "${parsed.text}" at pos ${currentPosition}`)
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 const attrs = {}
@@ -319,12 +362,21 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
                 currentPosition += segment.text.length
             })
             if (!isLastLine) {
-                ytext.insert(currentPosition, '\n')
+                if (previousWasList) {
+                    console.log(`[markdownToYjs]   -> Text newline with {list: null} at pos ${currentPosition}`)
+                    ytext.insert(currentPosition, '\n', { list: null })
+                } else {
+                    console.log(`[markdownToYjs]   -> Text newline (plain) at pos ${currentPosition}`)
+                    ytext.insert(currentPosition, '\n')
+                }
                 currentPosition += 1
             }
+            previousWasList = false
         }
     })
 
+    console.log('[markdownToYjs] Final position:', currentPosition)
+    console.log('[markdownToYjs] ========== END ==========')
     return currentPosition
 }
 
