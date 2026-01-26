@@ -658,12 +658,12 @@
     display: none;
 }
 .ql-snow .ql-editor h1 {
-    font-family: 'Roboto-Bold', 'Roboto-Regular';
+    font-family: 'Roboto-Medium', 'Roboto-Regular';
     font-style: normal;
-    font-weight: 700;
-    font-size: 32px;
-    line-height: 40px;
-    letter-spacing: -0.02em;
+    font-weight: 600;
+    font-size: 28px;
+    line-height: 36px;
+    letter-spacing: -0.01em;
     color: #04142f;
     margin-top: 24px;
     margin-bottom: 8px;
@@ -671,18 +671,18 @@
 .ql-snow .ql-editor h2 {
     font-family: 'Roboto-Medium', 'Roboto-Regular';
     font-style: normal;
-    font-weight: 600;
-    font-size: 24px;
-    line-height: 32px;
-    letter-spacing: -0.01em;
+    font-weight: 500;
+    font-size: 22px;
+    line-height: 30px;
+    letter-spacing: 0em;
     color: #1a2744;
     margin-top: 20px;
     margin-bottom: 6px;
 }
 .ql-snow .ql-editor h3 {
-    font-family: 'Roboto-Medium', 'Roboto-Regular';
+    font-family: 'Roboto-Regular';
     font-style: normal;
-    font-weight: 500;
+    font-weight: 400;
     font-size: 18px;
     line-height: 26px;
     letter-spacing: 0em;
