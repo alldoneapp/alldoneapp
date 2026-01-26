@@ -69,6 +69,10 @@ class URLsNotesTrigger {
         const matchedObj = URLsNotesTrigger.match(pathname)
         const params = matchedObj.matches.groups
 
+        // Extract query parameters
+        const urlParams = new URLSearchParams(window.location.search)
+        const autoStartTranscription = urlParams.get('autoStartTranscription') === 'true'
+
         // This Switch will have CASEs as elements have the "regexList" const
         switch (matchedObj.key) {
             case URL_ALL_PROJECTS_NOTES_FOLLOWED:
@@ -128,7 +132,9 @@ class URLsNotesTrigger {
                     navigation,
                     DV_TAB_NOTE_EDITOR,
                     params.projectId,
-                    params.noteId
+                    params.noteId,
+                    null,
+                    autoStartTranscription
                 )
         }
     }

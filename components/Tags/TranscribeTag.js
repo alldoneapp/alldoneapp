@@ -1,18 +1,23 @@
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
-import { useDispatch } from 'react-redux'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
-import NavigationService from '../../utils/NavigationService'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import { uploadNewNote } from '../../utils/backends/Notes/notesFirestore'
 import { updateTaskData } from '../../utils/backends/Tasks/tasksFirestore'
-import { setSelectedNote } from '../../redux/actions'
 import Backend from '../../utils/BackendBridge'
 import { getId } from '../../utils/backends/firestore'
+import { getDvMainTabLink } from '../../utils/LinkingHelper'
 
 export default function TranscribeTag({ task, projectId, containerStyle, disabled }) {
-    const dispatch = useDispatch()
+    const openNoteInNewTab = noteId => {
+        const noteUrl = `${window.location.origin}${getDvMainTabLink(
+            projectId,
+            noteId,
+            'notes'
+        )}?autoStartTranscription=true`
+        window.open(noteUrl, '_blank')
+    }
 
     const startTranscription = async () => {
         if (disabled) return
@@ -21,12 +26,7 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
         if (noteId) {
             const note = await Backend.getNoteMeta(projectId, noteId)
             if (note) {
-                dispatch(setSelectedNote(note))
-                NavigationService.navigate('NotesDetailedView', {
-                    noteId: note.id,
-                    projectId: projectId,
-                    autoStartTranscription: true,
-                })
+                openNoteInNewTab(note.id)
             }
         } else {
             const newNote = TasksHelper.getNewDefaultNote()
@@ -42,16 +42,8 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
             // Upload note
             await uploadNewNote(projectId, newNote)
 
-            // Setup navigation
-            const note = await Backend.getNoteMeta(projectId, generatedId)
-            if (note) {
-                dispatch(setSelectedNote(note))
-                NavigationService.navigate('NotesDetailedView', {
-                    noteId: generatedId,
-                    projectId: projectId,
-                    autoStartTranscription: true,
-                })
-            }
+            // Open the note in a new tab
+            openNoteInNewTab(generatedId)
         }
     }
 

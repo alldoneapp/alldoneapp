@@ -1187,9 +1187,17 @@ class TasksHelper {
      * @param projectId
      * @param noteId
      * @param filterConstant
+     * @param autoStartTranscription
      * @returns {Promise<void>}
      */
-    static processURLNoteDetailsTab = async (navigation, tab, projectId, noteId, filterConstant) => {
+    static processURLNoteDetailsTab = async (
+        navigation,
+        tab,
+        projectId,
+        noteId,
+        filterConstant,
+        autoStartTranscription = false
+    ) => {
         const { loggedUser, selectedSidebarTab } = store.getState()
         const note = await Backend.getNoteMeta(projectId, noteId)
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
@@ -1209,6 +1217,7 @@ class TasksHelper {
             let data = {
                 noteId: note.id,
                 projectId,
+                autoStartTranscription,
             }
             store.dispatch([
                 switchProject(projectIndex),
