@@ -3062,41 +3062,68 @@ async function findAndSetNewFocusedTask(
         // dueDate and calendarData will be filtered in memory after fetching
         .orderBy('sortIndex', 'desc') // Primary sort
 
-    const openTasksSnapshot = await query.limit(200).get() // Fetch a larger batch for in-memory filtering
+    try {
+        const openTasksSnapshot = await query.limit(200).get() // Fetch a larger batch for in-memory filtering
 
-    if (!openTasksSnapshot.empty) {
-        const allFetchedTasksInCurrentProject = openTasksSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(
+        if (!openTasksSnapshot.empty) {
+            const allTasksBeforeFilter = openTasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            const allFetchedTasksInCurrentProject = allTasksBeforeFilter.filter(
                 task =>
                     task.dueDate <= endOfToday && !task.calendarData && (!excludeTaskId || task.id !== excludeTaskId)
             )
 
-        // Attempt 1: Non-workflow tasks with the same parentGoalId as the previous task
-        if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
-            const tasksInSameSpecificGroup = allFetchedTasksInCurrentProject.filter(
-                task => task.parentGoalId === previousTaskParentGoalId
+            // Log filtering results for current project
+            const filteredOutTasks = allTasksBeforeFilter.filter(
+                task => task.dueDate > endOfToday || task.calendarData || (excludeTaskId && task.id === excludeTaskId)
             )
 
-            const nonWorkflowTasksInGroup = tasksInSameSpecificGroup.filter(task => task.userIds.length === 1)
-            if (nonWorkflowTasksInGroup.length > 0) {
-                newFocusedTask = nonWorkflowTasksInGroup[0] // Already sorted by sortIndex
-            }
-            // If only workflow tasks remain in same goal, fall through to check other goals first
-        }
+            console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId} task analysis:`, {
+                totalFetched: allTasksBeforeFilter.length,
+                validTasksCount: allFetchedTasksInCurrentProject.length,
+                filteredOutCount: filteredOutTasks.length,
+                filteredOutReasons:
+                    filteredOutTasks.length <= 10
+                        ? filteredOutTasks.map(t => ({
+                              id: t.id,
+                              name: t.name,
+                              dueDateFuture: t.dueDate > endOfToday,
+                              dueDate: new Date(t.dueDate).toISOString(),
+                              isCalendarTask: !!t.calendarData,
+                              isExcludedTask: excludeTaskId && t.id === excludeTaskId,
+                          }))
+                        : `${filteredOutTasks.length} tasks filtered (too many to log)`,
+            })
 
-        // Attempt 2: Non-workflow tasks in other goals or general tasks
-        if (!newFocusedTask) {
-            const nonWorkflowTasks = allFetchedTasksInCurrentProject.filter(task => task.userIds.length === 1)
-            if (nonWorkflowTasks.length > 0) {
-                newFocusedTask = nonWorkflowTasks[0] // Already sorted by sortIndex
-            }
-        }
+            // Attempt 1: Non-workflow tasks with the same parentGoalId as the previous task
+            if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
+                const tasksInSameSpecificGroup = allFetchedTasksInCurrentProject.filter(
+                    task => task.parentGoalId === previousTaskParentGoalId
+                )
 
-        // Attempt 3: Last resort - workflow tasks if no non-workflow tasks available at all
-        if (!newFocusedTask && allFetchedTasksInCurrentProject.length > 0) {
-            newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to workflow tasks
+                const nonWorkflowTasksInGroup = tasksInSameSpecificGroup.filter(task => task.userIds.length === 1)
+                if (nonWorkflowTasksInGroup.length > 0) {
+                    newFocusedTask = nonWorkflowTasksInGroup[0] // Already sorted by sortIndex
+                }
+                // If only workflow tasks remain in same goal, fall through to check other goals first
+            }
+
+            // Attempt 2: Non-workflow tasks in other goals or general tasks
+            if (!newFocusedTask) {
+                const nonWorkflowTasks = allFetchedTasksInCurrentProject.filter(task => task.userIds.length === 1)
+                if (nonWorkflowTasks.length > 0) {
+                    newFocusedTask = nonWorkflowTasks[0] // Already sorted by sortIndex
+                }
+            }
+
+            // Attempt 3: Last resort - workflow tasks if no non-workflow tasks available at all
+            if (!newFocusedTask && allFetchedTasksInCurrentProject.length > 0) {
+                newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to workflow tasks
+            }
+        } else {
+            console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId}: No open tasks found for user`)
         }
+    } catch (error) {
+        console.error(`[findAndSetNewFocusedTask] Error querying current project ${currentProjectId}:`, error)
     }
 
     if (newFocusedTask) {
@@ -3120,8 +3147,17 @@ async function findAndSetNewFocusedTask(
         })
 
     // Sort projects by sortIndexByUser (descending)
-    const sortedProjects = userProjects
-        .map(pid => loggedUserProjects.find(p => p.id === pid))
+    const projectsBeforeFilter = userProjects.map(pid => loggedUserProjects.find(p => p.id === pid))
+    const projectsLostInFilter = userProjects.filter((pid, index) => !projectsBeforeFilter[index])
+
+    if (projectsLostInFilter.length > 0) {
+        console.warn(`[findAndSetNewFocusedTask] Projects in projectUsers but NOT in loggedUserProjects:`, {
+            lostProjectIds: projectsLostInFilter,
+            loggedUserProjectIds: loggedUserProjects.map(p => p.id),
+        })
+    }
+
+    const sortedProjects = projectsBeforeFilter
         .filter(project => project) // Remove any undefined projects
         .sort((a, b) => {
             const aIndex = a.sortIndexByUser?.[userId] || 0
@@ -3130,41 +3166,76 @@ async function findAndSetNewFocusedTask(
         })
         .map(p => p.id)
 
+    console.log(`[findAndSetNewFocusedTask] Phase 4: Searching other projects`, {
+        currentProjectId,
+        totalOtherProjects: sortedProjects.length,
+        sortedProjectIds: sortedProjects,
+        endOfToday: new Date(endOfToday).toISOString(),
+    })
+
     // Search through each project in order of sortIndexByUser
     for (const pid of sortedProjects) {
-        const otherProjectTasksRef = getDb().collection(`items/${pid}/tasks`)
-        const otherProjectTasks = await otherProjectTasksRef
-            .where('userId', '==', userId)
-            .where('done', '==', false)
-            .where('inDone', '==', false)
-            .where('isSubtask', '==', false)
-            .orderBy('sortIndex', 'desc')
-            .limit(100) // Fetch a few tasks to ensure we have some valid ones after filtering
-            .get()
+        try {
+            const otherProjectTasksRef = getDb().collection(`items/${pid}/tasks`)
+            const otherProjectTasks = await otherProjectTasksRef
+                .where('userId', '==', userId)
+                .where('done', '==', false)
+                .where('inDone', '==', false)
+                .where('isSubtask', '==', false)
+                .orderBy('sortIndex', 'desc')
+                .limit(100) // Fetch a few tasks to ensure we have some valid ones after filtering
+                .get()
 
-        if (!otherProjectTasks.empty) {
-            // Filter in memory for tasks that meet our criteria
-            const validTasks = otherProjectTasks.docs
-                .map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter(
-                    task => task.dueDate <= endOfToday && !task.calendarData // Only tasks due today or earlier // Exclude calendar tasks
+            if (!otherProjectTasks.empty) {
+                // Filter in memory for tasks that meet our criteria
+                const allTasksFromProject = otherProjectTasks.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                const validTasks = allTasksFromProject.filter(
+                    task =>
+                        task.dueDate <= endOfToday &&
+                        !task.calendarData &&
+                        (!excludeTaskId || task.id !== excludeTaskId)
                 )
 
-            if (validTasks.length > 0) {
-                // Prioritize non-workflow tasks first
-                const nonWorkflowValidTasks = validTasks.filter(task => task.userIds.length === 1)
-                const newFocusedTaskFromOtherProject =
-                    nonWorkflowValidTasks.length > 0 ? nonWorkflowValidTasks[0] : validTasks[0] // Fallback to workflow tasks if no regular tasks available
+                // Log why tasks were filtered out
+                const filteredOutTasks = allTasksFromProject.filter(
+                    task =>
+                        task.dueDate > endOfToday || task.calendarData || (excludeTaskId && task.id === excludeTaskId)
+                )
 
-                console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
-                    projectId: pid,
-                    taskId: newFocusedTaskFromOtherProject.id,
-                    taskName: newFocusedTaskFromOtherProject.name,
-                    isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
+                console.log(`[findAndSetNewFocusedTask] Project ${pid} task analysis:`, {
+                    totalFetched: allTasksFromProject.length,
+                    validTasksCount: validTasks.length,
+                    filteredOutCount: filteredOutTasks.length,
+                    filteredOutReasons: filteredOutTasks.map(t => ({
+                        id: t.id,
+                        name: t.name,
+                        dueDateFuture: t.dueDate > endOfToday,
+                        dueDate: new Date(t.dueDate).toISOString(),
+                        isCalendarTask: !!t.calendarData,
+                        isExcludedTask: excludeTaskId && t.id === excludeTaskId,
+                    })),
                 })
-                await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject)
-                return true
+
+                if (validTasks.length > 0) {
+                    // Prioritize non-workflow tasks first
+                    const nonWorkflowValidTasks = validTasks.filter(task => task.userIds.length === 1)
+                    const newFocusedTaskFromOtherProject =
+                        nonWorkflowValidTasks.length > 0 ? nonWorkflowValidTasks[0] : validTasks[0] // Fallback to workflow tasks if no regular tasks available
+
+                    console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
+                        projectId: pid,
+                        taskId: newFocusedTaskFromOtherProject.id,
+                        taskName: newFocusedTaskFromOtherProject.name,
+                        isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
+                    })
+                    await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject)
+                    return true
+                }
+            } else {
+                console.log(`[findAndSetNewFocusedTask] Project ${pid}: No open tasks found for user`)
             }
+        } catch (error) {
+            console.error(`[findAndSetNewFocusedTask] Error querying project ${pid}:`, error)
         }
     }
 
@@ -3201,7 +3272,13 @@ async function findAndSetNewFocusedTask(
         inFocusTaskProjectId: '',
     })
     await batch.commit()
-    console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`)
+    console.log(`[findAndSetNewFocusedTask] No new focus task found - clearing focus`, {
+        searchedCurrentProject: currentProjectId,
+        searchedOtherProjects: sortedProjects,
+        totalProjectsSearched: 1 + sortedProjects.length,
+        excludeTaskId,
+        previousTaskParentGoalId,
+    })
     return false
 }
 
