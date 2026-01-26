@@ -13,6 +13,18 @@
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let NoteModelBuilder, NoteValidator, NoteFeedGenerator, getNextNoteId
 
+// Import markdown to Yjs converter for AI assistant content
+let insertMarkdownToYjs, containsMarkdown
+try {
+    const markdownToYjs = require('../Assistant/markdownToYjs')
+    insertMarkdownToYjs = markdownToYjs.insertMarkdownToYjs
+    containsMarkdown = markdownToYjs.containsMarkdown
+} catch (error) {
+    console.warn('NoteService: markdownToYjs not available:', error.message)
+    insertMarkdownToYjs = null
+    containsMarkdown = null
+}
+
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
     if (!NoteModelBuilder) {
@@ -1040,14 +1052,30 @@ class NoteService {
             currentPosition += 2
             console.log(`NoteService: Inserted header newlines at position ${currentPosition - 2}`)
 
-            // Step 3: Insert new content with normal formatting + extra line break after
-            ytext.insert(currentPosition, `${newContent}\n\n\n`, { header: null })
-            currentPosition += newContent.length + 3
-            console.log(
-                `NoteService: Inserted content with normal formatting at position ${
-                    currentPosition - newContent.length - 3
-                }, length: ${newContent.length}`
-            )
+            // Step 3: Insert new content - check for markdown and convert if needed
+            console.log(`[NoteService] ========== CONTENT INSERTION START ==========`)
+            console.log(`[NoteService] Content to insert (first 500 chars):`, newContent.substring(0, 500))
+            console.log(`[NoteService] Content length:`, newContent.length)
+            console.log(`[NoteService] insertMarkdownToYjs available:`, !!insertMarkdownToYjs)
+            console.log(`[NoteService] containsMarkdown available:`, !!containsMarkdown)
+
+            const hasMarkdown = containsMarkdown ? containsMarkdown(newContent) : false
+            console.log(`[NoteService] Contains markdown:`, hasMarkdown)
+
+            if (insertMarkdownToYjs && hasMarkdown) {
+                console.log(`[NoteService] Using markdown conversion for content insertion`)
+                const contentStartPos = currentPosition
+                currentPosition = insertMarkdownToYjs(ytext, currentPosition, newContent)
+                // Add trailing newlines
+                ytext.insert(currentPosition, '\n\n\n')
+                currentPosition += 3
+                console.log(`[NoteService] Inserted markdown content from pos ${contentStartPos} to ${currentPosition}`)
+            } else {
+                console.log(`[NoteService] Using plain text insertion (no markdown detected or converter unavailable)`)
+                ytext.insert(currentPosition, `${newContent}\n\n\n`, { header: null })
+                currentPosition += newContent.length + 3
+            }
+            console.log(`[NoteService] ========== CONTENT INSERTION END ==========`)
 
             console.log(`NoteService: Total document length after insertions: ${ytext.length}`)
 
