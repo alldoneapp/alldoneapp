@@ -12,22 +12,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setActiveChatMessageId } from '../../../../redux/actions'
 import { divideCodeText } from './codeParserFunctions'
 import CodeText from './CodeText'
-
-// Helper function to process headers in text
-const processHeaders = text => {
-    const lines = text.split('\n')
-    return lines.map(line => {
-        const trimmedLine = line.trim()
-        if (trimmedLine.startsWith('### ')) {
-            return { type: 'h3', text: trimmedLine.substring(4) }
-        } else if (trimmedLine.startsWith('## ')) {
-            return { type: 'h2', text: trimmedLine.substring(3) }
-        } else if (trimmedLine.startsWith('# ')) {
-            return { type: 'h1', text: trimmedLine.substring(2) }
-        }
-        return { type: 'text', text: line }
-    })
-}
+import { parseMarkdownLines, parseInlineFormatting } from './markdownParserFunctions'
+import Icon from '../../../Icon'
 
 export default function MessageItemContent({
     messageId,
@@ -72,6 +58,24 @@ export default function MessageItemContent({
         }
     }, [activeChatMessageId])
 
+    // Render inline formatted text segments
+    const renderFormattedText = (segments, baseStyle) => {
+        if (!segments || segments.length === 0) return null
+        return segments.map((segment, idx) => {
+            const style = [
+                baseStyle,
+                segment.bold && { fontWeight: 'bold' },
+                segment.italic && { fontStyle: 'italic' },
+                segment.strikethrough && { textDecorationLine: 'line-through' },
+            ]
+            return (
+                <Text key={idx} style={style}>
+                    {segment.text}
+                </Text>
+            )
+        })
+    }
+
     const renderTextContent = (text, lastItem) => {
         const textData = divideCodeText(text)
         return textData.map((data, subIndex) => {
@@ -79,16 +83,25 @@ export default function MessageItemContent({
             if (data.type === 'code') {
                 return <CodeText key={`text-${subIndex}`} lastItem={lastItemInsideItem} text={data.text} />
             } else {
-                const processedLines = processHeaders(data.text)
+                const processedLines = parseMarkdownLines(data.text)
                 return processedLines.map((line, lineIndex) => {
                     const isLastLine = lastItemInsideItem && lineIndex === processedLines.length - 1
-                    if (line.type === 'h1') {
+                    const marginStyle = !isLastLine ? { marginBottom: 4 } : null
+
+                    if (line.type === 'hr') {
+                        return (
+                            <View
+                                key={`hr-${lineIndex}`}
+                                style={[localStyles.horizontalRule, !isLastLine && { marginBottom: 16 }]}
+                            />
+                        )
+                    } else if (line.type === 'h1') {
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
                                 style={[localStyles.header1, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {line.text}
+                                {renderFormattedText(line.segments, localStyles.header1)}
                             </Text>
                         )
                     } else if (line.type === 'h2') {
@@ -97,7 +110,7 @@ export default function MessageItemContent({
                                 key={`header-${lineIndex}`}
                                 style={[localStyles.header2, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {line.text}
+                                {renderFormattedText(line.segments, localStyles.header2)}
                             </Text>
                         )
                     } else if (line.type === 'h3') {
@@ -106,15 +119,74 @@ export default function MessageItemContent({
                                 key={`header-${lineIndex}`}
                                 style={[localStyles.header3, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {line.text}
+                                {renderFormattedText(line.segments, localStyles.header3)}
                             </Text>
                         )
+                    } else if (line.type === 'bullet') {
+                        return (
+                            <View key={`bullet-${lineIndex}`} style={[localStyles.bulletContainer, marginStyle]}>
+                                <Text style={localStyles.bulletPoint}>•</Text>
+                                <View style={localStyles.bulletContent}>
+                                    <Text style={localStyles.text}>
+                                        {renderFormattedText(line.segments, localStyles.text)}
+                                    </Text>
+                                </View>
+                            </View>
+                        )
+                    } else if (line.type === 'numbered') {
+                        return (
+                            <View key={`numbered-${lineIndex}`} style={[localStyles.bulletContainer, marginStyle]}>
+                                <Text style={localStyles.numberedPoint}>{line.number}.</Text>
+                                <View style={localStyles.bulletContent}>
+                                    <Text style={localStyles.text}>
+                                        {renderFormattedText(line.segments, localStyles.text)}
+                                    </Text>
+                                </View>
+                            </View>
+                        )
+                    } else if (line.type === 'checkbox') {
+                        return (
+                            <View key={`checkbox-${lineIndex}`} style={[localStyles.bulletContainer, marginStyle]}>
+                                <View style={localStyles.checkboxIcon}>
+                                    <Icon
+                                        name={line.checked ? 'square-check' : 'square'}
+                                        size={16}
+                                        color={line.checked ? colors.Primary100 : colors.Text03}
+                                    />
+                                </View>
+                                <View style={localStyles.bulletContent}>
+                                    <Text
+                                        style={[
+                                            localStyles.text,
+                                            line.checked && {
+                                                textDecorationLine: 'line-through',
+                                                color: colors.Text03,
+                                            },
+                                        ]}
+                                    >
+                                        {renderFormattedText(line.segments, localStyles.text)}
+                                    </Text>
+                                </View>
+                            </View>
+                        )
                     } else {
+                        // For regular text, check if it has inline formatting
+                        const segments = parseInlineFormatting(line.text)
+                        const hasFormatting = segments.some(s => s.bold || s.italic || s.strikethrough)
+
+                        if (hasFormatting) {
+                            return (
+                                <Text key={`text-${lineIndex}`} style={[localStyles.text, marginStyle]}>
+                                    {renderFormattedText(segments, localStyles.text)}
+                                </Text>
+                            )
+                        }
+
                         return (
                             <CommentElementsParser
                                 key={`text-${lineIndex}`}
                                 comment={line.text}
-                                containerStyle={!isLastLine && { marginBottom: 16 }}
+                                containerStyle={marginStyle}
                                 entryStyle={localStyles.text}
                                 projectId={projectId}
                                 inChat={true}
@@ -220,6 +292,36 @@ const localStyles = StyleSheet.create({
         lineHeight: 28,
         color: colors.Text01,
         fontWeight: '500',
+    },
+    horizontalRule: {
+        height: 1,
+        backgroundColor: colors.Gray300,
+        marginVertical: 16,
+        width: '100%',
+    },
+    bulletContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        width: '100%',
+    },
+    bulletPoint: {
+        ...global.body1,
+        color: colors.Text02,
+        marginRight: 8,
+        width: 16,
+    },
+    numberedPoint: {
+        ...global.body1,
+        color: colors.Text02,
+        marginRight: 8,
+        minWidth: 20,
+    },
+    bulletContent: {
+        flex: 1,
+    },
+    checkboxIcon: {
+        marginRight: 8,
+        marginTop: 2,
     },
     loadingContainer: {
         opacity: 0.8,
