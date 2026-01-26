@@ -1244,7 +1244,7 @@ class TasksHelper {
             navigation.navigate('NotesDetailedView', data)
         } else if (note && inSelectedProject && note.parentObject?.type === 'tasks') {
             // Note is attached to a task - fetch the task and navigate to the task's note tab
-            const task = await Backend.getTask(projectId, note.parentObject.id)
+            const task = await Backend.getTaskData(projectId, note.parentObject.id)
             if (task) {
                 const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
                 console.log(
