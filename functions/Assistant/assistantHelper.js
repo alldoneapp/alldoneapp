@@ -2970,6 +2970,56 @@ function parseTextForUseLiKePrompt(text) {
     return text.replaceAll('{', '{{').replaceAll('}', '}}')
 }
 
+/**
+ * Count open tasks (today + overdue) for a user in a project
+ * This mirrors the logic in utils/backends/Tasks/taskNumbers.js watchSidebarTasksAmount
+ * @param {string} projectId - The project ID
+ * @param {string} userId - The user ID
+ * @param {number|null} userTimezoneOffset - User's timezone offset in minutes
+ * @returns {Promise<number>} The count of open tasks for today (including overdue)
+ */
+async function countOpenTasksForToday(projectId, userId, userTimezoneOffset = null) {
+    try {
+        // Calculate end of today in user's timezone
+        let dateEndToday
+        if (userTimezoneOffset !== null && typeof userTimezoneOffset === 'number') {
+            dateEndToday = moment().utcOffset(userTimezoneOffset).endOf('day').valueOf()
+        } else {
+            dateEndToday = moment().endOf('day').valueOf()
+        }
+
+        // Query for tasks assigned to this user that are:
+        // - Not done
+        // - Due today or earlier (overdue)
+        // - Parent tasks only (not subtasks)
+        // - Visible to this user
+        const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
+
+        const tasksSnapshot = await admin
+            .firestore()
+            .collection(`items/${projectId}/tasks`)
+            .where('done', '==', false)
+            .where('dueDate', '<=', dateEndToday)
+            .where('parentId', '==', null)
+            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .get()
+
+        // Count only tasks assigned to this specific user
+        let count = 0
+        tasksSnapshot.docs.forEach(doc => {
+            const task = doc.data()
+            if (task.userId === userId) {
+                count++
+            }
+        })
+
+        return count
+    } catch (error) {
+        console.error('Error counting open tasks for today:', error)
+        return null // Return null on error so we don't add misleading info to context
+    }
+}
+
 // Optimized context fetching with parallel operations
 async function getOptimizedContextMessages(
     messageId,
@@ -3016,7 +3066,14 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
-    const [commentDocs, chatData, notesContext] = await Promise.all(parallelPromises)
+    // Fetch open task count for today (including overdue) in parallel
+    if (userId && projectId) {
+        parallelPromises.push(countOpenTasksForToday(projectId, userId, userTimezoneOffset))
+    } else {
+        parallelPromises.push(Promise.resolve(null))
+    }
+
+    const [commentDocs, chatData, notesContext, openTaskCount] = await Promise.all(parallelPromises)
 
     // Collect messages from conversation history
     const messages = []
@@ -3045,6 +3102,16 @@ async function getOptimizedContextMessages(
         messages.push([
             'system',
             `This conversation is about a ${objectTypeLabel} titled: "${parseTextForUseLiKePrompt(chatData.title)}"`,
+        ])
+    }
+
+    // Add open task count context if available
+    if (openTaskCount !== null && typeof openTaskCount === 'number') {
+        messages.push([
+            'system',
+            `Today (including overdue) the user still has ${openTaskCount} open task${
+                openTaskCount !== 1 ? 's' : ''
+            } to do.`,
         ])
     }
 
