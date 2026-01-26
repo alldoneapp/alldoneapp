@@ -31,7 +31,7 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
     ])
 
     if (!user || user.gold <= 0) {
-        return 'Sorry, you have run out of credits. Please check your account in the Alldone app.'
+        return 'Sorry, you have run out of credits. Get more Gold with Premium: https://my.alldone.app/settings/premium'
     }
 
     const { model, temperature, instructions, displayName, allowedTools: rawTools } = assistant

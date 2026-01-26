@@ -14,7 +14,7 @@ import ChangeTextFieldModal from '../../UIComponents/FloatModals/ChangeTextField
 import ChangeContactInfoModal from '../../UIComponents/FloatModals/ChangeContactInfoModal'
 import HelperFunctions from '../../../utils/HelperFunctions'
 import ImagePickerModal from '../../UIComponents/FloatModals/ImagePickerModal'
-import { showConfirmPopup } from '../../../redux/actions'
+import { showConfirmPopup, setShowLimitedFeatureModal } from '../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PROJECT_CONTACT } from '../../UIComponents/ConfirmPopup'
 import URLsContacts, { URL_CONTACT_DETAILS_PROPERTIES } from '../../../URLSystem/Contacts/URLsContacts'
 import ContactsHelper, { PHOTO_SIZE_300, PHOTO_SIZE_50 } from '../../ContactsView/Utils/ContactsHelper'
@@ -157,7 +157,12 @@ class ContactProperties extends Component {
         if (!contact?.linkedInUrl) return
 
         if (loggedUser.gold < 30) {
-            alert(translate('Not enough Gold'))
+            store.dispatch(
+                setShowLimitedFeatureModal({
+                    title: translate('Not enough Gold'),
+                    description: translate('Not enough Gold description'),
+                })
+            )
             return
         }
 
@@ -165,7 +170,12 @@ class ContactProperties extends Component {
         try {
             const result = await enrichContactViaLinkedIn(projectId, contact, contact.uid)
             if (result && result.error === 'insufficient_gold') {
-                alert(translate('Not enough Gold'))
+                store.dispatch(
+                    setShowLimitedFeatureModal({
+                        title: translate('Not enough Gold'),
+                        description: translate('Not enough Gold description'),
+                    })
+                )
             }
         } catch (error) {
             console.error('LinkedIn enrichment failed:', error)
@@ -179,7 +189,12 @@ class ContactProperties extends Component {
         const contact = projectContacts[projectId].find(c => c.uid === userProp.uid)
 
         if (loggedUser.gold < 20) {
-            alert(translate('Not enough Gold'))
+            store.dispatch(
+                setShowLimitedFeatureModal({
+                    title: translate('Not enough Gold'),
+                    description: translate('Not enough Gold description'),
+                })
+            )
             return
         }
 
@@ -187,7 +202,12 @@ class ContactProperties extends Component {
         try {
             const result = await searchLinkedInProfile(projectId, contact, contact.uid)
             if (result && result.error === 'insufficient_gold') {
-                alert(translate('Not enough Gold'))
+                store.dispatch(
+                    setShowLimitedFeatureModal({
+                        title: translate('Not enough Gold'),
+                        description: translate('Not enough Gold description'),
+                    })
+                )
             } else if (result && result.success && !result.linkedInUrl) {
                 alert(translate('No LinkedIn profile found'))
             }

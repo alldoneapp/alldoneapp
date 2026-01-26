@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useState, useRef } from 'react'
 import { StyleSheet, View, TextInput, Text } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
+import Popover from 'react-tiny-popover'
 
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
 import { stopLoadingData } from '../../../../redux/actions'
+import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { getAssistantLineData, getOptionsPresentationData } from './helper'
 import OptionButtons from './OptionButtons/OptionButtons'
 import MoreOptionsWrapper from './MoreOptions/MoreOptionsWrapper'
@@ -26,9 +28,11 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const userId = useSelector(state => state.loggedUser.uid)
     const isMobile = useSelector(state => state.smallScreenNavigation)
+    const gold = useSelector(state => state.loggedUser.gold)
     const [tasks, setTasks] = useState(null)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
+    const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const isSendingRef = useRef(false)
 
     const { assistant, assistantProject, assistantProjectId } = getAssistantLineData(
@@ -58,6 +62,11 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const handleSendMessage = useCallback(async () => {
         const trimmedMessage = message.trim()
         if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
+
+        if (gold <= 0) {
+            setShowRunOutOfGoldModal(true)
+            return
+        }
 
         isSendingRef.current = true
         setIsSending(true)
@@ -96,7 +105,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             isSendingRef.current = false
             setIsSending(false)
         }
-    }, [assistant, assistantProject, message])
+    }, [assistant, assistantProject, message, gold])
 
     if (!tasks || !assistant || !assistant.uid || !assistantProject) {
         return null
@@ -140,18 +149,27 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     onSubmitEditing={handleSendMessage}
                     returnKeyType={'send'}
                 />
-                <View style={localStyles.sendButtonWrapper}>
-                    <Button
-                        title={isSending ? null : sendButtonTitle}
-                        icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
-                        onPress={handleSendMessage}
-                        disabled={!canSend}
-                        buttonStyle={sendButtonStyle}
-                        titleStyle={localStyles.sendButtonTitle}
-                        accessibilityLabel={sendLabel}
-                        accessible={true}
-                    />
-                </View>
+                <Popover
+                    content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
+                    align={'start'}
+                    position={['top', 'bottom', 'left', 'right']}
+                    onClickOutside={() => setShowRunOutOfGoldModal(false)}
+                    isOpen={showRunOutOfGoldModal}
+                    contentLocation={isMobile ? null : undefined}
+                >
+                    <View style={localStyles.sendButtonWrapper}>
+                        <Button
+                            title={isSending ? null : sendButtonTitle}
+                            icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
+                            onPress={handleSendMessage}
+                            disabled={!canSend}
+                            buttonStyle={sendButtonStyle}
+                            titleStyle={localStyles.sendButtonTitle}
+                            accessibilityLabel={sendLabel}
+                            accessible={true}
+                        />
+                    </View>
+                </Popover>
             </View>
             {hasQuickActions && (
                 <View style={localStyles.quickActions}>
