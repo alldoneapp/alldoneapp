@@ -49,12 +49,17 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
             const spaceSuffix = isLastElement ? '' : ' '
 
             if (type === TEXT_ELEMENT) {
-                return text ? (
-                    <Text key={key} style={style}>
-                        {text}
-                        {spaceSuffix}
-                    </Text>
-                ) : null
+                // Render text element, including space suffix even if text is empty
+                // This preserves leading/trailing spaces from the original text
+                if (text || spaceSuffix) {
+                    return (
+                        <Text key={key} style={style}>
+                            {text}
+                            {spaceSuffix}
+                        </Text>
+                    )
+                }
+                return null
             } else if (type === HASH_ELEMENT) {
                 return (
                     <React.Fragment key={key}>
@@ -121,11 +126,27 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
 export default function Comment({ containerStyle, projectId, comment }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
-    const { commentText, lastChangeDate, creatorId } = comment
+    const { commentText, lastChangeDate, creatorId, creatorType } = comment
 
     const { photoURL, displayName } = useGetUserPresentationData(creatorId)
 
+    // Check if this is an assistant comment
+    const isAssistantComment = creatorType === 'assistant'
+
+    // DEBUG: Log original AI assistant answer in comment popup
+    if (isAssistantComment) {
+        console.log('=== AI ASSISTANT MESSAGE DEBUG (Comment Popup) ===')
+        console.log('Original commentText:', JSON.stringify(commentText))
+        console.log('Original commentText (raw):', commentText)
+    }
+
     const textsFiltered = divideQuotedText(commentText, 'quote')
+
+    // DEBUG: Log after quote processing
+    if (isAssistantComment) {
+        console.log('After divideQuotedText:', JSON.stringify(textsFiltered))
+    }
+
     const date = getTimestampInMilliseconds(lastChangeDate) ?? Date.now()
 
     // Track link counter for renderFormattedText
@@ -136,7 +157,18 @@ export default function Comment({ containerStyle, projectId, comment }) {
     }
 
     const renderTextContent = (text, lastItem) => {
+        // DEBUG: Log text before code parsing
+        if (isAssistantComment) {
+            console.log('renderTextContent input:', JSON.stringify(text))
+        }
+
         const textData = divideCodeText(text)
+
+        // DEBUG: Log after code block parsing
+        if (isAssistantComment) {
+            console.log('After divideCodeText:', JSON.stringify(textData))
+        }
+
         return textData.map((data, subIndex) => {
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
             if (data.type === 'code') {
@@ -151,6 +183,11 @@ export default function Comment({ containerStyle, projectId, comment }) {
                 )
             } else {
                 const processedLines = parseMarkdownLines(data.text)
+
+                // DEBUG: Log after markdown parsing
+                if (isAssistantComment) {
+                    console.log('After parseMarkdownLines:', JSON.stringify(processedLines))
+                }
                 return processedLines.map((line, lineIndex) => {
                     const isLastLine = lastItemInsideItem && lineIndex === processedLines.length - 1
                     const marginStyle = !isLastLine ? { marginBottom: 4 } : null
