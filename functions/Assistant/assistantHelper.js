@@ -1338,7 +1338,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 tasks: tasks.map(t => ({
                     id: t.documentId || t.id,
                     name: t.name,
-                    completed: t.completed,
+                    completed: !!t.done,
                     projectName: t.projectName,
                     dueDate: t.dueDate,
                     humanReadableId: t.humanReadableId || null,
