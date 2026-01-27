@@ -1275,8 +1275,23 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
             const userData = userDoc.data()
 
-            // Normalize user's timezone for proper calendar time conversion
-            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
+            // Normalize user's timezone for proper calendar time conversion (check multiple possible fields)
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+            console.log('📋 GET_TASKS TOOL: Request params', {
+                userId: creatorId,
+                status: toolArgs.status || 'open',
+                date: toolArgs.date || null,
+                limit: toolArgs.limit || 100,
+                allProjects: toolArgs.allProjects || false,
+                rawTimezone: rawTz,
+                normalizedTimezoneOffset: timezoneOffset,
+            })
 
             // Get projects with database interface
             const projectService = new ProjectService({
@@ -1335,6 +1350,11 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 })
                 tasks = result.tasks || []
             }
+
+            console.log('📋 GET_TASKS TOOL: Results', {
+                tasksReturned: tasks.length,
+                limit: taskLimit,
+            })
 
             return {
                 tasks: tasks.map(t => ({
