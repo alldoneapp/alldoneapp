@@ -1696,6 +1696,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 projectId: searchProjectId,
                 currentProjectId: projectId,
                 dateRange: toolArgs.dateRange || null,
+                status: toolArgs.status || null,
             })
 
             const { SearchService } = require('../shared/SearchService')
@@ -1719,6 +1720,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 type: toolArgs.type || 'all',
                 projectId: searchProjectId,
                 dateRange: toolArgs.dateRange || null,
+                status: toolArgs.status || null,
             })
             console.log('🔍 SEARCH TOOL: Search completed', {
                 tasksCount: result.results.tasks?.length || 0,

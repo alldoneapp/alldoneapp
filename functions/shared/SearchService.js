@@ -124,13 +124,21 @@ class SearchService {
      * @param {string} [searchParams.type] - Entity type filter ('all', 'tasks', 'notes', etc.)
      * @param {string} [searchParams.projectId] - Limit search to specific project
      * @param {string} [searchParams.dateRange] - Time filter ('last week', 'yesterday', etc.)
+     * @param {string} [searchParams.status] - Task status filter ('open', 'done', 'all') - only applies to task searches
      * @param {number} [searchParams.limit] - Maximum results to return
      * @returns {Object} Search results with matches from different entity types
      */
     async search(userId, searchParams) {
         await this.ensureInitialized()
 
-        const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
+        const {
+            query,
+            type = ENTITY_TYPES.ALL,
+            projectId,
+            dateRange,
+            status,
+            limit = DEFAULT_SEARCH_LIMIT,
+        } = searchParams
 
         // Validate input
         if (!query || typeof query !== 'string' || query.trim().length < 2) {
@@ -153,7 +161,14 @@ class SearchService {
      */
     async searchWithOptimization(userId, searchParams) {
         try {
-            const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
+            const {
+                query,
+                type = ENTITY_TYPES.ALL,
+                projectId,
+                dateRange,
+                status,
+                limit = DEFAULT_SEARCH_LIMIT,
+            } = searchParams
             const MAX_SEARCH_ATTEMPTS = 5
             let bestResults = null
             let searchAttempts = []
@@ -314,7 +329,14 @@ class SearchService {
      * @returns {Object} Search results
      */
     async executeSearch(userId, searchParams) {
-        const { query, type = ENTITY_TYPES.ALL, projectId, dateRange, limit = DEFAULT_SEARCH_LIMIT } = searchParams
+        const {
+            query,
+            type = ENTITY_TYPES.ALL,
+            projectId,
+            dateRange,
+            status,
+            limit = DEFAULT_SEARCH_LIMIT,
+        } = searchParams
 
         // Validate query
         if (!query || typeof query !== 'string' || query.trim().length === 0) {
@@ -380,7 +402,7 @@ class SearchService {
 
             // Execute searches across selected entity types
             const searchPromises = entityTypes.map(entityType =>
-                this.searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId)
+                this.searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId, status)
             )
 
             const searchResults = await Promise.all(searchPromises)
@@ -843,9 +865,10 @@ class SearchService {
      * @param {string} projectId - Optional project filter
      * @param {number} limit - Result limit
      * @param {string} userId - User ID for visibility filtering
+     * @param {string} status - Task status filter ('open', 'done', 'all') - only applies to tasks
      * @returns {Array} Search results for this entity type
      */
-    async searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId) {
+    async searchEntityType(entityType, parsedQuery, userProjects, projectId, limit, userId, status) {
         if (!this.algoliaClient || !this.options.enableAlgolia) {
             return []
         }
@@ -878,7 +901,7 @@ class SearchService {
                 return []
             }
 
-            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId)
+            const filters = this.buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status)
 
             const searchOptions = {
                 filters,
@@ -941,7 +964,7 @@ class SearchService {
      * @param {string} userId - Current user ID for visibility filtering
      * @returns {string} Algolia filter string
      */
-    buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId) {
+    buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
         const filters = []
         const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
@@ -983,7 +1006,17 @@ class SearchService {
                 break
         }
 
-        // Date range filter
+        // Task status filter (only applies to tasks)
+        if (entityType === ENTITY_TYPES.TASKS && status) {
+            if (status === 'done') {
+                filters.push('done:true')
+            } else if (status === 'open') {
+                filters.push('done:false')
+            }
+            // status === 'all' means no status filtering
+        }
+
+        // Date range filter - use lastEditionDate (updated when tasks are completed)
         if (parsedQuery.dateFilter) {
             const { startDate, endDate } = parsedQuery.dateFilter
             filters.push(`lastEditionDate >= ${startDate} AND lastEditionDate <= ${endDate}`)

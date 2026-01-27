@@ -261,7 +261,7 @@ const toolSchemas = {
         function: {
             name: 'search',
             description:
-                'Search across tasks, notes, goals, contacts, chats, and assistants. Use this to find information, answer questions about existing content, or locate specific items.',
+                'Search across tasks, notes, goals, contacts, chats, and assistants. Use this to find information, answer questions about existing content, or locate specific items. For task searches, can filter by completion status.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -280,7 +280,14 @@ const toolSchemas = {
                     },
                     dateRange: {
                         type: 'string',
-                        description: 'Optional: filter by date range in format "YYYY-MM-DD to YYYY-MM-DD"',
+                        description:
+                            'Optional: filter by date range in format "YYYY-MM-DD to YYYY-MM-DD". For done tasks, filters by completion date.',
+                    },
+                    status: {
+                        type: 'string',
+                        enum: ['open', 'done', 'all'],
+                        description:
+                            'Optional: filter tasks by status. Use "done" to find completed tasks, "open" for incomplete tasks. Only applies when type is "tasks".',
                     },
                 },
                 required: ['query'],
