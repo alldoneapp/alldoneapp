@@ -74,7 +74,7 @@ const toolSchemas = {
         function: {
             name: 'get_tasks',
             description:
-                'Retrieves and shows tasks from the current project or across all projects. Use this when the user asks to see, show, list, or check their tasks. Can filter by status (open/done), date (today, specific date), and project scope.',
+                'Retrieves and shows tasks from the current project or across all projects. Use this when the user asks to see, show, list, or check their tasks. Can filter by status (open/done), date (today, yesterday, specific date), and project scope. IMPORTANT: Use this tool (not search) when asking for done/completed tasks from a specific date like "what did I complete yesterday" or "show done tasks from last week".',
             parameters: {
                 type: 'object',
                 properties: {
@@ -266,7 +266,7 @@ const toolSchemas = {
         function: {
             name: 'search',
             description:
-                'Search across tasks, notes, goals, contacts, chats, and assistants. Use this to find information, answer questions about existing content, or locate specific items. For task searches, can filter by completion status.',
+                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead.',
             parameters: {
                 type: 'object',
                 properties: {
