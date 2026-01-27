@@ -317,9 +317,9 @@ export const markdownToDelta = (text, Delta) => {
             previousWasList = false
             previousWasHeader = false
         } else if (parsed.type === 'hr') {
-            // Horizontal rule - if coming after a list, explicitly break list formatting
+            // Horizontal rule - if coming after a list, explicitly break list formatting (shorter to fit mobile)
             console.log(`[markdownToDelta]   -> Inserting HR`)
-            delta.insert('───────────────────────────────────────')
+            delta.insert('───────────')
             if (!isLastLine) {
                 if (previousWasList) {
                     console.log(`[markdownToDelta]   -> HR newline with {list: null}`)

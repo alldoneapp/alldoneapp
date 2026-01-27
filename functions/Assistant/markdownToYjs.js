@@ -280,9 +280,9 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             previousWasList = false
             previousWasHeader = false
         } else if (parsed.type === 'hr') {
-            // Horizontal rule - insert visual divider
+            // Horizontal rule - insert visual divider (shorter to fit mobile screens)
             console.log(`[markdownToYjs]   -> Inserting HR at pos ${currentPosition}`)
-            const hrText = '───────────────────────────────────────'
+            const hrText = '────────────────────'
             ytext.insert(currentPosition, hrText)
             currentPosition += hrText.length
             if (!isLastLine) {

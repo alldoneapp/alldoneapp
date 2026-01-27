@@ -1047,10 +1047,13 @@ class NoteService {
             currentPosition += dateStamp.length
             console.log(`NoteService: Inserted date stamp at position ${insertPosition}, length: ${dateStamp.length}`)
 
-            // Step 2: Insert newline with Header 1 formatting + extra line break (like the toolbar button)
-            ytext.insert(currentPosition, '\n\n', { header: 1 })
-            currentPosition += 2
-            console.log(`NoteService: Inserted header newlines at position ${currentPosition - 2}`)
+            // Step 2: Insert newline with Header 1 formatting
+            // First newline ends the H1 line, second newline is a plain separator (must NOT inherit header formatting)
+            ytext.insert(currentPosition, '\n', { header: 1 })
+            currentPosition += 1
+            ytext.insert(currentPosition, '\n', { header: null }) // Explicit null to prevent header inheritance
+            currentPosition += 1
+            console.log(`NoteService: Inserted header newline + separator at position ${currentPosition - 2}`)
 
             // Step 3: Insert new content - check for markdown and convert if needed
             console.log(`[NoteService] ========== CONTENT INSERTION START ==========`)
