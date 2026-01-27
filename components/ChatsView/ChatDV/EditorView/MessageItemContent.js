@@ -51,20 +51,8 @@ export default function MessageItemContent({
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
 
-    // DEBUG: Log original AI assistant answer
-    if (creatorData?.isAssistant) {
-        console.log('=== AI ASSISTANT MESSAGE DEBUG (Chat View) ===')
-        console.log('Original commentText:', JSON.stringify(commentText))
-        console.log('Original commentText (raw):', commentText)
-    }
-
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
-
-    // DEBUG: Log after quote processing
-    if (creatorData?.isAssistant) {
-        console.log('After divideQuotedText:', JSON.stringify(processedContent))
-    }
 
     const enableEditMode = () => {
         if (!blockOpen && activeChatMessageId === '' && !showFloatPopup) {
@@ -103,12 +91,6 @@ export default function MessageItemContent({
 
             // Parse the segment text for links, tags, mentions, emails
             const parsedElements = parseFeedComment(segment.text, false, segment.bold)
-
-            // DEBUG: Log parsed elements
-            if (creatorData?.isAssistant) {
-                console.log('parseFeedComment input:', JSON.stringify(segment.text))
-                console.log('parseFeedComment output:', JSON.stringify(parsedElements))
-            }
 
             return parsedElements.map((element, elemIdx) => {
                 const key = `${segmentIdx}-${elemIdx}`
@@ -193,17 +175,7 @@ export default function MessageItemContent({
     }
 
     const renderTextContent = (text, lastItem) => {
-        // DEBUG: Log text before code parsing
-        if (creatorData?.isAssistant) {
-            console.log('renderTextContent input:', JSON.stringify(text))
-        }
-
         const textData = divideCodeText(text)
-
-        // DEBUG: Log after code block parsing
-        if (creatorData?.isAssistant) {
-            console.log('After divideCodeText:', JSON.stringify(textData))
-        }
 
         return textData.map((data, subIndex) => {
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
@@ -211,11 +183,6 @@ export default function MessageItemContent({
                 return <CodeText key={`text-${subIndex}`} lastItem={lastItemInsideItem} text={data.text} />
             } else {
                 const processedLines = parseMarkdownLines(data.text)
-
-                // DEBUG: Log after markdown parsing
-                if (creatorData?.isAssistant) {
-                    console.log('After parseMarkdownLines:', JSON.stringify(processedLines))
-                }
                 return processedLines.map((line, lineIndex) => {
                     const isLastLine = lastItemInsideItem && lineIndex === processedLines.length - 1
                     const marginStyle = !isLastLine ? { marginBottom: 4 } : null
