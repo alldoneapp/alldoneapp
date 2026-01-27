@@ -1038,6 +1038,9 @@
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='3']::before {
     font-size: 1.17em;
 }
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value='']::before {
+    font-size: 1em;
+}
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='4']::before {
     font-size: 1em;
 }

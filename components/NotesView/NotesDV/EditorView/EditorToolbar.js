@@ -260,7 +260,7 @@ const MoreVertical = ({ style, className }) => (
 //endregion
 
 const HEADING_FORMATS = [
-    { value: false, text: 'Normal text', shortcut: '1', TextStyle: TextStyleNormal },
+    { value: '', text: 'Normal text', shortcut: '1', TextStyle: TextStyleNormal },
     { value: '3', text: 'Small heading', shortcut: '2', TextStyle: TextStyleH3 },
     { value: '2', text: 'Subheading', shortcut: '3', TextStyle: TextStyleH2 },
     { value: '1', text: 'Heading', shortcut: '4', TextStyle: TextStyleH1 },
@@ -782,7 +782,9 @@ export const modules = {
             textFont: (header, scrollRef, scrollYPos) => {
                 const scrollY = scrollYPos.current
                 const editor = exportRef.getEditor()
-                editor.format('header', header, 'user')
+                // Convert empty string to false to clear header format (Quill API uses false to remove formatting)
+                const headerValue = header === '' || header === null ? false : header
+                editor.format('header', headerValue, 'user')
                 scrollRef.current.scrollTo({ x: 0, y: scrollY, animated: false })
             },
             textColor: (color, scrollRef, scrollYPos, type = 'color') => {

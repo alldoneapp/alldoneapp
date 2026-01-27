@@ -1,14 +1,15 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Dimensions, StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import EditForm from './EditForm'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../ModalHeader'
 
 export default function AssistantInstructionsModal({ disabled, assistant, closeModal, updateInstructions }) {
     const { instructions: initialInstructions } = assistant
+    const { width: windowWidth } = Dimensions.get('window')
+    const modalWidth = Math.min(windowWidth * 0.9, 1200)
 
     const setInstructions = instructions => {
         updateInstructions(instructions)
@@ -17,7 +18,7 @@ export default function AssistantInstructionsModal({ disabled, assistant, closeM
 
     return (
         <View>
-            <View style={[localStyles.container, applyPopoverWidth()]}>
+            <View style={[localStyles.container, { width: modalWidth }]}>
                 <View style={localStyles.innerContainer}>
                     <ModalHeader
                         title={translate('System Message Instructions')}
@@ -48,8 +49,6 @@ const localStyles = StyleSheet.create({
         shadowRadius: 16,
         elevation: 3,
         height: 'auto',
-        width: '90vw',
-        maxWidth: 900,
         minWidth: 600,
     },
     innerContainer: {

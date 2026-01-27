@@ -894,10 +894,15 @@ const NotesEditorView = ({
                     }
                     case '2': {
                         preventDefault(event)
-                        modules.toolbar.handlers.textFont('2', scrollRef, scrollYPos)
+                        modules.toolbar.handlers.textFont('3', scrollRef, scrollYPos)
                         break
                     }
                     case '3': {
+                        preventDefault(event)
+                        modules.toolbar.handlers.textFont('2', scrollRef, scrollYPos)
+                        break
+                    }
+                    case '4': {
                         preventDefault(event)
                         modules.toolbar.handlers.textFont('1', scrollRef, scrollYPos)
                         break

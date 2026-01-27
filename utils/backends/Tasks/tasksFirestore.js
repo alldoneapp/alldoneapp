@@ -3087,7 +3087,13 @@ async function findAndSetNewFocusedTask(
                               id: t.id,
                               name: t.name,
                               dueDateFuture: t.dueDate > endOfToday,
-                              dueDate: new Date(t.dueDate).toISOString(),
+                              dueDate: (() => {
+                                  try {
+                                      return new Date(t.dueDate).toISOString()
+                                  } catch {
+                                      return `invalid: ${t.dueDate}`
+                                  }
+                              })(),
                               isCalendarTask: !!t.calendarData,
                               isExcludedTask: excludeTaskId && t.id === excludeTaskId,
                           }))
@@ -3210,7 +3216,13 @@ async function findAndSetNewFocusedTask(
                         id: t.id,
                         name: t.name,
                         dueDateFuture: t.dueDate > endOfToday,
-                        dueDate: new Date(t.dueDate).toISOString(),
+                        dueDate: (() => {
+                            try {
+                                return new Date(t.dueDate).toISOString()
+                            } catch {
+                                return `invalid: ${t.dueDate}`
+                            }
+                        })(),
                         isCalendarTask: !!t.calendarData,
                         isExcludedTask: excludeTaskId && t.id === excludeTaskId,
                     })),
