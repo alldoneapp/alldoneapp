@@ -507,6 +507,7 @@ class TaskRetrievalService {
                     projectId: pId || task.projectId || projectId,
                     projectName: pName || task.projectName || providedProjectName || undefined,
                     name: task.name,
+                    done: !!task.done,
                     completed: task.completed || null,
                     humanReadableId: task.humanReadableId || task.human_readable_id || null,
                     dueDate: task.dueDate || null,
