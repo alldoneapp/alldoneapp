@@ -210,8 +210,15 @@ export const parseMarkdownLines = text => {
     if (!text) return []
 
     const lines = text.split('\n')
-    return lines.map(line => {
+    return lines.map((line, index) => {
         const lineData = parseLineType(line)
+        // DEBUG: Log bullet parsing
+        if (lineData.type === 'bullet') {
+            console.log(`=== BULLET LINE ${index} ===`)
+            console.log('Original line:', JSON.stringify(line))
+            console.log('Parsed text:', JSON.stringify(lineData.text))
+            console.log('First char code of text:', lineData.text ? lineData.text.charCodeAt(0) : 'N/A')
+        }
         // Parse inline formatting for the text content
         if (lineData.text) {
             lineData.segments = parseInlineFormatting(lineData.text)
