@@ -13,22 +13,108 @@ import { parseMarkdownLines, parseInlineFormatting } from '../../../ChatsView/Ch
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
+import {
+    parseFeedComment,
+    TEXT_ELEMENT,
+    HASH_ELEMENT,
+    URL_ELEMENT,
+    MENTION_ELEMENT,
+    EMAIL_ELEMENT,
+} from '../../Utils/HelperFunctions'
+import HashTag from '../../../Tags/HashTag'
+import LinkTag from '../../../Tags/LinkTag'
+import MentionTag from '../../../Tags/MentionTag'
+import EmailTag from '../../../Tags/EmailTag'
+import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
-// Render inline formatted text segments
-const renderFormattedText = (segments, baseStyle) => {
+// Render inline formatted text segments with link/tag parsing
+const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
     if (!segments || segments.length === 0) return null
-    return segments.map((segment, idx) => {
+    return segments.map((segment, segmentIdx) => {
         const style = [
             baseStyle,
             segment.bold && { fontWeight: 'bold' },
             segment.italic && { fontStyle: 'italic' },
             segment.strikethrough && { textDecorationLine: 'line-through' },
         ]
-        return (
-            <Text key={idx} style={style}>
-                {segment.text}
-            </Text>
-        )
+
+        // Parse the segment text for links, tags, mentions, emails
+        const parsedElements = parseFeedComment(segment.text, false, segment.bold)
+
+        return parsedElements.map((element, elemIdx) => {
+            const key = `${segmentIdx}-${elemIdx}`
+            const { type, text, link, email } = element
+            const isLastElement = elemIdx === parsedElements.length - 1
+            // Add space after each word except the last one in the segment
+            const spaceSuffix = isLastElement ? '' : ' '
+
+            if (type === TEXT_ELEMENT) {
+                return text ? (
+                    <Text key={key} style={style}>
+                        {text}
+                        {spaceSuffix}
+                    </Text>
+                ) : null
+            } else if (type === HASH_ELEMENT) {
+                return (
+                    <React.Fragment key={key}>
+                        <HashTag
+                            projectId={projectId}
+                            text={text}
+                            useCommentTagStyle={true}
+                            tagStyle={localStyles.inlineElement}
+                        />
+                        {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                    </React.Fragment>
+                )
+            } else if (type === URL_ELEMENT) {
+                return (
+                    <React.Fragment key={key}>
+                        <LinkTag
+                            link={link}
+                            useCommentTagStyle={true}
+                            text={'Link ' + getLinkCounter()}
+                            tagStyle={localStyles.inlineElement}
+                        />
+                        {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                    </React.Fragment>
+                )
+            } else if (type === MENTION_ELEMENT) {
+                const { mention, user } = TasksHelper.getDataFromMention(text, projectId)
+                return (
+                    <React.Fragment key={key}>
+                        <MentionTag
+                            text={mention}
+                            useCommentTagStyle={true}
+                            user={user}
+                            tagStyle={localStyles.inlineElement}
+                            projectId={projectId}
+                        />
+                        {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                    </React.Fragment>
+                )
+            } else if (type === EMAIL_ELEMENT) {
+                return (
+                    <React.Fragment key={key}>
+                        <EmailTag
+                            email={email}
+                            useCommentTagStyle={true}
+                            address={email}
+                            tagStyle={localStyles.inlineElement}
+                        />
+                        {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                    </React.Fragment>
+                )
+            }
+
+            // Fallback for any unhandled element types
+            return (
+                <Text key={key} style={style}>
+                    {text || link || email || ''}
+                    {spaceSuffix}
+                </Text>
+            )
+        })
     })
 }
 
@@ -41,6 +127,13 @@ export default function Comment({ containerStyle, projectId, comment }) {
 
     const textsFiltered = divideQuotedText(commentText, 'quote')
     const date = getTimestampInMilliseconds(lastChangeDate) ?? Date.now()
+
+    // Track link counter for renderFormattedText
+    let linkCounter = 0
+    const getLinkCounter = () => {
+        linkCounter++
+        return linkCounter
+    }
 
     const renderTextContent = (text, lastItem) => {
         const textData = divideCodeText(text)
@@ -75,7 +168,7 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                 key={`header-${lineIndex}`}
                                 style={[localStyles.header1, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {renderFormattedText(line.segments, localStyles.header1)}
+                                {renderFormattedText(line.segments, localStyles.header1, projectId, getLinkCounter)}
                             </Text>
                         )
                     } else if (line.type === 'h2') {
@@ -84,7 +177,7 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                 key={`header-${lineIndex}`}
                                 style={[localStyles.header2, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {renderFormattedText(line.segments, localStyles.header2)}
+                                {renderFormattedText(line.segments, localStyles.header2, projectId, getLinkCounter)}
                             </Text>
                         )
                     } else if (line.type === 'h3') {
@@ -93,7 +186,7 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                 key={`header-${lineIndex}`}
                                 style={[localStyles.header3, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {renderFormattedText(line.segments, localStyles.header3)}
+                                {renderFormattedText(line.segments, localStyles.header3, projectId, getLinkCounter)}
                             </Text>
                         )
                     } else if (line.type === 'bullet') {
@@ -102,7 +195,12 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                 <Text style={localStyles.bulletPoint}>•</Text>
                                 <View style={localStyles.bulletContent}>
                                     <Text style={localStyles.comment}>
-                                        {renderFormattedText(line.segments, localStyles.comment)}
+                                        {renderFormattedText(
+                                            line.segments,
+                                            localStyles.comment,
+                                            projectId,
+                                            getLinkCounter
+                                        )}
                                     </Text>
                                 </View>
                             </View>
@@ -113,7 +211,12 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                 <Text style={localStyles.numberedPoint}>{line.number}.</Text>
                                 <View style={localStyles.bulletContent}>
                                     <Text style={localStyles.comment}>
-                                        {renderFormattedText(line.segments, localStyles.comment)}
+                                        {renderFormattedText(
+                                            line.segments,
+                                            localStyles.comment,
+                                            projectId,
+                                            getLinkCounter
+                                        )}
                                     </Text>
                                 </View>
                             </View>
@@ -138,7 +241,12 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                             },
                                         ]}
                                     >
-                                        {renderFormattedText(line.segments, localStyles.comment)}
+                                        {renderFormattedText(
+                                            line.segments,
+                                            localStyles.comment,
+                                            projectId,
+                                            getLinkCounter
+                                        )}
                                     </Text>
                                 </View>
                             </View>
@@ -151,7 +259,7 @@ export default function Comment({ containerStyle, projectId, comment }) {
                         if (hasFormatting) {
                             return (
                                 <Text key={`text-${lineIndex}`} style={[localStyles.comment, marginStyle]}>
-                                    {renderFormattedText(segments, localStyles.comment)}
+                                    {renderFormattedText(segments, localStyles.comment, projectId, getLinkCounter)}
                                 </Text>
                             )
                         }
@@ -294,5 +402,8 @@ const localStyles = StyleSheet.create({
     checkboxIcon: {
         marginRight: 8,
         marginTop: 2,
+    },
+    inlineElement: {
+        marginRight: 6,
     },
 })
