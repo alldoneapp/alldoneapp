@@ -95,55 +95,66 @@ export default function MessageItemContent({
             return parsedElements.map((element, elemIdx) => {
                 const key = `${segmentIdx}-${elemIdx}`
                 const { type, text, link, email } = element
+                const isLastElement = elemIdx === parsedElements.length - 1
+                // Add space after each word except the last one in the segment
+                const spaceSuffix = isLastElement ? '' : ' '
 
                 if (type === TEXT_ELEMENT) {
                     return text ? (
                         <Text key={key} style={style}>
                             {text}
-                            {elemIdx < parsedElements.length - 1 ? '' : ''}
+                            {spaceSuffix}
                         </Text>
                     ) : null
                 } else if (type === HASH_ELEMENT) {
                     return (
-                        <HashTag
-                            key={key}
-                            projectId={projectId}
-                            text={text}
-                            useCommentTagStyle={true}
-                            tagStyle={localStyles.inlineElement}
-                        />
+                        <React.Fragment key={key}>
+                            <HashTag
+                                projectId={projectId}
+                                text={text}
+                                useCommentTagStyle={true}
+                                tagStyle={localStyles.inlineElement}
+                            />
+                            {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                        </React.Fragment>
                     )
                 } else if (type === URL_ELEMENT) {
                     return (
-                        <LinkTag
-                            key={key}
-                            link={link}
-                            useCommentTagStyle={true}
-                            text={'Link ' + getLinkCounter()}
-                            tagStyle={localStyles.inlineElement}
-                        />
+                        <React.Fragment key={key}>
+                            <LinkTag
+                                link={link}
+                                useCommentTagStyle={true}
+                                text={'Link ' + getLinkCounter()}
+                                tagStyle={localStyles.inlineElement}
+                            />
+                            {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                        </React.Fragment>
                     )
                 } else if (type === MENTION_ELEMENT) {
                     const { mention, user } = TasksHelper.getDataFromMention(text, projectId)
                     return (
-                        <MentionTag
-                            key={key}
-                            text={mention}
-                            useCommentTagStyle={true}
-                            user={user}
-                            tagStyle={localStyles.inlineElement}
-                            projectId={projectId}
-                        />
+                        <React.Fragment key={key}>
+                            <MentionTag
+                                text={mention}
+                                useCommentTagStyle={true}
+                                user={user}
+                                tagStyle={localStyles.inlineElement}
+                                projectId={projectId}
+                            />
+                            {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                        </React.Fragment>
                     )
                 } else if (type === EMAIL_ELEMENT) {
                     return (
-                        <EmailTag
-                            key={key}
-                            email={email}
-                            useCommentTagStyle={true}
-                            address={email}
-                            tagStyle={localStyles.inlineElement}
-                        />
+                        <React.Fragment key={key}>
+                            <EmailTag
+                                email={email}
+                                useCommentTagStyle={true}
+                                address={email}
+                                tagStyle={localStyles.inlineElement}
+                            />
+                            {spaceSuffix ? <Text style={style}>{spaceSuffix}</Text> : null}
+                        </React.Fragment>
                     )
                 }
 
@@ -151,6 +162,7 @@ export default function MessageItemContent({
                 return (
                     <Text key={key} style={style}>
                         {text || link || email || ''}
+                        {spaceSuffix}
                     </Text>
                 )
             })
