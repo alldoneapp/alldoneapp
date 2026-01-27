@@ -289,6 +289,11 @@ const toolSchemas = {
                         description:
                             'Optional: filter tasks by status. Use "done" to find completed tasks, "open" for incomplete tasks. Only applies when type is "tasks".',
                     },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of results to return. Default is 50, maximum is 1000. Use higher limits when user asks for "all" items.',
+                    },
                 },
                 required: ['query'],
             },

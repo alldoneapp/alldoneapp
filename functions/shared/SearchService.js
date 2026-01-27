@@ -62,8 +62,8 @@ const ENTITY_TYPES = {
     USERS: 'users',
 }
 
-const DEFAULT_SEARCH_LIMIT = 10
-const MAX_SEARCH_LIMIT = 100
+const DEFAULT_SEARCH_LIMIT = 50
+const MAX_SEARCH_LIMIT = 1000
 
 class SearchService {
     constructor(options = {}) {
@@ -905,7 +905,7 @@ class SearchService {
 
             const searchOptions = {
                 filters,
-                hitsPerPage: Math.min(limit, 50), // Limit per entity type
+                hitsPerPage: limit,
                 attributesToRetrieve: this.getAttributesToRetrieve(entityType),
                 attributesToHighlight: this.getAttributesToHighlight(entityType),
                 timeout: 5000, // 5 second timeout per search
