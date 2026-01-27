@@ -38,8 +38,8 @@ export default function AssistantInstructionsModal({ disabled, assistant, closeM
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
-        paddingHorizontal: 8,
-        paddingVertical: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
         shadowColor: 'rgba(78, 93, 120, 0.56)',
@@ -48,8 +48,9 @@ const localStyles = StyleSheet.create({
         shadowRadius: 16,
         elevation: 3,
         height: 'auto',
-        maxWidth: 305,
-        minWidth: 305,
+        width: '90vw',
+        maxWidth: 900,
+        minWidth: 600,
     },
     innerContainer: {
         paddingHorizontal: 8,

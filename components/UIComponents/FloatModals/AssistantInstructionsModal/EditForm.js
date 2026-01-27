@@ -74,9 +74,10 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
     },
     inputContainer: {
-        maxHeight: 200,
-        paddingTop: 3,
-        paddingBottom: 5,
+        minHeight: 300,
+        maxHeight: 500,
+        paddingTop: 8,
+        paddingBottom: 8,
         paddingHorizontal: 16,
     },
     textInputText: {
