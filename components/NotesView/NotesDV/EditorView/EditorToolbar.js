@@ -238,6 +238,16 @@ const TextStyleH2 = ({ style, className }) => (
     </svg>
 )
 
+const TextStyleH3 = ({ style, className }) => (
+    <svg viewBox="0 0 24 24" className={className}>
+        <path
+            style={style}
+            className="ql-stroke ql-fill"
+            d="M 2 2 C 1.44772 2 1 2.44772 1 3 L 1 21 C 1 21.5523 1.44772 22 2 22 C 2.55228 22 3 21.5523 3 21 L 3 13 L 12 13 L 12 21 C 12 21.5523 12.4477 22 13 22 C 13.5523 22 14 21.5523 14 21 L 14 3 C 14 2.44772 13.5523 2 13 2 C 12.4477 2 12 2.44772 12 3 L 12 11 L 3 11 L 3 3 C 3 2.44772 2.55228 2 2 2 z M 19.5 11 C 17.567 11 16 12.567 16 14.5 C 16 15.163 16.186 15.781 16.508 16.305 C 16.186 16.829 16 17.447 16 18.11 C 16 20.043 17.567 21.61 19.5 21.61 C 21.433 21.61 23 20.043 23 18.11 C 23 17.558 22.552 17.11 22 17.11 C 21.448 17.11 21 17.558 21 18.11 C 21 18.938 20.328 19.61 19.5 19.61 C 18.672 19.61 18 18.938 18 18.11 C 18 17.282 18.672 16.61 19.5 16.61 C 20.052 16.61 20.5 16.162 20.5 15.61 C 20.5 15.058 20.052 14.61 19.5 14.61 C 18.672 14.61 18 13.938 18 13.11 C 18 12.282 18.672 11.61 19.5 11.61 C 20.328 11.61 21 12.282 21 13.11 C 21 13.662 21.448 14.11 22 14.11 C 22.552 14.11 23 13.662 23 13.11 C 23 11.177 21.433 9.61 19.5 9.61 C 17.567 9.61 16 11.177 16 13.11 C 16 13.773 16.186 14.391 16.508 14.915 C 16.186 15.439 16 16.057 16 16.72 z"
+        />
+    </svg>
+)
+
 const MoreVertical = ({ style, className }) => (
     <svg viewBox="0 0 24 24" className={className}>
         <path
@@ -250,9 +260,10 @@ const MoreVertical = ({ style, className }) => (
 //endregion
 
 const HEADING_FORMATS = [
-    { value: '3', text: 'Normal text', shortcut: '1', TextStyle: TextStyleNormal },
-    { value: '2', text: 'Subheading', shortcut: '2', TextStyle: TextStyleH2 },
-    { value: '1', text: 'Heading', shortcut: '3', TextStyle: TextStyleH1 },
+    { value: false, text: 'Normal text', shortcut: '1', TextStyle: TextStyleNormal },
+    { value: '3', text: 'Small heading', shortcut: '2', TextStyle: TextStyleH3 },
+    { value: '2', text: 'Subheading', shortcut: '3', TextStyle: TextStyleH2 },
+    { value: '1', text: 'Heading', shortcut: '4', TextStyle: TextStyleH1 },
 ]
 
 export const openHeadingPopup = () => {
@@ -1266,7 +1277,7 @@ export const EditorToolbar = ({
                 {accessGranted && (
                     <span className="ql-formats" style={{ pointerEvents: barPointerEvents }} onClick={keepScroll}>
                         {shortcutAlt && <Shortcut text={'1'} parentStyle={localStyles.shortcuts.qlFormats} />}
-                        <select className="ql-header" defaultValue="3">
+                        <select className="ql-header" defaultValue="">
                             {renderHeadingPopup(HEADING_FORMATS)}
                         </select>
                     </span>

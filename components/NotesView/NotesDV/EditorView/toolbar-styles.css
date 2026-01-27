@@ -902,7 +902,8 @@
 
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='1'],
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='2'],
-.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='3'] {
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='3'],
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value=''] {
     position: relative;
     height: 40px;
     margin: 0;
@@ -912,13 +913,15 @@
 
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='1']::before,
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='2']::before,
-.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='3']::before {
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='3']::before,
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='']::before {
     display: none;
 }
 
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='1'],
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='2'],
-.ql-snow .ql-picker.ql-header .ql-picker-item[data-value='3'] {
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value='3'],
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value=''] {
     position: relative;
     height: 40px;
     margin: 0;
@@ -985,6 +988,14 @@
 }
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='3']::before,
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='3']::before {
+    font-family: 'Roboto-Medium', sans-serif;
+    font-weight: 500;
+    font-size: 16px !important;
+    line-height: 24px !important;
+    color: #ffffff !important;
+}
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='']::before,
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value='']::before {
     font-family: 'Roboto-Regular', sans-serif;
     font-size: 16px !important;
     line-height: 24px !important;
@@ -992,15 +1003,19 @@
 }
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='1']::before,
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='1']::before {
-    content: 'Heading 1';
+    content: 'Heading';
 }
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='2']::before,
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='2']::before {
-    content: 'Heading 2';
+    content: 'Subheading';
 }
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='3']::before,
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='3']::before {
-    content: 'Heading 3';
+    content: 'Small heading';
+}
+.ql-snow .ql-picker.ql-header .ql-picker-label[data-value='']::before,
+.ql-snow .ql-picker.ql-header .ql-picker-item[data-value='']::before {
+    content: 'Normal text';
 }
 .ql-snow .ql-picker.ql-header .ql-picker-label[data-value='4']::before,
 .ql-snow .ql-picker.ql-header .ql-picker-item[data-value='4']::before {

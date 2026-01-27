@@ -393,16 +393,17 @@ export const markdownToDelta = (text, Delta) => {
             previousWasList = true
             previousWasHeader = false
         } else if (parsed.type === 'checkbox') {
-            // Quill doesn't have native checkboxes, convert to bullet with indicator
-            console.log(`[markdownToDelta]   -> Inserting checkbox: "${parsed.text}", checked: ${parsed.checked}`)
-            const prefix = parsed.checked ? '☑ ' : '☐ '
-            delta.insert(prefix, { bold: null, italic: null, strike: null })
+            // Convert checkbox to bullet item (without separate checkbox prefix to avoid double indicators)
+            console.log(
+                `[markdownToDelta]   -> Inserting checkbox as bullet: "${parsed.text}", checked: ${parsed.checked}`
+            )
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
                 // Explicitly set all formatting attributes to prevent inheritance
                 const attrs = {
                     bold: segment.bold ? true : null,
                     italic: segment.italic ? true : null,
+                    // Strike through checked items
                     strike: segment.strike || parsed.checked ? true : null,
                 }
                 delta.insert(segment.text, attrs)

@@ -349,13 +349,10 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
             previousWasList = true
             previousWasHeader = false
         } else if (parsed.type === 'checkbox') {
-            // Insert checkbox indicator + text
+            // Insert checkbox as bullet item (without separate checkbox prefix to avoid double indicators)
             console.log(
-                `[markdownToYjs]   -> Inserting checkbox: "${parsed.text}", checked: ${parsed.checked} at pos ${currentPosition}`
+                `[markdownToYjs]   -> Inserting checkbox as bullet: "${parsed.text}", checked: ${parsed.checked} at pos ${currentPosition}`
             )
-            const prefix = parsed.checked ? '☑ ' : '☐ '
-            ytext.insert(currentPosition, prefix, { bold: null, italic: null, strike: null })
-            currentPosition += prefix.length
 
             const segments = parseInlineFormatting(parsed.text)
             segments.forEach(segment => {
@@ -365,12 +362,13 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
                 const attrs = {
                     bold: segment.bold ? true : null,
                     italic: segment.italic ? true : null,
+                    // Strike through checked items
                     strike: segment.strike || parsed.checked ? true : null,
                 }
                 ytext.insert(currentPosition, segment.text, attrs)
                 currentPosition += segment.text.length
             })
-            // Insert newline with bullet formatting
+            // Insert newline with bullet formatting (checkbox becomes a simple bullet item)
             const listAttrs = { list: 'bullet' }
             if (parsed.indent > 0) {
                 listAttrs.indent = Math.min(parsed.indent, 8)
