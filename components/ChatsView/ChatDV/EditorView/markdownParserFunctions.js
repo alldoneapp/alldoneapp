@@ -7,14 +7,14 @@ export const REGEX_ITALIC = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g
 export const REGEX_STRIKETHROUGH = /~~(.*?)~~/g
 
 // Line-based markdown patterns
-export const REGEX_HEADER_1 = /^# (.+)$/
-export const REGEX_HEADER_2 = /^## (.+)$/
-export const REGEX_HEADER_3 = /^### (.+)$/
-export const REGEX_BULLET_LIST = /^[-*] (.+)$/
-export const REGEX_NUMBERED_LIST = /^(\d+)\. (.+)$/
+export const REGEX_HEADER_1 = /^#\s+(.+)$/
+export const REGEX_HEADER_2 = /^##\s+(.+)$/
+export const REGEX_HEADER_3 = /^###\s+(.+)$/
+export const REGEX_BULLET_LIST = /^[-*]\s+(.+)$/
+export const REGEX_NUMBERED_LIST = /^(\d+)\.\s+(.+)$/
 export const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
-export const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
-export const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
+export const REGEX_CHECKBOX_UNCHECKED = /^-\s+\[ \]\s+(.+)$/
+export const REGEX_CHECKBOX_CHECKED = /^-\s+\[x\]\s+(.+)$/i
 
 /**
  * Parse a single line and determine its markdown type
@@ -30,14 +30,17 @@ export const parseLineType = line => {
     }
 
     // Check for headers
-    if (trimmedLine.startsWith('### ')) {
-        return { type: 'h3', text: trimmedLine.substring(4) }
+    const h3Match = trimmedLine.match(REGEX_HEADER_3)
+    if (h3Match) {
+        return { type: 'h3', text: h3Match[1] }
     }
-    if (trimmedLine.startsWith('## ')) {
-        return { type: 'h2', text: trimmedLine.substring(3) }
+    const h2Match = trimmedLine.match(REGEX_HEADER_2)
+    if (h2Match) {
+        return { type: 'h2', text: h2Match[1] }
     }
-    if (trimmedLine.startsWith('# ')) {
-        return { type: 'h1', text: trimmedLine.substring(2) }
+    const h1Match = trimmedLine.match(REGEX_HEADER_1)
+    if (h1Match) {
+        return { type: 'h1', text: h1Match[1] }
     }
 
     // Check for checkboxes
@@ -230,12 +233,11 @@ export const containsMarkdown = text => {
         const trimmed = line.trim()
         // Check line-level markdown
         if (
-            trimmed.startsWith('# ') ||
-            trimmed.startsWith('## ') ||
-            trimmed.startsWith('### ') ||
-            trimmed.startsWith('- ') ||
-            trimmed.startsWith('* ') ||
-            /^\d+\. /.test(trimmed) ||
+            /^#\s+/.test(trimmed) ||
+            /^##\s+/.test(trimmed) ||
+            /^###\s+/.test(trimmed) ||
+            /^[-*]\s+/.test(trimmed) ||
+            /^\d+\.\s+/.test(trimmed) ||
             REGEX_HORIZONTAL_RULE.test(trimmed)
         ) {
             return true
