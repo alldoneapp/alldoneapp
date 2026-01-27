@@ -80,6 +80,8 @@ Always consider i18n. Translations in `i18n/translations/` (en.json, de.json, es
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
 
+**Popover Width Control**: Most modals use `applyPopoverWidth()` from `utils/HelperFunctions.js` which applies fixed widths based on screen size (mobile/tablet/desktop). This helper overrides inline styles due to how it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. To create larger modals that use more screen width, avoid `applyPopoverWidth()` and calculate width dynamically using `Dimensions.get('window').width`.
+
 ### Code Style
 
 -   Prettier enforces formatting (4-space indent, single quotes, trailing commas)
