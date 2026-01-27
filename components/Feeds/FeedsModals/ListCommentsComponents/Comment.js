@@ -130,26 +130,6 @@ export default function Comment({ containerStyle, projectId, comment }) {
 
     const { photoURL, displayName } = useGetUserPresentationData(creatorId)
 
-    // DEBUG: Log raw comment text to inspect whitespace issues
-    console.log('=== RAW COMMENT TEXT ===')
-    console.log('Raw:', JSON.stringify(commentText))
-    if (commentText) {
-        const lines = commentText.split('\n')
-        lines.forEach((line, i) => {
-            if (line.match(/^[-*]/)) {
-                console.log(`Line ${i} bullet:`, JSON.stringify(line))
-                console.log(
-                    `Line ${i} char codes:`,
-                    line
-                        .split('')
-                        .map(c => c.charCodeAt(0))
-                        .join(', ')
-                )
-            }
-        })
-    }
-    console.log('========================')
-
     const textsFiltered = divideQuotedText(commentText, 'quote')
 
     const date = getTimestampInMilliseconds(lastChangeDate) ?? Date.now()

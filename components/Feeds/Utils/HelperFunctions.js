@@ -237,21 +237,8 @@ export const parseBreakLineFeedComment = (text, bold) => {
 }
 
 export const parseFeedComment = (text, isGenericTask, bold) => {
-    // DEBUG: Log input text for URL parsing analysis
-    const hasUrlPattern = text && (text.includes('http') || text.includes('www.'))
-    if (hasUrlPattern) {
-        console.log('=== parseFeedComment URL DEBUG ===')
-        console.log('Input text:', JSON.stringify(text))
-    }
-    const words = text.split(' ')
-    if (hasUrlPattern) {
-        console.log('Split into words:', words.length, 'words')
-        words.forEach((w, i) => {
-            if (w.includes('http') || w.includes('www.')) {
-                console.log(`  Word[${i}]:`, JSON.stringify(w), '| REGEX_URL.test:', REGEX_URL.test(w))
-            }
-        })
-    }
+    // Filter out empty strings from split to handle multiple consecutive spaces
+    const words = text.split(' ').filter(word => word.length > 0)
     const commentElements = []
     let needMarkWordLikeGeneric = isGenericTask
     for (let i = 0; i < words.length; i++) {
