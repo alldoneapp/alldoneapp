@@ -102,6 +102,11 @@ const toolSchemas = {
                         description:
                             'If true, includes tasks from community/template projects (only applies when allProjects is true)',
                     },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of tasks to return. Default is 100, maximum is 1000. Use higher limits when user asks for "all" tasks.',
+                    },
                 },
                 required: [],
             },
