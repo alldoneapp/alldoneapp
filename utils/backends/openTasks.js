@@ -1581,12 +1581,18 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             })
         }
 
+        // Count empty goals (goals with reminder dates but no linked tasks)
+        const currentEmptyGoalsCount = originalTasksByDate[EMPTY_SECTION_INDEX]
+            ? originalTasksByDate[EMPTY_SECTION_INDEX].length
+            : 0
+
         // Check if this date should be included in the output
         const shouldInclude =
             currentMainTasksCount > 0 ||
             currentEmailTasksCount > 0 ||
             currentCalendarTasksCount > 0 ||
-            currentWorkflowTasksCount > 0
+            currentWorkflowTasksCount > 0 ||
+            currentEmptyGoalsCount > 0
 
         // Modified condition to include days with any visible task type (main, email, calendar, or workflow)
         if (shouldInclude) {
