@@ -51,29 +51,8 @@ export default function MessageItemContent({
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
 
-    // DEBUG: Log raw AI assistant output
-    if (creatorData?.isAssistant && commentText) {
-        console.log('=== AI ASSISTANT RAW OUTPUT ===')
-        console.log('messageId:', messageId)
-        console.log('Raw commentText:', JSON.stringify(commentText))
-        console.log('commentText length:', commentText.length)
-        // Log character codes for first 500 chars to detect hidden characters
-        const charCodes = commentText
-            .slice(0, 500)
-            .split('')
-            .map((c, i) => `${i}:${c}(${c.charCodeAt(0)})`)
-            .join(' ')
-        console.log('Character codes (first 500):', charCodes)
-    }
-
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
-
-    // DEBUG: Log processed content after quote parsing
-    if (creatorData?.isAssistant && commentText && (commentText.includes('http') || commentText.includes('www.'))) {
-        console.log('=== AFTER divideQuotedText ===')
-        console.log('processedContent:', JSON.stringify(processedContent, null, 2))
-    }
 
     const enableEditMode = () => {
         if (!blockOpen && activeChatMessageId === '' && !showFloatPopup) {
@@ -102,6 +81,7 @@ export default function MessageItemContent({
     // Render inline formatted text segments with link/tag parsing
     const renderFormattedText = (segments, baseStyle) => {
         if (!segments || segments.length === 0) return null
+
         return segments.map((segment, segmentIdx) => {
             const style = [
                 baseStyle,
@@ -110,22 +90,33 @@ export default function MessageItemContent({
                 segment.strikethrough && { textDecorationLine: 'line-through' },
             ]
 
+            // Check if segment text has leading/trailing spaces that need to be preserved
+            const hasLeadingSpace = segment.text && segment.text.startsWith(' ')
+            const hasTrailingSpace = segment.text && segment.text.endsWith(' ')
+
             // Parse the segment text for links, tags, mentions, emails
             const parsedElements = parseFeedComment(segment.text, false, segment.bold)
 
             return parsedElements.map((element, elemIdx) => {
                 const key = `${segmentIdx}-${elemIdx}`
                 const { type, text, link, email } = element
+                const isFirstElement = elemIdx === 0
                 const isLastElement = elemIdx === parsedElements.length - 1
                 // Add space after each word except the last one in the segment
-                const spaceSuffix = isLastElement ? '' : ' '
+                // Also preserve trailing space from original segment
+                let spaceSuffix = isLastElement ? '' : ' '
+                if (isLastElement && hasTrailingSpace) {
+                    spaceSuffix = ' '
+                }
+                // Preserve leading space from original segment
+                const spacePrefix = isFirstElement && hasLeadingSpace ? ' ' : ''
 
                 if (type === TEXT_ELEMENT) {
-                    // Render text element, including space suffix even if text is empty
-                    // This preserves leading/trailing spaces from the original text
-                    if (text || spaceSuffix) {
+                    // Render text element with preserved leading/trailing spaces
+                    if (text || spacePrefix || spaceSuffix) {
                         return (
                             <Text key={key} style={style}>
+                                {spacePrefix}
                                 {text}
                                 {spaceSuffix}
                             </Text>
@@ -135,6 +126,7 @@ export default function MessageItemContent({
                 } else if (type === HASH_ELEMENT) {
                     return (
                         <React.Fragment key={key}>
+                            {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                             <HashTag
                                 projectId={projectId}
                                 text={text}
@@ -147,6 +139,7 @@ export default function MessageItemContent({
                 } else if (type === URL_ELEMENT) {
                     return (
                         <React.Fragment key={key}>
+                            {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                             <LinkTag
                                 link={link}
                                 useCommentTagStyle={true}
@@ -160,6 +153,7 @@ export default function MessageItemContent({
                     const { mention, user } = TasksHelper.getDataFromMention(text, projectId)
                     return (
                         <React.Fragment key={key}>
+                            {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                             <MentionTag
                                 text={mention}
                                 useCommentTagStyle={true}
@@ -173,6 +167,7 @@ export default function MessageItemContent({
                 } else if (type === EMAIL_ELEMENT) {
                     return (
                         <React.Fragment key={key}>
+                            {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                             <EmailTag
                                 email={email}
                                 useCommentTagStyle={true}
@@ -187,6 +182,7 @@ export default function MessageItemContent({
                 // Fallback for any unhandled element types
                 return (
                     <Text key={key} style={style}>
+                        {spacePrefix}
                         {text || link || email || ''}
                         {spaceSuffix}
                     </Text>
@@ -428,7 +424,8 @@ const localStyles = StyleSheet.create({
         ...global.body1,
         color: colors.Text02,
         marginRight: 8,
-        width: 16,
+        width: 8,
+        flexShrink: 0,
     },
     numberedPoint: {
         ...global.body1,
@@ -438,6 +435,7 @@ const localStyles = StyleSheet.create({
     },
     bulletContent: {
         flex: 1,
+        flexWrap: 'wrap',
     },
     checkboxIcon: {
         marginRight: 8,

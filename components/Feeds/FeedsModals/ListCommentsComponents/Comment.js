@@ -30,6 +30,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
     if (!segments || segments.length === 0) return null
+
     return segments.map((segment, segmentIdx) => {
         const style = [
             baseStyle,
@@ -38,22 +39,33 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
             segment.strikethrough && { textDecorationLine: 'line-through' },
         ]
 
+        // Check if segment text has leading/trailing spaces that need to be preserved
+        const hasLeadingSpace = segment.text && segment.text.startsWith(' ')
+        const hasTrailingSpace = segment.text && segment.text.endsWith(' ')
+
         // Parse the segment text for links, tags, mentions, emails
         const parsedElements = parseFeedComment(segment.text, false, segment.bold)
 
         return parsedElements.map((element, elemIdx) => {
             const key = `${segmentIdx}-${elemIdx}`
             const { type, text, link, email } = element
+            const isFirstElement = elemIdx === 0
             const isLastElement = elemIdx === parsedElements.length - 1
             // Add space after each word except the last one in the segment
-            const spaceSuffix = isLastElement ? '' : ' '
+            // Also preserve trailing space from original segment
+            let spaceSuffix = isLastElement ? '' : ' '
+            if (isLastElement && hasTrailingSpace) {
+                spaceSuffix = ' '
+            }
+            // Preserve leading space from original segment
+            const spacePrefix = isFirstElement && hasLeadingSpace ? ' ' : ''
 
             if (type === TEXT_ELEMENT) {
-                // Render text element, including space suffix even if text is empty
-                // This preserves leading/trailing spaces from the original text
-                if (text || spaceSuffix) {
+                // Render text element with preserved leading/trailing spaces
+                if (text || spacePrefix || spaceSuffix) {
                     return (
                         <Text key={key} style={style}>
+                            {spacePrefix}
                             {text}
                             {spaceSuffix}
                         </Text>
@@ -63,6 +75,7 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
             } else if (type === HASH_ELEMENT) {
                 return (
                     <React.Fragment key={key}>
+                        {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                         <HashTag
                             projectId={projectId}
                             text={text}
@@ -75,6 +88,7 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
             } else if (type === URL_ELEMENT) {
                 return (
                     <React.Fragment key={key}>
+                        {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                         <LinkTag
                             link={link}
                             useCommentTagStyle={true}
@@ -88,6 +102,7 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
                 const { mention, user } = TasksHelper.getDataFromMention(text, projectId)
                 return (
                     <React.Fragment key={key}>
+                        {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                         <MentionTag
                             text={mention}
                             useCommentTagStyle={true}
@@ -101,6 +116,7 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
             } else if (type === EMAIL_ELEMENT) {
                 return (
                     <React.Fragment key={key}>
+                        {spacePrefix ? <Text style={style}>{spacePrefix}</Text> : null}
                         <EmailTag
                             email={email}
                             useCommentTagStyle={true}
@@ -115,6 +131,7 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
             // Fallback for any unhandled element types
             return (
                 <Text key={key} style={style}>
+                    {spacePrefix}
                     {text || link || email || ''}
                     {spaceSuffix}
                 </Text>
@@ -395,7 +412,8 @@ const localStyles = StyleSheet.create({
         ...styles.body2,
         color: colors.Grey400,
         marginRight: 8,
-        width: 16,
+        width: 8,
+        flexShrink: 0,
     },
     numberedPoint: {
         ...styles.body2,
@@ -405,6 +423,7 @@ const localStyles = StyleSheet.create({
     },
     bulletContent: {
         flex: 1,
+        flexWrap: 'wrap',
     },
     checkboxIcon: {
         marginRight: 8,
