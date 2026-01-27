@@ -82,6 +82,8 @@ Handle event propagation carefully. Set proper z-index and container `<div>` ele
 
 **Popover Width Control**: Most modals use `applyPopoverWidth()` from `utils/HelperFunctions.js` which applies fixed widths based on screen size (mobile/tablet/desktop). This helper overrides inline styles due to how it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. To create larger modals that use more screen width, avoid `applyPopoverWidth()` and calculate width dynamically using `Dimensions.get('window').width`.
 
+**Popover Centering**: Popovers using `react-tiny-popover` position content relative to the trigger element by default. For large modals, use `contentLocation={null}` to center the popover on screen instead of positioning relative to the trigger. The pattern `contentLocation={mobile ? null : undefined}` is used throughout the codebase to center on mobile only, but for large modals that need centering on all screen sizes, use `contentLocation={null}` unconditionally.
+
 ### Code Style
 
 -   Prettier enforces formatting (4-space indent, single quotes, trailing commas)
