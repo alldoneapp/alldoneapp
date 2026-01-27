@@ -42,11 +42,11 @@ export default function InstructionsWrapper({ disabled, projectId, assistant }) 
                     assistant={assistant}
                 />
             }
-            align={'start'}
+            align={'center'}
             position={['bottom']}
             onClickOutside={closeModal}
             isOpen={isOpen}
-            contentLocation={mobile ? null : undefined}
+            contentLocation={null}
         >
             <Hotkeys
                 keyName={'alt+I'}

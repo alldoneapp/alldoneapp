@@ -8,7 +8,13 @@ import { COMMENT_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputH
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function EditForm({ disabled, setInstructions, initialInstructions }) {
+export default function EditForm({
+    disabled,
+    setInstructions,
+    initialInstructions,
+    maxInputHeight = 500,
+    isMobile = false,
+}) {
     const [text, setText] = useState(initialInstructions)
 
     const done = () => {
@@ -30,9 +36,15 @@ export default function EditForm({ disabled, setInstructions, initialInstruction
         }
     })
 
+    const inputContainerStyle = {
+        ...localStyles.inputContainer,
+        minHeight: isMobile ? 150 : 300,
+        maxHeight: maxInputHeight,
+    }
+
     return (
         <View style={localStyles.container}>
-            <CustomScrollView style={localStyles.inputContainer} showsVerticalScrollIndicator={false}>
+            <CustomScrollView style={inputContainerStyle} showsVerticalScrollIndicator={false}>
                 <View style={{ marginBottom: 8, minHeight: 38 }}>
                     <CustomTextInput3
                         placeholder={translate('Type to add instructions')}
@@ -74,8 +86,6 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
     },
     inputContainer: {
-        minHeight: 300,
-        maxHeight: 500,
         paddingTop: 8,
         paddingBottom: 8,
         paddingHorizontal: 16,

@@ -8,8 +8,10 @@ import ModalHeader from '../ModalHeader'
 
 export default function AssistantInstructionsModal({ disabled, assistant, closeModal, updateInstructions }) {
     const { instructions: initialInstructions } = assistant
-    const { width: windowWidth } = Dimensions.get('window')
-    const modalWidth = Math.min(windowWidth * 0.9, 1200)
+    const { width: windowWidth, height: windowHeight } = Dimensions.get('window')
+    const isMobile = windowWidth < 600
+    const modalWidth = isMobile ? windowWidth - 32 : Math.min(windowWidth * 0.9, 1200)
+    const maxInputHeight = isMobile ? windowHeight * 0.5 : 500
 
     const setInstructions = instructions => {
         updateInstructions(instructions)
@@ -18,7 +20,7 @@ export default function AssistantInstructionsModal({ disabled, assistant, closeM
 
     return (
         <View>
-            <View style={[localStyles.container, { width: modalWidth }]}>
+            <View style={[localStyles.container, { width: modalWidth }, isMobile && localStyles.mobileContainer]}>
                 <View style={localStyles.innerContainer}>
                     <ModalHeader
                         title={translate('System Message Instructions')}
@@ -29,6 +31,8 @@ export default function AssistantInstructionsModal({ disabled, assistant, closeM
                         disabled={disabled}
                         setInstructions={setInstructions}
                         initialInstructions={initialInstructions}
+                        maxInputHeight={maxInputHeight}
+                        isMobile={isMobile}
                     />
                 </View>
             </View>
@@ -50,6 +54,11 @@ const localStyles = StyleSheet.create({
         elevation: 3,
         height: 'auto',
         minWidth: 600,
+    },
+    mobileContainer: {
+        minWidth: 'auto',
+        paddingHorizontal: 8,
+        paddingVertical: 8,
     },
     innerContainer: {
         paddingHorizontal: 8,
