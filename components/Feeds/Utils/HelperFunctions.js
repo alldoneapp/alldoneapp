@@ -237,14 +237,25 @@ export const parseBreakLineFeedComment = (text, bold) => {
 }
 
 export const parseFeedComment = (text, isGenericTask, bold) => {
-    // console.log('parseFeedComment input:', { text, isGenericTask, bold })
+    // DEBUG: Log input text for URL parsing analysis
+    const hasUrlPattern = text && (text.includes('http') || text.includes('www.'))
+    if (hasUrlPattern) {
+        console.log('=== parseFeedComment URL DEBUG ===')
+        console.log('Input text:', JSON.stringify(text))
+    }
     const words = text.split(' ')
-    //console.log('Split words:', words)
+    if (hasUrlPattern) {
+        console.log('Split into words:', words.length, 'words')
+        words.forEach((w, i) => {
+            if (w.includes('http') || w.includes('www.')) {
+                console.log(`  Word[${i}]:`, JSON.stringify(w), '| REGEX_URL.test:', REGEX_URL.test(w))
+            }
+        })
+    }
     const commentElements = []
     let needMarkWordLikeGeneric = isGenericTask
     for (let i = 0; i < words.length; i++) {
         const word = words[i]
-        //console.log('Processing word:', word)
         if (needMarkWordLikeGeneric && REGEX_GENERIC.test(word)) {
             needMarkWordLikeGeneric = false
             commentElements.push({
@@ -344,7 +355,12 @@ export const parseFeedComment = (text, isGenericTask, bold) => {
                 })
             }
         } else {
-            // console.log('Adding as text:', word)
+            // DEBUG: Log when a word containing URL pattern is NOT matched as URL
+            if (word && (word.includes('http') || word.includes('www.'))) {
+                console.log('=== URL NOT MATCHED - Added as TEXT ===')
+                console.log('Word:', JSON.stringify(word))
+                console.log('REGEX_URL.test result:', REGEX_URL.test(word))
+            }
             commentElements.push({
                 type: TEXT_ELEMENT,
                 text: word,
@@ -353,7 +369,25 @@ export const parseFeedComment = (text, isGenericTask, bold) => {
         }
     }
 
-    // console.log('Final commentElements:', commentElements)
+    // DEBUG: Log final elements if URL patterns were in input
+    if (hasUrlPattern) {
+        const urlElements = commentElements.filter(e => e.type === URL_ELEMENT)
+        const textElementsWithUrl = commentElements.filter(
+            e => e.type === TEXT_ELEMENT && e.text && (e.text.includes('http') || e.text.includes('www.'))
+        )
+        console.log('=== parseFeedComment RESULT ===')
+        console.log(
+            'URL elements found:',
+            urlElements.length,
+            urlElements.map(e => e.link)
+        )
+        console.log(
+            'Text elements containing URL patterns:',
+            textElementsWithUrl.length,
+            textElementsWithUrl.map(e => e.text)
+        )
+    }
+
     return commentElements
 }
 

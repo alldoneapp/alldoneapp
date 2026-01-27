@@ -51,8 +51,29 @@ export default function MessageItemContent({
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
 
+    // DEBUG: Log raw AI assistant output
+    if (creatorData?.isAssistant && commentText) {
+        console.log('=== AI ASSISTANT RAW OUTPUT ===')
+        console.log('messageId:', messageId)
+        console.log('Raw commentText:', JSON.stringify(commentText))
+        console.log('commentText length:', commentText.length)
+        // Log character codes for first 500 chars to detect hidden characters
+        const charCodes = commentText
+            .slice(0, 500)
+            .split('')
+            .map((c, i) => `${i}:${c}(${c.charCodeAt(0)})`)
+            .join(' ')
+        console.log('Character codes (first 500):', charCodes)
+    }
+
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
+
+    // DEBUG: Log processed content after quote parsing
+    if (creatorData?.isAssistant && commentText && (commentText.includes('http') || commentText.includes('www.'))) {
+        console.log('=== AFTER divideQuotedText ===')
+        console.log('processedContent:', JSON.stringify(processedContent, null, 2))
+    }
 
     const enableEditMode = () => {
         if (!blockOpen && activeChatMessageId === '' && !showFloatPopup) {

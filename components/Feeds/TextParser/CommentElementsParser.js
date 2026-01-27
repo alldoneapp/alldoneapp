@@ -56,7 +56,19 @@ export default function CommentElementsParser({
     }
 
     useEffect(() => {
+        // DEBUG: Log comment input for URL analysis
+        if (comment && (comment.includes('http') || comment.includes('www.'))) {
+            console.log('=== CommentElementsParser INPUT ===')
+            console.log('Raw comment:', JSON.stringify(comment))
+        }
+
         const boldText = divideBoldText(comment)
+
+        // DEBUG: Log after bold text division
+        if (comment && (comment.includes('http') || comment.includes('www.'))) {
+            console.log('=== AFTER divideBoldText ===')
+            console.log('boldText:', JSON.stringify(boldText, null, 2))
+        }
 
         const elementsEntries = []
         boldText.forEach(data => {
