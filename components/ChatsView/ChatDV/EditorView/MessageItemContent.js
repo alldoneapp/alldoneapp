@@ -14,6 +14,19 @@ import { divideCodeText } from './codeParserFunctions'
 import CodeText from './CodeText'
 import { parseMarkdownLines, parseInlineFormatting } from './markdownParserFunctions'
 import Icon from '../../../Icon'
+import {
+    parseFeedComment,
+    TEXT_ELEMENT,
+    HASH_ELEMENT,
+    URL_ELEMENT,
+    MENTION_ELEMENT,
+    EMAIL_ELEMENT,
+} from '../../../Feeds/Utils/HelperFunctions'
+import HashTag from '../../../Tags/HashTag'
+import LinkTag from '../../../Tags/LinkTag'
+import MentionTag from '../../../Tags/MentionTag'
+import EmailTag from '../../../Tags/EmailTag'
+import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
 export default function MessageItemContent({
     messageId,
@@ -58,21 +71,89 @@ export default function MessageItemContent({
         }
     }, [activeChatMessageId])
 
-    // Render inline formatted text segments
+    // Track link counter for renderFormattedText
+    let linkCounter = 0
+    const getLinkCounter = () => {
+        linkCounter++
+        return linkCounter
+    }
+
+    // Render inline formatted text segments with link/tag parsing
     const renderFormattedText = (segments, baseStyle) => {
         if (!segments || segments.length === 0) return null
-        return segments.map((segment, idx) => {
+        return segments.map((segment, segmentIdx) => {
             const style = [
                 baseStyle,
                 segment.bold && { fontWeight: 'bold' },
                 segment.italic && { fontStyle: 'italic' },
                 segment.strikethrough && { textDecorationLine: 'line-through' },
             ]
-            return (
-                <Text key={idx} style={style}>
-                    {segment.text}
-                </Text>
-            )
+
+            // Parse the segment text for links, tags, mentions, emails
+            const parsedElements = parseFeedComment(segment.text, false, segment.bold)
+
+            return parsedElements.map((element, elemIdx) => {
+                const key = `${segmentIdx}-${elemIdx}`
+                const { type, text, link, email } = element
+
+                if (type === TEXT_ELEMENT) {
+                    return text ? (
+                        <Text key={key} style={style}>
+                            {text}
+                            {elemIdx < parsedElements.length - 1 ? '' : ''}
+                        </Text>
+                    ) : null
+                } else if (type === HASH_ELEMENT) {
+                    return (
+                        <HashTag
+                            key={key}
+                            projectId={projectId}
+                            text={text}
+                            useCommentTagStyle={true}
+                            tagStyle={localStyles.inlineElement}
+                        />
+                    )
+                } else if (type === URL_ELEMENT) {
+                    return (
+                        <LinkTag
+                            key={key}
+                            link={link}
+                            useCommentTagStyle={true}
+                            text={'Link ' + getLinkCounter()}
+                            tagStyle={localStyles.inlineElement}
+                        />
+                    )
+                } else if (type === MENTION_ELEMENT) {
+                    const { mention, user } = TasksHelper.getDataFromMention(text, projectId)
+                    return (
+                        <MentionTag
+                            key={key}
+                            text={mention}
+                            useCommentTagStyle={true}
+                            user={user}
+                            tagStyle={localStyles.inlineElement}
+                            projectId={projectId}
+                        />
+                    )
+                } else if (type === EMAIL_ELEMENT) {
+                    return (
+                        <EmailTag
+                            key={key}
+                            email={email}
+                            useCommentTagStyle={true}
+                            address={email}
+                            tagStyle={localStyles.inlineElement}
+                        />
+                    )
+                }
+
+                // Fallback for any unhandled element types
+                return (
+                    <Text key={key} style={style}>
+                        {text || link || email || ''}
+                    </Text>
+                )
+            })
         })
     }
 
@@ -334,5 +415,8 @@ const localStyles = StyleSheet.create({
     loadingIndicator: {
         marginTop: 8,
         alignItems: 'flex-start',
+    },
+    inlineElement: {
+        marginRight: 6,
     },
 })
