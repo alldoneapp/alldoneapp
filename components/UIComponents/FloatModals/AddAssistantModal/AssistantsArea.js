@@ -41,6 +41,9 @@ export default function AssistantsArea({ closeModal, project }) {
             commentsData: null,
             fromTemplate: false,
             isDefault: false,
+            // Track source template assistant for update detection (only when copying from global)
+            copiedFromTemplateAssistantId: sourceProjectId === GLOBAL_PROJECT_ID ? assistant.uid : null,
+            copiedFromTemplateAssistantDate: sourceProjectId === GLOBAL_PROJECT_ID ? Date.now() : null,
         }
 
         const newAssistant = await uploadNewAssistant(project.id, assistantPayload, null)

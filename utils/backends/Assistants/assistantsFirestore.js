@@ -730,6 +730,9 @@ export async function copyPreConfigTasksToNewAssistant(
                 ...task,
                 assistantId: targetAssistantId,
                 id: newTaskId,
+                // Track source template task for update sync
+                copiedFromTemplateTaskId: doc.id,
+                copiedFromTemplateTaskDate: Date.now(),
             }
 
             if (!taskCopy.creatorUserId && currentUserId) {
@@ -758,6 +761,109 @@ export async function copyPreConfigTasksToNewAssistant(
         console.log(`✅ Successfully copied ${tasksSnapshot.size} pre-configured tasks to new assistant`)
     } catch (error) {
         console.error('❌ Error copying pre-configured tasks:', error)
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+        })
+    }
+}
+
+// Update assistant properties from a global/template assistant
+export async function updateAssistantFromTemplate(projectId, localAssistant, globalAssistant) {
+    const updatePayload = {
+        displayName: globalAssistant.displayName,
+        description: globalAssistant.description,
+        photoURL: globalAssistant.photoURL,
+        photoURL50: globalAssistant.photoURL50,
+        photoURL300: globalAssistant.photoURL300,
+        instructions: globalAssistant.instructions,
+        model: globalAssistant.model,
+        temperature: globalAssistant.temperature,
+        prompt: globalAssistant.prompt,
+        thirdPartLink: globalAssistant.thirdPartLink,
+        type: globalAssistant.type,
+        // Reset sync timestamp to indicate we've synced with the latest version
+        copiedFromTemplateAssistantDate: Date.now(),
+    }
+
+    await updateAssistantData(projectId, localAssistant.uid, updatePayload, null)
+    console.log(`✅ Updated assistant ${localAssistant.uid} from template ${globalAssistant.uid}`)
+}
+
+// Sync pre-configured tasks from a global/template assistant
+export async function syncPreConfigTasksFromTemplate(globalAssistantId, localProjectId, localAssistantId) {
+    try {
+        const { loggedUser } = store.getState()
+        const currentUserId = loggedUser?.uid || null
+
+        // 1. Get global/template tasks
+        const globalTasksSnapshot = await getDb()
+            .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`)
+            .where('assistantId', '==', globalAssistantId)
+            .get()
+
+        // 2. Get local tasks
+        const localTasksSnapshot = await getDb()
+            .collection(getAssistantTasksCollectionPath(localProjectId, localAssistantId))
+            .get()
+
+        // 3. Build mapping: copiedFromTemplateTaskId -> local task
+        const localTasksByTemplateId = {}
+        localTasksSnapshot.forEach(doc => {
+            const task = doc.data()
+            if (task.copiedFromTemplateTaskId) {
+                localTasksByTemplateId[task.copiedFromTemplateTaskId] = { ...task, id: doc.id }
+            }
+        })
+
+        const batch = new BatchWrapper(getDb())
+
+        // 4. For each global task, update or create local task
+        globalTasksSnapshot.forEach(doc => {
+            const globalTask = doc.data()
+            const localTask = localTasksByTemplateId[doc.id]
+
+            if (localTask) {
+                // Update existing task - preserve local-only fields (lastExecuted, activatedInProjectId, etc.)
+                const updatePayload = {
+                    title: globalTask.title,
+                    type: globalTask.type,
+                    prompt: globalTask.prompt,
+                    order: globalTask.order,
+                    // Update sync timestamp
+                    copiedFromTemplateTaskDate: Date.now(),
+                }
+                batch.update(getAssistantTaskDocRef(localProjectId, localAssistantId, localTask.id), updatePayload)
+            } else {
+                // Create new local task
+                const newTaskId = getId()
+                const taskCopy = {
+                    ...globalTask,
+                    id: newTaskId,
+                    assistantId: localAssistantId,
+                    copiedFromTemplateTaskId: doc.id,
+                    copiedFromTemplateTaskDate: Date.now(),
+                    activatedInProjectId: localProjectId,
+                    lastExecuted: null,
+                }
+
+                if (!taskCopy.creatorUserId && currentUserId) {
+                    taskCopy.creatorUserId = currentUserId
+                    taskCopy.activatorUserId = currentUserId
+                }
+
+                batch.set(getAssistantTaskDocRef(localProjectId, localAssistantId, newTaskId), taskCopy)
+
+                // Clean up legacy path
+                const legacyRef = getDb().doc(`assistantTasks/${localProjectId}/preConfigTasks/${newTaskId}`)
+                batch.delete(legacyRef)
+            }
+        })
+
+        await batch.commit()
+        console.log(`✅ Synced ${globalTasksSnapshot.size} tasks from template to assistant ${localAssistantId}`)
+    } catch (error) {
+        console.error('❌ Error syncing pre-configured tasks from template:', error)
         console.error('Error details:', {
             message: error.message,
             stack: error.stack,

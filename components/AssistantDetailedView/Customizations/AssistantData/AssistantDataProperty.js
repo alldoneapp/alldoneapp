@@ -4,13 +4,15 @@ import { StyleSheet, View } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import DescriptionWrapper from './DescriptionWrapper'
 import AssistantData from './AssistantData'
+import UpdateFromTemplate from '../UpdateFromTemplate/UpdateFromTemplate'
 
 export default function AssistantDataProperty({ projectId, assistant, disabled }) {
     return (
         <View style={localStyles.container}>
             <AssistantData disabled={disabled} projectId={projectId} assistant={assistant} />
-            <View style={{ marginLeft: 'auto' }}>
+            <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center' }}>
                 <DescriptionWrapper projectId={projectId} assistant={assistant} disabled={disabled} />
+                <UpdateFromTemplate projectId={projectId} assistant={assistant} disabled={disabled} />
             </View>
         </View>
     )

@@ -31,6 +31,9 @@ export default function CopyAssistant({ projectId, assistant, disabled, sourcePr
             lastVisitBoard: {},
             fromTemplate: false,
             isDefault: false,
+            // Track source template assistant for update detection
+            copiedFromTemplateAssistantId: assistant.uid,
+            copiedFromTemplateAssistantDate: Date.now(),
         }
 
         const newAssistant = await uploadNewAssistant(projectId, assistantPayload, null)

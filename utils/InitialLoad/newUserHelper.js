@@ -108,6 +108,9 @@ const generateInitialAssistant = (globalAssistant, userId) => {
         creatorId: userId,
         createdDate: Date.now(),
         isDefault: true,
+        // Track source template assistant for update detection
+        copiedFromTemplateAssistantId: globalAssistant.uid,
+        copiedFromTemplateAssistantDate: Date.now(),
     }
 
     return assistant
