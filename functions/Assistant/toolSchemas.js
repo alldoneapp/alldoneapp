@@ -9,27 +9,27 @@ const toolSchemas = {
         function: {
             name: 'create_task',
             description:
-                'Creates a new task in the current project with optional reminder/alert. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X" or "create a task to Y at Z time" requests.',
+                'Creates a new task with optional reminder/alert. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X" or "create a task to Y at Z time" requests. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, etc.) are optional. If no project is specified, the task will be created in the current chat context project or the user\'s default project. The response includes the projectId where the task was created.',
             parameters: {
                 type: 'object',
                 properties: {
                     name: {
                         type: 'string',
-                        description: 'The name/title of the task',
+                        description: 'The name/title of the task (required)',
                     },
                     description: {
                         type: 'string',
-                        description: 'Optional description for the task',
+                        description: 'Optional: description for the task',
                     },
                     dueDate: {
                         type: 'string',
                         description:
-                            'Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC. This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" or "create task at Y time" requests.',
+                            'Optional: Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC. This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" or "create task at Y time" requests.',
                     },
                     alertEnabled: {
                         type: 'boolean',
                         description:
-                            'Enable alert notification for this task. When true, the user will receive an alert at the time specified in dueDate. Requires dueDate to be provided. Use this for "remind me" or "alert me" requests.',
+                            'Optional: Enable alert notification for this task. When true, the user will receive an alert at the time specified in dueDate. Requires dueDate to be provided. Use this for "remind me" or "alert me" requests.',
                     },
                     projectId: {
                         type: 'string',
@@ -39,7 +39,7 @@ const toolSchemas = {
                     projectName: {
                         type: 'string',
                         description:
-                            "Optional: the project name where the task should be created. The system will search for projects matching this name (case-insensitive partial match). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the current chat context project or the user's default project.",
+                            "Optional: the project name where the task should be created. The system will search for projects matching this name (case-insensitive partial match). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the current chat context project or the user's default project. You do NOT need to provide a project name - if omitted, the task is created in the current or default project.",
                     },
                 },
                 required: ['name'],

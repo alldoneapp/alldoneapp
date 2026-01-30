@@ -988,6 +988,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             // 3. Chat context projectId (assistant-specific fallback)
             // 4. User's default project (matching MCP behavior)
             let targetProjectId = toolArgs.projectId
+            let targetProjectName = null
 
             // Project name resolution (if name provided but no ID)
             if (!targetProjectId && toolArgs.projectName) {
@@ -1007,6 +1008,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
                 if (matchingProject) {
                     targetProjectId = matchingProject.id
+                    targetProjectName = matchingProject.name
                     console.log('📝 CREATE_TASK TOOL: Resolved project name to ID', {
                         projectName: toolArgs.projectName,
                         projectId: matchingProject.id,
@@ -1173,9 +1175,23 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     console.log('📝 CREATE_TASK TOOL: Alert enabled successfully')
                 }
 
+                // Fetch project name if not already resolved (for context/default project fallbacks)
+                if (!targetProjectName && targetProjectId) {
+                    try {
+                        const projectDoc = await db.collection('projects').doc(targetProjectId).get()
+                        if (projectDoc.exists) {
+                            targetProjectName = projectDoc.data().name || null
+                        }
+                    } catch (error) {
+                        console.error('Error fetching project name:', error)
+                    }
+                }
+
                 return {
                     success: result.success,
                     taskId: result.taskId,
+                    projectId: targetProjectId,
+                    projectName: targetProjectName,
                     message: result.message,
                     task: result.task,
                 }
