@@ -73,7 +73,8 @@ import { GLOBAL_PROJECT_ID, getAssistant, isGlobalAssistant } from '../AdminPane
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTextUtils'
 import { getPreConfigTask, getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
-import { setPreConfigTaskModalData } from '../../redux/actions'
+import { setPreConfigTaskModalData, setIframeModalData } from '../../redux/actions'
+import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
 
 export const MIN_WIDTH_LINK_TAG = 100
 
@@ -667,7 +668,7 @@ export default function LinkTag({
 
     const openLink = async () => {
         if (enableLink) {
-            // Handle preConfigTask links - open the task generator modal
+            // Handle preConfigTask links based on task type
             if (type === 'preConfigTask') {
                 console.log('[LinkTag] Opening preConfigTask link:', link)
                 try {
@@ -684,19 +685,69 @@ export default function LinkTag({
                         const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
                         console.log('[LinkTag] Got task:', task)
 
-                        // Get assistant from Redux, or fetch from backend
-                        let assistant = getAssistant(assistantId)
-                        if (!assistant) {
-                            const fetchProjectId = isGlobalAssistant(assistantId)
-                                ? GLOBAL_PROJECT_ID
-                                : assistantProjectId
-                            assistant = await getAssistantData(fetchProjectId, assistantId)
-                        }
-                        console.log('[LinkTag] Got assistant:', assistant)
+                        if (task) {
+                            const taskType = task.type || 'prompt'
+                            const targetProjectId = projectId || assistantProjectId
 
-                        if (task && assistant) {
-                            console.log('[LinkTag] Opening PreConfigTaskGeneratorModal')
-                            dispatch(setPreConfigTaskModalData(true, task, assistant, projectId || assistantProjectId))
+                            // Handle different task types
+                            if (taskType === 'prompt' || taskType === 'webhook') {
+                                // For prompt/webhook: show modal if has variables, otherwise execute directly
+                                if (task.variables && task.variables.length > 0) {
+                                    // Get assistant from Redux, or fetch from backend
+                                    let assistant = getAssistant(assistantId)
+                                    if (!assistant) {
+                                        const fetchProjectId = isGlobalAssistant(assistantId)
+                                            ? GLOBAL_PROJECT_ID
+                                            : assistantProjectId
+                                        assistant = await getAssistantData(fetchProjectId, assistantId)
+                                    }
+                                    console.log('[LinkTag] Got assistant:', assistant)
+
+                                    if (assistant) {
+                                        console.log(
+                                            '[LinkTag] Opening PreConfigTaskGeneratorModal for task with variables'
+                                        )
+                                        dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                                    }
+                                } else {
+                                    // No variables - execute directly
+                                    console.log('[LinkTag] Executing prompt task directly (no variables)')
+                                    const aiSettings =
+                                        task.aiModel || task.aiTemperature || task.aiSystemMessage
+                                            ? {
+                                                  model: task.aiModel,
+                                                  temperature: task.aiTemperature,
+                                                  systemMessage: task.aiSystemMessage,
+                                              }
+                                            : null
+                                    const taskMetadata = {
+                                        ...(task.taskMetadata || {}),
+                                        sendWhatsApp: !!task.sendWhatsApp,
+                                    }
+                                    generateTaskFromPreConfig(
+                                        targetProjectId,
+                                        task.name,
+                                        assistantId,
+                                        task.prompt,
+                                        aiSettings,
+                                        taskMetadata
+                                    )
+                                }
+                            } else if (taskType === 'iframe') {
+                                // Open iframe modal
+                                console.log('[LinkTag] Opening iframe modal:', task.link)
+                                dispatch(setIframeModalData(true, task.link, task.name))
+                            } else if (taskType === 'link') {
+                                // Open external link in new tab
+                                console.log('[LinkTag] Opening external link:', task.link)
+                                window.open(task.link, '_blank')
+                            } else {
+                                // Unknown type - try to open as link
+                                console.log('[LinkTag] Unknown task type, opening as link:', taskType)
+                                if (task.link) {
+                                    window.open(task.link, '_blank')
+                                }
+                            }
                         }
                     }
                 } catch (error) {

@@ -19,7 +19,8 @@ import NavigationService from '../../../../../utils/NavigationService'
 import LinkTag, { getPathname } from '../../../../Tags/LinkTag'
 import { getPreConfigTask, getAssistantData } from '../../../../../utils/backends/Assistants/assistantsFirestore'
 import { getAssistant, GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../../AdminPanel/Assistants/assistantsHelper'
-import { setPreConfigTaskModalData } from '../../../../../redux/actions'
+import { setPreConfigTaskModalData, setIframeModalData } from '../../../../../redux/actions'
+import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
 import {
     COMMENT_MODAL_ID,
     exitsOpenModals,
@@ -169,24 +170,75 @@ export default function UrlWrapper({ value, isShared }) {
                     const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
                     console.log('[UrlWrapper] Got task:', task)
 
-                    // Get assistant from Redux, or fetch from backend
-                    let assistant = getAssistant(assistantId)
-                    console.log('[UrlWrapper] Got assistant from Redux:', assistant)
+                    if (task) {
+                        const taskType = task.type || 'prompt'
+                        const targetProjectId = projectId || assistantProjectId
 
-                    if (!assistant) {
-                        // Fetch assistant data from backend
-                        const fetchProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : assistantProjectId
-                        console.log('[UrlWrapper] Fetching assistant from backend, projectId:', fetchProjectId)
-                        assistant = await getAssistantData(fetchProjectId, assistantId)
-                        console.log('[UrlWrapper] Got assistant from backend:', assistant)
-                    }
+                        // Handle different task types
+                        if (taskType === 'prompt' || taskType === 'webhook') {
+                            // For prompt/webhook: show modal if has variables, otherwise execute directly
+                            if (task.variables && task.variables.length > 0) {
+                                // Get assistant from Redux, or fetch from backend
+                                let assistant = getAssistant(assistantId)
+                                console.log('[UrlWrapper] Got assistant from Redux:', assistant)
 
-                    if (task && assistant) {
-                        console.log('[UrlWrapper] Opening PreConfigTaskGeneratorModal')
-                        // Show the PreConfigTaskGeneratorModal via Redux
-                        dispatch(setPreConfigTaskModalData(true, task, assistant, projectId))
-                    } else {
-                        console.log('[UrlWrapper] Missing task or assistant:', { task: !!task, assistant: !!assistant })
+                                if (!assistant) {
+                                    const fetchProjectId = isGlobalAssistant(assistantId)
+                                        ? GLOBAL_PROJECT_ID
+                                        : assistantProjectId
+                                    console.log(
+                                        '[UrlWrapper] Fetching assistant from backend, projectId:',
+                                        fetchProjectId
+                                    )
+                                    assistant = await getAssistantData(fetchProjectId, assistantId)
+                                    console.log('[UrlWrapper] Got assistant from backend:', assistant)
+                                }
+
+                                if (assistant) {
+                                    console.log(
+                                        '[UrlWrapper] Opening PreConfigTaskGeneratorModal for task with variables'
+                                    )
+                                    dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                                }
+                            } else {
+                                // No variables - execute directly
+                                console.log('[UrlWrapper] Executing prompt task directly (no variables)')
+                                const aiSettings =
+                                    task.aiModel || task.aiTemperature || task.aiSystemMessage
+                                        ? {
+                                              model: task.aiModel,
+                                              temperature: task.aiTemperature,
+                                              systemMessage: task.aiSystemMessage,
+                                          }
+                                        : null
+                                const taskMetadata = {
+                                    ...(task.taskMetadata || {}),
+                                    sendWhatsApp: !!task.sendWhatsApp,
+                                }
+                                generateTaskFromPreConfig(
+                                    targetProjectId,
+                                    task.name,
+                                    assistantId,
+                                    task.prompt,
+                                    aiSettings,
+                                    taskMetadata
+                                )
+                            }
+                        } else if (taskType === 'iframe') {
+                            // Open iframe modal
+                            console.log('[UrlWrapper] Opening iframe modal:', task.link)
+                            dispatch(setIframeModalData(true, task.link, task.name))
+                        } else if (taskType === 'link') {
+                            // Open external link in new tab
+                            console.log('[UrlWrapper] Opening external link:', task.link)
+                            window.open(task.link, '_blank')
+                        } else {
+                            // Unknown type - try to open as link
+                            console.log('[UrlWrapper] Unknown task type, opening as link:', taskType)
+                            if (task.link) {
+                                window.open(task.link, '_blank')
+                            }
+                        }
                     }
                 } else {
                     console.log('[UrlWrapper] Missing taskId or assistantId:', { taskId, assistantId })
