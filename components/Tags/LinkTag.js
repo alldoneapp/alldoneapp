@@ -42,7 +42,7 @@ import Backend from '../../utils/BackendBridge'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { isPrivateNote } from '../NotesView/NotesHelper'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import {
@@ -72,6 +72,8 @@ import URLsAssistants, {
 import { GLOBAL_PROJECT_ID, getAssistant, isGlobalAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTextUtils'
+import { getPreConfigTask, getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
+import { setPreConfigTaskModalData } from '../../redux/actions'
 
 export const MIN_WIDTH_LINK_TAG = 100
 
@@ -98,6 +100,7 @@ export default function LinkTag({
     setUserIsMember,
     avatarSize,
 }) {
+    const dispatch = useDispatch()
     const [width, height] = useWindowSize()
     const previousWidth = usePrevious(width)
     const [left, setLeft] = useState(0)
@@ -662,8 +665,46 @@ export default function LinkTag({
         }
     }
 
-    const openLink = () => {
+    const openLink = async () => {
         if (enableLink) {
+            // Handle preConfigTask links - open the task generator modal
+            if (type === 'preConfigTask') {
+                console.log('[LinkTag] Opening preConfigTask link:', link)
+                try {
+                    const urlObj = new URL(addProtocol(link))
+                    const assistantId = urlObj.searchParams.get('assistantId')
+                    const assistantProjectId = urlObj.searchParams.get('assistantProjectId') || projectId
+                    const pathParts = urlObj.pathname.split('/')
+                    const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
+                    const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
+
+                    console.log('[LinkTag] Parsed preConfigTask URL:', { taskId, assistantId, assistantProjectId })
+
+                    if (taskId && assistantId) {
+                        const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
+                        console.log('[LinkTag] Got task:', task)
+
+                        // Get assistant from Redux, or fetch from backend
+                        let assistant = getAssistant(assistantId)
+                        if (!assistant) {
+                            const fetchProjectId = isGlobalAssistant(assistantId)
+                                ? GLOBAL_PROJECT_ID
+                                : assistantProjectId
+                            assistant = await getAssistantData(fetchProjectId, assistantId)
+                        }
+                        console.log('[LinkTag] Got assistant:', assistant)
+
+                        if (task && assistant) {
+                            console.log('[LinkTag] Opening PreConfigTaskGeneratorModal')
+                            dispatch(setPreConfigTaskModalData(true, task, assistant, projectId || assistantProjectId))
+                        }
+                    }
+                } catch (error) {
+                    console.error('[LinkTag] Error opening pre-configured task:', error)
+                }
+                return
+            }
+
             const pointingToInactiveGuideId = checkIfLinkPointToInactiveGuide(linkUrl)
             const pointingToInactiveTemplate = !pointingToInactiveGuideId && checkIfLinkPointToInactiveTemplate(linkUrl)
             const pointingToArchivedGuideId =

@@ -40,7 +40,26 @@ class Url extends Embed {
             [value.id]: React.createRef(),
         }
 
-        if (value.type !== 'plain' && value?.url) {
+        // Special handling for preConfigTask - extract name from URL query params
+        if (value.type === 'preConfigTask' && value?.url) {
+            let taskName = ''
+            try {
+                const urlObj = new URL(value.url)
+                taskName = urlObj.searchParams.get('name') || ''
+                if (taskName) {
+                    taskName = decodeURIComponent(taskName)
+                }
+            } catch (e) {
+                // Ignore URL parsing errors
+            }
+
+            ReactDOM.render(
+                <Provider store={store}>
+                    <UrlWrapper value={value} objectName={taskName || 'Pre-configured Task'} isShared={false} />
+                </Provider>,
+                node
+            )
+        } else if (value.type !== 'plain' && value?.url) {
             Backend.getObjectFromUrl(value.type, value.url, ({ object, objectName }, externalContact) => {
                 const text = handleNestedLinks(objectName)
                 const isShared =

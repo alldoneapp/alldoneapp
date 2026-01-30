@@ -17,8 +17,8 @@ import { getQuillEditorRef } from '../../textInputHelper'
 import URLTrigger from '../../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../../utils/NavigationService'
 import LinkTag, { getPathname } from '../../../../Tags/LinkTag'
-import { getPreConfigTask } from '../../../../../utils/backends/Assistants/assistantsFirestore'
-import { getAssistant, GLOBAL_PROJECT_ID } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { getPreConfigTask, getAssistantData } from '../../../../../utils/backends/Assistants/assistantsFirestore'
+import { getAssistant, GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import { setPreConfigTaskModalData } from '../../../../../redux/actions'
 import {
     COMMENT_MODAL_ID,
@@ -92,6 +92,15 @@ export default function UrlWrapper({ value, isShared }) {
     }
 
     const openModal = e => {
+        console.log('[UrlWrapper] openModal called:', { type, url, projectId })
+
+        // For pre-configured tasks, directly execute the action (open the modal)
+        if (type === 'preConfigTask' || isValidPreConfigTaskLink(url, projectId)) {
+            console.log('[UrlWrapper] Detected preConfigTask, calling performAction')
+            performAction(url)
+            return
+        }
+
         const isSkillAndLoggedUserIsNotOwner =
             objectType === 'skill' && (loggedUser.isAnonymous || objectData.userId !== loggedUser.uid)
         if (
@@ -132,12 +141,18 @@ export default function UrlWrapper({ value, isShared }) {
     }
 
     const performAction = async currentUrl => {
+        console.log('[UrlWrapper] performAction called:', { currentUrl, type, projectId })
+
         if (url.trim() !== currentUrl.trim()) {
             updateUrl(currentUrl)
         }
 
         // Handle pre-configured task links - open the task generator modal
-        if (type === 'preConfigTask' || isValidPreConfigTaskLink(currentUrl, projectId)) {
+        const isPreConfig = type === 'preConfigTask' || isValidPreConfigTaskLink(currentUrl, projectId)
+        console.log('[UrlWrapper] isPreConfigTask check:', { type, isPreConfig })
+
+        if (isPreConfig) {
+            console.log('[UrlWrapper] Handling preConfigTask link')
             try {
                 const urlObj = new URL(addProtocol(currentUrl))
                 const assistantId = urlObj.searchParams.get('assistantId')
@@ -146,23 +161,44 @@ export default function UrlWrapper({ value, isShared }) {
                 const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
                 const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
 
+                console.log('[UrlWrapper] Parsed URL:', { taskId, assistantId, assistantProjectId })
+
                 if (taskId && assistantId) {
                     closeModal()
+                    console.log('[UrlWrapper] Fetching preConfigTask...')
                     const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
-                    const assistant = getAssistant(assistantId)
+                    console.log('[UrlWrapper] Got task:', task)
 
-                    if (task) {
+                    // Get assistant from Redux, or fetch from backend
+                    let assistant = getAssistant(assistantId)
+                    console.log('[UrlWrapper] Got assistant from Redux:', assistant)
+
+                    if (!assistant) {
+                        // Fetch assistant data from backend
+                        const fetchProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : assistantProjectId
+                        console.log('[UrlWrapper] Fetching assistant from backend, projectId:', fetchProjectId)
+                        assistant = await getAssistantData(fetchProjectId, assistantId)
+                        console.log('[UrlWrapper] Got assistant from backend:', assistant)
+                    }
+
+                    if (task && assistant) {
+                        console.log('[UrlWrapper] Opening PreConfigTaskGeneratorModal')
                         // Show the PreConfigTaskGeneratorModal via Redux
                         dispatch(setPreConfigTaskModalData(true, task, assistant, projectId))
+                    } else {
+                        console.log('[UrlWrapper] Missing task or assistant:', { task: !!task, assistant: !!assistant })
                     }
+                } else {
+                    console.log('[UrlWrapper] Missing taskId or assistantId:', { taskId, assistantId })
                 }
             } catch (error) {
-                console.error('Error opening pre-configured task:', error)
+                console.error('[UrlWrapper] Error opening pre-configured task:', error)
             }
             return
         }
 
-        if (type !== 'plain' && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
+        console.log('[UrlWrapper] Not a preConfigTask, checking other types')
+        if (type !== 'plain' && type !== 'preConfigTask' && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
             if (!loggedUser.isAnonymous || isShared) {
                 closeModal()
                 setTimeout(() => {
@@ -170,7 +206,7 @@ export default function UrlWrapper({ value, isShared }) {
                     URLTrigger.processUrl(NavigationService, getPathname(currentUrl))
                 }, 400)
             }
-        } else {
+        } else if (type !== 'preConfigTask') {
             window.open(addProtocol(currentUrl), '_blank')
         }
     }
