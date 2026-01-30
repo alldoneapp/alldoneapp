@@ -360,8 +360,8 @@ class TaskSearchService {
             if (trimmed.length < 2) {
                 return 'taskName must be at least 2 characters long'
             }
-            if (trimmed.length > 100) {
-                return 'taskName must be less than 100 characters'
+            if (trimmed.length > 500) {
+                return 'taskName must be less than 500 characters'
             }
             // Check for overly generic terms
             const genericTerms = ['task', 'todo', 'item', 'work', 'project', 'a', 'an', 'the', 'do', 'get']
