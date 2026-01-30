@@ -42,6 +42,7 @@ export const getDvMainTabLink = (projectId, objectId, objectType) => {
         notes: 'editor',
         assistants: 'customizations',
         projects: 'properties',
+        preConfigTasks: 'run',
     }
     return getDvTabLink(projectId, objectId, objectType, mainPathWord[objectType])
 }

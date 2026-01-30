@@ -333,7 +333,7 @@ function CustomTextInput3(
         } else if (activeTab === MENTION_MODAL_TASKS_TAB) {
             if (item.isPreConfigTask) {
                 // Pre-configured task from AI assistant - create special URL
-                const { id: taskId, assistantId } = item
+                const { id: taskId, assistantId, name: taskName } = item
                 const assistantProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
 
@@ -341,7 +341,9 @@ function CustomTextInput3(
                     projectId,
                     taskId,
                     'preConfigTasks'
-                )}?assistantId=${assistantId}&assistantProjectId=${assistantProjectId}`
+                )}?assistantId=${assistantId}&assistantProjectId=${assistantProjectId}&name=${encodeURIComponent(
+                    taskName || ''
+                )}`
 
                 const execRes = formatUrl(preConfigTaskUrl)
                 if (execRes) {

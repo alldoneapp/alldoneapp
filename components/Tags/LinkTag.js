@@ -208,6 +208,18 @@ export default function LinkTag({
         let { objectType, path, projectId, objectId } = processUrl(getPathname(link))
         let newPath = false
 
+        // Handle preConfigTask separately - no Firestore watching needed
+        if (objectType === 'preConfigTask') {
+            setObjectId(objectId)
+            setType(objectType)
+            setLinkUrl(getPathname(link))
+            setInternalLink(true)
+            setEnableLink(true)
+            setObjectType?.(objectType)
+            setObjectProjectId?.(projectId)
+            return () => {} // No cleanup needed
+        }
+
         if (objectType !== '' && path !== '') {
             Backend.watchObjectLTag(objectType, path, watchId, data => {
                 if (data != null) {
@@ -316,6 +328,30 @@ export default function LinkTag({
         let objectId = ''
         let path = ''
         let projectId = ''
+
+        // Handle preConfigTask URLs manually (they don't have a URL trigger)
+        const preConfigTaskMatch = pathname.match(/\/projects\/(?<projectId>[\w-]+)\/preConfigTasks\/(?<taskId>[\w-]+)/)
+        if (preConfigTaskMatch) {
+            const matchParams = preConfigTaskMatch.groups
+            setTagIcon('cpu')
+            objectType = 'preConfigTask'
+            objectId = matchParams.taskId
+            projectId = matchParams.projectId
+            path = '' // PreConfigTasks don't need Firestore watching
+
+            // Extract task name from URL query params
+            try {
+                const fullUrl = new URL(link, window.location.origin)
+                const taskName = fullUrl.searchParams.get('name')
+                if (taskName) {
+                    setTitle(decodeURIComponent(taskName))
+                }
+            } catch (e) {
+                // Ignore URL parsing errors
+            }
+
+            return { objectType, path, projectId, objectId, matchedObj }
+        }
 
         for (let key in matchersList) {
             matchedObj = matchersList[key].match(pathname)
