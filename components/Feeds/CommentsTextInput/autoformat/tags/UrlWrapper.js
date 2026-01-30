@@ -5,12 +5,21 @@ import { useDispatch, useSelector } from 'react-redux'
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
 import { exportRef } from '../../../../NotesView/NotesDV/EditorView/NotesEditorView'
 import { quillTextInputIsCalendarTask, quillTextInputRefs } from '../../CustomTextInput3'
-import { addProtocol, checkDVLink, formatUrl, getUrlObject } from '../../../../../utils/LinkingHelper'
+import {
+    addProtocol,
+    checkDVLink,
+    formatUrl,
+    getUrlObject,
+    isValidPreConfigTaskLink,
+} from '../../../../../utils/LinkingHelper'
 import { colors } from '../../../../styles/global'
 import { getQuillEditorRef } from '../../textInputHelper'
 import URLTrigger from '../../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../../utils/NavigationService'
 import LinkTag, { getPathname } from '../../../../Tags/LinkTag'
+import { getPreConfigTask } from '../../../../../utils/backends/Assistants/assistantsFirestore'
+import { getAssistant, GLOBAL_PROJECT_ID } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { setPreConfigTaskModalData } from '../../../../../redux/actions'
 import {
     COMMENT_MODAL_ID,
     exitsOpenModals,
@@ -30,6 +39,7 @@ import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLink
 const Delta = ReactQuill.Quill.import('delta')
 
 export default function UrlWrapper({ value, isShared }) {
+    const dispatch = useDispatch()
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const projectId = useSelector(state => state.quillEditorProjectId)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -121,10 +131,37 @@ export default function UrlWrapper({ value, isShared }) {
         resetOpen()
     }
 
-    const performAction = currentUrl => {
+    const performAction = async currentUrl => {
         if (url.trim() !== currentUrl.trim()) {
             updateUrl(currentUrl)
         }
+
+        // Handle pre-configured task links - open the task generator modal
+        if (type === 'preConfigTask' || isValidPreConfigTaskLink(currentUrl, projectId)) {
+            try {
+                const urlObj = new URL(addProtocol(currentUrl))
+                const assistantId = urlObj.searchParams.get('assistantId')
+                const assistantProjectId = urlObj.searchParams.get('assistantProjectId') || projectId
+                const pathParts = urlObj.pathname.split('/')
+                const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
+                const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
+
+                if (taskId && assistantId) {
+                    closeModal()
+                    const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
+                    const assistant = getAssistant(assistantId)
+
+                    if (task) {
+                        // Show the PreConfigTaskGeneratorModal via Redux
+                        dispatch(setPreConfigTaskModalData(true, task, assistant, projectId))
+                    }
+                }
+            } catch (error) {
+                console.error('Error opening pre-configured task:', error)
+            }
+            return
+        }
+
         if (type !== 'plain' && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
             if (!loggedUser.isAnonymous || isShared) {
                 closeModal()

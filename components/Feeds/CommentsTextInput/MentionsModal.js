@@ -52,6 +52,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
 import useTextChange from './useTextChange'
 import store from '../../../redux/store'
+import { getPreConfigTasksForProject } from '../../../utils/backends/Assistants/assistantsFirestore'
 
 export default function MentionsModal({
     mentionText,
@@ -314,9 +315,42 @@ export default function MentionsModal({
         setShowSpinner(false)
     }
 
+    const updateTasksWithPreConfigTasks = async () => {
+        // Fetch regular tasks from Algolia
+        const regularTasks = await getMentions(TASKS_INDEX_NAME_PREFIX)
+
+        // Fetch pre-configured tasks from Firestore
+        let preConfigTasks = []
+        try {
+            preConfigTasks = await getPreConfigTasksForProject(projectId)
+
+            // Filter pre-configured tasks based on search text
+            if (mentionText) {
+                const lowerSearch = mentionText.toLowerCase()
+                preConfigTasks = preConfigTasks.filter(task => task.name?.toLowerCase().includes(lowerSearch))
+            }
+        } catch (error) {
+            console.error('Error fetching pre-configured tasks:', error)
+        }
+
+        // Merge: pre-configured tasks first, then regular tasks
+        const mergedItems = [...preConfigTasks, ...regularTasks]
+
+        setItemsByTab(state => {
+            return { ...state, [MENTION_MODAL_TASKS_TAB]: mergedItems }
+        })
+        if (activeTab === MENTION_MODAL_TASKS_TAB) {
+            itemsRef.current = mergedItems
+            setActiveItemIndex(getInitValue(mergedItems))
+            activeItemIndexRef.current = getInitValue(mergedItems)
+        }
+
+        setShowSpinner(false)
+    }
+
     const search = () => {
         updateResults(CONTACTS_INDEX_NAME_PREFIX, MENTION_MODAL_CONTACTS_TAB)
-        updateResults(TASKS_INDEX_NAME_PREFIX, MENTION_MODAL_TASKS_TAB)
+        updateTasksWithPreConfigTasks()
         updateResults(NOTES_INDEX_NAME_PREFIX, MENTION_MODAL_NOTES_TAB)
         updateResults(CHATS_INDEX_NAME_PREFIX, MENTION_MODAL_TOPICS_TAB)
         updateResults(GOALS_INDEX_NAME_PREFIX, MENTION_MODAL_GOALS_TAB)

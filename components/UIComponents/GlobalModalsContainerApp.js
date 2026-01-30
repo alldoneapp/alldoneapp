@@ -24,6 +24,7 @@ import EndCopyProjectNotification from '../ProjectDetailedView/ProjectProperties
 import NotificationModalOptional from './FloatModals/NotificationModalOptional'
 import TaskCompletionAnimation from '../TaskListView/TaskItem/TaskCompletionAnimation'
 import IframeModal from './FloatModals/IframeModal/IframeModal'
+import GlobalPreConfigTaskModal from './FloatModals/PreConfigTaskGeneratorModal/GlobalPreConfigTaskModal'
 
 export default function GlobalModalsContainerApp() {
     const dispatch = useDispatch()
@@ -126,6 +127,7 @@ export default function GlobalModalsContainerApp() {
             {showLimitedFeatureModal && <LimitedFeatureModal />}
             {showLevelUpModal && !isAnonymous && <LevelUpModal setShowLevelUpModal={setShowLevelUpModal} />}
             <IframeModal />
+            <GlobalPreConfigTaskModal />
         </>
     )
 }

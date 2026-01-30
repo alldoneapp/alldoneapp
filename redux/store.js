@@ -353,6 +353,7 @@ export const initialState = {
     showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
     iframeModalData: { visible: false, url: '', name: '' },
+    preConfigTaskModalData: { visible: false, task: null, assistant: null, projectId: null },
 }
 
 const checkIfNeedToJointToProject = initialUrl => {
@@ -808,6 +809,17 @@ export const theReducer = (state = initialState, action) => {
                     visible: action.visible,
                     url: action.url,
                     name: action.name || '',
+                },
+            }
+        }
+        case 'Set preconfig task modal data': {
+            return {
+                ...state,
+                preConfigTaskModalData: {
+                    visible: action.visible,
+                    task: action.task || null,
+                    assistant: action.assistant || null,
+                    projectId: action.projectId || null,
                 },
             }
         }

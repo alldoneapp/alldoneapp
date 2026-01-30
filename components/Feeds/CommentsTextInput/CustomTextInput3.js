@@ -75,7 +75,7 @@ import { setContactAssistant } from '../../../utils/backends/Contacts/contactsFi
 import { setGoalAssistant } from '../../../utils/backends/Goals/goalsFirestore'
 import { setSkillAssistant } from '../../../utils/backends/Skills/skillsFirestore'
 import { updateChatAssistant } from '../../../utils/backends/Chats/chatsFirestore'
-import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
+import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -331,18 +331,43 @@ function CustomTextInput3(
                 quillRef.current.updateContents(delta, 'user')
             }
         } else if (activeTab === MENTION_MODAL_TASKS_TAB) {
-            const { id } = item
-            selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-            const taskUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'tasks')}`
-            const execRes = formatUrl(taskUrl)
-            if (execRes) {
-                const url = getUrlObject(taskUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
-                const delta = new Delta()
-                delta.retain(mentionStartIndexRef.current - 1)
-                delta.insert({ url })
-                delta.insert(' ')
-                delta.delete(mentionTextRef.current.length + 1)
-                quillRef.current.updateContents(delta, 'user')
+            if (item.isPreConfigTask) {
+                // Pre-configured task from AI assistant - create special URL
+                const { id: taskId, assistantId } = item
+                const assistantProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
+                selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
+
+                const preConfigTaskUrl = `${window.location.origin}${getDvMainTabLink(
+                    projectId,
+                    taskId,
+                    'preConfigTasks'
+                )}?assistantId=${assistantId}&assistantProjectId=${assistantProjectId}`
+
+                const execRes = formatUrl(preConfigTaskUrl)
+                if (execRes) {
+                    const url = getUrlObject(preConfigTaskUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
+                    const delta = new Delta()
+                    delta.retain(mentionStartIndexRef.current - 1)
+                    delta.insert({ url })
+                    delta.insert(' ')
+                    delta.delete(mentionTextRef.current.length + 1)
+                    quillRef.current.updateContents(delta, 'user')
+                }
+            } else {
+                // Regular task
+                const { id } = item
+                selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
+                const taskUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'tasks')}`
+                const execRes = formatUrl(taskUrl)
+                if (execRes) {
+                    const url = getUrlObject(taskUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
+                    const delta = new Delta()
+                    delta.retain(mentionStartIndexRef.current - 1)
+                    delta.insert({ url })
+                    delta.insert(' ')
+                    delta.delete(mentionTextRef.current.length + 1)
+                    quillRef.current.updateContents(delta, 'user')
+                }
             }
         } else if (activeTab === MENTION_MODAL_NOTES_TAB) {
             const { id } = item

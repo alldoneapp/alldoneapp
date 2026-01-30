@@ -613,6 +613,17 @@ export const setIframeModalData = (visible, url, name) => {
     return action
 }
 
+export const setPreConfigTaskModalData = (visible, task, assistant, projectId) => {
+    const action = {
+        type: 'Set preconfig task modal data',
+        visible,
+        task,
+        assistant,
+        projectId,
+    }
+    return action
+}
+
 export const setTaskTitleInEditMode = isInEditMode => {
     const action = {
         type: 'Set task title in edit mode',

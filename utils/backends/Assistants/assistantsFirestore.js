@@ -155,6 +155,48 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
     })
 }
 
+export async function getPreConfigTasksForProject(projectId) {
+    const { projectAssistants, globalAssistants } = store.getState()
+    const project = ProjectHelper.getProjectById(projectId)
+
+    // Get assistants accessible in this project
+    const projectSpecificAssistants = projectAssistants[projectId] || []
+    const enabledGlobalAssistants = globalAssistants.filter(a => project?.globalAssistantIds?.includes(a.uid))
+    const assistantsInProject = [...projectSpecificAssistants, ...enabledGlobalAssistants]
+
+    const allTasks = []
+    for (const assistant of assistantsInProject) {
+        const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : projectId
+        const collectionPath = getAssistantTasksCollectionPath(tasksProjectId, assistant.uid)
+        let query = getDb().collection(collectionPath)
+
+        if (isGlobalAssistant(assistant.uid)) {
+            query = query.where('assistantId', '==', assistant.uid)
+        }
+
+        const snapshot = await query.get()
+        snapshot.forEach(doc => {
+            const task = doc.data()
+            task.id = doc.id
+            task.assistant = assistant // Attach for display
+            task.isPreConfigTask = true
+            task.assistantId = assistant.uid
+            allTasks.push(task)
+        })
+    }
+
+    return allTasks.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+}
+
+export async function getPreConfigTask(projectId, assistantId, taskId) {
+    const taskRef = getAssistantTaskDocRef(projectId, assistantId, taskId)
+    const doc = await taskRef.get()
+    if (doc.exists) {
+        return { ...doc.data(), id: doc.id }
+    }
+    return null
+}
+
 //EDTION AND ADITION FUNCTIONS
 
 export const updateAssistantEditionData = async (projectId, assistantId, editorId) => {

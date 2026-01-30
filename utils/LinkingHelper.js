@@ -130,6 +130,10 @@ const isValidChatLink = (url, projectId) => {
     return isValidLink(url, projectId, 'chats')
 }
 
+const isValidPreConfigTaskLink = (url, projectId) => {
+    return isValidLink(url, projectId, 'preConfigTasks')
+}
+
 export const isValidProtocol = protocol => {
     return protocol === 'https:' || protocol === 'http:'
 }
@@ -172,6 +176,8 @@ const getUrlObject = (fullUrl, rootUrl, projectId, editorId, userIdAllowedToEdit
         linkedParentObjectType = 'note'
     } else if (isValidTaskLink(urlParts, _projectId)) {
         linkedParentObjectType = 'task'
+    } else if (isValidPreConfigTaskLink(urlParts, _projectId)) {
+        linkedParentObjectType = 'preConfigTask'
     } else if (isValidContactLink(urlParts, _projectId)) {
         linkedParentObjectType = 'contact'
     } else if (isValidChatLink(urlParts, _projectId)) {
@@ -309,6 +315,7 @@ export {
     isValidGoalLink,
     isValidSkillLink,
     isValidAssistantLink,
+    isValidPreConfigTaskLink,
     getUrlObject,
     handleNestedLinks,
     checkDVLink,

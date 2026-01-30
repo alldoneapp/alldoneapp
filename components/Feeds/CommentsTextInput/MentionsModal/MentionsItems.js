@@ -37,7 +37,11 @@ export default function MentionsItems({
         let userIsWorkstream = false
 
         if (activeTab === MENTION_MODAL_TASKS_TAB || activeTab === MENTION_MODAL_NOTES_TAB) {
-            if (isWorkstream(userId)) {
+            // Check if this is a pre-configured task from an AI assistant
+            if (item.isPreConfigTask) {
+                // For pre-configured tasks, use the assistant's photo
+                photoURL = item.assistant?.photoURL || item.assistant?.photoURL50 || ''
+            } else if (isWorkstream(userId)) {
                 userIsWorkstream = true
             } else {
                 const owner = TasksHelper.getPeopleById(userId, projectId) || getAssistant(userId)
@@ -46,6 +50,17 @@ export default function MentionsItems({
         }
 
         if (activeTab === MENTION_MODAL_TASKS_TAB) {
+            // For pre-configured tasks, use the task name instead of extendedName
+            if (item.isPreConfigTask) {
+                return {
+                    id,
+                    extendedName: name || item.name,
+                    photoURL,
+                    userIsWorkstream: false,
+                    isPreConfigTask: true,
+                    assistantId: item.assistantId || item.assistant?.uid,
+                }
+            }
             return { id, extendedName, photoURL, userIsWorkstream }
         } else if (activeTab === MENTION_MODAL_NOTES_TAB) {
             return { id, extendedName: extendedTitle, photoURL }
@@ -60,6 +75,22 @@ export default function MentionsItems({
 
     const getItemIco = item => {
         if (activeTab === MENTION_MODAL_TASKS_TAB) {
+            // Check if this is a pre-configured task from an AI assistant
+            if (item.isPreConfigTask) {
+                switch (item.type) {
+                    case 'prompt':
+                        return 'message-square'
+                    case 'link':
+                        return 'external-link'
+                    case 'webhook':
+                        return 'link-2'
+                    case 'iframe':
+                        return 'monitor'
+                    default:
+                        return 'cpu'
+                }
+            }
+
             const { done, userIds, parentId } = item
 
             if (parentId != null) {
