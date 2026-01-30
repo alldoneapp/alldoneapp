@@ -18,6 +18,8 @@ import {
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { setProjectAssistant } from '../../../../utils/backends/Projects/projectsFirestore'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import UpdateFromTemplate from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/UpdateFromTemplate'
+import { useUpdateAvailable } from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/useUpdateAvailable'
 
 export default function OpenTasksAssistantData({ projectId }) {
     const dispatch = useDispatch()
@@ -33,8 +35,10 @@ export default function OpenTasksAssistantData({ projectId }) {
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const realGuideProjectIds = useSelector(state => state.loggedUser.realGuideProjectIds)
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
+    const currentUser = useSelector(state => state.currentUser)
 
     const isGlobal = isGlobalAssistant(assistantId)
+    const { isAvailable } = useUpdateAvailable(currentUser)
 
     const copyToEdit = async () => {
         const { currentUser } = store.getState()
@@ -47,6 +51,9 @@ export default function OpenTasksAssistantData({ projectId }) {
             lastVisitBoard: { [projectId]: { [loggedUserId]: Date.now() } },
             fromTemplate: false,
             isDefault: false,
+            // Track source template assistant for update detection
+            copiedFromTemplateAssistantId: currentUser.uid,
+            copiedFromTemplateAssistantDate: Date.now(),
         }
 
         const newAssistant = await uploadNewAssistant(projectId, newAssistantData, null)
@@ -99,6 +106,9 @@ export default function OpenTasksAssistantData({ projectId }) {
                     title={translate('Edit')}
                     buttonStyle={{ marginTop: 16 }}
                 />
+            )}
+            {isAvailable && (isNormalAssistantAndCanBeEdited || isGlobalAssistantAndCanBeEdited) && (
+                <UpdateFromTemplate projectId={projectId} assistant={currentUser} disabled={false} />
             )}
             {canBeCopiedToEdit && (
                 <Button
