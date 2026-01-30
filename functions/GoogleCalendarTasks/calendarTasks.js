@@ -85,13 +85,34 @@ const checkIfNeedToUpdateTask = (oldTask, dataToUpdate) => {
     return !isEqual(oldData, dataToUpdate)
 }
 
-const generateDataToUpdate = (event, email, projectId = null) => {
+// Compute sortIndex with proper timezone handling for all-day events
+const computeSortIndex = (start, timezoneOffset = 0) => {
+    const isAllDay = start.date && !start.dateTime
+    if (isAllDay) {
+        // For all-day events, apply timezone offset to interpret the date correctly
+        return moment(start.date).utcOffset(timezoneOffset, true).valueOf()
+    }
+    // For timed events, dateTime already includes timezone info
+    return moment(start.dateTime).valueOf()
+}
+
+const generateDataToUpdate = (event, email, projectId = null, timezoneOffset = 0) => {
     const { start, end, summary, htmlLink, description } = event
 
     const name = summary.toString()
     const isAllDay = start.date && end.date
-    const startDate = moment(start.dateTime || start.date)
-    const endDate = moment(end.dateTime || end.date)
+
+    // For all-day events, the date string (e.g., "2024-01-15") has no timezone info.
+    // We must apply the user's timezone offset to interpret it correctly.
+    // For timed events, dateTime already includes timezone info (e.g., "2024-01-15T10:00:00+02:00").
+    let startDate, endDate
+    if (isAllDay) {
+        startDate = moment(start.date).utcOffset(timezoneOffset, true)
+        endDate = moment(end.date).utcOffset(timezoneOffset, true)
+    } else {
+        startDate = moment(start.dateTime)
+        endDate = moment(end.dateTime)
+    }
 
     const MINUTES_IN_8_HOURS = 480
 
@@ -115,12 +136,12 @@ const generateDataToUpdate = (event, email, projectId = null) => {
     return dataToUpdate
 }
 
-const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) => {
+const addOrUpdateCalendarTask = async (projectId, task, event, userId, email, timezoneOffset = 0) => {
     const { start, id: taskId } = event
 
     // Pass projectId only for new tasks, otherwise preserve existing originalProjectId
     const isNewTask = !task
-    const dataToUpdate = generateDataToUpdate(event, email, isNewTask ? projectId : null)
+    const dataToUpdate = generateDataToUpdate(event, email, isNewTask ? projectId : null, timezoneOffset)
 
     // Preserve manual pinning info and originalProjectId from existing task
     if (task && task.calendarData) {
@@ -146,9 +167,9 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) =>
             const { id, projectId: oldProjectId, ...persistableTask } = task
             const newTaskData = { ...persistableTask, ...dataToUpdate }
 
-            // Preserve sortIndex when present; otherwise compute from start
+            // Preserve sortIndex when present; otherwise compute from start with timezone
             if (!newTaskData.sortIndex) {
-                newTaskData.sortIndex = moment(start.dateTime || start.date).valueOf()
+                newTaskData.sortIndex = computeSortIndex(start, timezoneOffset)
             }
 
             // Create in new project, delete from old
@@ -162,7 +183,7 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email) =>
             await admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`).update(dataToUpdate)
         }
     } else {
-        dataToUpdate.sortIndex = moment(start.dateTime || start.date).valueOf()
+        dataToUpdate.sortIndex = computeSortIndex(start, timezoneOffset)
         await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).set(generateTask(dataToUpdate, userId))
     }
 }
@@ -196,7 +217,7 @@ const addCalendarEvents = async (events, syncProjectId, userId, email, timezoneO
     const promises = []
     filteredEvents.forEach(event => {
         const existingTask = tasksMap[event.id]
-        promises.push(addOrUpdateCalendarTask(syncProjectId, existingTask, event, userId, email))
+        promises.push(addOrUpdateCalendarTask(syncProjectId, existingTask, event, userId, email, timezoneOffset))
     })
 
     await Promise.all(promises)
