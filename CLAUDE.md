@@ -56,6 +56,8 @@ npm run format-code          # Format with Prettier
 
 **Yjs Text Formatting**: When inserting text with `ytext.insert()`, passing `undefined` for attributes causes attribute inheritance from adjacent text. Always explicitly set formatting attributes to `null` to clear them (e.g., `{ bold: segment.bold ? true : null }`). This applies to markdown-to-Yjs conversion in `functions/Assistant/markdownToYjs.js`.
 
+**Yjs applyDelta() Format Removal Bug**: Yjs's `applyDelta()` doesn't properly handle `null` attributes for format removal (see [GitHub Issue #474](https://github.com/yjs/yjs/issues/474)). When Quill sends `{retain: N, attributes: {bold: null}}` to remove formatting, `applyDelta()` doesn't reliably remove the attribute. The fix in `replacement_node_modules/y-quill/src/y-quill.js` intercepts these operations and uses `type.format(index, length, {bold: null})` instead, which properly removes formatting.
+
 ### State Management
 
 Redux store in `redux/store.js` (~116k lines) with actions in `redux/actions.js` (~63k lines). Uses `@manaflair/redux-batch` for batched updates.
