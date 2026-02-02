@@ -29,7 +29,7 @@ export default function OpenTasksByProject({
     projectId,
 }) {
     const dispatch = useDispatch()
-    const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId].index)
+    const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId]?.index)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
