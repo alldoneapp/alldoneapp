@@ -38,7 +38,7 @@ import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../../util
 
 export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
-    const projectId = useSelector(state => state.loggedUserProjects[projectIndex].id)
+    const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const laterTasksExpanded = useSelector(state => state.laterTasksExpanded)
     const somedayTasksExpanded = useSelector(state => state.somedayTasksExpanded)
