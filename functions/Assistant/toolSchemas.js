@@ -39,7 +39,7 @@ const toolSchemas = {
                     projectName: {
                         type: 'string',
                         description:
-                            "Optional: the project name where the task should be created. The system will search for projects matching this name (case-insensitive partial match). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the current chat context project or the user's default project. You do NOT need to provide a project name - if omitted, the task is created in the current or default project.",
+                            "Optional: the project name where the task should be created. IMPORTANT: Use the EXACT project name as shown in the user's project list - do not translate or modify it (e.g., use 'Privat' not 'Private'). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the current chat context project or the user's default project. You do NOT need to provide a project name - if omitted, the task is created in the current or default project.",
                     },
                 },
                 required: ['name'],
@@ -184,7 +184,8 @@ const toolSchemas = {
                     },
                     projectName: {
                         type: 'string',
-                        description: 'Search for task within a specific project by project name',
+                        description:
+                            "Search for task within a specific project by project name. IMPORTANT: Use the EXACT project name as shown in the user's project list - do not translate or modify it (e.g., use 'Privat' not 'Private').",
                     },
                     projectId: {
                         type: 'string',
