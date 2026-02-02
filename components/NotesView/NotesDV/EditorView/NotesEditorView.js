@@ -168,12 +168,9 @@ const NotesEditorView = ({
         scrollYPos.current = deltaY
         if (deltaY > getScrollTolerance(true) && !isFullscreen) {
             setFullscreen(true)
+        } else if (deltaY < getScrollTolerance(false) && isFullscreen) {
+            setFullscreen(false)
         }
-        // else {
-        //     if (deltaY < getScrollTolerance(false) && isFullscreen) {
-        //         setFullscreen(false)
-        //     }
-        // }
     }
 
     const switchScreenModes = value => {
