@@ -716,6 +716,6 @@ export const filterMilestonesAndGoalsInCurrentUser = (
 
 export const getOwnerId = (projectId, assigeeId) => {
     const { loggedUser } = store.getState()
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     return isGuide ? (assigeeId === ALL_GOALS_ID ? loggedUser.uid : assigeeId) : ALL_USERS
 }
