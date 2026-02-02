@@ -9,7 +9,7 @@ import OpenTasksAssistantData from './OpenTasksAssistantData'
 import OpenTasksAssistantPreConfigTasks from './OpenTasksAssistantPreConfigTasks'
 
 export default function OpenTasksByProjectForAssistants({ projectIndex }) {
-    const projectId = useSelector(state => state.loggedUserProjects[projectIndex].id)
+    const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)

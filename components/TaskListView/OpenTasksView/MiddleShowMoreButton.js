@@ -8,7 +8,7 @@ import store from '../../../redux/store'
 
 export default function MiddleShowMoreButton({ instanceKey, projectIndex, setProjectsHaveTasksInFirstDay, expanded }) {
     const dispatch = useDispatch()
-    const projectId = useSelector(state => state.loggedUserProjects[projectIndex].id)
+    const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
 
     const updateTaks = (initialTasks, initialLoadingInOpenTasks) => {
         updateOpTasks(

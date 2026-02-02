@@ -782,7 +782,7 @@ class TasksHelper {
 
             const isWorkstream = userId.startsWith(WORKSTREAM_ID_PREFIX)
             let currentUser
-            const isGuide = !!loggedUserProjects[projectIndex].parentTemplateId
+            const isGuide = !!loggedUserProjects[projectIndex]?.parentTemplateId
             if (userId === ALL_GOALS_ID && !isGuide) {
                 currentUser = allGoals
             } else if (isWorkstream && !isGuide) {

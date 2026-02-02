@@ -8,7 +8,7 @@ import {
 export default function useTrafficQuota(projectId) {
     const monthlyTraffic = useSelector(state => state.loggedUser.monthlyTraffic)
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
-    const projectMonthlyTraffic = useSelector(state => state.loggedUserProjectsMap[projectId].monthlyTraffic)
+    const projectMonthlyTraffic = useSelector(state => state.loggedUserProjectsMap[projectId]?.monthlyTraffic)
 
     const limitedByTraffic =
         premiumStatus === PLAN_STATUS_FREE &&

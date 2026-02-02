@@ -16,7 +16,7 @@ import { dismissAllPopups } from '../../../utils/HelperFunctions'
 
 export default function TopShowMoreButton({ instanceKey, projectIndex, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
-    const projectId = useSelector(state => state.loggedUserProjects[projectIndex].id)
+    const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const laterTasksExpanded = useSelector(state => state.laterTasksExpanded)
 
