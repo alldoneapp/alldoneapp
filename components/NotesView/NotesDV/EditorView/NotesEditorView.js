@@ -280,44 +280,6 @@ const NotesEditorView = ({
         if (dirtyEditor.current) {
             dirtyEditor.current = false
 
-            // Debug: Log state before saving
-            console.log('[BOLD_DEBUG] === AUTOSAVE START ===')
-            console.log('[BOLD_DEBUG] Note ID:', note.id)
-
-            // Log Quill contents
-            const quillOps = quillRef.current.getContents().ops
-            console.log('[BOLD_DEBUG] Quill contents at save time:')
-            quillOps.forEach((op, index) => {
-                if (op.attributes) {
-                    console.log(
-                        `[BOLD_DEBUG]   QuillOp[${index}]: insert="${
-                            typeof op.insert === 'string' ? op.insert.substring(0, 50) : '[embed]'
-                        }", attributes=`,
-                        JSON.stringify(op.attributes)
-                    )
-                }
-            })
-            const quillBoldOps = quillOps.filter(op => op.attributes && op.attributes.bold)
-            console.log('[BOLD_DEBUG] Quill ops with bold=true at save:', quillBoldOps.length)
-
-            // Log Y.Text delta
-            const type = ydoc.current.getText('quill')
-            const yDelta = type.toDelta()
-            console.log('[BOLD_DEBUG] Y.Text delta at save time:')
-            yDelta.forEach((op, index) => {
-                if (op.attributes) {
-                    console.log(
-                        `[BOLD_DEBUG]   YOp[${index}]: insert="${
-                            typeof op.insert === 'string' ? op.insert.substring(0, 50) : '[embed]'
-                        }", attributes=`,
-                        JSON.stringify(op.attributes)
-                    )
-                }
-            })
-            const yBoldOps = yDelta.filter(op => op.attributes && op.attributes.bold)
-            console.log('[BOLD_DEBUG] Y.Text ops with bold=true at save:', yBoldOps.length)
-            console.log('[BOLD_DEBUG] === AUTOSAVE END ===')
-
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
             const preview = getNotePreviewText(projectId, quillRef.current)
             scanLinkedObjects()
@@ -746,43 +708,9 @@ const NotesEditorView = ({
             dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
             if (!noteUnmountedRef.current) {
                 const update = new Uint8Array(data)
-                console.log('[BOLD_DEBUG] === NOTE LOAD START ===')
-                console.log('[BOLD_DEBUG] Note ID:', note.id)
-                console.log('[BOLD_DEBUG] Update data length:', update.length)
                 if (update.length > 0) {
                     Y.applyUpdate(ydoc.current, update)
                 }
-
-                // Debug: Log Y.Text delta BEFORE QuillBinding
-                const deltaBeforeBinding = type.toDelta()
-                console.log('[BOLD_DEBUG] Y.Text delta BEFORE QuillBinding:')
-                deltaBeforeBinding.forEach((op, index) => {
-                    if (op.attributes) {
-                        console.log(
-                            `[BOLD_DEBUG]   Op[${index}]: insert="${
-                                typeof op.insert === 'string' ? op.insert.substring(0, 50) : '[embed]'
-                            }", attributes=`,
-                            JSON.stringify(op.attributes)
-                        )
-                    } else {
-                        console.log(
-                            `[BOLD_DEBUG]   Op[${index}]: insert="${
-                                typeof op.insert === 'string' ? op.insert.substring(0, 50) : '[embed]'
-                            }", NO attributes`
-                        )
-                    }
-                })
-
-                // Check specifically for bold attributes
-                const boldOps = deltaBeforeBinding.filter(op => op.attributes && op.attributes.bold)
-                console.log('[BOLD_DEBUG] Operations with bold=true:', boldOps.length)
-                boldOps.forEach((op, index) => {
-                    console.log(
-                        `[BOLD_DEBUG]   Bold Op[${index}]: text="${
-                            typeof op.insert === 'string' ? op.insert.substring(0, 50) : '[embed]'
-                        }"`
-                    )
-                })
 
                 provider.current = new WebsocketProvider(
                     getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
@@ -795,11 +723,6 @@ const NotesEditorView = ({
                     })*/
                 provider.current.on('synced', synced => {
                     setSynced(true)
-                    // Debug: Log state after websocket sync
-                    console.log('[BOLD_DEBUG] Websocket synced, checking delta again...')
-                    const deltaAfterSync = type.toDelta()
-                    const boldOpsAfterSync = deltaAfterSync.filter(op => op.attributes && op.attributes.bold)
-                    console.log('[BOLD_DEBUG] Operations with bold=true after sync:', boldOpsAfterSync.length)
                 })
                 provider.current.awareness.setLocalStateField('user', {
                     name: userName,
@@ -813,22 +736,6 @@ const NotesEditorView = ({
                 quillRef.current.setSelection(0, 0)
 
                 const ops = quillRef.current.getContents().ops
-
-                // Debug: Log Quill contents AFTER QuillBinding
-                console.log('[BOLD_DEBUG] Quill contents AFTER QuillBinding:')
-                ops.forEach((op, index) => {
-                    if (op.attributes) {
-                        console.log(
-                            `[BOLD_DEBUG]   QuillOp[${index}]: insert="${
-                                typeof op.insert === 'string' ? op.insert.substring(0, 50) : '[embed]'
-                            }", attributes=`,
-                            JSON.stringify(op.attributes)
-                        )
-                    }
-                })
-                const quillBoldOps = ops.filter(op => op.attributes && op.attributes.bold)
-                console.log('[BOLD_DEBUG] Quill ops with bold=true:', quillBoldOps.length)
-                console.log('[BOLD_DEBUG] === NOTE LOAD END ===')
 
                 storeInitialUserMentions(ops)
                 setDataLoaded(true)
