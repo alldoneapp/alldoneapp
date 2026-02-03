@@ -296,7 +296,8 @@ export default function UrlWrapper({ value, isShared }) {
                             editor.updateContents(delta2)
                         }
 
-                        if (type === 'task' && inNote) {
+                        const isObjectNoteUrl = newUrl && newUrl.endsWith('/note')
+                        if (type === 'task' && inNote && !isObjectNoteUrl) {
                             const taskTagFormat = { id: tagId, taskId: objectId, editorId, objectUrl: url }
                             delta.insert({ taskTagFormat })
                         } else {

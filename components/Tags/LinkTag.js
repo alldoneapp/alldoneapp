@@ -548,6 +548,12 @@ export default function LinkTag({
                     break
                 }
             }
+
+            // check for object note url
+            assignObjectNoteIcon(matchedObj)
+
+            // check for object chat url
+            assignObjectChatIcon(matchedObj)
         }
 
         return { objectType, path, projectId, objectId, matchedObj }

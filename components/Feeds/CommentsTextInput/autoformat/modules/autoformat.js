@@ -505,7 +505,8 @@ function transformedMatchOps(quillInstance, atIndex, transform, result, editorId
                 insertSpaceAtStart(quillInstance, ops, atIndex, result)
 
                 const { type, objectId, url: objectUrl } = url
-                if (type === 'task') {
+                const isObjectNoteUrl = objectUrl && objectUrl.endsWith('/note')
+                if (type === 'task' && !isObjectNoteUrl) {
                     const taskTagFormat = { id: v4(), taskId: objectId, editorId, objectUrl }
                     ops.insert({
                         taskTagFormat,
