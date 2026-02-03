@@ -57,7 +57,18 @@ export default function OpenTasksByProject({
     // Check if this project is using the default project's assistant
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const isUsingDefaultProjectAssistant = !project?.assistantId && projectId !== defaultProjectId && defaultProjectId
+    const projectAssistants = useSelector(state => state.projectAssistants?.[projectId] || [])
+    const globalAssistants = useSelector(state => state.globalAssistants || [])
+    const isUsingDefaultProjectAssistant = (() => {
+        if (projectId === defaultProjectId || !defaultProjectId) return false
+        if (!project?.assistantId) return true
+        // Check if the assistant is local to this project (project assistant or global assistant in project)
+        const isLocalProjectAssistant = projectAssistants.some(a => a.uid === project.assistantId)
+        const isGlobalInProject =
+            project.globalAssistantIds?.includes(project.assistantId) &&
+            globalAssistants.some(a => a.uid === project.assistantId)
+        return !isLocalProjectAssistant && !isGlobalInProject
+    })()
 
     useEffect(() => {
         const watcherKey = v4()

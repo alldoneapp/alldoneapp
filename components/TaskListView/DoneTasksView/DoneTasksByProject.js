@@ -28,7 +28,17 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
 
     // Check if this project is using the default project's assistant
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const isUsingDefaultProjectAssistant = !project?.assistantId && project.id !== defaultProjectId && defaultProjectId
+    const projectAssistants = useSelector(state => state.projectAssistants?.[project.id] || [])
+    const globalAssistants = useSelector(state => state.globalAssistants || [])
+    const isUsingDefaultProjectAssistant = (() => {
+        if (project.id === defaultProjectId || !defaultProjectId) return false
+        if (!project?.assistantId) return true
+        const isLocalProjectAssistant = projectAssistants.some(a => a.uid === project.assistantId)
+        const isGlobalInProject =
+            project.globalAssistantIds?.includes(project.assistantId) &&
+            globalAssistants.some(a => a.uid === project.assistantId)
+        return !isLocalProjectAssistant && !isGlobalInProject
+    })()
 
     const { todayTasksByDate, todaySubtasksByTask, todayEstimationByDate } = useTodayTasks(project)
     const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck } = useEarlierTasks(
