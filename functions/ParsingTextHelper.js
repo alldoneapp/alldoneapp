@@ -120,6 +120,7 @@ const mapTaskData = (taskId, algoliaObjectId, task, projectId) => {
         isPrivate: task.isPrivate ? task.isPrivate : false,
         isPublicFor: task.isPublicFor ? task.isPublicFor : [FEED_PUBLIC_FOR_ALL, task.userId],
         lastEditionDate: task.lastEditionDate ? task.lastEditionDate : Date.now(),
+        dueDate: task.dueDate ? task.dueDate : null,
     }
 }
 
