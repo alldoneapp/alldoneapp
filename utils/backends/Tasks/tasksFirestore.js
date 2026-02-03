@@ -25,6 +25,8 @@ import {
     insertFollowersUserToFeedChain,
     logDoneTasks,
     logEvent,
+    mapGoalData,
+    mapMilestoneData,
     mapTaskData,
     moveTasksinWorkflowFeedsChain,
     moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks,
@@ -117,7 +119,7 @@ import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/Pro
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
 import { getGoalData } from '../Goals/goalsFirestore'
-import { isPrivateGoal } from '../../../components/GoalsView/GoalsHelper'
+import { getOwnerId, isPrivateGoal } from '../../../components/GoalsView/GoalsHelper'
 import { getSkillData } from '../Skills/skillsFirestore'
 import { isPrivateSkill } from '../../../components/SettingsView/Profile/Skills/SkillsHelper'
 import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
@@ -132,6 +134,7 @@ import { DV_TAB_ROOT_TASKS, DV_TAB_TASK_PROPERTIES } from '../../TabNavigationCo
 import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
 import { getAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
+import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 export async function watchTask(projectId, taskId, watcherKey, callback) {
@@ -2829,6 +2832,193 @@ export const getDateToMoveTaskInAutoTeminder = (timesPostponed, isObservedTask) 
     return date
 }
 
+const getGoalsOrderingDataForProject = async (projectId, assigneeId) => {
+    const {
+        openMilestonesByProjectInTasks,
+        doneMilestonesByProjectInTasks,
+        goalsByProjectInTasks,
+        loggedUser,
+    } = store.getState()
+
+    const openMilestones = openMilestonesByProjectInTasks?.[projectId]
+    const doneMilestones = doneMilestonesByProjectInTasks?.[projectId]
+    const goalsById = goalsByProjectInTasks?.[projectId]
+
+    if (openMilestones && doneMilestones && goalsById) {
+        return { openMilestones, doneMilestones, goalsById, source: 'store' }
+    }
+
+    try {
+        const ownerId = getOwnerId(projectId, assigneeId)
+        const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
+
+        const goalsSnapshot = await getDb()
+            .collection(`goals/${projectId}/items`)
+            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('ownerId', '==', ownerId)
+            .get()
+
+        const goalsByIdFromFirestore = {}
+        goalsSnapshot.forEach(doc => {
+            goalsByIdFromFirestore[doc.id] = mapGoalData(doc.id, doc.data())
+        })
+
+        const milestonesSnapshot = await getDb()
+            .collection(`goalsMilestones/${projectId}/milestonesItems`)
+            .where('ownerId', '==', ownerId)
+            .orderBy('date', 'asc')
+            .get()
+
+        const openMilestonesFromFirestore = []
+        let doneMilestonesFromFirestore = []
+
+        milestonesSnapshot.forEach(doc => {
+            const milestone = mapMilestoneData(doc.id, doc.data())
+            milestone.done ? doneMilestonesFromFirestore.push(milestone) : openMilestonesFromFirestore.push(milestone)
+        })
+
+        doneMilestonesFromFirestore = doneMilestonesFromFirestore
+            .sort((a, b) => (a.doneDate || 0) - (b.doneDate || 0))
+            .reverse()
+
+        return {
+            openMilestones: openMilestonesFromFirestore,
+            doneMilestones: doneMilestonesFromFirestore,
+            goalsById: goalsByIdFromFirestore,
+            source: 'firestore',
+        }
+    } catch (error) {
+        console.error('[getGoalsOrderingDataForProject] Failed to load goal ordering data', { projectId, error })
+        return { openMilestones: [], doneMilestones: [], goalsById: null, source: 'none' }
+    }
+}
+
+const sortTasksByDisplayOrder = ({ projectId, assigneeId, tasks, openMilestones, doneMilestones, goalsById }) => {
+    if (!tasks || tasks.length === 0) return []
+
+    const tasksByGoalId = {}
+    for (const task of tasks) {
+        const goalId = task.parentGoalId ? task.parentGoalId : NOT_PARENT_GOAL_INDEX
+        if (!tasksByGoalId[goalId]) tasksByGoalId[goalId] = []
+        tasksByGoalId[goalId].push(task)
+    }
+
+    Object.keys(tasksByGoalId).forEach(goalId => {
+        tasksByGoalId[goalId].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+    })
+
+    const taskGroups = Object.keys(tasksByGoalId).map(goalId => [goalId, tasksByGoalId[goalId]])
+    let goalsPositionId =
+        openMilestones && doneMilestones && goalsById
+            ? sortGoalTasksGorups(projectId, openMilestones, doneMilestones, goalsById, assigneeId, taskGroups)
+            : null
+
+    if (!goalsPositionId) {
+        const goalIds = taskGroups.map(([goalId]) => goalId).filter(goalId => goalId !== NOT_PARENT_GOAL_INDEX)
+
+        const sortedGoalIds = [...goalIds].sort((a, b) => {
+            const aSort = tasksByGoalId[a]?.[0]?.sortIndex || 0
+            const bSort = tasksByGoalId[b]?.[0]?.sortIndex || 0
+            return bSort - aSort
+        })
+
+        goalsPositionId = {}
+        sortedGoalIds.forEach((goalId, index) => {
+            goalsPositionId[goalId] = index
+        })
+        goalsPositionId[NOT_PARENT_GOAL_INDEX] = sortedGoalIds.length
+    }
+
+    const generalTasks = []
+    const validGroups = []
+    taskGroups.forEach(([goalId, groupTasks]) => {
+        if (goalsPositionId[goalId] === undefined) {
+            generalTasks.push(...groupTasks)
+        } else {
+            validGroups.push([goalId, groupTasks])
+        }
+    })
+
+    if (generalTasks.length > 0) {
+        const existingGeneralIndex = validGroups.findIndex(([goalId]) => goalId === NOT_PARENT_GOAL_INDEX)
+        if (existingGeneralIndex >= 0) {
+            const mergedGeneralTasks = [...validGroups[existingGeneralIndex][1], ...generalTasks].sort(
+                (a, b) => (b.sortIndex || 0) - (a.sortIndex || 0)
+            )
+            validGroups[existingGeneralIndex][1] = mergedGeneralTasks
+        } else {
+            validGroups.push([
+                NOT_PARENT_GOAL_INDEX,
+                [...generalTasks].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0)),
+            ])
+        }
+
+        if (goalsPositionId[NOT_PARENT_GOAL_INDEX] === undefined) {
+            goalsPositionId[NOT_PARENT_GOAL_INDEX] = Object.keys(goalsPositionId).length
+        }
+    }
+
+    validGroups.sort((a, b) => {
+        const aPos = goalsPositionId[a[0]] ?? Number.MAX_SAFE_INTEGER
+        const bPos = goalsPositionId[b[0]] ?? Number.MAX_SAFE_INTEGER
+        return aPos - bPos
+    })
+
+    const orderedTasks = []
+    validGroups.forEach(([, groupTasks]) => {
+        orderedTasks.push(...groupTasks)
+    })
+
+    return orderedTasks
+}
+
+const pickNextFocusTaskByDisplayOrder = async ({ projectId, userId, tasks }) => {
+    if (!tasks || tasks.length === 0) return null
+
+    const nonWorkflowTasks = tasks.filter(task => task.userIds?.length === 1)
+    const workflowTasks = tasks.filter(task => !task.userIds || task.userIds.length !== 1)
+
+    const { openMilestones, doneMilestones, goalsById, source } = await getGoalsOrderingDataForProject(
+        projectId,
+        userId
+    )
+
+    const orderedNonWorkflow = sortTasksByDisplayOrder({
+        projectId,
+        assigneeId: userId,
+        tasks: nonWorkflowTasks,
+        openMilestones,
+        doneMilestones,
+        goalsById,
+    })
+
+    if (orderedNonWorkflow.length > 0) {
+        return orderedNonWorkflow[0]
+    }
+
+    if (workflowTasks.length === 0) return null
+
+    const orderedWorkflow = sortTasksByDisplayOrder({
+        projectId,
+        assigneeId: userId,
+        tasks: workflowTasks,
+        openMilestones,
+        doneMilestones,
+        goalsById,
+    })
+
+    if (orderedWorkflow.length === 0) return null
+
+    console.log('[pickNextFocusTaskByDisplayOrder] Fallback to workflow task ordering', {
+        projectId,
+        userId,
+        goalsOrderingSource: source,
+        workflowCount: workflowTasks.length,
+    })
+
+    return orderedWorkflow[0]
+}
+
 export async function autoReminderMultipleTasks(tasks) {
     store.dispatch(startLoadingData())
 
@@ -2848,13 +3038,19 @@ export async function autoReminderMultipleTasks(tasks) {
 
 /**
  * Synchronously picks the next focus task from the Redux store using the same
- * prioritization as the backend: same goal first, then goal ordering by milestone.
+ * display order as the UI (goals ordered by milestone + general tasks last).
  */
 function getOptimisticNextFocusTask(projectId, completedTask) {
-    const { openTasksMap, goalsByProjectInTasks, openMilestonesByProjectInTasks } = store.getState()
+    const {
+        openTasksMap,
+        goalsByProjectInTasks,
+        openMilestonesByProjectInTasks,
+        doneMilestonesByProjectInTasks,
+    } = store.getState()
     const projectTasks = openTasksMap[projectId] || {}
-    const goalsById = goalsByProjectInTasks[projectId] || {}
+    const goalsById = goalsByProjectInTasks[projectId] || null
     const openMilestones = openMilestonesByProjectInTasks[projectId] || []
+    const doneMilestones = doneMilestonesByProjectInTasks[projectId] || []
     const endOfToday = moment().endOf('day').valueOf()
 
     console.log(`[getOptimisticNextFocusTask] Starting:`, {
@@ -2862,22 +3058,20 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
         completedTaskId: completedTask.id,
         completedTaskGoalId: completedTask.parentGoalId,
         totalTasksInMap: Object.keys(projectTasks).length,
-        goalsCount: Object.keys(goalsById).length,
+        goalsCount: goalsById ? Object.keys(goalsById).length : 0,
         milestonesCount: openMilestones.length,
     })
 
     // Get all candidate non-workflow tasks
-    const candidateTasks = Object.values(projectTasks)
-        .filter(
-            t =>
-                t.id !== completedTask.id &&
-                !t.done &&
-                !t.isSubtask &&
-                !t.calendarData &&
-                t.dueDate <= endOfToday &&
-                t.userIds?.length === 1
-        )
-        .sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+    const candidateTasks = Object.values(projectTasks).filter(
+        t =>
+            t.id !== completedTask.id &&
+            !t.done &&
+            !t.isSubtask &&
+            !t.calendarData &&
+            t.dueDate <= endOfToday &&
+            t.userIds?.length === 1
+    )
 
     console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
         count: candidateTasks.length,
@@ -2888,89 +3082,17 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
 
     if (candidateTasks.length === 0) return null
 
-    // Priority 1: Non-workflow tasks in the same goal
-    if (completedTask.parentGoalId) {
-        const sameGoalTask = candidateTasks.find(t => t.parentGoalId === completedTask.parentGoalId)
-        if (sameGoalTask) {
-            console.log(`[getOptimisticNextFocusTask] Priority 1: Same goal task found:`, {
-                id: sameGoalTask.id,
-                name: sameGoalTask.name,
-            })
-            return sameGoalTask
-        }
-        console.log(`[getOptimisticNextFocusTask] Priority 1: No non-workflow tasks in same goal`)
-    }
+    const orderedTasks = sortTasksByDisplayOrder({
+        projectId,
+        assigneeId: completedTask.userId,
+        tasks: candidateTasks,
+        openMilestones,
+        doneMilestones,
+        goalsById,
+    })
 
-    // Priority 2: Pick from the highest-priority goal (by milestone ordering)
-    const tasksWithGoals = candidateTasks.filter(t => t.parentGoalId)
-    if (tasksWithGoals.length > 0 && openMilestones.length > 0) {
-        // Determine the milestone of the completed task's goal
-        const completedGoal = completedTask.parentGoalId ? goalsById[completedTask.parentGoalId] : null
-        let milestoneId = null
-        if (completedGoal) {
-            // Find which milestone this goal belongs to
-            for (const milestone of openMilestones) {
-                const { startingMilestoneDate, completionMilestoneDate } = completedGoal
-                if (startingMilestoneDate <= milestone.date && completionMilestoneDate >= milestone.date) {
-                    milestoneId = milestone.id
-                    break
-                }
-            }
-        }
-
-        console.log(`[getOptimisticNextFocusTask] Priority 2: Goal ordering:`, {
-            milestoneId,
-            completedGoalFound: !!completedGoal,
-            tasksWithGoalsCount: tasksWithGoals.length,
-        })
-
-        if (milestoneId) {
-            // Group tasks by goal
-            const tasksByGoal = {}
-            for (const t of tasksWithGoals) {
-                if (!tasksByGoal[t.parentGoalId]) tasksByGoal[t.parentGoalId] = []
-                tasksByGoal[t.parentGoalId].push(t)
-            }
-
-            // Sort goals by sortIndexByMilestone (higher = first, matching UI order)
-            const goalIds = Object.keys(tasksByGoal)
-            const sortedGoalIds = goalIds.sort((a, b) => {
-                const goalA = goalsById[a]
-                const goalB = goalsById[b]
-                const sortA = goalA?.sortIndexByMilestone?.[milestoneId] || 0
-                const sortB = goalB?.sortIndexByMilestone?.[milestoneId] || 0
-                return sortB - sortA
-            })
-
-            console.log(
-                `[getOptimisticNextFocusTask] Priority 2: Sorted goals:`,
-                sortedGoalIds.map(id => ({
-                    id,
-                    name: goalsById[id]?.name,
-                    sortIndex: goalsById[id]?.sortIndexByMilestone?.[milestoneId],
-                    taskCount: tasksByGoal[id]?.length,
-                }))
-            )
-
-            // Pick first task from highest-priority goal
-            for (const goalId of sortedGoalIds) {
-                if (tasksByGoal[goalId]?.length > 0) {
-                    const selected = tasksByGoal[goalId][0]
-                    console.log(`[getOptimisticNextFocusTask] Priority 2: Selected from goal:`, {
-                        goalId,
-                        taskId: selected.id,
-                        taskName: selected.name,
-                    })
-                    return selected
-                }
-            }
-        }
-    }
-
-    // Priority 3: Any non-workflow task (tasks with goals first, then without)
-    const tasksWithGoalsFallback = candidateTasks.filter(t => t.parentGoalId)
-    const result = tasksWithGoalsFallback[0] || candidateTasks[0]
-    console.log(`[getOptimisticNextFocusTask] Priority 3: Fallback:`, {
+    const result = orderedTasks[0] || null
+    console.log(`[getOptimisticNextFocusTask] Selected by display order:`, {
         id: result?.id,
         name: result?.name,
         goalId: result?.parentGoalId,
@@ -3048,11 +3170,11 @@ async function findAndSetNewFocusedTask(
         return true
     }
 
-    // --- If no upcoming calendar task, proceed with existing group-based prioritization logic ---
+    // --- If no upcoming calendar task, proceed with display-order prioritization ---
     const endOfToday = moment().endOf('day').valueOf() // endOfToday is still needed for non-calendar task logic below
     let newFocusedTask = null
 
-    // --- Phase 1, 2 & 3: Try to find a task in the current project, prioritizing same group ---
+    // --- Phase 1, 2 & 3: Try to find a task in the current project using display order ---
     const tasksRef = getDb().collection(`items/${currentProjectId}/tasks`)
     let query = tasksRef
         .where('userId', '==', userId)
@@ -3100,31 +3222,11 @@ async function findAndSetNewFocusedTask(
                         : `${filteredOutTasks.length} tasks filtered (too many to log)`,
             })
 
-            // Attempt 1: Non-workflow tasks with the same parentGoalId as the previous task
-            if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
-                const tasksInSameSpecificGroup = allFetchedTasksInCurrentProject.filter(
-                    task => task.parentGoalId === previousTaskParentGoalId
-                )
-
-                const nonWorkflowTasksInGroup = tasksInSameSpecificGroup.filter(task => task.userIds.length === 1)
-                if (nonWorkflowTasksInGroup.length > 0) {
-                    newFocusedTask = nonWorkflowTasksInGroup[0] // Already sorted by sortIndex
-                }
-                // If only workflow tasks remain in same goal, fall through to check other goals first
-            }
-
-            // Attempt 2: Non-workflow tasks in other goals or general tasks
-            if (!newFocusedTask) {
-                const nonWorkflowTasks = allFetchedTasksInCurrentProject.filter(task => task.userIds.length === 1)
-                if (nonWorkflowTasks.length > 0) {
-                    newFocusedTask = nonWorkflowTasks[0] // Already sorted by sortIndex
-                }
-            }
-
-            // Attempt 3: Last resort - workflow tasks if no non-workflow tasks available at all
-            if (!newFocusedTask && allFetchedTasksInCurrentProject.length > 0) {
-                newFocusedTask = allFetchedTasksInCurrentProject[0] // Fallback to workflow tasks
-            }
+            newFocusedTask = await pickNextFocusTaskByDisplayOrder({
+                projectId: currentProjectId,
+                userId,
+                tasks: allFetchedTasksInCurrentProject,
+            })
         } else {
             console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId}: No open tasks found for user`)
         }
@@ -3229,19 +3331,22 @@ async function findAndSetNewFocusedTask(
                 })
 
                 if (validTasks.length > 0) {
-                    // Prioritize non-workflow tasks first
-                    const nonWorkflowValidTasks = validTasks.filter(task => task.userIds.length === 1)
-                    const newFocusedTaskFromOtherProject =
-                        nonWorkflowValidTasks.length > 0 ? nonWorkflowValidTasks[0] : validTasks[0] // Fallback to workflow tasks if no regular tasks available
-
-                    console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
+                    const newFocusedTaskFromOtherProject = await pickNextFocusTaskByDisplayOrder({
                         projectId: pid,
-                        taskId: newFocusedTaskFromOtherProject.id,
-                        taskName: newFocusedTaskFromOtherProject.name,
-                        isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
+                        userId,
+                        tasks: validTasks,
                     })
-                    await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject)
-                    return true
+
+                    if (newFocusedTaskFromOtherProject) {
+                        console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
+                            projectId: pid,
+                            taskId: newFocusedTaskFromOtherProject.id,
+                            taskName: newFocusedTaskFromOtherProject.name,
+                            isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
+                        })
+                        await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject)
+                        return true
+                    }
                 }
             } else {
                 console.log(`[findAndSetNewFocusedTask] Project ${pid}: No open tasks found for user`)
