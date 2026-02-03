@@ -2328,6 +2328,7 @@ async function storeChunks(
                     let resumedChunkCount = 0
                     let totalContentReceived = 0
                     let nextToolCalls = null
+                    let resumedChunksSinceLastUpdate = 0
 
                     for await (const newChunk of newStream) {
                         resumedChunkCount++
@@ -2367,8 +2368,18 @@ async function storeChunks(
                         if (newChunk.content) {
                             totalContentReceived += newChunk.content.length
                             commentText += newChunk.content
-                            // Use batched updates for resumed stream chunks too
-                            await scheduleUpdate({ commentText }, false)
+
+                            // Use same chunk-threshold flushing as the main stream loop
+                            resumedChunksSinceLastUpdate++
+                            const shouldFlushImmediately = resumedChunksSinceLastUpdate >= BATCH_UPDATE_CHUNK_THRESHOLD
+
+                            if (shouldFlushImmediately) {
+                                resumedChunksSinceLastUpdate = 0
+                                await flushPendingUpdate()
+                            }
+
+                            await scheduleUpdate({ commentText }, shouldFlushImmediately)
+
                             if (ENABLE_DETAILED_LOGGING) {
                                 console.log('🔧 NATIVE TOOL CALL: Scheduled comment update with new content', {
                                     iteration: toolCallIteration,
@@ -2376,6 +2387,8 @@ async function storeChunks(
                                     addedContentLength: newChunk.content.length,
                                     totalContentReceived,
                                     currentCommentLength: commentText.length,
+                                    resumedChunksSinceLastUpdate,
+                                    willFlushImmediately: shouldFlushImmediately,
                                 })
                             }
                         }
