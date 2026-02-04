@@ -16,9 +16,50 @@ export default function SearchForm({
     disabledButton,
 }) {
     useEffect(() => {
-        setTimeout(() => {
-            searchInputRef.current?.focus()
-        }, 300)
+        // Buffer keystrokes that arrive before the input is focused,
+        // so nothing the user types is lost during modal open animation.
+        const buffered = []
+        const handleEarlyKeystroke = e => {
+            if (
+                e.key.length === 1 &&
+                !e.ctrlKey &&
+                !e.metaKey &&
+                !e.altKey &&
+                document.activeElement !== searchInputRef.current
+            ) {
+                buffered.push(e.key)
+                e.preventDefault()
+            }
+        }
+        document.addEventListener('keydown', handleEarlyKeystroke, true)
+
+        const tryFocus = () => {
+            if (searchInputRef.current) {
+                searchInputRef.current.focus()
+                if (buffered.length > 0) {
+                    setLocalText(prev => prev + buffered.join(''))
+                    buffered.length = 0
+                }
+                document.removeEventListener('keydown', handleEarlyKeystroke, true)
+            }
+        }
+
+        // Try focusing immediately, then retry at short intervals
+        tryFocus()
+        const interval = setInterval(() => {
+            tryFocus()
+        }, 50)
+
+        const cleanup = setTimeout(() => {
+            clearInterval(interval)
+            document.removeEventListener('keydown', handleEarlyKeystroke, true)
+        }, 500)
+
+        return () => {
+            clearInterval(interval)
+            clearTimeout(cleanup)
+            document.removeEventListener('keydown', handleEarlyKeystroke, true)
+        }
     }, [])
 
     return (
