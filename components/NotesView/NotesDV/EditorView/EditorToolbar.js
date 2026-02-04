@@ -993,6 +993,7 @@ export const EditorToolbar = ({
     const streamsRef = useRef([]) // Store all streams to stop them
     const audioContextRef = useRef(null)
     const intervalRef = useRef(null)
+    const systemStreamRef = useRef(null) // Store system stream for screenshots
 
     const stopRecording = () => {
         if (intervalRef.current) {
@@ -1011,6 +1012,7 @@ export const EditorToolbar = ({
             }
         })
         streamsRef.current = []
+        systemStreamRef.current = null
 
         if (audioContextRef.current) {
             try {
@@ -1092,6 +1094,7 @@ export const EditorToolbar = ({
                 streamsRef.current.push(micStream)
             }
             streamsRef.current.push(systemStream)
+            systemStreamRef.current = systemStream
 
             // Handle stream stop from browser UI (System Stream only usually)
             if (systemStream.getVideoTracks().length > 0) {
@@ -1217,6 +1220,44 @@ export const EditorToolbar = ({
         }
     }, [autoStartTranscription, peersSynced])
 
+    const takeScreenshot = async () => {
+        const stream = systemStreamRef.current
+        if (!stream) return
+
+        const videoTrack = stream.getVideoTracks()[0]
+        if (!videoTrack) return
+
+        try {
+            const video = document.createElement('video')
+            video.srcObject = new MediaStream([videoTrack])
+            video.muted = true
+            await video.play()
+
+            const canvas = document.createElement('canvas')
+            canvas.width = video.videoWidth
+            canvas.height = video.videoHeight
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(video, 0, 0)
+
+            video.pause()
+            video.srcObject = null
+
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+            const uri = URL.createObjectURL(blob)
+            const id = v4()
+            const text = `screenshot_${moment().format('HHmmss')}.png`
+
+            const editor = getEditor ? getEditor() : exportRef ? exportRef.getEditor() : null
+            if (!editor) return
+
+            const index = (editor.getSelection(true) || { index: editor.getLength() }).index
+            insertAttachmentInsideEditor(index, editor, text, uri, id, LOADING_MODE)
+            updateNewAttachmentsDataInNotes(editor, id, text, uri, 'user')
+        } catch (e) {
+            console.error('Screenshot capture failed:', e)
+        }
+    }
+
     return (
         <div
             id="toolbar-container"
@@ -1238,6 +1279,23 @@ export const EditorToolbar = ({
                     <Text style={{ color: 'white', fontWeight: '500', fontSize: 13 }}>
                         {translate('transcription_active_banner')}
                     </Text>
+                    <TouchableOpacity
+                        onPress={takeScreenshot}
+                        style={{
+                            backgroundColor: 'rgba(255,255,255,0.2)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 4,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                        }}
+                    >
+                        <Icon name="camera" size={14} color="white" />
+                        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>
+                            {translate('Screenshot')}
+                        </Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                         onPress={stopRecording}
                         style={{
