@@ -35,7 +35,7 @@ function MoreButtonWrapper(
     ref
 ) {
     const openModals = useSelector(state => state.openModals)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const smallScreen = useSelector(state => state.smallScreen)
     const [isOpen, setIsOpen] = useState(false)
     const dispatch = useDispatch()
     const timeoutsRef = useRef([])
@@ -103,7 +103,7 @@ function MoreButtonWrapper(
                     align={modalAlign ? modalAlign : 'end'}
                     position={['bottom', 'left', 'right', 'top']}
                     isOpen={true}
-                    contentLocation={isMiddleScreen ? null : undefined}
+                    contentLocation={smallScreen ? null : undefined}
                     padding={4}
                     onClickOutside={delayCloseModal}
                     disableReposition
