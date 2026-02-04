@@ -421,33 +421,43 @@ export const updateNewAttachmentsDataInNotes = async (editor, id, text, uri, sou
     const { quillEditorProjectId } = store.getState()
     const projectId = quillEditorProjectId
 
+    // Step 1: Find the embed type and perform async uploads
+    let updatedInsert = null
+
     for (let i = 0; i < ops.length; i++) {
         const { attachment, customImageFormat, videoFormat } = ops[i].insert
-        if (attachment && attachment.id === id) {
+        if (attachment && (attachment.id === id || attachment.externalId === id)) {
             const file = await fetch(uri)
                 .then(r => r.blob())
                 .then(blobFile => new File([blobFile], text))
             const attachmentUri = await Backend.storeAttachment(projectId, file, true)
-            ops[i].insert.attachment.uri = attachmentUri
-            ops[i].insert.attachment.isLoading = LOADED_MODE
+            updatedInsert = {
+                attachment: { ...attachment, uri: attachmentUri, isLoading: LOADED_MODE },
+            }
             break
-        } else if (customImageFormat && customImageFormat.id === id) {
+        } else if (customImageFormat && (customImageFormat.id === id || customImageFormat.externalId === id)) {
+            let imageUri = uri
+            let imageResizedUri = uri
             try {
                 const IMAGE_HEIGHT = 200
                 const resizedImage = await HelperFunctions.resizeImage(uri, IMAGE_HEIGHT)
                 const resizedFile = await HelperFunctions.convertURItoBlob(resizedImage.uri)
-                const imageResizedUri = await Backend.storeAttachment(projectId, resizedFile, true)
+                imageResizedUri = await Backend.storeAttachment(projectId, resizedFile, true)
                 const file = await HelperFunctions.convertURItoBlob(uri, text)
-                const imageUri = await Backend.storeAttachment(projectId, file, true)
-                ops[i].insert.customImageFormat.uri = imageUri
-                ops[i].insert.customImageFormat.resizedUri = imageResizedUri
+                imageUri = await Backend.storeAttachment(projectId, file, true)
             } catch (error) {
-                ops[i].insert.customImageFormat.uri = uri
-                ops[i].insert.customImageFormat.resizedUri = uri
+                // Keep original uri as fallback
             }
-            ops[i].insert.customImageFormat.isLoading = LOADED_MODE
+            updatedInsert = {
+                customImageFormat: {
+                    ...customImageFormat,
+                    uri: imageUri,
+                    resizedUri: imageResizedUri,
+                    isLoading: LOADED_MODE,
+                },
+            }
             break
-        } else if (videoFormat && videoFormat.id === id) {
+        } else if (videoFormat && (videoFormat.id === id || videoFormat.externalId === id)) {
             const file = await fetch(uri)
                 .then(r => r.blob())
                 .then(blobFile => new File([blobFile], text))
@@ -456,13 +466,37 @@ export const updateNewAttachmentsDataInNotes = async (editor, id, text, uri, sou
                 : searchRecordings(text)
                 ? await Backend.storeConvertedVideos(projectId, file)
                 : await Backend.storeAttachment(projectId, file, true)
-            ops[i].insert.videoFormat.uri = videoUri
-            ops[i].insert.videoFormat.isLoading = LOADED_MODE
+            updatedInsert = {
+                videoFormat: { ...videoFormat, uri: videoUri, isLoading: LOADED_MODE },
+            }
             break
         }
     }
 
-    editor.setContents(ops, source)
+    if (!updatedInsert) return
+
+    // Step 2: Re-read current editor ops to find the embed's position (content may have changed during async uploads)
+    const currentOps = editor.getContents().ops
+    let embedIndex = 0
+    let found = false
+
+    for (let i = 0; i < currentOps.length; i++) {
+        const insert = currentOps[i].insert
+        const embedObj = insert.attachment || insert.customImageFormat || insert.videoFormat
+        if (embedObj && (embedObj.id === id || embedObj.externalId === id)) {
+            found = true
+            break
+        }
+        // Calculate the document index: embeds count as 1, text counts as its length
+        embedIndex += typeof insert === 'string' ? insert.length : 1
+    }
+
+    if (!found) return
+
+    // Step 3: Use delta-based update to replace only the embed, preserving all other content
+    const Delta = editor.constructor.import('delta')
+    const delta = new Delta().retain(embedIndex).delete(1).insert(updatedInsert)
+    editor.updateContents(delta, source)
 }
 
 export const generatorParserImageElement = (style, uri) => {
