@@ -8,12 +8,34 @@ import ReddBubble from './ReddBubble'
 import { shrinkTagText } from '../../../../functions/Utils/parseTextUtils'
 import ProjectTagIndicator from './ProjectTagIndicator'
 import { checkIfSelectedAllProjects } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import {
+    parseFeedComment,
+    TEXT_ELEMENT,
+    HASH_ELEMENT,
+    URL_ELEMENT,
+    MENTION_ELEMENT,
+    EMAIL_ELEMENT,
+    tryToextractPeopleForMention,
+} from '../../../Feeds/Utils/HelperFunctions'
+import HashTag from '../../../Tags/HashTag'
+import LinkTag from '../../../Tags/LinkTag'
+import MentionTag from '../../../Tags/MentionTag'
+import EmailTag from '../../../Tags/EmailTag'
+import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
 export default function LastAssistantComment({ projectId, commentText, onPress, objectName, isNew }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
 
-    const text = shrinkTagText(commentText.replace(/\s\s+/g, ''), 500)
+    const text = shrinkTagText(commentText.replace(/\s\s+/g, ' '), 500)
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+
+    let linkCounter = 0
+    const getLinkCounter = () => {
+        linkCounter++
+        return linkCounter
+    }
+
+    const parsedElements = parseFeedComment(text)
 
     return (
         <TouchableOpacity onPress={onPress} style={[localStyles.container]}>
@@ -24,9 +46,81 @@ export default function LastAssistantComment({ projectId, commentText, onPress, 
                         {objectName}
                     </Text>
                 )}
-                <Text numberOfLines={2} style={localStyles.text}>
-                    {text}
-                </Text>
+                <View style={localStyles.parsedTextContainer}>
+                    <View style={localStyles.parsedTextBody}>
+                        {parsedElements.map((element, index) => {
+                            const { type, text: elemText, link, email } = element
+                            if (type === TEXT_ELEMENT) {
+                                return elemText ? (
+                                    <Text key={index} style={localStyles.text}>
+                                        {elemText}{' '}
+                                    </Text>
+                                ) : null
+                            } else if (type === HASH_ELEMENT) {
+                                return (
+                                    <HashTag
+                                        key={index}
+                                        projectId={projectId}
+                                        text={elemText}
+                                        useCommentTagStyle={true}
+                                        tagStyle={localStyles.element}
+                                    />
+                                )
+                            } else if (type === URL_ELEMENT) {
+                                const people = tryToextractPeopleForMention(projectId, link)
+                                if (people) {
+                                    const { peopleName } = people
+                                    return (
+                                        <MentionTag
+                                            key={index}
+                                            text={peopleName}
+                                            useCommentTagStyle={true}
+                                            user={people}
+                                            tagStyle={localStyles.element}
+                                            projectId={projectId}
+                                        />
+                                    )
+                                }
+                                return (
+                                    <LinkTag
+                                        key={index}
+                                        link={link}
+                                        useCommentTagStyle={true}
+                                        text={'Link ' + getLinkCounter()}
+                                        tagStyle={localStyles.element}
+                                    />
+                                )
+                            } else if (type === MENTION_ELEMENT) {
+                                const { mention, user } = TasksHelper.getDataFromMention(elemText, projectId)
+                                return (
+                                    <MentionTag
+                                        key={index}
+                                        text={mention}
+                                        useCommentTagStyle={true}
+                                        user={user}
+                                        tagStyle={localStyles.element}
+                                        projectId={projectId}
+                                    />
+                                )
+                            } else if (type === EMAIL_ELEMENT) {
+                                return (
+                                    <EmailTag
+                                        key={index}
+                                        email={email}
+                                        useCommentTagStyle={true}
+                                        address={email}
+                                        tagStyle={localStyles.element}
+                                    />
+                                )
+                            }
+                            return (
+                                <Text key={index} style={localStyles.text}>
+                                    {elemText || link || email || ''}{' '}
+                                </Text>
+                            )
+                        })}
+                    </View>
+                </View>
             </View>
             <ProjectTagIndicator projectId={projectId} />
             {isNew && <ReddBubble />}
@@ -58,7 +152,18 @@ const localStyles = StyleSheet.create({
     text: {
         ...styles.subtitle2,
         color: colors.Text03,
+    },
+    parsedTextContainer: {
+        maxHeight: 44,
+        overflow: 'hidden',
+    },
+    parsedTextBody: {
+        flexDirection: 'row',
         flexWrap: 'wrap',
+        alignItems: 'center',
+    },
+    element: {
+        marginRight: 4,
     },
     icon: {
         marginTop: 4,
