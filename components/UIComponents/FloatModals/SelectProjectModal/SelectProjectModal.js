@@ -42,6 +42,7 @@ import { setTaskAssignee, setTaskProject } from '../../../../utils/backends/Task
 import { setNoteProject } from '../../../../utils/backends/Notes/notesFirestore'
 import { moveChatOnMoveObjectFromProject } from '../../../../utils/backends/Chats/chatsFirestore'
 import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFirestore'
+import { setContactProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import store from '../../../../redux/store'
 
 export default function SelectProjectModal({
@@ -208,6 +209,11 @@ export default function SelectProjectModal({
                         ])
                     }
                 })
+            } else if (type === 'contact') {
+                const contact = data
+                dispatch(startLoadingData())
+                await setContactProject(project, newProject, contact)
+                dispatch(stopLoadingData())
             }
 
             writeBrowserUrl(newProject)

@@ -185,6 +185,7 @@ const ContactDetailedView = ({ navigation }) => {
                                             return (
                                                 <ContactProperties
                                                     projectId={project.id}
+                                                    project={project}
                                                     user={contact}
                                                     projectIndex={projectIndex}
                                                 />

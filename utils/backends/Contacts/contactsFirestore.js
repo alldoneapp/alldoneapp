@@ -32,7 +32,17 @@ import store from '../../../redux/store'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import { FOLLOWER_CONTACTS_TYPE } from '../../../components/Followers/FollowerConstants'
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
-import { startLoadingData, stopLoadingData } from '../../../redux/actions'
+import {
+    setSelectedNavItem,
+    setSelectedSidebarTab,
+    setSelectedTypeOfProject,
+    startLoadingData,
+    stopLoadingData,
+    switchProject,
+} from '../../../redux/actions'
+import NavigationService from '../../../utils/NavigationService'
+import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_ROOT_CONTACTS } from '../../../utils/TabNavigationConstants'
 import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import {
     updateChatAssistantWithoutFeeds,
@@ -186,6 +196,76 @@ export async function copyContactToProject(targetProjectId, sourceContact, onCom
     }
 
     await addContactToProject(targetProjectId, newContact, onComplete)
+}
+
+export async function setContactProject(currentProject, newProject, contact) {
+    const { loggedUser, route } = store.getState()
+    const contactId = contact.uid
+
+    const contactData = {
+        displayName: contact.displayName || '',
+        photoURL: contact.photoURL || '',
+        photoURL50: contact.photoURL50 || '',
+        photoURL300: contact.photoURL300 || '',
+        company: contact.company || '',
+        role: contact.role || '',
+        description: contact.description || '',
+        extendedDescription: contact.extendedDescription || '',
+        email: contact.email || '',
+        phone: contact.phone || '',
+        hasStar: contact.hasStar || '#FFFFFF',
+        isPrivate: contact.isPrivate || false,
+        isPublicFor: contact.isPublicFor || [FEED_PUBLIC_FOR_ALL, loggedUser.uid],
+        recorderUserId: contact.recorderUserId || loggedUser.uid,
+        lastEditorId: loggedUser.uid,
+        lastEditionDate: Date.now(),
+        noteId: null,
+        isPremium: contact.isPremium || false,
+        lastVisitBoard: {},
+        lastVisitBoardInGoals: {},
+        assistantId: '',
+        commentsData: null,
+        openTasksAmount: 0,
+        contactStatusId: null,
+        linkedInUrl: contact.linkedInUrl || '',
+    }
+
+    let feedPhotoUrl = contactData.photoURL
+
+    if (contactData.photoURL) {
+        const pictures = [contactData.photoURL, contactData.photoURL50, contactData.photoURL300]
+        const urlList = await uploadAvatarPhotos(
+            pictures,
+            `projectsContacts/${newProject.id}/${contactId}/${contactId}@${Date.now()}`,
+            `feeds/${newProject.id}/${contactId}_${getId()}@${Date.now()}`
+        )
+
+        contactData.photoURL = urlList[0]
+        contactData.photoURL50 = urlList[1]
+        contactData.photoURL300 = urlList[2]
+        feedPhotoUrl = urlList[3]
+    }
+
+    await getDb().doc(`projectsContacts/${newProject.id}/contacts/${contactId}`).set(contactData)
+
+    addContactFeedsChain(newProject.id, contactData, feedPhotoUrl, contactId)
+
+    if (route === 'ContactDetailedView') {
+        NavigationService.navigate('ContactDetailedView', {
+            contact: { uid: contactId, ...contactData },
+            project: newProject,
+        })
+
+        const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
+        store.dispatch([
+            setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
+            switchProject(newProject.index),
+            setSelectedTypeOfProject(projectType),
+            setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES),
+        ])
+    }
+
+    await getDb().doc(`projectsContacts/${currentProject.id}/contacts/${contactId}`).delete()
 }
 
 export async function deleteProjectContact(projectId, contact, contactId) {

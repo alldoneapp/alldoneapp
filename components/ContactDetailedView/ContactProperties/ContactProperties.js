@@ -28,6 +28,7 @@ import SharedHelper from '../../../utils/SharedHelper'
 import { translate } from '../../../i18n/TranslationService'
 import ObjectRevisionHistory from '../../NotesView/NotesDV/PropertiesView/ObjectRevisionHistory'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
+import ProjectPicker from '../../TaskDetailedView/Properties/ProjectPicker'
 import {
     setProjectContactEmail,
     setProjectContactPhone,
@@ -272,6 +273,7 @@ class ContactProperties extends Component {
             const loggedUserIsCreator = loggedUser.uid === userProp.recorderUserId
             const loggedUserCanUpdateObject =
                 loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
+            const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
 
             return (
                 <View style={localStyles.container}>
@@ -372,6 +374,27 @@ class ContactProperties extends Component {
 
                     <View style={[localStyles.properties, mobile ? localStyles.propertiesMobile : undefined]}>
                         <View style={{ flex: 1, marginRight: mobile ? 0 : 72 }}>
+                            <View style={localStyles.propertyRow}>
+                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
+                                    <Icon
+                                        name={'circle'}
+                                        size={24}
+                                        color={colors.Text03}
+                                        style={{ marginHorizontal: 8 }}
+                                    />
+                                    <Text style={[styles.subtitle2, { color: colors.Text03 }]}>
+                                        {translate('Project')}
+                                    </Text>
+                                </View>
+                                <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
+                                    <ProjectPicker
+                                        project={this.props.project}
+                                        item={{ type: 'contact', data: { ...user, id: user.uid } }}
+                                        disabled={!accessGranted || !loggedUserCanUpdateObject || isGuide}
+                                    />
+                                </View>
+                            </View>
+
                             <View style={localStyles.linkedInContainer}>
                                 <View style={localStyles.linkedInTopRow}>
                                     <View style={[localStyles.propertyRowSection, localStyles.propertyRowLeft]}>
@@ -698,6 +721,7 @@ class ContactProperties extends Component {
 ContactProperties.propTypes = {
     projectIndex: PropTypes.number.isRequired,
     user: PropTypes.object.isRequired,
+    project: PropTypes.object.isRequired,
 }
 
 const localStyles = StyleSheet.create({
