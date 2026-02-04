@@ -12,6 +12,7 @@ import {
 } from '../../../../ModalsManager/modalsManager'
 import MoreButtonModal from './MoreButtonModal'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
+import { popoverToCenter } from '../../../../../utils/HelperFunctions'
 
 function MoreButtonWrapper(
     {
@@ -35,7 +36,6 @@ function MoreButtonWrapper(
     ref
 ) {
     const openModals = useSelector(state => state.openModals)
-    const smallScreen = useSelector(state => state.smallScreen)
     const [isOpen, setIsOpen] = useState(false)
     const dispatch = useDispatch()
     const timeoutsRef = useRef([])
@@ -103,7 +103,7 @@ function MoreButtonWrapper(
                     align={modalAlign ? modalAlign : 'end'}
                     position={['bottom', 'left', 'right', 'top']}
                     isOpen={true}
-                    contentLocation={smallScreen ? null : undefined}
+                    contentLocation={popoverToCenter}
                     padding={4}
                     onClickOutside={delayCloseModal}
                     disableReposition
