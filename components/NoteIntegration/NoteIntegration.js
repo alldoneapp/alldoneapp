@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import NoteEditorContainer from '../NotesView/NotesDV/EditorView/NoteEditorContainer'
@@ -43,6 +43,7 @@ import { translate } from '../../i18n/TranslationService'
 import URLsSkills, { URL_SKILL_DETAILS_NOTE } from '../../URLSystem/Skills/URLsSkills'
 import SharedHelper from '../../utils/SharedHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_NOTE } from '../../URLSystem/Assistants/URLsAssistants'
+import { increaseNoteViews } from '../../utils/backends/Notes/notesFirestore'
 
 const NoteIntegration = ({
     project,
@@ -70,6 +71,7 @@ const NoteIntegration = ({
     const [isCreating, setIsCreating] = useState(false)
     const [followState, updateFollowState] = useFollowingDataListener(project.id, FOLLOWER_NOTES_TYPE, note?.id)
     const [flag, setFlag] = useState(false)
+    const viewCountedRef = useRef(null)
 
     const projectIndex = ProjectHelper.getProjectIndexById(project.id)
     const accessGranted = isInGlobalProject || SharedHelper.accessGranted(loggedUser, project.id)
@@ -80,6 +82,10 @@ const NoteIntegration = ({
             Backend.watchNote(project.id, noteId, note => {
                 dispatch([stopLoadingData(), setSelectedNote(note)])
                 setNote(note)
+                if (note && viewCountedRef.current !== noteId) {
+                    viewCountedRef.current = noteId
+                    increaseNoteViews(project.id, noteId)
+                }
             })
             return () => {
                 Backend.unwatchNote(project.id, noteId)
