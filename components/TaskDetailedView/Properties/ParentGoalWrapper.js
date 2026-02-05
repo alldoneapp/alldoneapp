@@ -16,11 +16,6 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
     const [activeGoal, setActiveGoal] = useState(null)
 
     const openModal = () => {
-        console.log('ParentGoalWrapper openModal called:', {
-            taskParentGoalId: task.parentGoalId,
-            activeGoal: activeGoal ? { id: activeGoal.id, name: activeGoal.extendedName } : null,
-            isOpen,
-        })
         setIsOpen(true)
     }
 
@@ -37,13 +32,16 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
     }
 
     const updateGoal = (goal, goalProjectId) => {
+        // Use the goal's projectId if the second argument wasn't passed
+        const effectiveGoalProjectId = goalProjectId || goal?.projectId
+
         setActiveGoal(goal)
 
         // Check if the goal is from a different project
-        if (goal && goalProjectId && goalProjectId !== projectId) {
+        if (goal && effectiveGoalProjectId && effectiveGoalProjectId !== projectId) {
             // Move the task to the goal's project and assign the goal
             const currentProject = ProjectHelper.getProjectById(projectId)
-            const newProject = ProjectHelper.getProjectById(goalProjectId)
+            const newProject = ProjectHelper.getProjectById(effectiveGoalProjectId)
             if (currentProject && newProject) {
                 setTaskProjectWithGoal(currentProject, newProject, task, goal)
             }
@@ -54,25 +52,15 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
     }
 
     useEffect(() => {
-        console.log('ParentGoalWrapper useEffect:', {
-            taskParentGoalId: task.parentGoalId,
-            projectId,
-            currentActiveGoal: activeGoal ? { id: activeGoal.id, name: activeGoal.extendedName } : null,
-        })
         if (task.parentGoalId) {
             const watcherKey = v4()
             Backend.watchGoal(projectId, task.parentGoalId, watcherKey, goal => {
-                console.log(
-                    'ParentGoalWrapper goal loaded from Backend:',
-                    goal ? { id: goal.id, name: goal.extendedName } : null
-                )
                 setActiveGoal(goal)
             })
             return () => {
                 Backend.unwatch(projectId, watcherKey)
             }
         } else {
-            console.log('ParentGoalWrapper: No parentGoalId, setting activeGoal to null')
             setActiveGoal(null)
         }
     }, [task.parentGoalId, projectId])

@@ -300,15 +300,15 @@ export default function TaskParentGoalModal({
 
         if (fromAddTaskSection) {
             const goalData = { projectId: targetProjectId, goal, dateFormated, isNewGoal }
-            console.log('Dispatching setSelectedGoalDataInTasksListWhenAddTask with:', goalData)
             dispatch(setSelectedGoalDataInTasksListWhenAddTask(goalData))
             closeModal()
         } else if (notDelayClose) {
             setActiveGoal(goal, targetProjectId)
             closeModal()
         } else {
+            // Call setActiveGoal synchronously to ensure it executes before component unmounts
+            setActiveGoal(goal, targetProjectId)
             setTimeout(() => {
-                setActiveGoal(goal, targetProjectId)
                 closeModal()
             })
         }

@@ -782,7 +782,7 @@ const NotesEditorView = ({
                 storeInitialUserMentions(ops)
                 setDataLoaded(true)
 
-                loadMentionsData(note.id, quillRef)
+                loadMentionsData(note.id, quillRef, projectId)
 
                 const editorElement = document.getElementsByClassName(`ql-editor-${note.id}`)[0]
                 editorElement?.classList?.add('ql-editorLoading')

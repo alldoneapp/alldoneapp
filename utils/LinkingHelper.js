@@ -282,6 +282,14 @@ const formatUrl = plainUrl => {
             execRes = plainUrl
             plainUrl = 'https://' + plainUrl
         }
+    } else {
+        // Handle bare domain URLs like "crew.ai", "example.com/path"
+        const index = plainUrl.indexOf('/')
+        if (index > -1) {
+            execRes = plainUrl.substring(0, index)
+        } else {
+            execRes = plainUrl
+        }
     }
 
     return execRes

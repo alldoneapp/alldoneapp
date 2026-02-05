@@ -3719,6 +3719,7 @@ export async function loadFeedObject(projectId, objectId, objectTypes, dateForma
         if (!feedObject) {
             feedObject = await generateMissingFeedObject(projectId, dateFormated, objectTypes, objectId, lastChangeDate)
         }
+        if (!feedObject) return null
         batch.feedObjects = { ...batch.feedObjects, [objectId]: feedObject }
     }
     feedObject.lastChangeDate = lastChangeDate
@@ -5651,6 +5652,7 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
         feedObject = generateProjectObjectModel(lastChangeDate, project)
     } else if (objectType === 'contacts') {
         const contact = await getContactData(projectId, objectId)
+        if (!contact) return null
         feedObject = generateContactObjectModel(lastChangeDate, contact, objectId)
     } else if (objectType === 'users') {
         const { loggedUser } = store.getState()

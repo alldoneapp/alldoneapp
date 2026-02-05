@@ -40,7 +40,12 @@ import { DV_TAB_ROOT_TASKS, DV_TAB_TASK_PROPERTIES } from '../../../utils/TabNav
 import { setLinkedParentObjects } from '../../../utils/backends/firestore'
 import { TODAY_DATE } from '../../../utils/backends/openTasks'
 import { ALL_GOALS_ID } from '../../AllSections/allSectionHelper'
-import { createFollowUpTask, updateTask, uploadNewSubTask } from '../../../utils/backends/Tasks/tasksFirestore'
+import {
+    createFollowUpTask,
+    setTaskProjectWithGoal,
+    updateTask,
+    uploadNewSubTask,
+} from '../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import { updateNoteTitleWithoutFeed } from '../../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../../utils/backends/Chats/chatsFirestore'
@@ -189,13 +194,42 @@ export default function EditTask({
         editTask({ ...tmpTask }, true, false, data, '')
     }
 
-    const setParentGoalBeforeSave = goal => {
-        const goalData = goal
-            ? { parentGoalId: goal.id, parentGoalIsPublicFor: goal.isPublicFor, lockKey: goal.lockKey }
-            : { parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' }
+    const setParentGoalBeforeSave = (goal, goalProjectId) => {
+        // Use the goal's projectId if the second argument wasn't passed
+        const effectiveGoalProjectId = goalProjectId || goal?.projectId
 
-        const finalTask = { ...tmpTask, ...goalData }
-        adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+        // Check if the goal is from a different project
+        if (goal && effectiveGoalProjectId && effectiveGoalProjectId !== projectId) {
+            // Move the task to the goal's project and assign the goal
+            const currentProject = ProjectHelper.getProjectById(projectId)
+            const newProject = ProjectHelper.getProjectById(effectiveGoalProjectId)
+            if (currentProject && newProject) {
+                // For existing tasks, use setTaskProjectWithGoal
+                // For adding tasks, we need to create in the new project
+                if (adding) {
+                    const goalData = {
+                        parentGoalId: goal.id,
+                        parentGoalIsPublicFor: goal.isPublicFor,
+                        lockKey: goal.lockKey,
+                    }
+                    const finalTask = { ...tmpTask, ...goalData }
+                    // Note: Creating task in different project requires changing projectId context
+                    // For now, just create with goal data - the task will be in current project with new goal
+                    createTask(finalTask, false, false)
+                } else {
+                    setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
+                    dismissEditMode(true)
+                }
+            }
+        } else {
+            // Same project or no goal, just update the parent goal
+            const goalData = goal
+                ? { parentGoalId: goal.id, parentGoalIsPublicFor: goal.isPublicFor, lockKey: goal.lockKey }
+                : { parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' }
+
+            const finalTask = { ...tmpTask, ...goalData }
+            adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+        }
     }
 
     const setDescriptionBeforeSave = description => {

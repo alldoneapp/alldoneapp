@@ -10,6 +10,7 @@ import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import { DV_TAB_CONTACT_CHAT } from '../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import DvBotButton from '../../UIControls/DvBotButton'
+import DvSearchButton from '../../UIControls/DvSearchButton'
 
 export default function TagList({ project, contact }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -41,6 +42,7 @@ export default function TagList({ project, contact }) {
 
             <View style={{ flexDirection: 'row' }}>
                 <CopyLinkButton style={{ top: 3, marginRight: 8 }} />
+                <DvSearchButton style={{ top: 3 }} />
                 <DvBotButton
                     style={{ top: 3 }}
                     navItem={DV_TAB_CONTACT_CHAT}

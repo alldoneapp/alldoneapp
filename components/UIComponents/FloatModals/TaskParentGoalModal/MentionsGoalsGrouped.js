@@ -41,12 +41,13 @@ function GoalsByProject({
     activeItemIndex,
     itemsComponentsRefs,
     currentlyAssignedGoal,
+    showHeader,
 }) {
     if (goals.length === 0) return null
 
     return (
         <View>
-            <ProjectHeader project={project} amount={goals.length} />
+            {showHeader && <ProjectHeader project={project} amount={goals.length} />}
             <MentionsItems
                 selectItemToMention={selectItemToMention}
                 items={goals}
@@ -119,23 +120,6 @@ export default function MentionsGoalsGrouped({
         runningIndex += projectGoals.length
     })
 
-    // If only one project has goals, don't show headers
-    const showHeaders = orderedProjectIds.length > 1
-
-    if (!showHeaders) {
-        return (
-            <MentionsItems
-                selectItemToMention={selectItemToMention}
-                items={goals}
-                activeItemIndex={activeItemIndex}
-                itemsComponentsRefs={itemsComponentsRefs}
-                projectId={currentProjectId}
-                activeTab={MENTION_MODAL_GOALS_TAB}
-                currentlyAssignedGoal={currentlyAssignedGoal}
-            />
-        )
-    }
-
     return (
         <View>
             {orderedProjectIds.map(pId => {
@@ -143,6 +127,9 @@ export default function MentionsGoalsGrouped({
                 if (!project) return null
                 const projectGoals = groupedGoals[pId] || []
                 if (projectGoals.length === 0) return null
+
+                // Show header for goals from other projects (not the current project)
+                const isOtherProject = pId !== currentProjectId
 
                 return (
                     <GoalsByProject
@@ -153,6 +140,7 @@ export default function MentionsGoalsGrouped({
                         activeItemIndex={activeIndexByProject[pId]}
                         itemsComponentsRefs={itemsComponentsRefs}
                         currentlyAssignedGoal={currentlyAssignedGoal}
+                        showHeader={isOtherProject}
                     />
                 )
             })}

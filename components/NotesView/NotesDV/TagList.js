@@ -14,6 +14,7 @@ import useLastEditDate from '../../../hooks/useLastEditDate'
 import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 import { DV_TAB_NOTE_CHAT } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
+import DvSearchButton from '../../UIControls/DvSearchButton'
 
 export default function TagList({ projectId, note, disabled, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -51,6 +52,7 @@ export default function TagList({ projectId, note, disabled, updateObjectState }
                         : `${translate('last edited')} ${editionText}\n ${translate('by')} ${editor.displayName}`}
                 </Text>
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
+                <DvSearchButton style={{ top: -5 }} />
                 <DvBotButton
                     style={{ top: -5 }}
                     navItem={DV_TAB_NOTE_CHAT}

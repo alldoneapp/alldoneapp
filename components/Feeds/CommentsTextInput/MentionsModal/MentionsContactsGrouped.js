@@ -35,12 +35,19 @@ function ProjectHeader({ project, amount }) {
     )
 }
 
-function ContactsByProject({ project, contacts, selectUserToMention, activeUserIndex, usersComponentsRefs }) {
+function ContactsByProject({
+    project,
+    contacts,
+    selectUserToMention,
+    activeUserIndex,
+    usersComponentsRefs,
+    showHeader,
+}) {
     if (contacts.length === 0) return null
 
     return (
         <View>
-            <ProjectHeader project={project} amount={contacts.length} />
+            {showHeader && <ProjectHeader project={project} amount={contacts.length} />}
             <MentionsContacts
                 projectId={project.id}
                 selectUserToMention={selectUserToMention}
@@ -111,21 +118,6 @@ export default function MentionsContactsGrouped({
         runningIndex += projectContacts.length
     })
 
-    // If only one project has contacts, don't show headers
-    const showHeaders = orderedProjectIds.length > 1
-
-    if (!showHeaders) {
-        return (
-            <MentionsContacts
-                projectId={currentProjectId}
-                selectUserToMention={selectUserToMention}
-                users={contacts}
-                activeUserIndex={activeUserIndex}
-                usersComponentsRefs={usersComponentsRefs}
-            />
-        )
-    }
-
     return (
         <View>
             {orderedProjectIds.map(pId => {
@@ -133,6 +125,9 @@ export default function MentionsContactsGrouped({
                 if (!project) return null
                 const projectContacts = groupedContacts[pId] || []
                 if (projectContacts.length === 0) return null
+
+                // Show header for contacts from other projects (not the current project)
+                const isOtherProject = pId !== currentProjectId
 
                 return (
                     <ContactsByProject
@@ -142,6 +137,7 @@ export default function MentionsContactsGrouped({
                         selectUserToMention={selectUserToMention}
                         activeUserIndex={activeIndexByProject[pId]}
                         usersComponentsRefs={usersComponentsRefs}
+                        showHeader={isOtherProject}
                     />
                 )
             })}

@@ -884,6 +884,8 @@ export async function createBacklinkContactFeed(projectId, objectId, objectType,
         batch
     )
 
+    if (!contactFeedObject) return
+
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_CONTACT_BACKLINK,
         lastChangeDate: currentMilliseconds,

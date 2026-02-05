@@ -34,7 +34,12 @@ import EstimationModal from '../../EstimationModal/EstimationModal'
 import { getTaskAutoEstimation, objectIsPublicForLoggedUser } from '../../../../TaskListView/Utils/TasksHelper'
 import { getEstimationIconByValue } from '../../../../../utils/EstimationHelper'
 import { getDvMainTabLink } from '../../../../../utils/LinkingHelper'
-import { setTaskAutoEstimation, setTaskHighlight } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import {
+    setTaskAutoEstimation,
+    setTaskHighlight,
+    setTaskParentGoal,
+    setTaskProjectWithGoal,
+} from '../../../../../utils/backends/Tasks/tasksFirestore'
 import HighlightColorModal from '../../HighlightColorModal/HighlightColorModal'
 import { translate } from '../../../../../i18n/TranslationService'
 
@@ -349,6 +354,34 @@ export default function TaskMoreButton({
         setActiveGoal(isPublic ? goal : null)
     }
 
+    // Handler for when a goal is selected from the modal
+    const handleGoalSelection = (goal, goalProjectId) => {
+        // If updateActiveGoal prop was provided, use it
+        if (updateActiveGoal) {
+            updateActiveGoal(goal, goalProjectId)
+            return
+        }
+
+        // Otherwise handle internally: update local state and save to backend
+        setActiveGoal(goal)
+
+        // Use the goal's projectId if the second argument wasn't passed
+        const effectiveGoalProjectId = goalProjectId || goal?.projectId
+
+        // Check if the goal is from a different project
+        if (goal && effectiveGoalProjectId && effectiveGoalProjectId !== projectId) {
+            // Move the task to the goal's project and assign the goal
+            const currentProject = ProjectHelper.getProjectById(projectId)
+            const newProject = ProjectHelper.getProjectById(effectiveGoalProjectId)
+            if (currentProject && newProject) {
+                setTaskProjectWithGoal(currentProject, newProject, task, goal)
+            }
+        } else {
+            // Same project, just update the parent goal
+            setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
+        }
+    }
+
     const setAutoEstimation = autoEstimation => {
         if (editing) setTaskAutoEstimation(projectId, task, autoEstimation)
         setTempAutoEstimation(autoEstimation)
@@ -399,7 +432,7 @@ export default function TaskMoreButton({
                 ) : showParentGoal ? (
                     <TaskParentGoalModal
                         activeGoal={activeGoal}
-                        setActiveGoal={updateActiveGoal}
+                        setActiveGoal={handleGoalSelection}
                         projectId={projectId}
                         closeModal={hideParentGoalPopup}
                         notDelayClose={true}

@@ -193,9 +193,15 @@ export async function copyContactToProject(targetProjectId, sourceContact, onCom
         commentsData: null,
         openTasksAmount: 0,
         contactStatusId: null, // Don't copy status - it may not exist in target project
+        linkedInUrl: sourceContact.linkedInUrl || '',
     }
 
-    await addContactToProject(targetProjectId, newContact, onComplete)
+    let copiedContact = null
+    await addContactToProject(targetProjectId, newContact, contact => {
+        copiedContact = contact
+        if (onComplete) onComplete(contact)
+    })
+    return copiedContact
 }
 
 export async function setContactProject(currentProject, newProject, contact) {

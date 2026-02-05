@@ -16,6 +16,7 @@ import {
 import store from '../../../../redux/store'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
+import { copyContactToProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -27,6 +28,7 @@ let activeSelection = { index: 0, length: 0 }
 let editorElement = null
 let mentionPosition = 0
 let noteId = ''
+let noteProjectId = ''
 let quillRef = null
 let mentionModalHeight = 0
 let setFlag = null
@@ -54,8 +56,9 @@ export const loadFlag = paramSetFlag => {
     setFlag = paramSetFlag
 }
 
-export const loadMentionsData = (paramNoteId, paramQuillRef) => {
+export const loadMentionsData = (paramNoteId, paramQuillRef, paramProjectId) => {
     noteId = paramNoteId
+    noteProjectId = paramProjectId || ''
     quillRef = paramQuillRef
     editorElement = document.getElementsByClassName(`ql-editor-${noteId}`)[0]
     getMentionModalLocation(0)
@@ -70,6 +73,7 @@ export const resetMentionsData = () => {
     editorElement = null
     mentionPosition = 0
     noteId = ''
+    noteProjectId = ''
     quillRef = null
     mentionModalHeight = 0
     flag = false
@@ -248,7 +252,7 @@ export const insertNormalMention = () => {
     }
 }
 
-export const selectItemToMention = (item, activeTab, projectId) => {
+export const selectItemToMention = async (item, activeTab, projectId) => {
     if (activeTab === MENTION_MODAL_CONTACTS_TAB) {
         if (item.isAssistant) {
             const { uid } = item
@@ -265,12 +269,19 @@ export const selectItemToMention = (item, activeTab, projectId) => {
                 quillRef.current.updateContents(delta, 'user')
             }
         } else {
+            // Copy contact to current project if selected from a different project
+            let contactUserId = item.uid
+            if (item.projectId && noteProjectId && item.projectId !== noteProjectId) {
+                const copiedContact = await copyContactToProject(noteProjectId, item)
+                if (copiedContact) contactUserId = copiedContact.uid
+            }
+
             const contactName = item.displayName.replaceAll(' ', MENTION_SPACE_CODE)
             activeSelection = { index: mentionPosition - 1, length: 0 }
             const mention = {
                 text: contactName,
                 id: v4(),
-                userId: item.uid,
+                userId: contactUserId,
                 editorId: noteId,
                 userIdAllowedToEditTags: store.getState().loggedUser.uid,
             }

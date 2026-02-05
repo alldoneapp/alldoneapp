@@ -14,6 +14,7 @@ import { DV_TAB_GOAL_CHAT, DV_TAB_GOAL_NOTE } from '../../../utils/TabNavigation
 import styles, { colors } from '../../styles/global'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import DvBotButton from '../../UIControls/DvBotButton'
+import DvSearchButton from '../../UIControls/DvSearchButton'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
 export default function Header({ goal, projectId, navigation, accessGranted, isFullscreen, setFullscreen }) {
@@ -96,6 +97,7 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
                     />
                     <LastEdition projectId={projectId} goal={goal} />
                     <CopyLinkButton style={{ marginRight: 8 }} />
+                    <DvSearchButton />
                     <DvBotButton navItem={DV_TAB_GOAL_CHAT} projectId={projectId} assistantId={goal.assistantId} />
                     <OpenInNewWindowButton />
                 </View>

@@ -71,7 +71,7 @@ import TasksHelper from '../../TaskListView/Utils/TasksHelper'
 import { setTaskAssistant } from '../../../utils/backends/Tasks/tasksFirestore'
 import { setNoteAssistant } from '../../../utils/backends/Notes/notesFirestore'
 import { setUserAssistant } from '../../../utils/backends/Users/usersFirestore'
-import { setContactAssistant } from '../../../utils/backends/Contacts/contactsFirestore'
+import { setContactAssistant, copyContactToProject } from '../../../utils/backends/Contacts/contactsFirestore'
 import { setGoalAssistant } from '../../../utils/backends/Goals/goalsFirestore'
 import { setSkillAssistant } from '../../../utils/backends/Skills/skillsFirestore'
 import { updateChatAssistant } from '../../../utils/backends/Chats/chatsFirestore'
@@ -258,7 +258,7 @@ function CustomTextInput3(
         setFlag(!flag)
     }
 
-    const selectItemToMention = (item, activeTab) => {
+    const selectItemToMention = async (item, activeTab) => {
         if (onMentionSelected) onMentionSelected(item, activeTab)
         if (selectUserToMentionEditTag) {
             selectUserToMentionEditTag(item)
@@ -320,9 +320,16 @@ function CustomTextInput3(
                     }
                 }
             } else {
+                // Copy contact to current project if selected from a different project
+                let contactUserId = item.uid
+                if (item.projectId && innerProjectId && item.projectId !== innerProjectId) {
+                    const copiedContact = await copyContactToProject(innerProjectId, item)
+                    if (copiedContact) contactUserId = copiedContact.uid
+                }
+
                 const contactName = item.displayName.replaceAll(' ', MENTION_SPACE_CODE)
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-                const mention = { text: contactName, id: v4(), userId: item.uid, editorId, userEditingTagsId }
+                const mention = { text: contactName, id: v4(), userId: contactUserId, editorId, userEditingTagsId }
                 const delta = new Delta()
                 delta.retain(mentionStartIndexRef.current - 1)
                 delta.insert({ mention })

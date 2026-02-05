@@ -14,6 +14,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import DvBotButton from '../../UIControls/DvBotButton'
+import DvSearchButton from '../../UIControls/DvSearchButton'
 import CalendarTag from '../../Tags/CalendarTag'
 
 export default function TagList({ projectId, task, updateObjectState }) {
@@ -89,6 +90,7 @@ export default function TagList({ projectId, task, updateObjectState }) {
 
             <View style={{ flexDirection: 'row' }}>
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
+                <DvSearchButton style={{ top: -5 }} />
                 <DvBotButton
                     style={{ top: -5 }}
                     navItem={DV_TAB_TASK_CHAT}
