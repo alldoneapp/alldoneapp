@@ -10,7 +10,7 @@ import { TASK_PARENT_GOAL_MODAL_ID, removeModal, storeModal } from '../../../Mod
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import Backend from '../../../../utils/BackendBridge'
-import MentionsItems from '../../../Feeds/CommentsTextInput/MentionsModal/MentionsItems'
+import MentionsGoalsGrouped from './MentionsGoalsGrouped'
 import EmptyMatch from '../../../Feeds/CommentsTextInput/MentionsModal/EmptyMatch'
 import useWindowSize from '../../../../utils/useWindowSize'
 import NewObjectsInMentions from '../../../NewObjectsInMentions/NewObjectsInMentions'
@@ -32,6 +32,7 @@ import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../../Feeds/Utils/FeedsConstants'
 import { DYNAMIC_PERCENT, getOwnerId } from '../../../GoalsView/GoalsHelper'
 import { ALL_GOALS_ID } from '../../../AllSections/allSectionHelper'
+import store from '../../../../redux/store'
 
 export default function TaskParentGoalModal({
     activeGoal,
@@ -238,16 +239,26 @@ export default function TaskParentGoalModal({
     }
 
     const updateResults = async () => {
-        const ownerUserId = getOwnerId(
-            projectId,
-            ownerId ? ownerId : currentUserId === ALL_GOALS_ID ? loggedUserId : currentUserId
-        )
         const algoliaIndex = algoliaClient.initIndex(GOALS_INDEX_NAME_PREFIX)
+        // Search goals across all projects the user has access to (similar to contacts)
         const filters = activeGoal
-            ? `projectId:${projectId} AND NOT id:${activeGoal.id} AND ownerId:${ownerUserId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
-            : `projectId:${projectId} AND ownerId:${ownerUserId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
+            ? `NOT id:${activeGoal.id} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
+            : `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUserId})`
         const results = await algoliaIndex.search(filterText, { filters })
-        const hits = results.hits
+        let hits = results.hits
+
+        // Filter out goals from projects the user doesn't have access to
+        const { loggedUserProjectsMap } = store.getState()
+        hits = hits.filter(goal => loggedUserProjectsMap[goal.projectId])
+
+        // Sort: current project goals first, then others
+        hits.sort((a, b) => {
+            const aInCurrentProject = a.projectId === projectId
+            const bInCurrentProject = b.projectId === projectId
+            if (aInCurrentProject && !bInCurrentProject) return -1
+            if (!aInCurrentProject && bInCurrentProject) return 1
+            return 0
+        })
 
         if (activeMilestoneDate) {
             filterGoalsByCurrentMilestone(hits)
@@ -272,7 +283,7 @@ export default function TaskParentGoalModal({
         }, 50)
     }
 
-    const selectGoal = (goal, tabIndex, projectId, isNewGoal) => {
+    const selectGoal = (goal, tabIndex, goalProjectId, isNewGoal) => {
         dismissClickThroughEditModes()
 
         // Check if we're clicking on the same goal that's already selected
@@ -284,17 +295,20 @@ export default function TaskParentGoalModal({
             return
         }
 
+        // Use the goal's projectId if available, otherwise fall back to the passed goalProjectId
+        const targetProjectId = goal?.projectId || goalProjectId
+
         if (fromAddTaskSection) {
-            const goalData = { projectId, goal, dateFormated, isNewGoal }
+            const goalData = { projectId: targetProjectId, goal, dateFormated, isNewGoal }
             console.log('Dispatching setSelectedGoalDataInTasksListWhenAddTask with:', goalData)
             dispatch(setSelectedGoalDataInTasksListWhenAddTask(goalData))
             closeModal()
         } else if (notDelayClose) {
-            setActiveGoal(goal)
+            setActiveGoal(goal, targetProjectId)
             closeModal()
         } else {
             setTimeout(() => {
-                setActiveGoal(goal)
+                setActiveGoal(goal, targetProjectId)
                 closeModal()
             })
         }
@@ -450,13 +464,12 @@ export default function TaskParentGoalModal({
                     />
                 )}
                 {items.length > 0 ? (
-                    <MentionsItems
+                    <MentionsGoalsGrouped
                         selectItemToMention={selectGoal}
-                        items={items}
+                        goals={items}
                         activeItemIndex={activeItemIndexRef.current}
                         itemsComponentsRefs={itemsComponentsRefs}
-                        projectId={projectId}
-                        activeTab={MENTION_MODAL_GOALS_TAB}
+                        currentProjectId={projectId}
                         currentlyAssignedGoal={effectiveActiveGoal}
                     />
                 ) : (

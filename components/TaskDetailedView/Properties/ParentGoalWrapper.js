@@ -7,7 +7,8 @@ import ParentGoalButton from './ParentGoalButton'
 import TaskParentGoalModal from '../../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
 import { exitsOpenModals, PRIVACY_MODAL_ID, TASK_PARENT_GOAL_MODAL_ID } from '../../ModalsManager/modalsManager'
 import Backend from '../../../utils/BackendBridge'
-import { setTaskParentGoal } from '../../../utils/backends/Tasks/tasksFirestore'
+import { setTaskParentGoal, setTaskProjectWithGoal } from '../../../utils/backends/Tasks/tasksFirestore'
+import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function ParentGoalWrapper({ projectId, task, disabled }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -35,14 +36,27 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
         }
     }
 
-    const updateGoal = goal => {
+    const updateGoal = (goal, goalProjectId) => {
         setActiveGoal(goal)
-        setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
+
+        // Check if the goal is from a different project
+        if (goal && goalProjectId && goalProjectId !== projectId) {
+            // Move the task to the goal's project and assign the goal
+            const currentProject = ProjectHelper.getProjectById(projectId)
+            const newProject = ProjectHelper.getProjectById(goalProjectId)
+            if (currentProject && newProject) {
+                setTaskProjectWithGoal(currentProject, newProject, task, goal)
+            }
+        } else {
+            // Same project, just update the parent goal
+            setTaskParentGoal(projectId, task.id, task, goal ? goal : null)
+        }
     }
 
     useEffect(() => {
         console.log('ParentGoalWrapper useEffect:', {
             taskParentGoalId: task.parentGoalId,
+            projectId,
             currentActiveGoal: activeGoal ? { id: activeGoal.id, name: activeGoal.extendedName } : null,
         })
         if (task.parentGoalId) {
@@ -61,7 +75,7 @@ export default function ParentGoalWrapper({ projectId, task, disabled }) {
             console.log('ParentGoalWrapper: No parentGoalId, setting activeGoal to null')
             setActiveGoal(null)
         }
-    }, [task.parentGoalId])
+    }, [task.parentGoalId, projectId])
 
     return (
         <Popover
