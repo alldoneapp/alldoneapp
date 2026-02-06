@@ -548,7 +548,7 @@ export const getCommentTagParsed = (comment, commentsAmount) => {
         : isMiddleScreen
         ? LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN
         : LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
-    const cleanedComment = shrinkTagText(comment?.trim(), textLimit) || 'Comment'
+    const cleanedComment = shrinkTagText(comment, textLimit)
     return `${cleanedComment}${commentsAmount > 1 ? ` +${commentsAmount - 1}` : ''}`
 }
 
