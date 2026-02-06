@@ -1332,8 +1332,8 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             await retrievalService.initialize()
 
             // If allProjects is true, get tasks from all projects
-            // Limit: default 100, max 1000
-            const taskLimit = Math.min(toolArgs.limit || 100, 1000)
+            // Limit: default 1000, max 1000
+            const taskLimit = Math.min(toolArgs.limit || 1000, 1000)
             let tasks = []
             if (toolArgs.allProjects) {
                 const projectIds = projectsData.map(p => p.id)
