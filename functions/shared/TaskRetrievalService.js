@@ -202,17 +202,17 @@ class TaskRetrievalService {
         }
 
         // Apply per-project limit (defaults to 10 if not specified)
-        // Treat 0 as unlimited (cap to 200 for safety)
+        // Treat 0 as unlimited (cap to 1000 for safety)
         const appliedLimit = (() => {
             if (typeof perProjectLimit === 'number') {
-                if (perProjectLimit === 0) return 200
+                if (perProjectLimit === 0) return 1000
                 if (perProjectLimit > 0) return perProjectLimit
             }
-            if (limit && limit > 0) return Math.min(limit, 200)
+            if (limit && limit > 0) return Math.min(limit, 1000)
             return 10
         })()
         if (!options.skipLimit) {
-            query = query.limit(Math.min(appliedLimit, 200))
+            query = query.limit(Math.min(appliedLimit, 1000))
         }
 
         return query
@@ -744,8 +744,8 @@ class TaskRetrievalService {
             throw new Error('Date must be a string in YYYY-MM-DD format or a supported keyword like "today"')
         }
 
-        if (limit && (typeof limit !== 'number' || limit < 1 || limit > 200)) {
-            throw new Error('Limit must be a number between 1 and 200')
+        if (limit && (typeof limit !== 'number' || limit < 1 || limit > 1000)) {
+            throw new Error('Limit must be a number between 1 and 1000')
         }
     }
 
@@ -807,7 +807,7 @@ class TaskRetrievalService {
                         date: effectiveDate, // Ensure consistent date filtering across all projects
                         // For cross-project queries, respect date filtering strictly and don't over-fetch
                         // This ensures we only get tasks for the specific day requested
-                        perProjectLimit: Math.min(perProjectLimit, 200),
+                        perProjectLimit: Math.min(perProjectLimit, 1000),
                         timezoneOffset: normalizedTimezoneOffset,
                     }
 
