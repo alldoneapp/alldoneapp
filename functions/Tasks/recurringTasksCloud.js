@@ -263,6 +263,11 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
     }
     newTaskData.timesDone = (originalTask.timesDone || 0) + 1
 
+    // Reset workflow state so the recurring task starts in the open step
+    newTaskData.stepHistory = [OPEN_STEP]
+    newTaskData.currentReviewerId = originalTask.userId
+    newTaskData.userIds = [originalTask.userId]
+
     // Reset parent/subtask relationships for recurring tasks
     newTaskData.parentId = null
     newTaskData.isSubtask = false

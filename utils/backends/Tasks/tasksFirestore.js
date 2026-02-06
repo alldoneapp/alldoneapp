@@ -2186,6 +2186,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     } else if (stepToMoveId === DONE_STEP) {
         forwardDirection = true
         updateData = {
+            userIds: [userId],
             currentReviewerId: DONE_STEP,
             completed: Date.now(),
         }
