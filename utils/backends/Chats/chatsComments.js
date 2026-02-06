@@ -694,7 +694,7 @@ export const createChat = async (
         commentsData: comment
             ? {
                   lastCommentOwnerId: creatorId,
-                  lastComment: cleanTextMetaData(removeFormatTagsFromText(comment), true),
+                  lastComment: cleanTextMetaData(removeFormatTagsFromText(comment), true).trim() || 'Comment',
                   lastCommentType: commentType,
                   amount: firebase.firestore.FieldValue.increment(1),
               }
@@ -727,7 +727,7 @@ const updateChatWhenAddComment = async (projectId, creatorId, cleanedComment, co
 
     updateData.commentsData = {
         lastCommentOwnerId: creatorId,
-        lastComment: cleanTextMetaData(removeFormatTagsFromText(cleanedComment), true),
+        lastComment: cleanTextMetaData(removeFormatTagsFromText(cleanedComment), true).trim() || 'Comment',
         lastCommentType: commentType,
         amount: firebase.firestore.FieldValue.increment(1),
     }
@@ -760,10 +760,8 @@ const updateLastCommentData = async (projectId, editingCommentId, objectId, obje
 }
 
 const updateLastCommentDataOfChatParentObject = async (projectId, objectId, type, lastComment, commentType) => {
-    const cleanedComment = shrinkTagText(
-        cleanTextMetaData(removeFormatTagsFromText(lastComment), true),
-        LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
-    )
+    const parsedComment = cleanTextMetaData(removeFormatTagsFromText(lastComment), true).trim()
+    const cleanedComment = shrinkTagText(parsedComment || 'Comment', LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN)
 
     if (type === 'assistants') {
         await updateAssistantLastCommentData(projectId, objectId, cleanedComment, commentType)

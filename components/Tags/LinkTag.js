@@ -817,12 +817,26 @@ export default function LinkTag({
         return shrinkTagText(tagText, textLimit)
     }
 
+    const getPreConfigAssistantId = () => {
+        if (type === 'preConfigTask') {
+            try {
+                const fullUrl = new URL(link, window.location.origin)
+                return fullUrl.searchParams.get('assistantId') || objectId
+            } catch (e) {
+                return objectId
+            }
+        }
+        return objectId
+    }
+
     const getAssistantPhotoURL = () => {
-        const assistant = getAssistant(objectId)
+        const aId = getPreConfigAssistantId()
+        const assistant = getAssistant(aId)
         return assistant ? assistant.photoURL50 : ''
     }
 
     const assistantPhotoURL = tagIcon === 'cpu' ? getAssistantPhotoURL() : ''
+    const assistantIdForAvatar = tagIcon === 'cpu' ? getPreConfigAssistantId() : objectId
 
     return (
         <TouchableOpacity
@@ -860,7 +874,7 @@ export default function LinkTag({
                         <AssistantAvatar
                             photoURL={assistantPhotoURL}
                             size={avatarSize ? avatarSize : inTaskDV ? 24 : useCommentTagStyle ? 16 : 20}
-                            assistantId={objectId}
+                            assistantId={assistantIdForAvatar}
                         />
                     ) : (
                         <Icon

@@ -28,6 +28,7 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
+import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
 import MentionsItems from './MentionsModal/MentionsItems'
 import Header from './MentionsModal/Header'
 import EmptyMatch from './MentionsModal/EmptyMatch'
@@ -254,10 +255,13 @@ export default function MentionsModal({
 
         let filters = ''
 
-        if (indexPrefix === TASKS_INDEX_NAME_PREFIX || indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
             filters = isGuide
                 ? `projectId:${projectId} AND userId:${loggedUser.uid} AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
                 : `projectId:${projectId} AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
+        } else if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+            // Search notes across all projects the user has access to
+            filters = `(isPrivate:false OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
             filters = isGuide
                 ? `projectId:${projectId} AND ownerId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
@@ -288,6 +292,21 @@ export default function MentionsModal({
             })
 
             // Sort: current project contacts first, then others
+            items.sort((a, b) => {
+                const aInCurrentProject = a.projectId === projectId
+                const bInCurrentProject = b.projectId === projectId
+                if (aInCurrentProject && !bInCurrentProject) return -1
+                if (!aInCurrentProject && bInCurrentProject) return 1
+                return 0
+            })
+        }
+
+        if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+            // Filter out notes from projects the user doesn't have access to
+            const { loggedUserProjectsMap } = store.getState()
+            items = items.filter(item => loggedUserProjectsMap[item.projectId])
+
+            // Sort: current project notes first, then others
             items.sort((a, b) => {
                 const aInCurrentProject = a.projectId === projectId
                 const bInCurrentProject = b.projectId === projectId
@@ -433,6 +452,16 @@ export default function MentionsModal({
                                 contacts={itemsByTab[activeTab]}
                                 activeUserIndex={activeItemIndex}
                                 usersComponentsRefs={itemsComponentsRefs}
+                            />
+                        ) : activeTab === MENTION_MODAL_NOTES_TAB ? (
+                            <MentionsItemsGrouped
+                                key={activeTab}
+                                currentProjectId={projectId}
+                                selectItemToMention={selectItemToMention}
+                                items={itemsByTab[activeTab]}
+                                activeItemIndex={activeItemIndex}
+                                itemsComponentsRefs={itemsComponentsRefs}
+                                activeTab={activeTab}
                             />
                         ) : (
                             <MentionsItems

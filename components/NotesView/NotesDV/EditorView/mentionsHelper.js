@@ -17,6 +17,7 @@ import store from '../../../../redux/store'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { copyContactToProject } from '../../../../utils/backends/Contacts/contactsFirestore'
+import { isGlobalAssistant, GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -293,38 +294,64 @@ export const selectItemToMention = async (item, activeTab, projectId) => {
             quillRef.current.updateContents(delta, 'user')
         }
     } else if (activeTab === MENTION_MODAL_TASKS_TAB) {
-        const { id } = item
-        activeSelection = { index: mentionPosition - 1, length: 0 }
-        const taskUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'tasks')}`
-        const execRes = formatUrl(taskUrl)
-        if (execRes) {
-            const url = getUrlObject(taskUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
-            const delta = new Delta()
-            delta.retain(mentionPosition - 1)
+        if (item.isPreConfigTask) {
+            const { id: taskId, assistantId, name: taskName } = item
+            const assistantProjectId = isGlobalAssistant(assistantId) ? GLOBAL_PROJECT_ID : projectId
+            activeSelection = { index: mentionPosition - 1, length: 0 }
 
-            const { type, objectId, url: objectUrl } = url
-            if (type === 'task') {
-                const taskTagFormat = { id: v4(), taskId: objectId, editorId: noteId, objectUrl }
-                delta.insert({
-                    taskTagFormat,
-                })
-            } else {
-                delta.insert({
-                    url,
-                })
+            const preConfigTaskUrl = `${window.location.origin}${getDvMainTabLink(
+                projectId,
+                taskId,
+                'preConfigTasks'
+            )}?assistantId=${assistantId}&assistantProjectId=${assistantProjectId}&name=${encodeURIComponent(
+                taskName || ''
+            )}`
+
+            const execRes = formatUrl(preConfigTaskUrl)
+            if (execRes) {
+                const url = getUrlObject(preConfigTaskUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
+                const delta = new Delta()
+                delta.retain(mentionPosition - 1)
+                delta.insert({ url })
+                delta.insert(' ')
+                delta.delete(mentionText.length + 1)
+                quillRef.current.updateContents(delta, 'user')
             }
+        } else {
+            const { id } = item
+            activeSelection = { index: mentionPosition - 1, length: 0 }
+            const taskUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'tasks')}`
+            const execRes = formatUrl(taskUrl)
+            if (execRes) {
+                const url = getUrlObject(taskUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
+                const delta = new Delta()
+                delta.retain(mentionPosition - 1)
 
-            delta.insert(' ')
-            delta.delete(mentionText.length + 1)
-            quillRef.current.updateContents(delta, 'user')
+                const { type, objectId, url: objectUrl } = url
+                if (type === 'task') {
+                    const taskTagFormat = { id: v4(), taskId: objectId, editorId: noteId, objectUrl }
+                    delta.insert({
+                        taskTagFormat,
+                    })
+                } else {
+                    delta.insert({
+                        url,
+                    })
+                }
+
+                delta.insert(' ')
+                delta.delete(mentionText.length + 1)
+                quillRef.current.updateContents(delta, 'user')
+            }
         }
     } else if (activeTab === MENTION_MODAL_NOTES_TAB) {
         const { id } = item
+        const mentionedNoteProjectId = item.projectId || projectId
         activeSelection = { index: mentionPosition - 1, length: 0 }
-        const noteUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'notes')}`
+        const noteUrl = `${window.location.origin}${getDvMainTabLink(mentionedNoteProjectId, id, 'notes')}`
         const execRes = formatUrl(noteUrl)
         if (execRes) {
-            const url = getUrlObject(noteUrl, execRes, projectId, noteId, store.getState().loggedUser.uid)
+            const url = getUrlObject(noteUrl, execRes, mentionedNoteProjectId, noteId, store.getState().loggedUser.uid)
             const delta = new Delta()
             delta.retain(mentionPosition - 1)
             delta.insert({ url })

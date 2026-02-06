@@ -380,11 +380,12 @@ function CustomTextInput3(
             }
         } else if (activeTab === MENTION_MODAL_NOTES_TAB) {
             const { id } = item
+            const noteProjectId = item.projectId || projectId
             selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
-            const noteUrl = `${window.location.origin}${getDvMainTabLink(projectId, id, 'notes')}`
+            const noteUrl = `${window.location.origin}${getDvMainTabLink(noteProjectId, id, 'notes')}`
             const execRes = formatUrl(noteUrl)
             if (execRes) {
-                const url = getUrlObject(noteUrl, execRes, projectId, editorId, userIdAllowedToEditTags)
+                const url = getUrlObject(noteUrl, execRes, noteProjectId, editorId, userIdAllowedToEditTags)
                 const delta = new Delta()
                 delta.retain(mentionStartIndexRef.current - 1)
                 delta.insert({ url })

@@ -92,13 +92,13 @@ const cleanTextMetaData = (text = '', removeLineBreaks) => {
         const word = words[i]
         if (REGEX_ATTACHMENT.test(word)) {
             const { attachmentText } = getAttachmentData(word)
-            words[i] = attachmentText
+            words[i] = attachmentText || 'Attachment'
         } else if (REGEX_IMAGE.test(word)) {
             const { imageText } = getImageData(word)
-            words[i] = imageText
+            words[i] = imageText || 'Image'
         } else if (REGEX_VIDEO.test(word)) {
             const { videoText } = getVideoData(word)
-            words[i] = videoText
+            words[i] = videoText || 'Video'
         } else if (REGEX_MENTION.test(word)) {
             const { mentionText } = getMentionData(word, true)
             words[i] = mentionText
