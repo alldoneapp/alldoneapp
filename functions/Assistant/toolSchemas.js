@@ -85,7 +85,8 @@ const toolSchemas = {
                     },
                     date: {
                         type: 'string',
-                        description: 'Filter tasks by date. Use "today" for today\'s tasks or YYYY-MM-DD format',
+                        description:
+                            'Filter tasks by date. Use "today" for today\'s tasks, YYYY-MM-DD for a single day, or "YYYY-MM-DD to YYYY-MM-DD" for a date range. Also supports keywords like "yesterday", "this week", "last month", "last 7 days".',
                     },
                     allProjects: {
                         type: 'boolean',

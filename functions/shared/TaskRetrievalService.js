@@ -220,7 +220,7 @@ class TaskRetrievalService {
 
     /**
      * Build date filters based on date parameter and status
-     * @param {string} date - Date filter ('today' or 'YYYY-MM-DD')
+     * @param {string} date - Date filter ('today', 'YYYY-MM-DD', or 'YYYY-MM-DD to YYYY-MM-DD')
      * @param {string} status - Task status ('open', 'done', 'all')
      * @returns {Object} Date filter configuration
      */
@@ -355,11 +355,21 @@ class TaskRetrievalService {
             }
         }
 
+        // Date range (YYYY-MM-DD to YYYY-MM-DD)
+        const rangeMatch = rawInput.match(/^(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})$/)
+        if (rangeMatch) {
+            const start = momentFactory(rangeMatch[1])
+            const end = momentFactory(rangeMatch[2])
+            if (start.isValid() && end.isValid()) {
+                return makeRange(start.startOf('day'), end.endOf('day'))
+            }
+        }
+
         // Specific date (YYYY-MM-DD)
         const targetDate = momentFactory(rawInput)
         if (!targetDate.isValid()) {
             throw new Error(
-                'Invalid date format. Use YYYY-MM-DD or a supported keyword like "today", "yesterday", or "this week".'
+                'Invalid date format. Use YYYY-MM-DD, "YYYY-MM-DD to YYYY-MM-DD", or a supported keyword like "today", "yesterday", or "this week".'
             )
         }
 
