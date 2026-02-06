@@ -604,7 +604,7 @@ Autoformat.DEFAULTS = {
 
     link: {
         trigger: /[\s\r?\n]/,
-        find: /((https?|ftp):\/\/[\S]+|(www\.[\S]+))|([\S]+\.[\S]{2,})/gi,
+        find: /((https?|ftp):\/\/[\S]+|(www\.[\S]+))|([\S]+\.[a-zA-Z]{2,}[\S]*)/gi,
         insert: 'url',
     },
     email: {
