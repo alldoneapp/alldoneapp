@@ -245,7 +245,7 @@ class ProjectHelper {
 
     static getProjectIndexById(projectId) {
         const { loggedUserProjectsMap } = store.getState()
-        return loggedUserProjectsMap[projectId].index
+        return loggedUserProjectsMap[projectId]?.index
     }
 
     static getProjectById(projectId) {

@@ -257,7 +257,7 @@ export default function EditGoal({
     const editing = !adding
     const progressToShow = inDoneMilestone ? tmpGoal.progressByDoneMilestone[milestoneId].progress : tmpGoal.progress
 
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     const loggedUserIsGoalOwner = tmpGoal.ownerId === loggedUser.uid
     const loggedUserCanUpdateObject =
         loggedUserIsGoalOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)

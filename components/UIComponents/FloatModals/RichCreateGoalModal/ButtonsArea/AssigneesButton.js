@@ -9,7 +9,7 @@ import AssigneesIcon from '../../../../GoalsView/EditGoalsComponents/AssigneesIc
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function AssigneesButton({ projectId, showAssignees, assigneesIds, disabled }) {
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
 
     const buttonCustomIcon =
         assigneesIds.length > 0 ? (

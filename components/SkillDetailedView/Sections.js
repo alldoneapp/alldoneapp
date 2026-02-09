@@ -35,7 +35,7 @@ export default function Sections({ projectId, userHasAccessToProject }) {
     const project = ProjectHelper.getProjectById(projectId)
 
     const skillIsFromLoggedUser = loggedUserId === userId
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     const hideCreateNoteSection = isGuide && !skillIsFromLoggedUser
 
     return (

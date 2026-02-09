@@ -31,7 +31,7 @@ export default function NotificationBubble({ amount, isFollowedNotification, con
         const { smallScreenNavigation, loggedUser } = store.getState()
 
         const tab = isFollowedNotification ? FOLLOWED_TAB : ALL_TAB
-        const projectIndex = ProjectHelper.getProjectById(projectId).index
+        const projectIndex = ProjectHelper.getProjectById(projectId)?.index
         const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
 
         const actionsToDispatch = [

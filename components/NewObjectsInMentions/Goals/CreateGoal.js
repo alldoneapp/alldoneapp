@@ -88,7 +88,7 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
 
     const disableButtons = goal && !goal.extendedName.trim()
 
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     return (
         goal && (
             <View style={localStyles.container}>

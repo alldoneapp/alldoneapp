@@ -26,7 +26,7 @@ export default function GoalTag({ projectId, goalId, containerStyle, disabled })
 
         dispatch(
             navigateToGoal({
-                selectedProjectIndex: ProjectHelper.getProjectById(projectId).index,
+                selectedProjectIndex: ProjectHelper.getProjectById(projectId)?.index,
                 selectedNavItem: DV_TAB_GOAL_LINKED_TASKS,
             })
         )

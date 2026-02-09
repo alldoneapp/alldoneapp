@@ -154,7 +154,7 @@ export default function EditTask({
     const loggedUserCanUpdateObject =
         loggedUserIsTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
-    const isSubtaskInGuide = isSubtask && !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isSubtaskInGuide = isSubtask && !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
 
     const isAssistant = tmpTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 

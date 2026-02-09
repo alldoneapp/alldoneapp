@@ -31,10 +31,10 @@ export default function GuideProjectsListCreators({ navigation }) {
     const sortedProjectsData = ProjectHelper.sortProjects(guides, loggedUserId).map((project, index) => {
         if (checkIfUserIsGuideAdmin(loggedUser)) {
             if (activeGuideId === project.id)
-                return { ...project, index: ProjectHelper.getProjectById(project.id).index }
+                return { ...project, index: ProjectHelper.getProjectById(project.id)?.index }
             return { ...project, index: amountOfLoggedProjects + index }
         } else {
-            return { ...project, index: ProjectHelper.getProjectById(project.id).index }
+            return { ...project, index: ProjectHelper.getProjectById(project.id)?.index }
         }
     })
 

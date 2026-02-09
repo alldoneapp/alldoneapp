@@ -36,7 +36,7 @@ export default function TemplateProjects({ navigation, scrollToBottom }) {
 
     const sortedProjectsData = ProjectHelper.sortProjects(templates, loggedUserId).map((project, index) => {
         if (activeTemplateId === project.id)
-            return { ...project, index: ProjectHelper.getProjectById(project.id).index }
+            return { ...project, index: ProjectHelper.getProjectById(project.id)?.index }
         return { ...project, index: amountOfLoggedProjects + index }
     })
 

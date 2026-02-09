@@ -28,7 +28,7 @@ export default function GoalsBoards({ projectId, projectColor, projectIndex, pro
     const usersInProject = useSelector(state => state.projectUsers[projectId])
     const workstreamsInProject = useSelector(state => state.projectWorkstreams[projectId])
 
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
 
     const projectItems = isGuide ? usersInProject : usersInProject.concat(workstreamsInProject)
     if (!isGuide) projectItems.push(allGoals)

@@ -105,7 +105,7 @@ export default function EditGoalLink({ projectId, goalData, closeModal, objectUr
     }, [])
 
     const disableButtons = !goal.extendedName.trim()
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     return (
         <View style={localStyles.container}>
             <View style={localStyles.inputContainer}>

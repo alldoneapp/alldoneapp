@@ -8,6 +8,7 @@ import styles, { colors } from '../../styles/global'
 
 export default function GeneralTasksHeader({ projectId }) {
     const project = ProjectHelper.getProjectById(projectId)
+    if (!project) return null
     const conatinerColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_ACTIVE
     const blockColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_SECTION_ITEM_ACTIVE
 

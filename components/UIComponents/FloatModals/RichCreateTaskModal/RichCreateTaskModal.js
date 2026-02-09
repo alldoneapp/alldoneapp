@@ -435,7 +435,7 @@ export default function RichCreateTaskModal({
         if (inSelectedProject) {
             setPressedShowMoreMainSection(true)
         } else {
-            const projectIndex = ProjectHelper.getProjectById(projectId).index
+            const projectIndex = ProjectHelper.getProjectById(projectId)?.index
             const projectType = ProjectHelper.getTypeOfProject(currentUser, projectId)
             const actionsToDispatch = [
                 setTasksArrowButtonIsExpanded(true),
@@ -649,7 +649,7 @@ export default function RichCreateTaskModal({
                 />
             ) : showAssigneeModal ? (
                 <AssigneeAndObserversModal
-                    projectIndex={ProjectHelper.getProjectById(projectId).index}
+                    projectIndex={ProjectHelper.getProjectById(projectId)?.index}
                     object={task}
                     onSaveData={saveAssignee}
                     closePopover={delayClosePopup}

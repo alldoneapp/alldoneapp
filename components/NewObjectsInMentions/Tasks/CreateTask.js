@@ -33,7 +33,7 @@ import { getUserPresentationDataInProject } from '../../ContactsView/Utils/Conta
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 
 export default function CreateTask({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     const dispatch = useDispatch()
     const [sendingData, setSendingData] = useState(false)
     const [task, setTask] = useState(TasksHelper.getNewDefaultTask(isGuide))

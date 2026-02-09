@@ -16,7 +16,7 @@ export const updateQuotaXp = (projectId, userId, xpEarned, increaseProjectQuota)
     const db = getDb()
     db.doc(`users/${userId}`).set({ monthlyXp: firebase.firestore.FieldValue.increment(xpEarned) }, { merge: true })
     if (increaseProjectQuota) {
-        const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+        const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
         if (!isGuide)
             db.doc(`projects/${projectId}`).set(
                 { monthlyXp: firebase.firestore.FieldValue.increment(xpEarned) },
@@ -31,7 +31,7 @@ export const updateQuotaTraffic = (projectId, userId, traficSize) => {
         { monthlyTraffic: firebase.firestore.FieldValue.increment(traficSize) },
         { merge: true }
     )
-    const isGuide = !!ProjectHelper.getProjectById(projectId).parentTemplateId
+    const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     if (!isGuide)
         db.doc(`projects/${projectId}`).set(
             { monthlyTraffic: firebase.firestore.FieldValue.increment(traficSize) },

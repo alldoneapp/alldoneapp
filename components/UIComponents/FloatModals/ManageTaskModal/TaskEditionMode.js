@@ -583,7 +583,7 @@ export default class TaskEditionMode extends Component {
         const cleanedName = extendedName.trim()
 
         const isSubtaskInGuide =
-            (isSubtask || (task && task.isSubtask)) && !!ProjectHelper.getProjectById(projectId).parentTemplateId
+            (isSubtask || (task && task.isSubtask)) && !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
 
         const isAssistant = task && task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
