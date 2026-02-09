@@ -181,14 +181,21 @@ export const loadGlobalData = async () => {
     const isAdminUserLoaded = !!currentAdministratorUser.uid
 
     if (!areGlobalAssistantsLoaded || !isAdminUserLoaded) {
-        const promises = []
-        promises.push(getAdministratorUser())
-        promises.push(getGlobalAssistants())
-        const [administratorUser, globalAssistants] = await Promise.all(promises)
-        store.dispatch(setAdministratorAndGlobalAssistants(administratorUser, globalAssistants))
+        try {
+            const promises = []
+            promises.push(getAdministratorUser())
+            promises.push(getGlobalAssistants())
+            const [administratorUser, globalAssistants] = await Promise.all(promises)
+            store.dispatch(setAdministratorAndGlobalAssistants(administratorUser, globalAssistants))
 
-        watchGlobalAssistants()
-        watchAdministratorUser(administratorUser.uid)
+            watchGlobalAssistants()
+            if (administratorUser?.uid) {
+                watchAdministratorUser(administratorUser.uid)
+            }
+        } catch (error) {
+            console.error('Failed to load global data:', error)
+            store.dispatch(setAdministratorAndGlobalAssistants({}, []))
+        }
     }
 }
 

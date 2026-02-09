@@ -433,7 +433,15 @@ export async function initFirebase(onComplete) {
     require('firebase/auth')
     require('firebase/firestore')
 
-    firebase.initializeApp(firebaseConfig)
+    try {
+        firebase.initializeApp(firebaseConfig)
+    } catch (error) {
+        if (error.code !== 'app/duplicate-app') {
+            console.error('Firebase initialization failed:', error)
+            throw error
+        }
+        console.warn('Firebase app already initialized, reusing existing instance')
+    }
     db = firebase.firestore()
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -509,7 +517,10 @@ export async function initFirebase(onComplete) {
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
         console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
-        onComplete(firebaseUser)
+        const result = onComplete(firebaseUser)
+        if (result && typeof result.catch === 'function') {
+            result.catch(error => console.error('Error in auth callback:', error))
+        }
     })
 
     // Load non-critical modules in background after authentication

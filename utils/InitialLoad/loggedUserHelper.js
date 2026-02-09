@@ -94,13 +94,18 @@ async function loadProjectsDataFromFirebase(projectIds) {
                 getProjectContacts(projectId),
                 getProjectWorkstreams(projectId),
                 getProjectAssistants(projectId),
-            ]).then(([project, users, contacts, workstreams, assistants]) => ({
-                project,
-                users,
-                contacts,
-                workstreams,
-                assistants,
-            }))
+            ])
+                .then(([project, users, contacts, workstreams, assistants]) => ({
+                    project,
+                    users,
+                    contacts,
+                    workstreams,
+                    assistants,
+                }))
+                .catch(error => {
+                    console.error(`Failed to load project ${projectId}:`, error)
+                    return null
+                })
         )
     })
 
@@ -113,6 +118,9 @@ async function loadInitialData() {
     const projectsInitialData = await getInitialProjectsData(loggedUser.projectIds)
 
     // Process the raw project data into organized structures
+    // Filter out null entries from projects that failed to load
+    const validProjectsData = projectsInitialData.filter(data => data !== null)
+
     const projects = []
     const projectsMap = {}
     const projectUsers = {}
@@ -120,16 +128,14 @@ async function loadInitialData() {
     const projectWorkstreams = {}
     const projectAssistants = {}
 
-    loggedUser.projectIds.forEach((projectId, index) => {
-        const { project, users, contacts, workstreams, assistants } = projectsInitialData[index]
-
+    validProjectsData.forEach(({ project, users, contacts, workstreams, assistants }, index) => {
         project.index = index
         projects.push(project)
         projectsMap[project.id] = project
-        projectUsers[projectId] = users
-        projectContacts[projectId] = contacts
-        projectWorkstreams[projectId] = workstreams
-        projectAssistants[projectId] = assistants
+        projectUsers[project.id] = users
+        projectContacts[project.id] = contacts
+        projectWorkstreams[project.id] = workstreams
+        projectAssistants[project.id] = assistants
     })
 
     convertAnonymousProjectsIntoSharedProjects(

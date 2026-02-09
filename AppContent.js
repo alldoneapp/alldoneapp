@@ -72,7 +72,11 @@ export default function AppContent() {
                 } catch (deleteError) {
                     console.error('Failed to delete Firebase Auth user:', deleteError)
                     // If delete fails, at least sign them out
-                    await Backend.auth().signOut()
+                    try {
+                        await new Promise(resolve => Backend.logout(resolve))
+                    } catch (e) {
+                        console.error('Logout failed:', e)
+                    }
                     alert(
                         'Could not delete your authentication. You have been logged out.\n\n' +
                             'Please contact support with your email: ' +
@@ -81,7 +85,11 @@ export default function AppContent() {
                 }
             } else {
                 // User chose to try again later
-                await Backend.auth().signOut()
+                try {
+                    await new Promise(resolve => Backend.logout(resolve))
+                } catch (e) {
+                    console.error('Logout failed:', e)
+                }
                 alert(
                     'You have been logged out. Please try logging in again or contact support if the problem persists.'
                 )
@@ -117,7 +125,11 @@ export default function AppContent() {
                     `An error occurred during login: ${error.message || 'Unknown error'}\n\n` +
                         'You will be logged out. Please try again or contact support.'
                 )
-                await Backend.auth().signOut()
+                try {
+                    await new Promise(resolve => Backend.logout(resolve))
+                } catch (e) {
+                    console.error('Logout failed:', e)
+                }
             }
         }
     }

@@ -215,6 +215,8 @@ const createWelcomeChatAndMessage = async (project, assistant, userId) => {
 export const processNewUser = async firebaseUser => {
     unwatch('loggedUser')
 
+    const { uid: userId, email } = firebaseUser
+
     initGoogleTagManager(userId)
     watchForceReload(userId, false)
     storeVersion()
@@ -222,7 +224,6 @@ export const processNewUser = async firebaseUser => {
     await loadGlobalData()
 
     const { initialUrl } = store.getState()
-    const { uid: userId, email } = firebaseUser
 
     // Fetch the specific global assistant to be used as default
     const globalAssistantId = getDefaultGlobalAssistantId()
