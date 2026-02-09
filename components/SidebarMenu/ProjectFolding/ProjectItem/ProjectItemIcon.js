@@ -9,7 +9,7 @@ import ColoredCircle from './ColoredCircle'
 
 export default function ProjectItemIcon({ projectId, projectColor, highlight, isGuide }) {
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const totalFollowed = useSelector(state => state.projectChatNotifications[projectId].totalFollowed)
+    const totalFollowed = useSelector(state => state.projectChatNotifications[projectId]?.totalFollowed ?? 0)
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.ProjectList.ProjectItem.ProjectItemIcon')
 

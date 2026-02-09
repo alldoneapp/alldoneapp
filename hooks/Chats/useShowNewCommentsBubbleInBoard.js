@@ -9,8 +9,8 @@ import {
 } from '../../utils/TabNavigationConstants'
 
 export default function useShowNewCommentsBubbleInBoard(projectId) {
-    const totalFollowed = useSelector(state => state.projectChatNotifications[projectId].totalFollowed)
-    const totalUnfollowed = useSelector(state => state.projectChatNotifications[projectId].totalUnfollowed)
+    const totalFollowed = useSelector(state => state.projectChatNotifications[projectId]?.totalFollowed ?? 0)
+    const totalUnfollowed = useSelector(state => state.projectChatNotifications[projectId]?.totalUnfollowed ?? 0)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
 
     const ROUTES__TO_SHOW_COMMENT_BUBBLES = [

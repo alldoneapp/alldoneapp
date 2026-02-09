@@ -942,7 +942,7 @@ export const getFollowedAndUnfollowedChatNotificationsAmount = (
         })
         return { totalFollowed: globalTotalFollowed, totalUnfollowed: globalTotalUnfollowed }
     } else {
-        return projectChatNotifications[selectedProjectId]
+        return projectChatNotifications[selectedProjectId] || { totalFollowed: 0, totalUnfollowed: 0 }
     }
 }
 
