@@ -33,6 +33,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
+    const [inputHeight, setInputHeight] = useState(40)
     const isSendingRef = useRef(false)
 
     const { assistant, assistantProject, assistantProjectId } = getAssistantLineData(
@@ -83,6 +84,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             }
 
             setMessage('')
+            setInputHeight(40)
 
             // Unblock the input now that the thread has been created
             isSendingRef.current = false
@@ -148,7 +150,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
                 </View>
                 <TextInput
-                    style={localStyles.messageInput}
+                    style={[localStyles.messageInput, { height: inputHeight }]}
                     value={message}
                     onChangeText={setMessage}
                     placeholder={translate('Start a new chat with the assistant')}
@@ -157,6 +159,10 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     autoCorrect={true}
                     multiline={true}
                     onKeyPress={handleKeyPress}
+                    onContentSizeChange={e => {
+                        const h = e.nativeEvent.contentSize.height
+                        setInputHeight(Math.min(Math.max(h, 40), 120))
+                    }}
                 />
                 <Popover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}

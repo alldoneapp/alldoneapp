@@ -13,6 +13,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
+    const [inputHeight, setInputHeight] = useState(40)
     const isSendingRef = useRef(false)
 
     const handleSendMessage = useCallback(async () => {
@@ -35,6 +36,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
             }
 
             setMessage('')
+            setInputHeight(40)
             isSendingRef.current = false
             setIsSending(false)
         } catch (error) {
@@ -66,7 +68,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     <AssistantAvatarButton assistant={assistant} size={40} />
                 </View>
                 <TextInput
-                    style={localStyles.messageInput}
+                    style={[localStyles.messageInput, { height: inputHeight }]}
                     value={message}
                     onChangeText={setMessage}
                     placeholder={translate('Start a new chat with the assistant')}
@@ -75,6 +77,10 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     autoCorrect={true}
                     multiline={true}
                     onKeyPress={handleKeyPress}
+                    onContentSizeChange={e => {
+                        const h = e.nativeEvent.contentSize.height
+                        setInputHeight(Math.min(Math.max(h, 40), 120))
+                    }}
                 />
                 <View style={localStyles.sendButtonWrapper}>
                     <Button
