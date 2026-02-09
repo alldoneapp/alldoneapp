@@ -32,6 +32,8 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
     const mobile = useSelector(state => state.smallScreenNavigation)
     const dispatch = useDispatch()
 
+    if (!project) return null
+
     const onProjectClick = projectId => {
         const projectType =
             projectId === ALL_PROJECTS_OPTION
