@@ -9,6 +9,7 @@ import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assis
 import { unwatch } from '../../../../utils/backends/firestore'
 import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
 import AssistantInputLine from './AssistantInputLine'
+import WhatsAppAssistantLine from './WhatsAppAssistantLine'
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
@@ -29,7 +30,12 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
 
     return (
         <View style={localStyles.container}>
-            <AssistantInputLine assistant={currentUser} projectId={projectId} />
+            <AssistantInputLine
+                assistant={currentUser}
+                projectId={projectId}
+                noBottomMargin={currentUser.displayName === 'Anna Alldone'}
+            />
+            {currentUser.displayName === 'Anna Alldone' && <WhatsAppAssistantLine />}
             <Text style={localStyles.header}>{translate('Assistant tasks')}</Text>
             {tasks.map(task => (
                 <PreConfigTaskGeneratorWrapper

@@ -9,7 +9,7 @@ import Button from '../../../UIControls/Button'
 import Spinner from '../../../UIComponents/Spinner'
 import AssistantAvatarButton from '../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton'
 
-export default function AssistantInputLine({ assistant, projectId }) {
+export default function AssistantInputLine({ assistant, projectId, noBottomMargin }) {
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
@@ -60,7 +60,7 @@ export default function AssistantInputLine({ assistant, projectId }) {
     const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, noBottomMargin && { marginBottom: 8 }]}>
             <View style={localStyles.row}>
                 <View style={localStyles.avatarWrapper}>
                     <AssistantAvatarButton assistant={assistant} size={40} />
