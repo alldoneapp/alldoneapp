@@ -44,6 +44,16 @@ export default function AssistantInputLine({ assistant, projectId }) {
         }
     }, [assistant, message, projectId])
 
+    const handleKeyPress = useCallback(
+        e => {
+            if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+                e.preventDefault()
+                handleSendMessage()
+            }
+        },
+        [handleSendMessage]
+    )
+
     const canSend = message.trim().length > 0 && !isSending
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
@@ -63,9 +73,8 @@ export default function AssistantInputLine({ assistant, projectId }) {
                     placeholderTextColor={colors.Text03}
                     editable={!isSending}
                     autoCorrect={true}
-                    multiline={false}
-                    onSubmitEditing={handleSendMessage}
-                    returnKeyType={'send'}
+                    multiline={true}
+                    onKeyPress={handleKeyPress}
                 />
                 <View style={localStyles.sendButtonWrapper}>
                     <Button
@@ -97,7 +106,7 @@ const localStyles = StyleSheet.create({
     },
     row: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         width: '100%',
     },
     avatarWrapper: {
@@ -110,12 +119,13 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         backgroundColor: 'white',
-        height: 40,
         minHeight: 40,
+        maxHeight: 120,
         paddingVertical: 8,
         paddingHorizontal: 12,
         fontSize: 14,
         color: colors.Text01,
+        textAlignVertical: 'top',
     },
     sendButtonWrapper: {
         justifyContent: 'center',

@@ -107,6 +107,16 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         }
     }, [assistant, assistantProject, message, gold])
 
+    const handleKeyPress = useCallback(
+        e => {
+            if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+                e.preventDefault()
+                handleSendMessage()
+            }
+        },
+        [handleSendMessage]
+    )
+
     if (!tasks || !assistant || !assistant.uid || !assistantProject) {
         return null
     }
@@ -145,9 +155,8 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     placeholderTextColor={colors.Text03}
                     editable={!isSending}
                     autoCorrect={true}
-                    multiline={false}
-                    onSubmitEditing={handleSendMessage}
-                    returnKeyType={'send'}
+                    multiline={true}
+                    onKeyPress={handleKeyPress}
                 />
                 <Popover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
@@ -202,7 +211,7 @@ const localStyles = StyleSheet.create({
     },
     firstRow: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         width: '100%',
         marginBottom: 12,
     },
@@ -213,12 +222,13 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Grey300,
         backgroundColor: 'white',
-        height: 40,
         minHeight: 40,
+        maxHeight: 120,
         paddingVertical: 8,
         paddingHorizontal: 12,
         fontSize: 14,
         color: colors.Text01,
+        textAlignVertical: 'top',
     },
     avatarWrapper: {
         width: 56,
