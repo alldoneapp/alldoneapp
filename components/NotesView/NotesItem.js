@@ -4,6 +4,7 @@ import Icon from '../Icon'
 import styles, { colors } from '../styles/global'
 import moment from 'moment'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
+import ContactsHelper from '../ContactsView/Utils/ContactsHelper'
 import SocialText from '../UIControls/SocialText/SocialText'
 import { useDispatch, useSelector } from 'react-redux'
 import SharedHelper from '../../utils/SharedHelper'
@@ -52,6 +53,12 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
     const [renderFlag, setRenderFlag] = useState(false)
     const itemSwipe = useRef()
     const theme = getTheme(Themes, loggedUser.themeName, 'RootView.StickyItem')
+
+    const contact =
+        note.parentObject?.type === 'contacts'
+            ? TasksHelper.getContactInProject(project.id, note.parentObject.id)
+            : null
+    const contactPhotoURL = contact ? ContactsHelper.getContactPhotoURL(contact, false) : null
 
     const outputColors = [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125]
     const backColor = panColor.interpolate({
@@ -250,11 +257,16 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
                                         activeOpacity={blockOpen ? 1 : 0.5}
                                         accessible={false}
                                     >
-                                        <Icon
-                                            name={isSticky ? 'sticky-note' : renderIcon()}
-                                            size={24}
-                                            color={colors.Text03}
-                                        />
+                                        {isSticky ? (
+                                            <Icon name="sticky-note" size={24} color={colors.Text03} />
+                                        ) : contactPhotoURL ? (
+                                            <Image
+                                                source={{ uri: contactPhotoURL }}
+                                                style={{ width: 24, height: 24, borderRadius: 100 }}
+                                            />
+                                        ) : (
+                                            <Icon name={renderIcon()} size={24} color={colors.Text03} />
+                                        )}
                                     </TouchableOpacity>
                                     <View style={{ flex: 1, marginHorizontal: 12 }}>
                                         <SocialText
