@@ -233,6 +233,7 @@ const localStyles = StyleSheet.create({
         paddingVertical: 8,
         paddingHorizontal: 12,
         fontSize: 14,
+        lineHeight: 22,
         color: colors.Text01,
         textAlignVertical: 'top',
     },
