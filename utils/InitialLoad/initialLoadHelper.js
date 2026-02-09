@@ -174,7 +174,10 @@ export function watchAdministratorUser(userId) {
     )
 }
 
-export const loadGlobalData = async () => {
+export const loadGlobalData = async (retryCount = 0) => {
+    const MAX_RETRIES = 5
+    const RETRY_DELAY_MS = 5000
+
     const { globalAssistants: currentGlobalAssistants, administratorUser: currentAdministratorUser } = store.getState()
 
     const areGlobalAssistantsLoaded = currentGlobalAssistants.length > 0
@@ -194,6 +197,13 @@ export const loadGlobalData = async () => {
             }
         } catch (error) {
             console.error('Failed to load global data:', error)
+            if (retryCount < MAX_RETRIES) {
+                console.log(
+                    `Retrying loadGlobalData in ${RETRY_DELAY_MS / 1000}s... (attempt ${retryCount + 1}/${MAX_RETRIES})`
+                )
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+                return loadGlobalData(retryCount + 1)
+            }
             store.dispatch(setAdministratorAndGlobalAssistants({}, []))
         }
     }

@@ -81,35 +81,48 @@ async function getInitialProjectsData(projectIds) {
     return projectsInitialData
 }
 
-async function loadProjectsDataFromFirebase(projectIds) {
+async function loadProjectsDataFromFirebase(projectIds, retryCount = 0) {
+    const MAX_RETRIES = 5
+    const RETRY_DELAY_MS = 5000
+
     // Create batched promises for all projects to load data in parallel
-    const allPromises = []
+    const allPromises = projectIds.map(projectId =>
+        Promise.all([
+            getProjectData(projectId),
+            getProjectUsers(projectId, false),
+            getProjectContacts(projectId),
+            getProjectWorkstreams(projectId),
+            getProjectAssistants(projectId),
+        ])
+            .then(([project, users, contacts, workstreams, assistants]) => ({
+                project,
+                users,
+                contacts,
+                workstreams,
+                assistants,
+            }))
+            .catch(error => {
+                console.error(`Failed to load project ${projectId}:`, error)
+                return null
+            })
+    )
 
-    projectIds.forEach(projectId => {
-        // For each project, batch all its data requests
-        allPromises.push(
-            Promise.all([
-                getProjectData(projectId),
-                getProjectUsers(projectId, false),
-                getProjectContacts(projectId),
-                getProjectWorkstreams(projectId),
-                getProjectAssistants(projectId),
-            ])
-                .then(([project, users, contacts, workstreams, assistants]) => ({
-                    project,
-                    users,
-                    contacts,
-                    workstreams,
-                    assistants,
-                }))
-                .catch(error => {
-                    console.error(`Failed to load project ${projectId}:`, error)
-                    return null
-                })
+    const results = await Promise.all(allPromises)
+    const loadedCount = results.filter(r => r !== null).length
+
+    // If all projects failed and we have retries left, wait and try again
+    if (loadedCount === 0 && projectIds.length > 0 && retryCount < MAX_RETRIES) {
+        console.log(
+            `All projects failed to load. Retrying in ${RETRY_DELAY_MS / 1000}s... (attempt ${
+                retryCount + 1
+            }/${MAX_RETRIES})`
         )
-    })
+        store.dispatch(updateLoadingStep(3, 'Waiting for internet connection...'))
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+        return loadProjectsDataFromFirebase(projectIds, retryCount + 1)
+    }
 
-    return await Promise.all(allPromises)
+    return results
 }
 
 async function loadInitialData() {
@@ -230,11 +243,21 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
     store.dispatch(updateLoadingStep(2, getProgressLoadingMessage()))
     await loadInitialData()
 
-    initFCMonLoad()
-    updateLastLoggedUserDate()
+    try {
+        initFCMonLoad()
+    } catch (e) {
+        console.warn('initFCMonLoad failed:', e)
+    }
+    try {
+        updateLastLoggedUserDate()
+    } catch (e) {
+        console.warn('updateLastLoggedUserDate failed:', e)
+    }
     // Disabled daily recap - will be replaced with recurring assistant task
     // proccessAssistantDialyTopicIfNeeded()
-    resetTimesDoneInExpectedDayPropertyInTasksIfNeeded()
+    resetTimesDoneInExpectedDayPropertyInTasksIfNeeded().catch(e =>
+        console.warn('resetTimesDoneInExpectedDay failed:', e)
+    )
 
     //handleCookies()
 

@@ -184,7 +184,7 @@ export const getEstimationRealValue = (projectId, estimation, customEstimationTy
         estimationType = customEstimationType
     } else if (projectId) {
         const project = ProjectHelper.getProjectById(projectId)
-        estimationType = project.estimationType
+        estimationType = project?.estimationType || ESTIMATION_TYPE_TIME
     } else {
         estimationType = ESTIMATION_TYPE_TIME
     }
