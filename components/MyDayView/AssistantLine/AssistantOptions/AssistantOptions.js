@@ -158,6 +158,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     editable={!isSending}
                     autoCorrect={true}
                     multiline={true}
+                    scrollEnabled={inputHeight >= 120}
                     onKeyPress={handleKeyPress}
                     onContentSizeChange={e => {
                         const h = e.nativeEvent.contentSize.height

@@ -76,6 +76,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     editable={!isSending}
                     autoCorrect={true}
                     multiline={true}
+                    scrollEnabled={inputHeight >= 120}
                     onKeyPress={handleKeyPress}
                     onContentSizeChange={e => {
                         const h = e.nativeEvent.contentSize.height
