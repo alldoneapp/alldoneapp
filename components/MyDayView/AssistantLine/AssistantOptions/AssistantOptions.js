@@ -150,7 +150,11 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
                 </View>
                 <TextInput
-                    style={[localStyles.messageInput, { height: inputHeight }]}
+                    style={[
+                        localStyles.messageInput,
+                        { height: inputHeight },
+                        inputHeight < 120 && { overflowY: 'hidden' },
+                    ]}
                     value={message}
                     onChangeText={setMessage}
                     placeholder={translate('Start a new chat with the assistant')}
@@ -161,6 +165,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     scrollEnabled={inputHeight >= 120}
                     onKeyPress={handleKeyPress}
                     onContentSizeChange={e => {
+                        if (!message) return
                         const h = e.nativeEvent.contentSize.height
                         setInputHeight(Math.min(Math.max(h, 40), 120))
                     }}
