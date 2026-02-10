@@ -75,7 +75,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     ]}
                     value={message}
                     onChangeText={setMessage}
-                    placeholder={translate('Start a new chat with the assistant')}
+                    placeholder={translate('Start a new chat')}
                     placeholderTextColor={colors.Text03}
                     editable={!isSending}
                     autoCorrect={true}
