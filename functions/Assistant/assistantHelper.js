@@ -1466,11 +1466,13 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'update_task': {
+            const updateTaskPatchVersion = '2026-02-11-taskid-firestore-lookup-v2'
             console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                 creatorId,
                 projectId,
                 toolArgs,
                 isBulkUpdate: toolArgs.updateAll || false,
+                patchVersion: updateTaskPatchVersion,
             })
 
             const db = admin.firestore()

@@ -110,7 +110,8 @@ class TaskSearchService {
     async findTasksBySearchCriteria(userId, searchCriteria) {
         await this.ensureInitialized()
 
-        const { taskId, taskName, projectName, projectId } = searchCriteria
+        const normalizedCriteria = this.normalizeSearchCriteria(searchCriteria)
+        const { taskId, taskName, projectName, projectId } = normalizedCriteria
 
         // Validate that at least one search criterion is provided
         if (!taskId && !taskName && !projectName && !projectId) {
@@ -118,7 +119,7 @@ class TaskSearchService {
         }
 
         // Validate search criteria quality
-        const validationError = this.validateSearchCriteria(searchCriteria)
+        const validationError = this.validateSearchCriteria(normalizedCriteria)
         if (validationError) {
             throw new Error(validationError)
         }
@@ -128,7 +129,7 @@ class TaskSearchService {
         if (userProjects.length === 0) {
             return {
                 matches: [],
-                searchCriteria,
+                searchCriteria: normalizedCriteria,
                 message: 'No accessible projects found for user',
             }
         }
@@ -149,7 +150,7 @@ class TaskSearchService {
 
         // If no direct match or additional criteria provided, do Algolia search
         if (matches.length === 0 || taskName || projectName || projectId) {
-            const flexibleMatches = await this.searchTasksFlexibly(userId, userProjects, searchCriteria)
+            const flexibleMatches = await this.searchTasksFlexibly(userId, userProjects, normalizedCriteria)
             matches = matches.concat(flexibleMatches)
         }
 
@@ -165,14 +166,24 @@ class TaskSearchService {
             return unique
         }, [])
 
+        // Verify candidates against Firestore to avoid stale Algolia hits.
+        const verifiedMatches = await this.filterExistingAccessibleMatches(uniqueMatches, userId)
+        if (verifiedMatches.length !== uniqueMatches.length) {
+            console.warn('TaskSearchService: Filtered stale/inaccessible matches', {
+                before: uniqueMatches.length,
+                after: verifiedMatches.length,
+                removed: uniqueMatches.length - verifiedMatches.length,
+            })
+        }
+
         // Apply result limits and quality filtering
-        const filteredMatches = this.filterAndLimitResults(uniqueMatches, searchCriteria)
+        const filteredMatches = this.filterAndLimitResults(verifiedMatches, normalizedCriteria)
 
         return {
             matches: filteredMatches,
-            searchCriteria,
+            searchCriteria: normalizedCriteria,
             totalFound: filteredMatches.length,
-            totalBeforeFiltering: uniqueMatches.length,
+            totalBeforeFiltering: verifiedMatches.length,
         }
     }
 
@@ -558,6 +569,61 @@ class TaskSearchService {
         if (taskData.userId === userId) return true
 
         return Array.isArray(taskData.isPublicFor) && taskData.isPublicFor.includes(userId)
+    }
+
+    /**
+     * Normalize input criteria to prevent subtle mismatches (e.g. whitespace in IDs).
+     */
+    normalizeSearchCriteria(searchCriteria = {}) {
+        const normalizeString = value => (typeof value === 'string' ? value.trim() : value)
+        return {
+            ...searchCriteria,
+            taskId: normalizeString(searchCriteria.taskId),
+            taskName: normalizeString(searchCriteria.taskName),
+            projectName: normalizeString(searchCriteria.projectName),
+            projectId: normalizeString(searchCriteria.projectId),
+        }
+    }
+
+    /**
+     * Remove stale/inaccessible Algolia matches by verifying against Firestore docs.
+     */
+    async filterExistingAccessibleMatches(matches, userId) {
+        if (!Array.isArray(matches) || matches.length === 0) return []
+
+        const db = this.options.database
+        const verified = await Promise.all(
+            matches.map(async match => {
+                const taskId = match?.task?.id
+                const projectId = match?.projectId
+                if (!taskId || !projectId) return null
+
+                try {
+                    const taskDoc = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
+                    if (!taskDoc.exists) return null
+
+                    const taskData = taskDoc.data() || {}
+                    if (!this.canUserAccessTask(taskData, userId)) return null
+
+                    return {
+                        ...match,
+                        task: {
+                            ...taskData,
+                            id: taskId,
+                        },
+                    }
+                } catch (error) {
+                    console.warn('TaskSearchService: Error verifying task candidate:', {
+                        taskId,
+                        projectId,
+                        error: error.message,
+                    })
+                    return null
+                }
+            })
+        )
+
+        return verified.filter(Boolean)
     }
 
     /**
