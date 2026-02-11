@@ -165,45 +165,28 @@ const NotesEditorView = ({
     const innerTasksIdsRef = useRef([])
 
     const lastFullscreenChangeTime = useRef(0)
-    const pendingFullscreenChange = useRef(null)
     const isFullscreenRef = useRef(isFullscreen)
     isFullscreenRef.current = isFullscreen
 
     const updateScreenMode = deltaY => {
         scrollYPos.current = deltaY
         const now = Date.now()
-        const DEBOUNCE_MS = 150
+        const COOLDOWN_MS = 300
+
+        const timeSinceLastChange = now - lastFullscreenChangeTime.current
+        if (timeSinceLastChange < COOLDOWN_MS) {
+            return
+        }
 
         const shouldGoFullscreen = deltaY > getScrollTolerance(true) && !isFullscreenRef.current
         const shouldExitFullscreen = deltaY < getScrollTolerance(false) && isFullscreenRef.current
 
-        if (shouldGoFullscreen || shouldExitFullscreen) {
-            const timeSinceLastChange = now - lastFullscreenChangeTime.current
-
-            if (timeSinceLastChange < DEBOUNCE_MS) {
-                if (pendingFullscreenChange.current) {
-                    clearTimeout(pendingFullscreenChange.current)
-                }
-                pendingFullscreenChange.current = setTimeout(() => {
-                    const currentY = scrollYPos.current
-                    if (currentY > getScrollTolerance(true) && !isFullscreenRef.current) {
-                        lastFullscreenChangeTime.current = Date.now()
-                        setFullscreen(true)
-                    } else if (currentY < getScrollTolerance(false) && isFullscreenRef.current) {
-                        lastFullscreenChangeTime.current = Date.now()
-                        setFullscreen(false)
-                    }
-                    pendingFullscreenChange.current = null
-                }, DEBOUNCE_MS - timeSinceLastChange)
-                return
-            }
-
+        if (shouldGoFullscreen) {
             lastFullscreenChangeTime.current = now
-            if (shouldGoFullscreen) {
-                setFullscreen(true)
-            } else {
-                setFullscreen(false)
-            }
+            setFullscreen(true)
+        } else if (shouldExitFullscreen) {
+            lastFullscreenChangeTime.current = now
+            setFullscreen(false)
         }
     }
 
@@ -433,14 +416,6 @@ const NotesEditorView = ({
     useEffect(() => {
         return () => {
             noteUnmountedRef.current = true
-        }
-    }, [])
-
-    useEffect(() => {
-        return () => {
-            if (pendingFullscreenChange.current) {
-                clearTimeout(pendingFullscreenChange.current)
-            }
         }
     }, [])
 
