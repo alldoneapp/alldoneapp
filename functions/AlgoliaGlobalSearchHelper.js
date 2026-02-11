@@ -243,7 +243,7 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
         }
     })
 
-    if (Object.keys(changes).length > 1 || hasContentChanged) {
+    if (Object.keys(changes).length > 0 || hasContentChanged) {
         console.log(
             `Updating Algolia record for ${objectsType} ${objectId} with ${Object.keys(changes).length} changes`
         )

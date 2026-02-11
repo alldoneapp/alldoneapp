@@ -692,14 +692,16 @@ class TaskService {
             changes.push('parent task')
         }
 
+        const currentTimestamp = Date.now()
+
         // Handle completion status
         if (completed !== undefined) {
             const isCompleted = !!completed
             updateData.done = isCompleted
             updateData.inDone = isCompleted
             if (isCompleted) {
-                updateData.completed = Date.now()
-                updateData.completedDate = Date.now()
+                updateData.completed = currentTimestamp
+                updateData.completedDate = currentTimestamp
                 updateData.completedTime = new Date().toTimeString().substring(0, 5)
                 updateData.currentReviewerId = 'Done'
                 changes.push('marked as complete')
@@ -719,6 +721,15 @@ class TaskService {
                 changes.push(key)
             }
         })
+
+        // Keep task metadata fresh whenever there is a real update request.
+        if (changes.length > 0) {
+            updateData.lastEditionDate = currentTimestamp
+            const editorId = (feedUser && (feedUser.uid || feedUser.id || feedUser.userId)) || context.lastEditorId
+            if (editorId) updateData.lastEditorId = editorId
+            const editorName = feedUser && (feedUser.displayName || feedUser.name)
+            if (editorName) updateData.lastEditorName = editorName
+        }
 
         // Create updated task object for feed generation
         const updatedTask = { ...currentTask, ...updateData }
