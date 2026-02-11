@@ -310,7 +310,17 @@ function increaseFeedCount(
                 ? projectUsersIdsForSpecialFeeds
                 : project.userIds
 
-        const usersToNotifyIds = usersWithAccessIds.filter(userId => userId !== feedCreator.uid)
+        // Guard against pseudo/public marker values appearing in project user IDs.
+        // Notification counters are per real user; pseudo IDs can create oversized feedsCount docs.
+        const usersToNotifyIds = usersWithAccessIds.filter(
+            userId =>
+                userId !== feedCreator.uid &&
+                userId !== FEED_PUBLIC_FOR_ALL &&
+                userId !== 'FEED_PUBLIC_FOR_ALL' &&
+                userId !== null &&
+                userId !== undefined &&
+                userId !== ''
+        )
 
         const entryObjectsCounter = generateFeedCounterEntry(currentDateFormated, objectsType, objectId, feedId, feed)
 
@@ -703,10 +713,13 @@ function updateFeedObject(projectId, currentDateFormated, objectId, feedObject, 
 
 async function cleanGlobalFeeds(projectId) {
     const { project } = getGlobalState()
-    const { userIds: projectUsersIds } = project
+    const { userIds: projectUsersIds = [] } = project
+    const cleanupUsersIds = uniq([...projectUsersIds, FEED_PUBLIC_FOR_ALL, 'FEED_PUBLIC_FOR_ALL']).filter(
+        userId => userId !== null && userId !== undefined && userId !== ''
+    )
     const promises = []
-    promises.push(cleanStoreFeeds(projectId, projectUsersIds))
-    promises.push(cleanNewFeeds(projectId, projectUsersIds))
+    promises.push(cleanStoreFeeds(projectId, cleanupUsersIds))
+    promises.push(cleanNewFeeds(projectId, cleanupUsersIds))
     await Promise.all(promises)
 }
 
