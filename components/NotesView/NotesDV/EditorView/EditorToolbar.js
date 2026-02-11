@@ -729,6 +729,20 @@ export const modules = {
         container: '#toolbar',
 
         handlers: {
+            // Custom color/background handlers to intercept Quill's color picker dropdown.
+            // When "None" is selected, we remove the attribute entirely instead of
+            // setting to the "None" color value, preventing format bleed in Yjs.
+            color: value => {
+                const editor = exportRef.getEditor()
+                const isNone = typeof value === 'string' && value.toUpperCase() === TEXT_COLORS[0].color.toUpperCase()
+                editor.format('color', isNone ? false : value, 'user')
+            },
+            background: value => {
+                const editor = exportRef.getEditor()
+                const isNone =
+                    typeof value === 'string' && value.toUpperCase() === BACKGROUND_COLORS[0].color.toUpperCase()
+                editor.format('background', isNone ? false : value, 'user')
+            },
             undo: undoChange,
             redo: redoChange,
             comment: () => {
@@ -790,7 +804,14 @@ export const modules = {
             textColor: (color, scrollRef, scrollYPos, type = 'color') => {
                 const scrollY = scrollYPos.current
                 const editor = exportRef.getEditor()
-                editor.format(type === 'color' ? 'color' : 'background', color, 'user')
+                const formatKey = type === 'color' ? 'color' : 'background'
+                // For "None" colors: actually REMOVE the attribute instead of setting
+                // to the "None" color value. Leaving a specific color value keeps the
+                // attribute in Yjs, causing format inheritance/bleed when typing
+                // adjacent to previously-formatted text.
+                const noneColor = formatKey === 'background' ? BACKGROUND_COLORS[0].color : TEXT_COLORS[0].color
+                const isNone = typeof color === 'string' && color.toUpperCase() === noneColor.toUpperCase()
+                editor.format(formatKey, isNone ? false : color, 'user')
                 scrollRef.current.scrollTo({ x: 0, y: scrollY, animated: false })
             },
             image: () => {
