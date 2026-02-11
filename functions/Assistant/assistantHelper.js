@@ -1507,7 +1507,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     success: result.success,
                     message: result.message,
                     isBulkUpdate: !!result.updated,
-                    tasksUpdated: result.updated?.length || 1,
+                    tasksUpdated: Array.isArray(result.updated) ? result.updated.length : result.success ? 1 : 0,
                 })
 
                 return result
