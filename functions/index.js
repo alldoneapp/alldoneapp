@@ -2522,7 +2522,7 @@ exports.googleOAuthCallback = onRequest(
 exports.googleOAuthGetToken = onCall(
     {
         timeoutSeconds: 60,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
@@ -2577,7 +2577,7 @@ exports.googleOAuthRevoke = onCall(
 exports.googleOAuthCheckCredentials = onCall(
     {
         timeoutSeconds: 60,
-        memory: '512MB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },
