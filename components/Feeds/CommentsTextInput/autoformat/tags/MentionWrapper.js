@@ -224,6 +224,7 @@ export default function MentionWrapper({ data }) {
                 mentionData={data}
                 onPress={openModal}
                 projectId={projectId}
+                contact={contact}
             />
         </Popover>
     )

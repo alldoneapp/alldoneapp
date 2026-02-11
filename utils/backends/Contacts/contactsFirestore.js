@@ -166,18 +166,25 @@ export async function addContactToProject(projectId, contact, onComplete) {
 export async function copyContactToProject(targetProjectId, sourceContact, onComplete) {
     const { loggedUser } = store.getState()
 
-    // Create new contact with basic info only
+    // Fetch full contact from Firestore (Algolia results miss linkedInUrl, email, phone)
+    let fullContact = sourceContact
+    if (sourceContact.projectId && sourceContact.uid) {
+        const fetched = await getContactData(sourceContact.projectId, sourceContact.uid)
+        if (fetched) fullContact = fetched
+    }
+
     const newContact = {
-        displayName: sourceContact.displayName || '',
-        photoURL: sourceContact.photoURL || '',
-        photoURL50: sourceContact.photoURL50 || '',
-        photoURL300: sourceContact.photoURL300 || '',
-        company: sourceContact.company || '',
-        role: sourceContact.role || '',
-        description: sourceContact.description || '',
-        extendedDescription: sourceContact.extendedDescription || '',
-        email: sourceContact.email || '',
-        phone: sourceContact.phone || '',
+        displayName: fullContact.displayName || '',
+        photoURL: fullContact.photoURL || '',
+        photoURL50: fullContact.photoURL50 || '',
+        photoURL300: fullContact.photoURL300 || '',
+        company: fullContact.company || '',
+        role: fullContact.role || '',
+        description: fullContact.description || '',
+        extendedDescription: fullContact.extendedDescription || '',
+        email: fullContact.email || '',
+        phone: fullContact.phone || '',
+        linkedInUrl: fullContact.linkedInUrl || '',
         // Default values for new contact in target project
         hasStar: '#FFFFFF',
         isPrivate: false,
@@ -192,15 +199,20 @@ export async function copyContactToProject(targetProjectId, sourceContact, onCom
         assistantId: '',
         commentsData: null,
         openTasksAmount: 0,
-        contactStatusId: null, // Don't copy status - it may not exist in target project
-        linkedInUrl: sourceContact.linkedInUrl || '',
+        contactStatusId: null,
     }
 
-    let copiedContact = null
-    await addContactToProject(targetProjectId, newContact, contact => {
-        copiedContact = contact
-        if (onComplete) onComplete(contact)
-    })
+    const contactId = getId()
+
+    // Write directly - no photo re-upload needed (Firebase Storage URLs are globally accessible)
+    await getDb().doc(`projectsContacts/${targetProjectId}/contacts/${contactId}`).set(newContact)
+
+    const copiedContact = { uid: contactId, ...newContact }
+    if (onComplete) onComplete(copiedContact)
+
+    addContactFeedsChain(targetProjectId, newContact, newContact.photoURL, contactId)
+    logEvent('new_contact', { id: contactId, email: newContact.email })
+
     return copiedContact
 }
 

@@ -7,10 +7,22 @@ import { NOT_USER_MENTIONED } from '../../textInputHelper'
 import { getUserOrContactForMentions, MENTION_SPACE_CODE } from '../../../Utils/HelperFunctions'
 import SVGGenericUser from '../../../../../assets/svg/SVGGenericUser'
 
-export default function MentionTag({ mentionData, onPress, projectId, disabled }) {
+export default function MentionTag({ mentionData, onPress, projectId, disabled, contact: contactFromWrapper }) {
     const { text = '', userId = '' } = mentionData
     const parsedText = text.replaceAll(MENTION_SPACE_CODE, ' ').substring(0, 25)
-    const user = userId === NOT_USER_MENTIONED ? null : getUserOrContactForMentions(projectId, userId)
+
+    let user = null
+    if (userId !== NOT_USER_MENTIONED) {
+        if (contactFromWrapper) {
+            user = {
+                uid: contactFromWrapper.uid,
+                photoURL: contactFromWrapper.photoURL50 || contactFromWrapper.photoURL,
+                peopleName: contactFromWrapper.displayName,
+            }
+        } else {
+            user = getUserOrContactForMentions(projectId, userId)
+        }
+    }
 
     return (
         <View style={localStyles.container}>
