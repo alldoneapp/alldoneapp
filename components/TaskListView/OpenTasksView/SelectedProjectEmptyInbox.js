@@ -12,9 +12,18 @@ export default function SelectedProjectEmptyInbox({ projectId, instanceKey }) {
 
     const randomImage = React.useMemo(() => {
         const images = [
-            require('../../../assets/anna_tasks_done_01.png'),
-            require('../../../assets/anna_tasks_done_02.png'),
-            require('../../../assets/anna_tasks_done_03.png'),
+            {
+                srcWebp: require('../../../assets/anna_tasks_done_01.webp'),
+                fallback: require('../../../assets/anna_tasks_done_01.png'),
+            },
+            {
+                srcWebp: require('../../../assets/anna_tasks_done_02.webp'),
+                fallback: require('../../../assets/anna_tasks_done_02.png'),
+            },
+            {
+                srcWebp: require('../../../assets/anna_tasks_done_03.webp'),
+                fallback: require('../../../assets/anna_tasks_done_03.png'),
+            },
         ]
         const randomIndex = Math.floor(Math.random() * images.length)
         return images[randomIndex]
@@ -33,8 +42,8 @@ export default function SelectedProjectEmptyInbox({ projectId, instanceKey }) {
             ]}
         >
             <ModernImage
-                srcWebp={randomImage}
-                fallback={randomImage}
+                srcWebp={randomImage.srcWebp}
+                fallback={randomImage.fallback}
                 style={{ flex: 1, width: '100%', maxWidth: 432, borderRadius: 16 }}
                 alt={'Empty inbox'}
             />

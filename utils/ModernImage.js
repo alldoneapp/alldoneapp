@@ -6,7 +6,7 @@ export default function ModernImage({ srcWebp, srcJrx, srcJp2, fallback, alt, ..
             <source srcSet={srcWebp} type="image/webp" />
             <source srcSet={srcJrx} type="image/jxr" />
             <source srcSet={srcJp2} type="image/jp2" />
-            <source srcSet={fallback} type="image/jpeg" />
+            <source srcSet={fallback} type="image/png" />
             <img src={fallback} alt={alt} {...props} />
         </picture>
     )
