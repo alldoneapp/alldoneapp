@@ -963,6 +963,287 @@ const updateLastAssistantCommentData = async (projectId, objectType, objectId, c
     await batch.commit()
 }
 
+const normalizeProjectNameForLookup = value => (typeof value === 'string' ? value.trim().toLowerCase() : '')
+
+const projectNamesMatch = (projectNameA, projectNameB) => {
+    const a = normalizeProjectNameForLookup(projectNameA)
+    const b = normalizeProjectNameForLookup(projectNameB)
+    return !!a && !!b && (a === b || a.includes(b) || b.includes(a))
+}
+
+async function resolveMoveTargetProject(database, userId, moveToProjectId, moveToProjectName) {
+    const requestedProjectId = typeof moveToProjectId === 'string' ? moveToProjectId.trim() : ''
+    const requestedProjectName = typeof moveToProjectName === 'string' ? moveToProjectName.trim() : ''
+
+    if (!requestedProjectId && !requestedProjectName) return null
+
+    const { ProjectService } = require('../shared/ProjectService')
+    const projectService = new ProjectService({ database })
+    await projectService.initialize()
+
+    const projects = await projectService.getUserProjects(userId, {
+        includeArchived: true,
+        includeCommunity: true,
+        activeOnly: false,
+    })
+    const projectsById = new Map(projects.map(project => [project.id, project]))
+
+    if (requestedProjectId) {
+        const projectFromId = projectsById.get(requestedProjectId)
+        if (!projectFromId) {
+            throw new Error(`Target project not found or not accessible: "${requestedProjectId}"`)
+        }
+        if (requestedProjectName && !projectNamesMatch(projectFromId.name, requestedProjectName)) {
+            throw new Error(
+                `Target project mismatch: projectId "${requestedProjectId}" does not match projectName "${requestedProjectName}".`
+            )
+        }
+        return {
+            id: projectFromId.id,
+            name: projectFromId.name,
+            source: 'moveToProjectId',
+        }
+    }
+
+    const exactMatches = projects.filter(
+        project => normalizeProjectNameForLookup(project.name) === requestedProjectName.toLowerCase()
+    )
+    if (exactMatches.length === 1) {
+        return {
+            id: exactMatches[0].id,
+            name: exactMatches[0].name,
+            source: 'moveToProjectName_exact',
+        }
+    }
+
+    if (exactMatches.length > 1) {
+        throw new Error(
+            `Multiple projects match "${requestedProjectName}". Please use moveToProjectId to choose one target project.`
+        )
+    }
+
+    const partialMatches = projects.filter(project => projectNamesMatch(project.name, requestedProjectName))
+    if (partialMatches.length === 1) {
+        return {
+            id: partialMatches[0].id,
+            name: partialMatches[0].name,
+            source: 'moveToProjectName_partial',
+        }
+    }
+
+    if (partialMatches.length > 1) {
+        const options = partialMatches
+            .slice(0, 5)
+            .map(project => `"${project.name}" (${project.id})`)
+            .join(', ')
+        throw new Error(
+            `Multiple projects partially match "${requestedProjectName}": ${options}. Please use moveToProjectId.`
+        )
+    }
+
+    throw new Error(`No project found matching "${requestedProjectName}".`)
+}
+
+async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId) {
+    const taskTree = new Map()
+    const queue = [rootTaskId]
+
+    while (queue.length > 0) {
+        const taskId = queue.shift()
+        if (!taskId || taskTree.has(taskId)) continue
+
+        const taskDoc = await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).get()
+        if (!taskDoc.exists) {
+            if (taskId === rootTaskId) {
+                throw new Error(`Task ${rootTaskId} not found in source project ${sourceProjectId}`)
+            }
+            continue
+        }
+
+        const taskData = taskDoc.data() || {}
+        taskTree.set(taskId, taskData)
+
+        const subtaskIds = Array.isArray(taskData.subtaskIds) ? taskData.subtaskIds : []
+        subtaskIds.forEach(subtaskId => {
+            if (typeof subtaskId === 'string' && subtaskId.trim() && !taskTree.has(subtaskId)) {
+                queue.push(subtaskId)
+            }
+        })
+    }
+
+    return taskTree
+}
+
+async function moveTaskToDifferentProject(params) {
+    const { database, sourceProjectId, targetProjectId, taskId, editorId, editorName } = params
+
+    if (!sourceProjectId || !targetProjectId || !taskId) {
+        throw new Error('sourceProjectId, targetProjectId and taskId are required for task move')
+    }
+    if (sourceProjectId === targetProjectId) {
+        return {
+            moved: false,
+            reason: 'already_in_target_project',
+            sourceProjectId,
+            targetProjectId,
+            taskId,
+            movedTaskCount: 1,
+        }
+    }
+
+    const taskTree = await collectTaskTreeForMove(database, sourceProjectId, taskId)
+    const taskIdsToMove = Array.from(taskTree.keys())
+    const timestamp = Date.now()
+
+    // Protect against accidental overwrite in the target project.
+    for (const id of taskIdsToMove) {
+        const targetTaskDoc = await database.doc(`items/${targetProjectId}/tasks/${id}`).get()
+        if (targetTaskDoc.exists) {
+            throw new Error(
+                `Cannot move task ${taskId}: task ID ${id} already exists in target project ${targetProjectId}.`
+            )
+        }
+    }
+
+    for (const [id, sourceTask] of taskTree.entries()) {
+        const isRootTask = id === taskId
+        const movedTask = {
+            ...sourceTask,
+            lastEditionDate: timestamp,
+        }
+
+        if (editorId) movedTask.lastEditorId = editorId
+        if (editorName) movedTask.lastEditorName = editorName
+
+        // Remove move marker/internal path hints from the copied task.
+        delete movedTask.movingToOtherProjectId
+        delete movedTask.projectId
+
+        // Goals are project-local, so the moved task should no longer point to an old project goal.
+        movedTask.parentGoalId = null
+        movedTask.parentGoalIsPublicFor = null
+        movedTask.lockKey = ''
+
+        // Root subtasks become root tasks after moving project, matching app move behavior.
+        if (isRootTask && movedTask.parentId) {
+            movedTask.parentId = null
+            movedTask.isSubtask = false
+            movedTask.parentDone = false
+            movedTask.inDone = !!movedTask.done
+            if (movedTask.done && !movedTask.completed) movedTask.completed = timestamp
+        }
+
+        if (movedTask.calendarData && typeof movedTask.calendarData === 'object') {
+            movedTask.calendarData = {
+                ...movedTask.calendarData,
+                pinnedToProjectId: targetProjectId,
+            }
+        }
+
+        await database.doc(`items/${targetProjectId}/tasks/${id}`).set(movedTask)
+    }
+
+    const sourceMoveMarkerUpdate = {
+        movingToOtherProjectId: targetProjectId,
+        lastEditionDate: timestamp,
+    }
+    if (editorId) sourceMoveMarkerUpdate.lastEditorId = editorId
+    if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
+
+    // Mark all source tasks as moved so delete triggers can preserve linked content (notes/backlinks).
+    for (const id of taskIdsToMove) {
+        try {
+            await database.doc(`items/${sourceProjectId}/tasks/${id}`).update(sourceMoveMarkerUpdate)
+        } catch (error) {
+            console.warn('Task move: failed to set move marker on source task', {
+                taskId: id,
+                sourceProjectId,
+                error: error.message,
+            })
+        }
+    }
+
+    // Delete only root task; existing delete triggers cascade source subtasks cleanup.
+    await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).delete()
+
+    return {
+        moved: true,
+        sourceProjectId,
+        targetProjectId,
+        taskId,
+        movedTaskCount: taskIdsToMove.length,
+    }
+}
+
+async function moveNoteToDifferentProject(params) {
+    const { database, sourceProjectId, targetProjectId, noteId, editorId, editorName, notesBucketName } = params
+
+    if (!sourceProjectId || !targetProjectId || !noteId) {
+        throw new Error('sourceProjectId, targetProjectId and noteId are required for note move')
+    }
+    if (sourceProjectId === targetProjectId) {
+        return {
+            moved: false,
+            reason: 'already_in_target_project',
+            sourceProjectId,
+            targetProjectId,
+            noteId,
+        }
+    }
+
+    const sourceNoteRef = database.doc(`noteItems/${sourceProjectId}/notes/${noteId}`)
+    const sourceNoteDoc = await sourceNoteRef.get()
+    if (!sourceNoteDoc.exists) {
+        throw new Error(`Note ${noteId} not found in source project ${sourceProjectId}`)
+    }
+
+    const targetNoteRef = database.doc(`noteItems/${targetProjectId}/notes/${noteId}`)
+    const targetNoteDoc = await targetNoteRef.get()
+    if (targetNoteDoc.exists) {
+        throw new Error(`Cannot move note ${noteId}: target project already contains this note ID.`)
+    }
+
+    const timestamp = Date.now()
+    const sourceNote = sourceNoteDoc.data() || {}
+    const movedNote = {
+        ...sourceNote,
+        lastEditionDate: timestamp,
+    }
+    if (editorId) movedNote.lastEditorId = editorId
+    if (editorName) movedNote.lastEditorName = editorName
+    delete movedNote.movingToOtherProjectId
+
+    if (!notesBucketName) {
+        throw new Error('Could not resolve notes storage bucket for note move.')
+    }
+
+    const notesBucket = admin.storage().bucket(notesBucketName)
+    const sourceFile = notesBucket.file(`notesData/${sourceProjectId}/${noteId}`)
+    const [exists] = await sourceFile.exists()
+    if (exists) {
+        await sourceFile.copy(`gs://${notesBucketName}/notesData/${targetProjectId}/${noteId}`)
+    }
+
+    await targetNoteRef.set(movedNote)
+
+    const sourceMoveMarkerUpdate = {
+        movingToOtherProjectId: targetProjectId,
+        lastEditionDate: timestamp,
+    }
+    if (editorId) sourceMoveMarkerUpdate.lastEditorId = editorId
+    if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
+
+    await sourceNoteRef.update(sourceMoveMarkerUpdate)
+    await sourceNoteRef.delete()
+
+    return {
+        moved: true,
+        sourceProjectId,
+        targetProjectId,
+        noteId,
+    }
+}
+
 /**
  * Execute a tool natively and return the raw result (not processed by LLM)
  * This is used for OpenAI native tool calling
@@ -1466,7 +1747,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'update_task': {
-            const updateTaskPatchVersion = '2026-02-12-project-resolution-v3'
+            const updateTaskPatchVersion = '2026-02-12-project-move-support-v4'
             console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                 creatorId,
                 projectId,
@@ -1493,6 +1774,25 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
             try {
                 const normalizedToolArgs = { ...toolArgs }
+                const moveToProjectId =
+                    typeof normalizedToolArgs.moveToProjectId === 'string'
+                        ? normalizedToolArgs.moveToProjectId.trim()
+                        : ''
+                const moveToProjectName =
+                    typeof normalizedToolArgs.moveToProjectName === 'string'
+                        ? normalizedToolArgs.moveToProjectName.trim()
+                        : ''
+                const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
+
+                // Never pass move fields into TaskUpdateService update payload.
+                delete normalizedToolArgs.moveToProjectId
+                delete normalizedToolArgs.moveToProjectName
+
+                if (toolArgs.updateAll && hasMoveRequest) {
+                    throw new Error(
+                        'Moving tasks is not supported when updateAll=true. Please update one task at a time.'
+                    )
+                }
 
                 // Reconcile project selection for update_task:
                 // - model-provided projectId can be stale/hallucinated
@@ -1637,6 +1937,70 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     tasksUpdated: Array.isArray(result.updated) ? result.updated.length : result.success ? 1 : 0,
                 })
 
+                if (hasMoveRequest && result.success) {
+                    const sourceProjectId =
+                        (result.project && result.project.id) || normalizedToolArgs.projectId || projectId || null
+                    const sourceProjectName = (result.project && result.project.name) || null
+
+                    if (!sourceProjectId) {
+                        throw new Error('Could not determine source project for task move.')
+                    }
+
+                    const targetProject = await resolveMoveTargetProject(
+                        db,
+                        creatorId,
+                        moveToProjectId,
+                        moveToProjectName
+                    )
+                    const editorName =
+                        (userContext && (userContext.displayName || userContext.name || userContext.userName)) || null
+
+                    if (targetProject.id === sourceProjectId) {
+                        return {
+                            ...result,
+                            move: {
+                                moved: false,
+                                reason: 'already_in_target_project',
+                                sourceProjectId,
+                                targetProjectId: targetProject.id,
+                            },
+                            message: `${result.message}. Task is already in project "${targetProject.name}".`,
+                        }
+                    }
+
+                    const moveResult = await moveTaskToDifferentProject({
+                        database: db,
+                        sourceProjectId,
+                        targetProjectId: targetProject.id,
+                        taskId: result.taskId,
+                        editorId: creatorId,
+                        editorName,
+                    })
+
+                    console.log('📝 UPDATE_TASK TOOL: Move completed', {
+                        taskId: result.taskId,
+                        sourceProjectId,
+                        sourceProjectName,
+                        targetProjectId: targetProject.id,
+                        targetProjectName: targetProject.name,
+                        moveResult,
+                    })
+
+                    const nextChanges = Array.isArray(result.changes) ? [...result.changes] : []
+                    nextChanges.push(`moved to project "${targetProject.name}"`)
+
+                    return {
+                        ...result,
+                        project: {
+                            id: targetProject.id,
+                            name: targetProject.name,
+                        },
+                        changes: nextChanges,
+                        move: moveResult,
+                        message: `${result.message}. Moved task to project "${targetProject.name}".`,
+                    }
+                }
+
                 return result
             } catch (error) {
                 console.error('📝 UPDATE_TASK TOOL: Task update failed', {
@@ -1652,6 +2016,12 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const { SearchService } = require('../shared/SearchService')
             const { UserHelper } = require('../shared/UserHelper')
             const db = admin.firestore()
+            const moveToProjectId = typeof toolArgs.moveToProjectId === 'string' ? toolArgs.moveToProjectId.trim() : ''
+            const moveToProjectName =
+                typeof toolArgs.moveToProjectName === 'string' ? toolArgs.moveToProjectName.trim() : ''
+            const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
+            const hasContentUpdate = toolArgs.content !== undefined
+            const hasTitleUpdate = toolArgs.title !== undefined
 
             // Initialize or reuse SearchService instance (performance optimization)
             if (!cachedSearchService) {
@@ -1703,7 +2073,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     noteTitle: toolArgs.noteTitle,
                     noteId: toolArgs.noteId, // Optional direct lookup
                     projectName: toolArgs.projectName, // Optional project filter
-                    projectId: toolArgs.projectName ? undefined : projectId, // Use current context project as default ONLY if no project name specified
+                    projectId: toolArgs.projectId || (toolArgs.projectName ? undefined : projectId), // Use explicit source project if provided, otherwise current context project when no projectName is given
                 },
                 {
                     // Tune confidence for internal assistant to be more aggressive
@@ -1735,6 +2105,12 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const currentNote = searchResult.selectedNote
             const currentProjectId = searchResult.projectId
             const currentProjectName = searchResult.projectName
+
+            if (!hasContentUpdate && !hasTitleUpdate && !hasMoveRequest) {
+                throw new Error(
+                    'No note changes requested. Provide content, title, moveToProjectId, or moveToProjectName.'
+                )
+            }
 
             // Get user data for feed creation using shared helper
             const feedUser = await UserHelper.getFeedUserData(db, creatorId)
@@ -1782,54 +2158,114 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
 
             try {
-                console.log('Internal Assistant: Using NoteService for note update with feed generation')
-
-                // Update note using unified service (NoteService automatically adds timestamp)
-                const result = await cachedNoteService.updateAndPersistNote({
+                let result = {
+                    success: true,
                     noteId: currentNote.id,
-                    projectId: currentProjectId,
-                    currentNote: currentNote,
-                    content: toolArgs.content,
-                    title: toolArgs.title, // Optional: for renaming the note
-                    feedUser: feedUser,
-                })
+                    updatedNote: { id: currentNote.id, ...currentNote },
+                    changes: [],
+                }
 
-                console.log('Note updated via NoteService:', {
-                    noteId: currentNote.id,
-                    projectId: currentProjectId,
-                    changes: result.changes,
-                    feedGenerated: !!result.feedData,
-                    persisted: result.persisted,
-                })
+                if (hasContentUpdate || hasTitleUpdate) {
+                    console.log('Internal Assistant: Using NoteService for note update with feed generation')
+                    result = await cachedNoteService.updateAndPersistNote({
+                        noteId: currentNote.id,
+                        projectId: currentProjectId,
+                        currentNote: currentNote,
+                        content: toolArgs.content,
+                        title: toolArgs.title, // Optional: for renaming the note
+                        feedUser: feedUser,
+                    })
 
-                // Build success message showing what changed (match MCP format)
-                const changes = result.changes || []
+                    console.log('Note updated via NoteService:', {
+                        noteId: currentNote.id,
+                        projectId: currentProjectId,
+                        changes: result.changes,
+                        feedGenerated: !!result.feedData,
+                        persisted: result.persisted,
+                    })
+                }
+
+                let finalProjectId = currentProjectId
+                let finalProjectName = currentProjectName
+                const changes = Array.isArray(result.changes) ? [...result.changes] : []
+                let moveResult = null
+
+                if (hasMoveRequest) {
+                    const targetProject = await resolveMoveTargetProject(
+                        db,
+                        creatorId,
+                        moveToProjectId,
+                        moveToProjectName
+                    )
+                    if (targetProject.id !== currentProjectId) {
+                        let notesBucketName = null
+                        try {
+                            notesBucketName =
+                                cachedNoteService && cachedNoteService.getBucketName
+                                    ? await cachedNoteService.getBucketName()
+                                    : null
+                        } catch (bucketError) {
+                            console.warn('Internal Assistant: Failed to resolve notes bucket for move', bucketError)
+                        }
+
+                        const editorName = feedUser && (feedUser.displayName || feedUser.name)
+                        moveResult = await moveNoteToDifferentProject({
+                            database: db,
+                            sourceProjectId: currentProjectId,
+                            targetProjectId: targetProject.id,
+                            noteId: currentNote.id,
+                            editorId: creatorId,
+                            editorName: editorName || null,
+                            notesBucketName,
+                        })
+                        finalProjectId = targetProject.id
+                        finalProjectName = targetProject.name
+                        changes.push(`moved to project "${targetProject.name}"`)
+                    } else {
+                        moveResult = {
+                            moved: false,
+                            reason: 'already_in_target_project',
+                            sourceProjectId: currentProjectId,
+                            targetProjectId: targetProject.id,
+                            noteId: currentNote.id,
+                        }
+                    }
+                }
+
+                let fullContent = ''
+                try {
+                    fullContent = await cachedNoteService.getStorageContent(finalProjectId, currentNote.id)
+                    console.log('Internal Assistant: Fetched full content for summary:', fullContent.length)
+                } catch (contentError) {
+                    console.warn('Internal Assistant: Failed to fetch full content:', contentError.message)
+                    fullContent = toolArgs.content || ''
+                }
+
+                let finalNote = result.updatedNote || { id: currentNote.id, ...currentNote }
+                try {
+                    const finalNoteDoc = await db.doc(`noteItems/${finalProjectId}/notes/${currentNote.id}`).get()
+                    if (finalNoteDoc.exists) {
+                        finalNote = { id: currentNote.id, ...finalNoteDoc.data() }
+                    }
+                } catch (noteFetchError) {
+                    console.warn('Internal Assistant: Failed to fetch final note metadata', noteFetchError)
+                }
+
                 let message = `Note "${currentNote.title || 'Untitled'}" updated successfully`
+                if (!hasContentUpdate && !hasTitleUpdate && hasMoveRequest) {
+                    message = `Note "${currentNote.title || 'Untitled'}" moved successfully`
+                }
                 if (changes.length > 0) {
                     message += ` (${changes.join(', ')})`
                 }
-                message += ` in project "${currentProjectName}"`
+                message += ` in project "${finalProjectName}"`
 
-                // Add content preview/confirmation so assistant knows exactly what was saved
-                // This prevents hallucination of a different summary in the final response
                 if (toolArgs.content) {
                     message += `.\n\nContent added:\n"${toolArgs.content}"`
                 }
 
-                // Add search reasoning to the update result for transparency (MCP pattern)
                 if (searchResult.isAutoSelected) {
                     message += ` (${searchResult.reasoning})`
-                }
-
-                // Fetch full content for accurate summary
-                let fullContent = ''
-                try {
-                    fullContent = await cachedNoteService.getStorageContent(currentProjectId, currentNote.id)
-                    console.log('Internal Assistant: Fetched full content for summary:', fullContent.length)
-                } catch (contentError) {
-                    console.warn('Internal Assistant: Failed to fetch full content:', contentError.message)
-                    // Fallback to what we have (might be truncated or empty)
-                    fullContent = toolArgs.content || ''
                 }
 
                 return {
@@ -1837,11 +2273,12 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     noteId: currentNote.id,
                     message,
                     note: {
-                        ...(result.updatedNote || { id: currentNote.id, ...currentNote }),
-                        content: fullContent, // Ensure full content is returned
+                        ...finalNote,
+                        content: fullContent,
                     },
-                    project: { id: currentProjectId, name: currentProjectName },
+                    project: { id: finalProjectId, name: finalProjectName },
                     changes: changes,
+                    move: moveResult,
                 }
             } catch (error) {
                 console.error('NoteService update failed:', error)

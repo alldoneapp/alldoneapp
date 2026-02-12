@@ -171,7 +171,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, change focus, rename, update, set reminders/alerts, or set time estimations for a task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
+                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, change focus, rename, update, set reminders/alerts, set time estimations, or move a task to another project. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
             parameters: {
                 type: 'object',
                 properties: {
@@ -229,6 +229,16 @@ const toolSchemas = {
                         description:
                             'Set to true to update all matching tasks (only today + overdue tasks, max 100). If projectId is provided, updates only tasks in that project. If no projectId, updates across all projects. Use for bulk operations like "mark all today tasks as done", "set estimation to 1h for all overdue tasks", or "complete all tasks in Project X".',
                     },
+                    moveToProjectId: {
+                        type: 'string',
+                        description:
+                            'Optional: move the matched task to this target project ID after applying updates. Only for single-task updates (not with updateAll=true).',
+                    },
+                    moveToProjectName: {
+                        type: 'string',
+                        description:
+                            "Optional: move the matched task to this target project name after applying updates. IMPORTANT: Use the exact project name as shown in the user's project list. Only for single-task updates (not with updateAll=true).",
+                    },
                 },
                 required: [],
             },
@@ -240,13 +250,26 @@ const toolSchemas = {
         function: {
             name: 'update_note',
             description:
-                'Updates an existing note by searching for it by title. Can prepend new content with date stamp and/or update the note title. Supports markdown formatting.',
+                'Updates an existing note by searching for it by title or ID. Can prepend new content with date stamp, update the note title, and move a note to another project.',
             parameters: {
                 type: 'object',
                 properties: {
+                    noteId: {
+                        type: 'string',
+                        description: 'The ID of the note to update (optional, direct lookup)',
+                    },
                     noteTitle: {
                         type: 'string',
                         description: 'The title of the note to update (used for searching)',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            "Optional: search for the note within a specific project by project name. IMPORTANT: Use the exact project name as shown in the user's project list.",
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'Optional: search for the note within a specific project by project ID.',
                     },
                     content: {
                         type: 'string',
@@ -257,8 +280,18 @@ const toolSchemas = {
                         type: 'string',
                         description: 'New title for the note (optional, for renaming)',
                     },
+                    moveToProjectId: {
+                        type: 'string',
+                        description:
+                            'Optional: move the matched note to this target project ID after applying updates.',
+                    },
+                    moveToProjectName: {
+                        type: 'string',
+                        description:
+                            "Optional: move the matched note to this target project name after applying updates. IMPORTANT: Use the exact project name as shown in the user's project list.",
+                    },
                 },
-                required: ['noteTitle'],
+                required: [],
             },
         },
     },

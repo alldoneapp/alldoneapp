@@ -693,12 +693,21 @@ class NoteService {
         try {
             const updateData = {}
             const changes = []
+            const editorId = (feedUser && (feedUser.uid || feedUser.id || feedUser.userId)) || null
+            const editorName = feedUser && (feedUser.displayName || feedUser.name)
 
             // Handle title update
             if (newTitle !== undefined && newTitle !== currentNote.title) {
                 updateData.title = newTitle
                 updateData.extendedTitle = newTitle // Alldone requires both title and extendedTitle
                 changes.push(`title to "${newTitle}"`)
+            }
+
+            // Keep metadata fresh for Firestore metadata updates (title/other fields).
+            if (Object.keys(updateData).length > 0) {
+                updateData.lastEditionDate = Date.now()
+                if (editorId) updateData.lastEditorId = editorId
+                if (editorName) updateData.lastEditorName = editorName
             }
 
             // Handle content update - replicate the note toolbar date button behavior
@@ -1107,6 +1116,12 @@ class NoteService {
                     await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
                         preview: preview,
                         lastEditionDate: Date.now(),
+                        ...(feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
+                            ? { lastEditorId: feedUser.uid || feedUser.id || feedUser.userId }
+                            : {}),
+                        ...(feedUser && (feedUser.displayName || feedUser.name)
+                            ? { lastEditorName: feedUser.displayName || feedUser.name }
+                            : {}),
                     })
                     console.log(`NoteService: Updated preview in Firestore, length: ${preview.length}`)
 
@@ -1223,6 +1238,12 @@ class NoteService {
                     await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
                         preview: preview,
                         lastEditionDate: Date.now(),
+                        ...(feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
+                            ? { lastEditorId: feedUser.uid || feedUser.id || feedUser.userId }
+                            : {}),
+                        ...(feedUser && (feedUser.displayName || feedUser.name)
+                            ? { lastEditorName: feedUser.displayName || feedUser.name }
+                            : {}),
                     })
                     console.log(`NoteService: Updated preview in Firestore, length: ${preview.length}`)
 
