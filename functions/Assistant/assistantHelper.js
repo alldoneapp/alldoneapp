@@ -1466,7 +1466,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         }
 
         case 'update_task': {
-            const updateTaskPatchVersion = '2026-02-11-taskid-firestore-lookup-v2'
+            const updateTaskPatchVersion = '2026-02-12-project-resolution-v3'
             console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                 creatorId,
                 projectId,
@@ -1492,10 +1492,135 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             // Use shared service for find and update
             // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
             try {
+                const normalizedToolArgs = { ...toolArgs }
+
+                // Reconcile project selection for update_task:
+                // - model-provided projectId can be stale/hallucinated
+                // - when projectName is present, validate/resolve against user's real projects
+                const hasProjectConstraint = !!(normalizedToolArgs.projectId || normalizedToolArgs.projectName)
+                if (hasProjectConstraint) {
+                    try {
+                        const { ProjectService } = require('../shared/ProjectService')
+                        const projectService = new ProjectService({ database: db })
+                        await projectService.initialize()
+
+                        const projects = await projectService.getUserProjects(creatorId, {
+                            includeArchived: true,
+                            includeCommunity: true,
+                            activeOnly: false,
+                        })
+                        const projectsById = new Map(projects.map(p => [p.id, p]))
+                        const contextProject = projectId ? projectsById.get(projectId) : null
+                        const contextNameLower = (contextProject?.name || '').toLowerCase()
+
+                        const requestedProjectName =
+                            typeof normalizedToolArgs.projectName === 'string'
+                                ? normalizedToolArgs.projectName.trim()
+                                : normalizedToolArgs.projectName
+                        const requestedProjectNameLower =
+                            typeof requestedProjectName === 'string' ? requestedProjectName.toLowerCase() : null
+
+                        const stringMatch = (a, b) => !!a && !!b && (a === b || a.includes(b) || b.includes(a))
+
+                        let resolvedProjectId = null
+                        let resolutionSource = 'none'
+
+                        // 1) Validate explicit projectId if provided
+                        if (normalizedToolArgs.projectId && projectsById.has(normalizedToolArgs.projectId)) {
+                            const projectFromId = projectsById.get(normalizedToolArgs.projectId)
+                            const idNameLower = (projectFromId?.name || '').toLowerCase()
+                            const idMatchesName = requestedProjectNameLower
+                                ? stringMatch(idNameLower, requestedProjectNameLower)
+                                : true
+                            const contextNameMatchesRequested = requestedProjectNameLower
+                                ? stringMatch(contextNameLower, requestedProjectNameLower)
+                                : false
+                            const shouldPreferContextProject =
+                                contextProject &&
+                                requestedProjectNameLower &&
+                                contextNameMatchesRequested &&
+                                contextProject.id !== normalizedToolArgs.projectId
+
+                            if (shouldPreferContextProject) {
+                                resolvedProjectId = contextProject.id
+                                resolutionSource = 'context_preferred_over_toolArgs.projectId'
+                                console.warn(
+                                    '📝 UPDATE_TASK TOOL: Preferring context project over conflicting tool projectId',
+                                    {
+                                        contextProjectId: contextProject.id,
+                                        contextProjectName: contextProject.name,
+                                        toolArgsProjectId: normalizedToolArgs.projectId,
+                                        toolArgsProjectName: requestedProjectName,
+                                        toolProjectName: projectFromId?.name,
+                                    }
+                                )
+                            } else if (idMatchesName) {
+                                resolvedProjectId = normalizedToolArgs.projectId
+                                resolutionSource = 'validated_toolArgs.projectId'
+                            } else {
+                                console.warn('📝 UPDATE_TASK TOOL: Ignoring mismatched projectId/projectName', {
+                                    toolArgsProjectId: normalizedToolArgs.projectId,
+                                    toolArgsProjectName: requestedProjectName,
+                                    projectNameForId: projectFromId?.name,
+                                })
+                            }
+                        } else if (normalizedToolArgs.projectId) {
+                            console.warn('📝 UPDATE_TASK TOOL: Ignoring unknown/inaccessible projectId', {
+                                toolArgsProjectId: normalizedToolArgs.projectId,
+                            })
+                        }
+
+                        // 2) If unresolved and projectName provided, prefer chat context if it name-matches
+                        if (!resolvedProjectId && requestedProjectNameLower) {
+                            if (contextProject && stringMatch(contextNameLower, requestedProjectNameLower)) {
+                                resolvedProjectId = contextProject.id
+                                resolutionSource = 'context_project_name_match'
+                            } else {
+                                const exact = projects.find(
+                                    p => (p.name || '').toLowerCase() === requestedProjectNameLower
+                                )
+                                const partial = projects.find(p =>
+                                    (p.name || '').toLowerCase().includes(requestedProjectNameLower)
+                                )
+                                const byName = exact || partial
+                                if (byName) {
+                                    resolvedProjectId = byName.id
+                                    resolutionSource = exact
+                                        ? 'resolved_projectName_exact'
+                                        : 'resolved_projectName_partial'
+                                }
+                            }
+                        }
+
+                        if (resolvedProjectId) {
+                            normalizedToolArgs.projectId = resolvedProjectId
+                        } else if (normalizedToolArgs.projectId) {
+                            // prevent hard-failing on a bad model-supplied projectId
+                            delete normalizedToolArgs.projectId
+                        }
+
+                        if (typeof requestedProjectName === 'string') {
+                            normalizedToolArgs.projectName = requestedProjectName
+                        }
+
+                        console.log('📝 UPDATE_TASK TOOL: Project selection', {
+                            contextProjectId: projectId,
+                            toolArgsProjectId: toolArgs.projectId,
+                            toolArgsProjectName: toolArgs.projectName,
+                            selectedProjectId: normalizedToolArgs.projectId || null,
+                            source: resolutionSource,
+                        })
+                    } catch (projectResolutionError) {
+                        console.warn('📝 UPDATE_TASK TOOL: Project resolution failed, using original tool args', {
+                            error: projectResolutionError.message,
+                        })
+                    }
+                }
+
                 const result = await this.taskUpdateService.findAndUpdateTask(
                     creatorId,
-                    toolArgs, // searchCriteria (includes projectId for filtering)
-                    toolArgs, // updateFields (includes estimation, completed, focus, etc.)
+                    normalizedToolArgs, // searchCriteria (includes projectId for filtering)
+                    normalizedToolArgs, // updateFields (includes estimation, completed, focus, etc.)
                     {
                         autoSelectOnHighConfidence: true,
                         highConfidenceThreshold: 800,
