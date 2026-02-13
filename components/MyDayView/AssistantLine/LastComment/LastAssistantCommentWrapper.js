@@ -86,6 +86,7 @@ export default function LastAssistantCommentWrapper({
     }
 
     const parsedComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true)
+    const parsedObjectName = cleanTextMetaData(removeFormatTagsFromText(objectName), true)
 
     return showModal ? (
         <Popover
@@ -113,7 +114,7 @@ export default function LastAssistantCommentWrapper({
                 isNew={isNew}
                 onPress={openModal}
                 commentText={parsedComment}
-                objectName={objectName}
+                objectName={parsedObjectName}
                 projectId={projectId}
             />
         </Popover>
@@ -122,7 +123,7 @@ export default function LastAssistantCommentWrapper({
             isNew={isNew}
             onPress={openModal}
             commentText={parsedComment}
-            objectName={objectName}
+            objectName={parsedObjectName}
             projectId={projectId}
         />
     )
