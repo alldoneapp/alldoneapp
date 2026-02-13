@@ -22,7 +22,6 @@ import { inProductionEnvironment } from '../../../utils/backends/firestore'
 export default function StripePremiumTab() {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [isLoading, setIsLoading] = useState(false)
     const [premiumData, setPremiumData] = useState(null)
     const [showLinkingSection, setShowLinkingSection] = useState(false)
@@ -149,6 +148,24 @@ export default function StripePremiumTab() {
         })
     }, [])
 
+    const renderGoldPackCta = (embedded = false) => (
+        <View style={[localStyles.goldPackContainer, embedded && localStyles.goldPackContainerEmbedded]}>
+            <View style={localStyles.goldPackHeader}>
+                <Icon name="crown" size={18} color={colors.Primary} />
+                <Text style={localStyles.goldPackTitle}>Need more Gold?</Text>
+            </View>
+            <Text style={localStyles.goldPackDescription}>
+                Buy 10,000 Gold as a one-time purchase to keep your assistant workflows running.
+            </Text>
+            <Button
+                title="Buy 10,000 Gold"
+                type="primary"
+                onPress={handleGoldPaymentLinkClick}
+                buttonStyle={[localStyles.goldPackButton, embedded && localStyles.goldPackButtonEmbedded]}
+            />
+        </View>
+    )
+
     const renderPremiumStatus = () => {
         if (isPremium) {
             const subscription = premiumData?.subscription
@@ -179,33 +196,27 @@ export default function StripePremiumTab() {
                     <Text style={localStyles.statusDescription}>{translate('Premium features access')}</Text>
 
                     <View style={localStyles.premiumActions}>
-                        <View
-                            style={[localStyles.manageBillingButton, { marginRight: smallScreenNavigation ? 12 : 64 }]}
-                        >
+                        <View style={localStyles.premiumActionItem}>
                             <Button
                                 title={translate('Manage Billing')}
                                 type="primary"
                                 onPress={handleManageBilling}
                                 loading={isLoading}
+                                buttonStyle={localStyles.premiumActionButton}
                             />
                         </View>
-                        <View
-                            style={[localStyles.refreshStatusButton, { marginLeft: smallScreenNavigation ? 12 : 64 }]}
-                        >
+                        <View style={localStyles.premiumActionItem}>
                             <Button
                                 title={translate('Refresh Status')}
                                 type="ghost"
                                 onPress={checkPremiumStatus}
                                 loading={isLoading}
+                                buttonStyle={localStyles.premiumActionButton}
                             />
                         </View>
                     </View>
 
-                    <View style={localStyles.goldPackContainer}>
-                        <Text style={localStyles.goldPackTitle}>Need more Gold?</Text>
-                        <Text style={localStyles.goldPackDescription}>Buy 10,000 Gold as a one-time purchase.</Text>
-                        <Button title="Buy 10,000 Gold" type="primary" onPress={handleGoldPaymentLinkClick} />
-                    </View>
+                    {renderGoldPackCta(true)}
                 </View>
             )
         }
@@ -295,11 +306,7 @@ export default function StripePremiumTab() {
                     </View>
                 </View>
 
-                <View style={localStyles.goldPackContainer}>
-                    <Text style={localStyles.goldPackTitle}>Need more Gold?</Text>
-                    <Text style={localStyles.goldPackDescription}>Buy 10,000 Gold as a one-time purchase.</Text>
-                    <Button title="Buy 10,000 Gold" type="primary" onPress={handleGoldPaymentLinkClick} />
-                </View>
+                {renderGoldPackCta(false)}
 
                 {/* Footer */}
                 <View style={localStyles.footer}>
@@ -596,27 +603,43 @@ const localStyles = StyleSheet.create({
         marginTop: 24,
         justifyContent: 'center',
         alignItems: 'center',
+        flexWrap: 'wrap',
     },
-    manageBillingButton: {
-        // Dynamic margin applied inline based on screen size
+    premiumActionItem: {
+        marginHorizontal: 12,
+        marginBottom: 8,
     },
-    refreshStatusButton: {
-        // Dynamic margin applied inline based on screen size
+    premiumActionButton: {
+        minWidth: 220,
+        justifyContent: 'center',
+        alignSelf: 'center',
     },
     goldPackContainer: {
         marginHorizontal: 32,
+        marginTop: 8,
         marginBottom: 24,
-        padding: 20,
+        paddingVertical: 20,
+        paddingHorizontal: 24,
         borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.Text03,
         backgroundColor: colors.Background,
         alignItems: 'center',
     },
+    goldPackContainerEmbedded: {
+        marginHorizontal: 0,
+        marginBottom: 0,
+        marginTop: 16,
+    },
+    goldPackHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
     goldPackTitle: {
         ...global.title6,
         color: colors.Text01,
-        marginBottom: 8,
+        marginLeft: 8,
         textAlign: 'center',
     },
     goldPackDescription: {
@@ -624,6 +647,15 @@ const localStyles = StyleSheet.create({
         color: colors.Text02,
         textAlign: 'center',
         marginBottom: 16,
+        maxWidth: 520,
+    },
+    goldPackButton: {
+        minWidth: 220,
+        justifyContent: 'center',
+        alignSelf: 'center',
+    },
+    goldPackButtonEmbedded: {
+        minWidth: 220,
     },
     linkingSection: {
         backgroundColor: colors.Surface,
