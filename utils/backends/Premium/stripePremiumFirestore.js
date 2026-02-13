@@ -143,6 +143,20 @@ export const getStripePaymentLinks = () => {
 }
 
 /**
+ * Get Stripe payment link for one-time 10,000 gold purchase.
+ * Using same link across environments until a dedicated test link is provided.
+ * @param {string|null} userId - Optional user ID to pass as client_reference_id
+ * @returns {string} Stripe payment link
+ */
+export const getStripeGoldPaymentLink = (userId = null) => {
+    const baseUrl = 'https://buy.stripe.com/bJe3cvagS39A7cW9qj9Zm0f'
+
+    if (!userId) return baseUrl
+
+    return `${baseUrl}?client_reference_id=${encodeURIComponent(userId)}`
+}
+
+/**
  * Create Stripe customer portal session for billing management
  * @returns {Promise<Object>} Portal session result
  */

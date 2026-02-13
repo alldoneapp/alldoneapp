@@ -12,6 +12,7 @@ import Icon from '../../Icon'
 import {
     checkUserPremiumStatusStripe,
     getStripePaymentLinks,
+    getStripeGoldPaymentLink,
     createStripePortalSession,
     linkStripeAccountByEmail,
 } from '../../../utils/backends/Premium/stripePremiumFirestore'
@@ -66,6 +67,17 @@ export default function StripePremiumTab() {
         })
 
         // Open Stripe payment link in new tab
+        window.open(url, '_blank')
+    }
+
+    const handleGoldPaymentLinkClick = () => {
+        const url = getStripeGoldPaymentLink(loggedUser.uid)
+
+        Backend.logEvent('click_gold_payment_link', {
+            userId: loggedUser.uid,
+            goldAmount: 10000,
+        })
+
         window.open(url, '_blank')
     }
 
@@ -188,6 +200,12 @@ export default function StripePremiumTab() {
                             />
                         </View>
                     </View>
+
+                    <View style={localStyles.goldPackContainer}>
+                        <Text style={localStyles.goldPackTitle}>Need more Gold?</Text>
+                        <Text style={localStyles.goldPackDescription}>Buy 10,000 Gold as a one-time purchase.</Text>
+                        <Button title="Buy 10,000 Gold" type="primary" onPress={handleGoldPaymentLinkClick} />
+                    </View>
                 </View>
             )
         }
@@ -275,6 +293,12 @@ export default function StripePremiumTab() {
                             </View>
                         </TouchableOpacity>
                     </View>
+                </View>
+
+                <View style={localStyles.goldPackContainer}>
+                    <Text style={localStyles.goldPackTitle}>Need more Gold?</Text>
+                    <Text style={localStyles.goldPackDescription}>Buy 10,000 Gold as a one-time purchase.</Text>
+                    <Button title="Buy 10,000 Gold" type="primary" onPress={handleGoldPaymentLinkClick} />
                 </View>
 
                 {/* Footer */}
@@ -578,6 +602,28 @@ const localStyles = StyleSheet.create({
     },
     refreshStatusButton: {
         // Dynamic margin applied inline based on screen size
+    },
+    goldPackContainer: {
+        marginHorizontal: 32,
+        marginBottom: 24,
+        padding: 20,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.Text03,
+        backgroundColor: colors.Background,
+        alignItems: 'center',
+    },
+    goldPackTitle: {
+        ...global.title6,
+        color: colors.Text01,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    goldPackDescription: {
+        ...global.body2,
+        color: colors.Text02,
+        textAlign: 'center',
+        marginBottom: 16,
     },
     linkingSection: {
         backgroundColor: colors.Surface,

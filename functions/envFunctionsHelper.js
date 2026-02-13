@@ -38,6 +38,7 @@ const getEnvFunctions = () => {
         envFunctions = {
             PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
             STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+            STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
             GOOGLE_FIREBASE_DEPLOY_TOKEN: process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
             GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_FIREBASE_WEB_CLIENT_ID || '',
             GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -68,6 +69,7 @@ const getEnvFunctions = () => {
                 const jsonEnvFunctions = {
                     PERPLEXITY_API_KEY: envJson.PERPLEXITY_API_KEY || '',
                     STRIPE_SECRET_KEY: envJson.STRIPE_SECRET_KEY || '',
+                    STRIPE_WEBHOOK_SECRET: envJson.STRIPE_WEBHOOK_SECRET || '',
                     GOOGLE_FIREBASE_DEPLOY_TOKEN: envJson.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
                     GOOGLE_OAUTH_CLIENT_ID: envJson.GOOGLE_OAUTH_CLIENT_ID || '',
                     GOOGLE_OAUTH_CLIENT_SECRET: envJson.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -102,6 +104,7 @@ const getEnvFunctions = () => {
                     envFunctions = {
                         PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
                         STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+                        STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
                         GOOGLE_FIREBASE_DEPLOY_TOKEN: process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
                         GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_FIREBASE_WEB_CLIENT_ID || '',
                         GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -133,6 +136,7 @@ const getEnvFunctions = () => {
                 envFunctions = {
                     PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
                     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+                    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
                     GOOGLE_FIREBASE_DEPLOY_TOKEN: process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
                     OPEN_AI_KEY: process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY || '',
                     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
@@ -161,6 +165,7 @@ const getEnvFunctions = () => {
             envFunctions = {
                 PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
                 STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+                STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
                 GOOGLE_FIREBASE_DEPLOY_TOKEN: process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
                 OPEN_AI_KEY: process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY || '',
                 TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
@@ -193,6 +198,9 @@ const getEnvFunctions = () => {
     }
     if (!envFunctions.STRIPE_SECRET_KEY || isPlaceholderValue(envFunctions.STRIPE_SECRET_KEY)) {
         console.warn('Warning: STRIPE_SECRET_KEY is not set or is a placeholder')
+    }
+    if (!envFunctions.STRIPE_WEBHOOK_SECRET || isPlaceholderValue(envFunctions.STRIPE_WEBHOOK_SECRET)) {
+        console.warn('Warning: STRIPE_WEBHOOK_SECRET is not set or is a placeholder')
     }
     if (!envFunctions.OPEN_AI_KEY || isPlaceholderValue(envFunctions.OPEN_AI_KEY)) {
         console.warn('Warning: OPENAI_API_KEY is not set or is a placeholder')

@@ -1,5 +1,6 @@
 const functions = require('firebase-functions')
 const admin = require('firebase-admin')
+const { getEnvFunctions } = require('../envFunctionsHelper')
 const {
     checkPremiumStatusByEmail,
     checkPremiumStatus,
@@ -84,6 +85,174 @@ const updateUserPremiumStatus = async (userId, premiumData) => {
         })
         throw error
     }
+}
+
+const GOLD_PURCHASE_AMOUNT = 10000
+const STRIPE_GOLD_PAYMENT_LINK_URL = 'https://buy.stripe.com/bJe3cvagS39A7cW9qj9Zm0f'
+const STRIPE_GOLD_FULFILLMENTS_COLLECTION = 'stripeGoldFulfillments'
+
+const resolveUserIdFromCheckoutSession = async session => {
+    if (session?.client_reference_id) return session.client_reference_id
+
+    if (session?.customer && typeof session.customer === 'string') {
+        const usersByStripeCustomer = await admin
+            .firestore()
+            .collection('users')
+            .where('stripeCustomerId', '==', session.customer)
+            .limit(1)
+            .get()
+        if (!usersByStripeCustomer.empty) return usersByStripeCustomer.docs[0].id
+    }
+
+    const sessionEmail = session?.customer_details?.email?.toLowerCase()
+    if (sessionEmail) {
+        const usersByEmail = await admin
+            .firestore()
+            .collection('users')
+            .where('email', '==', sessionEmail)
+            .limit(1)
+            .get()
+        if (!usersByEmail.empty) return usersByEmail.docs[0].id
+    }
+
+    return null
+}
+
+const isGoldPurchaseSession = async (session, stripe) => {
+    if (session?.metadata?.purchaseType === 'gold_10000') return true
+
+    const paymentLinkId = session?.payment_link
+    if (!paymentLinkId || typeof paymentLinkId !== 'string') return false
+
+    try {
+        const paymentLink = await stripe.paymentLinks.retrieve(paymentLinkId)
+        return paymentLink?.url === STRIPE_GOLD_PAYMENT_LINK_URL
+    } catch (error) {
+        functions.logger.error('Error retrieving Stripe payment link for checkout session', {
+            sessionId: session?.id,
+            paymentLinkId,
+            error: error.message,
+        })
+        return false
+    }
+}
+
+const recordUnmatchedGoldPurchase = async (session, eventId, reason) => {
+    if (!session?.id) return
+
+    await admin
+        .firestore()
+        .doc(`stripeGoldUnmatchedSessions/${session.id}`)
+        .set(
+            {
+                sessionId: session.id,
+                eventId,
+                reason,
+                clientReferenceId: session.client_reference_id || null,
+                customerId: typeof session.customer === 'string' ? session.customer : null,
+                customerEmail: session?.customer_details?.email || null,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+        )
+}
+
+const fulfillGoldPurchase = async (session, event, stripe) => {
+    if (!session?.id) {
+        return { fulfilled: false, reason: 'missing_session_id' }
+    }
+
+    if (session.payment_status !== 'paid') {
+        return { fulfilled: false, reason: 'session_not_paid' }
+    }
+
+    const isGoldPurchase = await isGoldPurchaseSession(session, stripe)
+    if (!isGoldPurchase) {
+        return { fulfilled: false, reason: 'not_gold_purchase' }
+    }
+
+    const userId = await resolveUserIdFromCheckoutSession(session)
+    if (!userId) {
+        await recordUnmatchedGoldPurchase(session, event.id, 'user_not_resolved')
+        return { fulfilled: false, reason: 'user_not_resolved' }
+    }
+
+    const userRef = admin.firestore().doc(`users/${userId}`)
+    const fulfillmentRef = admin.firestore().doc(`${STRIPE_GOLD_FULFILLMENTS_COLLECTION}/${session.id}`)
+
+    let outcome = 'fulfilled'
+    await admin.firestore().runTransaction(async transaction => {
+        const [userDoc, fulfillmentDoc] = await Promise.all([transaction.get(userRef), transaction.get(fulfillmentRef)])
+
+        if (fulfillmentDoc.exists) {
+            outcome = 'already_fulfilled'
+            return
+        }
+
+        if (!userDoc.exists) {
+            outcome = 'user_not_found'
+            return
+        }
+
+        transaction.update(userRef, {
+            gold: admin.firestore.FieldValue.increment(GOLD_PURCHASE_AMOUNT),
+        })
+
+        transaction.set(fulfillmentRef, {
+            sessionId: session.id,
+            userId,
+            eventId: event.id,
+            eventType: event.type,
+            paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+            checkoutMode: session.mode || null,
+            paymentStatus: session.payment_status || null,
+            amountTotal: session.amount_total || null,
+            currency: session.currency || null,
+            customerId: typeof session.customer === 'string' ? session.customer : null,
+            customerEmail: session?.customer_details?.email || null,
+            clientReferenceId: session.client_reference_id || null,
+            goldAmount: GOLD_PURCHASE_AMOUNT,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+    })
+
+    if (outcome === 'user_not_found') {
+        await recordUnmatchedGoldPurchase(session, event.id, 'user_not_found')
+    }
+
+    return { fulfilled: outcome === 'fulfilled', reason: outcome, userId }
+}
+
+const markRefundForGoldPurchase = async (charge, event) => {
+    const paymentIntentId = charge?.payment_intent
+    if (!paymentIntentId || typeof paymentIntentId !== 'string') {
+        return { updated: false, reason: 'missing_payment_intent' }
+    }
+
+    const matchingFulfillments = await admin
+        .firestore()
+        .collection(STRIPE_GOLD_FULFILLMENTS_COLLECTION)
+        .where('paymentIntentId', '==', paymentIntentId)
+        .limit(1)
+        .get()
+
+    if (matchingFulfillments.empty) {
+        return { updated: false, reason: 'fulfillment_not_found' }
+    }
+
+    const fulfillmentRef = matchingFulfillments.docs[0].ref
+    await fulfillmentRef.set(
+        {
+            refundStatus: charge?.refunded ? 'refunded' : 'partial_refund',
+            refundedAmount: charge?.amount_refunded || charge?.amount || null,
+            refundedEventId: event.id,
+            refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+            needsManualReview: true,
+        },
+        { merge: true }
+    )
+
+    return { updated: true, reason: 'refund_marked', fulfillmentId: fulfillmentRef.id }
 }
 
 /**
@@ -284,12 +453,90 @@ const checkUserPremiumStatus = async (data, context) => {
 }
 
 /**
- * Firebase HTTP function for webhook handling (for future use)
+ * Firebase HTTP function for Stripe webhook handling.
  */
-const handleStripeWebhook = functions.https.onRequest(async (req, res) => {
-    // This will be implemented later for real-time subscription updates
-    res.status(200).send('Webhook received')
-})
+const handleStripeWebhook = async (req, res) => {
+    if (req.method !== 'POST') {
+        return res.status(405).send('Method Not Allowed')
+    }
+
+    const env = getEnvFunctions()
+    const stripeSecretKey = env.STRIPE_SECRET_KEY
+    const stripeWebhookSecret = env.STRIPE_WEBHOOK_SECRET
+
+    if (!stripeSecretKey || !stripeWebhookSecret) {
+        functions.logger.error('Missing Stripe configuration for webhook', {
+            hasStripeSecretKey: !!stripeSecretKey,
+            hasStripeWebhookSecret: !!stripeWebhookSecret,
+        })
+        return res.status(500).send('Stripe webhook is not configured')
+    }
+
+    const signature = req.headers['stripe-signature']
+    if (!signature) {
+        return res.status(400).send('Missing stripe-signature header')
+    }
+
+    if (!req.rawBody) {
+        functions.logger.error('Missing raw request body for Stripe webhook signature verification')
+        return res.status(400).send('Missing raw body')
+    }
+
+    const stripe = require('stripe')(stripeSecretKey)
+    let event
+
+    try {
+        event = stripe.webhooks.constructEvent(req.rawBody, signature, stripeWebhookSecret)
+    } catch (error) {
+        functions.logger.error('Invalid Stripe webhook signature', { error: error.message })
+        return res.status(400).send(`Webhook signature verification failed: ${error.message}`)
+    }
+
+    try {
+        switch (event.type) {
+            case 'checkout.session.completed':
+            case 'checkout.session.async_payment_succeeded': {
+                const checkoutSession = event.data.object
+                const result = await fulfillGoldPurchase(checkoutSession, event, stripe)
+                functions.logger.info('Processed Stripe checkout session webhook', {
+                    eventId: event.id,
+                    eventType: event.type,
+                    sessionId: checkoutSession?.id,
+                    result,
+                })
+                break
+            }
+
+            case 'charge.refunded': {
+                const charge = event.data.object
+                const result = await markRefundForGoldPurchase(charge, event)
+                functions.logger.info('Processed Stripe charge refund webhook', {
+                    eventId: event.id,
+                    chargeId: charge?.id,
+                    result,
+                })
+                break
+            }
+
+            default: {
+                functions.logger.info('Ignoring unsupported Stripe webhook event type', {
+                    eventId: event.id,
+                    eventType: event.type,
+                })
+            }
+        }
+
+        return res.status(200).json({ received: true })
+    } catch (error) {
+        functions.logger.error('Error processing Stripe webhook event', {
+            eventId: event?.id,
+            eventType: event?.type,
+            error: error.message,
+            stack: error.stack,
+        })
+        return res.status(500).send('Webhook processing failed')
+    }
+}
 
 /**
  * Create Stripe customer portal session
