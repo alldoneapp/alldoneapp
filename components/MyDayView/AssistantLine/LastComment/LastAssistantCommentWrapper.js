@@ -85,7 +85,7 @@ export default function LastAssistantCommentWrapper({
         }
     }
 
-    const parsedComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true)
+    const parsedComment = cleanTextMetaData(removeFormatTagsFromText(commentText), true, true)
     const parsedObjectName = cleanTextMetaData(removeFormatTagsFromText(objectName), true)
 
     return showModal ? (

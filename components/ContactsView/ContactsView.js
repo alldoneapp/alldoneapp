@@ -210,9 +210,22 @@ export default function ContactsView() {
     const normalProjects = loggedUserProjects.filter(project => !project.parentTemplateId)
     const guides = loggedUserProjects.filter(project => !!project.parentTemplateId)
 
+    const getLastEditedContactDate = projectId => {
+        const contacts = projectContacts[projectId] || []
+        return contacts.reduce((maxDate, contact) => Math.max(maxDate, contact?.lastEditionDate || 0), 0)
+    }
+
     const sortedLoggedUserProjects = [
-        ...orderBy(sortBy(normalProjects, [project => project.name.toLowerCase()]), 'lastActionDate', 'desc'),
-        ...orderBy(sortBy(guides, [project => project.name.toLowerCase()]), 'lastActionDate', 'desc'),
+        ...orderBy(
+            sortBy(normalProjects, [project => project.name.toLowerCase()]),
+            [project => getLastEditedContactDate(project.id)],
+            ['desc']
+        ),
+        ...orderBy(
+            sortBy(guides, [project => project.name.toLowerCase()]),
+            [project => getLastEditedContactDate(project.id)],
+            ['desc']
+        ),
     ]
 
     let contactsAmount = amounts.users + amounts.contacts

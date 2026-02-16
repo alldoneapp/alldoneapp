@@ -85,7 +85,7 @@ const removeFormatTagsFromText = text => {
         : ''
 }
 
-const cleanTextMetaData = (text = '', removeLineBreaks) => {
+const cleanTextMetaData = (text = '', removeLineBreaks, preserveMentionMeta = false) => {
     const linealText = removeLineBreaks ? text.replace(/(\r\n|\n|\r)/gm, ' ') : text
     const words = linealText.replace(/<\/?[^>]+>/gi, '').split(' ')
     for (let i = 0; i < words.length; i++) {
@@ -100,8 +100,12 @@ const cleanTextMetaData = (text = '', removeLineBreaks) => {
             const { videoText } = getVideoData(word)
             words[i] = videoText || 'Video'
         } else if (REGEX_MENTION.test(word)) {
-            const { mentionText } = getMentionData(word, true)
-            words[i] = mentionText
+            if (preserveMentionMeta) {
+                words[i] = word.replaceAll(MENTION_SPACE_CODE, ' ')
+            } else {
+                const { mentionText } = getMentionData(word, true)
+                words[i] = mentionText
+            }
         } else if (REGEX_HASHTAG.test(word)) {
             words[i] = removeColor(word)
         } else if (REGEX_KARMA.test(word)) {
