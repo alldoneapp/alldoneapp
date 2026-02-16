@@ -30,6 +30,7 @@ const {
     cleanTextMetaData,
     shrinkTagText,
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
+    getImageData,
 } = require('../Utils/parseTextUtils')
 const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
@@ -62,6 +63,8 @@ const COMPLETION_MAX_TOKENS_GPT5_2 = 2000 // GPT-5.2 needs more tokens due to st
 
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
+const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
 
 // Service instance caches for reuse across tool executions (performance optimization)
 // Similar pattern to MCP server for consistency
@@ -265,7 +268,7 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     const contextMessageDetails = contextMessages.map((msg, index) => ({
         index,
         type: msg[0],
-        length: msg[1]?.length || 0,
+        length: getMessageTextForTokenCounting(msg[1]).length,
     }))
 
     console.log('🧮 TOKEN CALCULATION: Input details:', {
@@ -282,7 +285,7 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
         let totalChars = aiTextLength
         let contextChars = 0
         contextMessages.forEach(msg => {
-            const msgLength = msg[1]?.length || 0
+            const msgLength = getMessageTextForTokenCounting(msg[1]).length
             contextChars += msgLength
             totalChars += msgLength
         })
@@ -310,7 +313,8 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
 
     contextMessages.forEach((msg, index) => {
-        const msgTokens = encoding.encode(msg[1]).length
+        const msgText = getMessageTextForTokenCounting(msg[1])
+        const msgTokens = encoding.encode(msgText).length
         contextTokens += msgTokens
         gapTokens += ENCODE_MESSAGE_GAP
         console.log(`🧮 TOKEN CALCULATION: Context message ${index} (${msg[0]}): ${msgTokens} tokens`)
@@ -413,6 +417,11 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
 
         // Convert messages to OpenAI format
         const formatStart = Date.now()
+        const getContentLength = content => {
+            if (typeof content === 'string') return content.length
+            return getMessageTextForTokenCounting(content).length
+        }
+        const getContentPreview = content => getMessageTextForTokenCounting(content).substring(0, 200)
         const messages = Array.isArray(formattedPrompt)
             ? formattedPrompt.map(msg => {
                   // Handle array format [role, content]
@@ -479,8 +488,8 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
             messagesPreview: messages.map((m, idx) => ({
                 index: idx,
                 role: m.role,
-                contentLength: m.content?.length,
-                contentPreview: m.content?.substring(0, 200),
+                contentLength: getContentLength(m.content),
+                contentPreview: getContentPreview(m.content),
                 hasToolCalls: !!m.tool_calls,
                 toolCallsCount: m.tool_calls?.length,
                 hasToolCallId: !!m.tool_call_id,
@@ -489,7 +498,7 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
             lastMessage: messages[messages.length - 1]
                 ? {
                       role: messages[messages.length - 1].role,
-                      content: messages[messages.length - 1].content?.substring(0, 300),
+                      content: getMessageTextForTokenCounting(messages[messages.length - 1].content).substring(0, 300),
                       hasToolCalls: !!messages[messages.length - 1].tool_calls,
                       hasToolCallId: !!messages[messages.length - 1].tool_call_id,
                   }
@@ -3601,6 +3610,58 @@ function parseTextForUseLiKePrompt(text) {
     return text.replaceAll('{', '{{').replaceAll('}', '}}')
 }
 
+function extractImageUrlsFromCommentText(commentText) {
+    if (!commentText || typeof commentText !== 'string') return []
+
+    const words = commentText.split(/\s+/)
+    const urls = []
+
+    for (const word of words) {
+        if (!word || !word.includes(IMAGE_TRIGGER) || !REGEX_IMAGE_TOKEN.test(word)) continue
+        const { uri, resizedUri } = getImageData(word)
+        const imageUrl = uri || resizedUri
+        if (imageUrl) urls.push(imageUrl)
+    }
+
+    return [...new Set(urls)]
+}
+
+function buildMultimodalUserContent(text, imageUrls = []) {
+    if (!Array.isArray(imageUrls) || imageUrls.length === 0) return text || ''
+
+    const content = []
+    const normalizedText = (text || '').trim() || `User attached ${imageUrls.length} image(s).`
+    content.push({ type: 'text', text: normalizedText })
+
+    imageUrls.forEach(url => {
+        if (!url) return
+        content.push({
+            type: 'image_url',
+            image_url: { url },
+        })
+    })
+
+    return content
+}
+
+function getMessageTextForTokenCounting(content) {
+    if (!content) return ''
+    if (typeof content === 'string') return content
+    if (Array.isArray(content)) {
+        return content
+            .map(part => {
+                if (!part || typeof part !== 'object') return ''
+                if (part.type === 'text') return part.text || ''
+                if (part.type === 'image_url') return '[Image]'
+                return ''
+            })
+            .join(' ')
+            .trim()
+    }
+    if (typeof content === 'object') return content.content || ''
+    return String(content)
+}
+
 /**
  * Get all active projects for a user with open task counts (today + overdue)
  * Projects are sorted in the same order as shown in the sidebar (by sortIndexByUser desc, then name asc)
@@ -3812,7 +3873,15 @@ async function getOptimizedContextMessages(
 
             if (commentText) {
                 const role = fromAssistant ? 'assistant' : 'user'
-                messages.push([role, parseTextForUseLiKePrompt(commentText)])
+                const parsedComment = parseTextForUseLiKePrompt(commentText)
+
+                if (!fromAssistant && commentDocs[i].id === messageId) {
+                    const imageUrls = extractImageUrlsFromCommentText(commentText)
+                    const cleanedComment = parseTextForUseLiKePrompt(cleanTextMetaData(commentText, false, true))
+                    messages.push([role, buildMultimodalUserContent(cleanedComment || parsedComment, imageUrls)])
+                } else {
+                    messages.push([role, parsedComment])
+                }
             }
             amountOfCommentsInContext++
             if (amountOfCommentsInContext === 5) break
@@ -3862,7 +3931,17 @@ async function getOptimizedContextMessages(
     if (notesContext && reversedMessages.length > 0) {
         const lastMessageIndex = reversedMessages.length - 1
         if (reversedMessages[lastMessageIndex][0] === 'user') {
-            reversedMessages[lastMessageIndex][1] += notesContext
+            const currentContent = reversedMessages[lastMessageIndex][1]
+            if (typeof currentContent === 'string') {
+                reversedMessages[lastMessageIndex][1] = currentContent + notesContext
+            } else if (Array.isArray(currentContent)) {
+                const textPart = currentContent.find(part => part?.type === 'text')
+                if (textPart) {
+                    textPart.text = (textPart.text || '') + notesContext
+                } else {
+                    currentContent.unshift({ type: 'text', text: notesContext.trim() })
+                }
+            }
         }
     }
 
@@ -4025,4 +4104,6 @@ module.exports = {
     getOpenAIClient,
     getOptimizedContextMessages,
     getMaxTokensForModel,
+    getMessageTextForTokenCounting,
+    buildMultimodalUserContent,
 }

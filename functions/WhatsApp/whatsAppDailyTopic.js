@@ -86,9 +86,11 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
  * @param {string} userId
  * @param {string} messageText
  * @param {boolean} isVoice - Whether this was transcribed from a voice message
+ * @param {Object} options
+ * @param {number} options.imageCount
  * @returns {Promise<string>} commentId
  */
-async function storeUserMessageInTopic(projectId, chatId, userId, messageText, isVoice = false) {
+async function storeUserMessageInTopic(projectId, chatId, userId, messageText, isVoice = false, options = {}) {
     console.log('WhatsApp DailyTopic: Storing user message', {
         projectId,
         chatId,
@@ -109,6 +111,10 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
 
     if (isVoice) {
         comment.isVoiceTranscription = true
+    }
+
+    if (options.imageCount > 0) {
+        comment.imageCount = options.imageCount
     }
 
     const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)

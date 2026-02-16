@@ -9,6 +9,8 @@ const { getDefaultAssistantData } = require('../Firestore/assistantsFirestore')
 
 const RATE_LIMIT_MAX_MESSAGES = 30
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000 // 1 hour
+const MAX_WHATSAPP_IMAGES = 3
+const MAX_WHATSAPP_IMAGE_BYTES = 5 * 1024 * 1024 // 5MB
 
 /**
  * Handle incoming WhatsApp messages from Twilio webhook.
@@ -45,22 +47,19 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         // Parse Twilio webhook body
-        const {
-            From: fromNumber,
-            Body: body,
-            NumMedia: numMediaStr,
-            MediaUrl0: mediaUrl0,
-            MediaContentType0: mediaContentType0,
-            MessageSid: messageSid,
-        } = req.body
+        const { From: fromNumber, Body: body, NumMedia: numMediaStr, MessageSid: messageSid } = req.body
 
         const numMedia = parseInt(numMediaStr || '0', 10)
+        const mediaItems = extractMediaItems(req.body, numMedia)
+        const firstMedia = mediaItems[0] || null
+        const audioMedia = mediaItems.find(item => item.contentType?.startsWith('audio/')) || null
+        const imageMedia = mediaItems.filter(item => item.contentType?.startsWith('image/'))
 
         console.log('WhatsApp Incoming: Received message', {
             from: fromNumber,
             bodyLength: body?.length || 0,
             numMedia,
-            mediaContentType0,
+            firstMediaContentType: firstMedia?.contentType,
             messageSid,
         })
 
@@ -94,13 +93,14 @@ async function handleIncomingWhatsAppMessage(req, res) {
         // Determine message text
         let messageText = ''
         let isVoice = false
+        let userMessageContent = null
 
-        if (numMedia > 0 && mediaContentType0 && mediaContentType0.startsWith('audio/')) {
+        if (audioMedia) {
             // Voice message - transcribe
-            console.log('WhatsApp Incoming: Processing voice message', { mediaContentType0 })
+            console.log('WhatsApp Incoming: Processing voice message', { mediaContentType0: audioMedia.contentType })
             try {
                 const { text, duration } = await transcribeWhatsAppVoiceMessage(
-                    mediaUrl0,
+                    audioMedia.url,
                     envFunctions.TWILIO_ACCOUNT_SID,
                     envFunctions.TWILIO_AUTH_TOKEN
                 )
@@ -127,14 +127,43 @@ async function handleIncomingWhatsAppMessage(req, res) {
                 )
                 return res.status(200).send('OK')
             }
-        } else if (body && body.trim()) {
-            messageText = body.trim()
         } else {
+            messageText = body?.trim() || ''
+
+            if (imageMedia.length > 0) {
+                const imageDataUrls = await buildWhatsAppImageDataUrls(
+                    imageMedia.slice(0, MAX_WHATSAPP_IMAGES),
+                    envFunctions.TWILIO_ACCOUNT_SID,
+                    envFunctions.TWILIO_AUTH_TOKEN
+                )
+
+                if (imageDataUrls.length > 0) {
+                    const textForVision =
+                        messageText || `Please analyze the attached image${imageDataUrls.length > 1 ? 's' : ''}.`
+                    userMessageContent = [
+                        { type: 'text', text: textForVision },
+                        ...imageDataUrls.map(url => ({
+                            type: 'image_url',
+                            image_url: { url },
+                        })),
+                    ]
+                    messageText = textForVision
+                } else if (!messageText) {
+                    await service.sendWhatsAppMessage(
+                        fromNumber,
+                        'Sorry, I could not read that image. Please resend it (preferably as JPG or PNG) or add text.'
+                    )
+                    return res.status(200).send('OK')
+                }
+            }
+        }
+
+        if (!messageText) {
             // No text and no audio - ignore (could be image, video, etc.)
-            console.log('WhatsApp Incoming: Ignoring non-text/non-audio message')
+            console.log('WhatsApp Incoming: Ignoring unsupported message')
             await service.sendWhatsAppMessage(
                 fromNumber,
-                'Sorry, I can only process text and voice messages at the moment.'
+                'Sorry, I can only process text, voice, and image messages at the moment.'
             )
             return res.status(200).send('OK')
         }
@@ -159,7 +188,9 @@ async function handleIncomingWhatsAppMessage(req, res) {
         const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId)
 
         // Store user message in topic
-        await storeUserMessageInTopic(projectId, chatId, userId, messageText, isVoice)
+        await storeUserMessageInTopic(projectId, chatId, userId, messageText, isVoice, {
+            imageCount: imageMedia.length,
+        })
 
         // Update last WhatsApp message timestamp
         await admin.firestore().doc(`users/${userId}`).update({
@@ -175,7 +206,14 @@ async function handleIncomingWhatsAppMessage(req, res) {
             messageLength: messageText.length,
         })
 
-        const aiResponse = await processWhatsAppAssistantMessage(userId, projectId, chatId, messageText, assistantId)
+        const aiResponse = await processWhatsAppAssistantMessage(
+            userId,
+            projectId,
+            chatId,
+            messageText,
+            assistantId,
+            userMessageContent
+        )
 
         // Send response back via WhatsApp
         if (aiResponse) {
@@ -335,6 +373,63 @@ function getWebhookUrl() {
     }
 
     return 'https://europe-west1-alldonealeph.cloudfunctions.net/whatsAppIncomingMessage'
+}
+
+function extractMediaItems(body, numMedia) {
+    const items = []
+    for (let index = 0; index < numMedia; index++) {
+        const url = body[`MediaUrl${index}`]
+        const contentType = body[`MediaContentType${index}`]
+        if (url && contentType) {
+            items.push({ url, contentType, index })
+        }
+    }
+    return items
+}
+
+async function buildWhatsAppImageDataUrls(imageMedia, twilioAccountSid, twilioAuthToken) {
+    const urls = await Promise.all(
+        imageMedia.map(async media => {
+            try {
+                return await downloadTwilioImageAsDataUrl(
+                    media.url,
+                    media.contentType,
+                    twilioAccountSid,
+                    twilioAuthToken
+                )
+            } catch (error) {
+                console.warn('WhatsApp Incoming: Failed to process image media', {
+                    mediaIndex: media.index,
+                    contentType: media.contentType,
+                    error: error.message,
+                })
+                return null
+            }
+        })
+    )
+    return urls.filter(Boolean)
+}
+
+async function downloadTwilioImageAsDataUrl(mediaUrl, contentType, accountSid, authToken) {
+    const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+    const response = await fetch(mediaUrl, {
+        headers: {
+            Authorization: `Basic ${credentials}`,
+        },
+        redirect: 'follow',
+    })
+
+    if (!response.ok) {
+        throw new Error(`Failed to download image media: ${response.status} ${response.statusText}`)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const imageBuffer = Buffer.from(arrayBuffer)
+    if (imageBuffer.length > MAX_WHATSAPP_IMAGE_BYTES) {
+        throw new Error(`Image too large (${imageBuffer.length} bytes)`)
+    }
+
+    return `data:${contentType};base64,${imageBuffer.toString('base64')}`
 }
 
 module.exports = { handleIncomingWhatsAppMessage }

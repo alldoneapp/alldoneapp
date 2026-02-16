@@ -5,6 +5,7 @@ const {
     addBaseInstructions,
     reduceGoldWhenChatWithAI,
     executeToolNatively,
+    getMessageTextForTokenCounting,
 } = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
@@ -21,9 +22,17 @@ const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
  * @param {string} chatId - The daily topic chat ID
  * @param {string} messageText - The user's message
  * @param {string} assistantId
+ * @param {Array|undefined} userMessageContent - Optional multimodal content for current user message
  * @returns {Promise<string>} The AI response text
  */
-async function processWhatsAppAssistantMessage(userId, projectId, chatId, messageText, assistantId) {
+async function processWhatsAppAssistantMessage(
+    userId,
+    projectId,
+    chatId,
+    messageText,
+    assistantId,
+    userMessageContent
+) {
     // Fetch user data and assistant config in parallel
     const [user, assistant] = await Promise.all([
         getUserData(userId),
@@ -64,7 +73,7 @@ async function processWhatsAppAssistantMessage(userId, projectId, chatId, messag
     })
 
     // Add the current user message
-    messages.push(['user', messageText])
+    messages.push(['user', userMessageContent || messageText])
 
     // Call the AI
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
@@ -173,7 +182,7 @@ async function collectStreamWithToolCalls(
                 let toolResult
                 try {
                     toolResult = await executeToolNatively(toolName, toolArgs, projectId, assistantId, requestUserId, {
-                        message: conversationHistory.find(m => m[0] === 'user')?.[1] || '',
+                        message: getMessageTextForTokenCounting(conversationHistory.find(m => m[0] === 'user')?.[1]),
                     })
                 } catch (error) {
                     console.error('WhatsApp: Tool execution failed:', error.message)

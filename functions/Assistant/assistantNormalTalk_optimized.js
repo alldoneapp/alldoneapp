@@ -10,6 +10,7 @@ const {
     getMaxTokensForModel,
     COMPLETION_MAX_TOKENS,
     ENCODE_MESSAGE_GAP,
+    getMessageTextForTokenCounting,
 } = require('./assistantHelper')
 
 const { getUserData } = require('../Users/usersFirestore')
@@ -135,7 +136,7 @@ async function askToOpenAIBotOptimized(
 
         // Extract user context for tools
         const userContext = messages?.find(msg => msg[0] === 'user')
-        const userContextForTools = userContext ? { message: userContext[1] || '' } : null
+        const userContextForTools = userContext ? { message: getMessageTextForTokenCounting(userContext[1]) } : null
 
         // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()
@@ -234,7 +235,8 @@ function generateContextOptimized(messages, model) {
 
     try {
         for (let i = messages.length - 1; i >= 0; i--) {
-            const encodedMessage = encoder.encode(messages[i][1])
+            const messageText = getMessageTextForTokenCounting(messages[i][1])
+            const encodedMessage = encoder.encode(messageText)
             const messageTokens = encodedMessage.length + ENCODE_MESSAGE_GAP
 
             if (unusedTokens - messageTokens >= ENCODE_INITIAL_GAP) {
