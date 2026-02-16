@@ -690,6 +690,12 @@
     margin-top: 16px;
     margin-bottom: 4px;
 }
+/* Keep in-document heading rhythm, but avoid excessive top gap at the start of a note. */
+.ql-snow .ql-editor > h1:first-child,
+.ql-snow .ql-editor > h2:first-child,
+.ql-snow .ql-editor > h3:first-child {
+    margin-top: 8px;
+}
 .ql-snow .ql-editor h4 {
     font-size: 1em;
 }
