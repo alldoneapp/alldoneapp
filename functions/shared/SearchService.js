@@ -657,6 +657,34 @@ class SearchService {
     }
 
     /**
+     * Resolve a note ID within a project using case-insensitive matching.
+     * This is a fallback for model-generated IDs that may have letter-case drift.
+     * @param {string} projectId - Project ID containing the note
+     * @param {string} noteId - Note ID to resolve
+     * @returns {string|null} Canonical note ID if found, otherwise null
+     */
+    async resolveNoteIdCaseInsensitive(projectId, noteId) {
+        if (!projectId || !noteId || typeof noteId !== 'string') {
+            return null
+        }
+
+        const notesCollection = this.options.database.collection(`noteItems/${projectId}/notes`)
+        const noteRefs = await notesCollection.listDocuments()
+        const normalizedNoteId = noteId.toLowerCase()
+        const matches = noteRefs.filter(ref => typeof ref.id === 'string' && ref.id.toLowerCase() === normalizedNoteId)
+
+        if (matches.length === 1) {
+            return matches[0].id
+        }
+
+        if (matches.length > 1) {
+            throw new Error('Ambiguous note ID: multiple notes matched case-insensitive lookup')
+        }
+
+        return null
+    }
+
+    /**
      * Get full note content (for the get_note tool)
      * @param {string} userId - The authenticated user ID
      * @param {string} noteId - Note ID to retrieve
@@ -679,9 +707,31 @@ class SearchService {
         }
 
         // Get note metadata
-        const noteDoc = await this.options.database.doc(`noteItems/${projectId}/notes/${noteId}`).get()
+        let resolvedNoteId = noteId
+        let noteDoc = await this.options.database.doc(`noteItems/${projectId}/notes/${resolvedNoteId}`).get()
         if (!noteDoc.exists) {
-            throw new Error('Note not found')
+            try {
+                const canonicalNoteId = await this.resolveNoteIdCaseInsensitive(projectId, noteId)
+                if (canonicalNoteId && canonicalNoteId !== noteId) {
+                    console.log('SearchService: Resolved note ID via case-insensitive fallback', {
+                        requestedNoteId: noteId,
+                        resolvedNoteId: canonicalNoteId,
+                        projectId,
+                    })
+                    resolvedNoteId = canonicalNoteId
+                    noteDoc = await this.options.database.doc(`noteItems/${projectId}/notes/${resolvedNoteId}`).get()
+                }
+            } catch (fallbackError) {
+                if (fallbackError.message === 'Ambiguous note ID: multiple notes matched case-insensitive lookup') {
+                    throw fallbackError
+                }
+
+                console.warn('SearchService: Case-insensitive note ID fallback failed:', fallbackError.message)
+            }
+        }
+
+        if (!noteDoc.exists) {
+            throw new Error('Note not found (exact ID and case-insensitive fallback checked)')
         }
 
         const noteData = noteDoc.data()
@@ -701,7 +751,7 @@ class SearchService {
                         storageBucket: this.options.storageBucket, // Pass explicit bucket if provided
                     })
                     await noteService.initialize()
-                    content = await noteService.getStorageContent(projectId, noteId)
+                    content = await noteService.getStorageContent(projectId, resolvedNoteId)
                     noteContentLoaded = true
                     console.log(`SearchService: Loaded note content via NoteService (${content.length} chars)`)
                 } catch (noteServiceError) {
@@ -710,7 +760,7 @@ class SearchService {
 
                 // Fallback to searchHelper.getNoteContent if NoteService failed
                 if (!noteContentLoaded && getNoteContent) {
-                    content = await getNoteContent(projectId, noteId)
+                    content = await getNoteContent(projectId, resolvedNoteId)
                     console.log(`SearchService: Loaded note content via searchHelper (${content.length} chars)`)
                 }
             } catch (error) {
@@ -721,7 +771,7 @@ class SearchService {
         }
 
         return {
-            id: noteId,
+            id: resolvedNoteId,
             projectId,
             title: noteData.title || 'Untitled Note',
             content,
