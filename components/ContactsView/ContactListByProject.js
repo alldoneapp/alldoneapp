@@ -16,6 +16,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import useSelectorHashtagFilters from '../HashtagFilters/UseSelectorHashtagFilters'
 import { filterContacts } from '../HashtagFilters/FilterHelpers/FilterContacts'
 import useSelectorContactStatusFilter from '../ContactStatusFilters/useSelectorContactStatusFilter'
+import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
 import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import NewContactSection from './NewContactSection'
 import ContactListEmptyProject from './ContactListEmptyProject'
@@ -76,7 +77,10 @@ export default function ContactListByProject({
         // When filtering by contact status, hide members since they don't have statuses
         if (contactStatusFilter) {
             newMembers = []
-            newContacts = newContacts.filter(contact => contact.contactStatusId === contactStatusFilter)
+            newContacts =
+                contactStatusFilter === CONTACT_STATUS_FILTER_UNASSIGNED
+                    ? newContacts.filter(contact => !contact.contactStatusId)
+                    : newContacts.filter(contact => contact.contactStatusId === contactStatusFilter)
         }
 
         setFilteredMembers(cloneDeep(newMembers))

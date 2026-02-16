@@ -49,15 +49,16 @@ import {
 } from '../../utils/backends/Contacts/contactsFirestore'
 import { MENTION_MODAL_CONTACTS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
 import { setUserHighlightInProject, setUserPrivacyInProject } from '../../utils/backends/Users/usersFirestore'
+import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
 
 export default class EditContact extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
         // When creating a new contact, use the current contact status filter as the default status
-        const contact = this.props.isNew
-            ? ContactsHelper.getDefaultContactInfo(storeState.contactStatusFilter)
-            : this.props.contact
+        const defaultStatusId =
+            storeState.contactStatusFilter === CONTACT_STATUS_FILTER_UNASSIGNED ? null : storeState.contactStatusFilter
+        const contact = this.props.isNew ? ContactsHelper.getDefaultContactInfo(defaultStatusId) : this.props.contact
         const clonedContact = cloneDeep(contact)
 
         this.state = {

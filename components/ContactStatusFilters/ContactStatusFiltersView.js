@@ -10,6 +10,7 @@ import { translate } from '../../i18n/TranslationService'
 import NavigationService from '../../utils/NavigationService'
 import { setSelectedNavItem } from '../../redux/actions'
 import { DV_TAB_PROJECT_CONTACT_STATUSES } from '../../utils/TabNavigationConstants'
+import { CONTACT_STATUS_FILTER_UNASSIGNED } from './contactStatusFilterConstants'
 
 export default function ContactStatusFiltersView({ projectContacts }) {
     const dispatch = useDispatch()
@@ -50,12 +51,18 @@ export default function ContactStatusFiltersView({ projectContacts }) {
     const members = projectUsers[project.id] || []
     const statusCounts = {}
     let totalCount = contacts.length + members.length
+    let unassignedCount = 0
 
     contacts.forEach(contact => {
         if (contact.contactStatusId) {
             statusCounts[contact.contactStatusId] = (statusCounts[contact.contactStatusId] || 0) + 1
+        } else {
+            unassignedCount++
         }
     })
+
+    const usedStatuses = new Set(contacts.map(contact => contact.contactStatusId).filter(Boolean))
+    const showUnassignedFilter = usedStatuses.size > 1
 
     const onPressStatus = statusId => {
         if (contactStatusFilter === statusId) {
@@ -118,6 +125,33 @@ export default function ContactStatusFiltersView({ projectContacts }) {
                     </TouchableOpacity>
                 )
             })}
+
+            {showUnassignedFilter && (
+                <TouchableOpacity
+                    style={[
+                        localStyles.statusItem,
+                        contactStatusFilter === CONTACT_STATUS_FILTER_UNASSIGNED && localStyles.statusItemSelected,
+                    ]}
+                    onPress={() => onPressStatus(CONTACT_STATUS_FILTER_UNASSIGNED)}
+                >
+                    <Text
+                        style={[
+                            localStyles.statusName,
+                            contactStatusFilter === CONTACT_STATUS_FILTER_UNASSIGNED && localStyles.statusNameSelected,
+                        ]}
+                    >
+                        Unassigned
+                    </Text>
+                    <Text
+                        style={[
+                            localStyles.statusCount,
+                            contactStatusFilter === CONTACT_STATUS_FILTER_UNASSIGNED && localStyles.statusCountSelected,
+                        ]}
+                    >
+                        {unassignedCount}
+                    </Text>
+                </TouchableOpacity>
+            )}
 
             <TouchableOpacity style={localStyles.editItem} onPress={onPressEdit}>
                 <Icon name="edit-2" size={14} color={colors.Text03} />
