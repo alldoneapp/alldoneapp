@@ -101,7 +101,8 @@ const cleanTextMetaData = (text = '', removeLineBreaks, preserveMentionMeta = fa
             words[i] = videoText || 'Video'
         } else if (REGEX_MENTION.test(word)) {
             if (preserveMentionMeta) {
-                words[i] = word.replaceAll(MENTION_SPACE_CODE, ' ')
+                // Keep mention token untouched so parser can resolve mention text + userId from one token.
+                words[i] = word
             } else {
                 const { mentionText } = getMentionData(word, true)
                 words[i] = mentionText
