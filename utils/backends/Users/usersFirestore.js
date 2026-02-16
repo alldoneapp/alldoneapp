@@ -249,7 +249,8 @@ export const setUserNote = async (projectId, userId, noteId) => {
 
 export function updateUserLastVisitedBoardDate(projectId, userId, lastVisitBoardProperty) {
     const { loggedUser } = store.getState()
-    updateUserData(userId, { [`${lastVisitBoardProperty}.${projectId}.${loggedUser.uid}`]: Date.now() }, null)
+    // Update directly so "board visit" does not affect user edition metadata.
+    updateUserDataDirectly(userId, { [`${lastVisitBoardProperty}.${projectId}.${loggedUser.uid}`]: Date.now() }, null)
 }
 
 export async function addUserWorkflowStep(projectId, uid, newStepData) {
