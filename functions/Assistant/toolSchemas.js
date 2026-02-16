@@ -232,12 +232,12 @@ const toolSchemas = {
                     moveToProjectId: {
                         type: 'string',
                         description:
-                            'Optional: move the matched task to this target project ID after applying updates. Only for single-task updates (not with updateAll=true).',
+                            'Optional: move matched task(s) to this target project ID after updates. Works for both single-task updates and bulk updates (updateAll=true).',
                     },
                     moveToProjectName: {
                         type: 'string',
                         description:
-                            "Optional: move the matched task to this target project name after applying updates. IMPORTANT: Use the exact project name as shown in the user's project list. Only for single-task updates (not with updateAll=true).",
+                            "Optional: move matched task(s) to this target project name after updates. IMPORTANT: Use the exact project name as shown in the user's project list. Works for both single-task updates and bulk updates (updateAll=true).",
                     },
                 },
                 required: [],

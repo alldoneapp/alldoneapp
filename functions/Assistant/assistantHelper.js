@@ -1797,12 +1797,6 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 delete normalizedToolArgs.moveToProjectId
                 delete normalizedToolArgs.moveToProjectName
 
-                if (toolArgs.updateAll && hasMoveRequest) {
-                    throw new Error(
-                        'Moving tasks is not supported when updateAll=true. Please update one task at a time.'
-                    )
-                }
-
                 // Reconcile project selection for update_task:
                 // - model-provided projectId can be stale/hallucinated
                 // - when projectName is present, validate/resolve against user's real projects
@@ -1946,7 +1940,131 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     tasksUpdated: Array.isArray(result.updated) ? result.updated.length : result.success ? 1 : 0,
                 })
 
-                if (hasMoveRequest && result.success) {
+                if (hasMoveRequest && result.success && toolArgs.updateAll) {
+                    const targetProject = await resolveMoveTargetProject(
+                        db,
+                        creatorId,
+                        moveToProjectId,
+                        moveToProjectName
+                    )
+                    const editorName =
+                        (userContext && (userContext.displayName || userContext.name || userContext.userName)) || null
+                    const updatedTasks = Array.isArray(result.updated) ? result.updated.map(task => ({ ...task })) : []
+
+                    const moveSummary = {
+                        attempted: updatedTasks.length,
+                        moved: [],
+                        skipped: [],
+                        failed: [],
+                    }
+
+                    for (const task of updatedTasks) {
+                        const taskId = task?.id
+                        const sourceProjectId = task?.projectId || normalizedToolArgs.projectId || projectId || null
+                        const sourceProjectName = task?.projectName || null
+
+                        if (!taskId || !sourceProjectId) {
+                            const missingDataError = 'Could not determine source project for task move.'
+                            moveSummary.failed.push({
+                                taskId: taskId || null,
+                                sourceProjectId: sourceProjectId || null,
+                                sourceProjectName,
+                                error: missingDataError,
+                            })
+                            task.move = {
+                                moved: false,
+                                error: missingDataError,
+                            }
+                            continue
+                        }
+
+                        if (targetProject.id === sourceProjectId) {
+                            const skippedMove = {
+                                moved: false,
+                                reason: 'already_in_target_project',
+                                sourceProjectId,
+                                targetProjectId: targetProject.id,
+                                taskId,
+                            }
+                            moveSummary.skipped.push({
+                                taskId,
+                                sourceProjectId,
+                                sourceProjectName,
+                                targetProjectId: targetProject.id,
+                                targetProjectName: targetProject.name,
+                                reason: skippedMove.reason,
+                            })
+                            task.move = skippedMove
+                            task.projectId = targetProject.id
+                            task.projectName = targetProject.name
+                            if (Array.isArray(task.changes)) {
+                                task.changes = [...task.changes, `already in project "${targetProject.name}"`]
+                            }
+                            continue
+                        }
+
+                        try {
+                            const moveResult = await moveTaskToDifferentProject({
+                                database: db,
+                                sourceProjectId,
+                                targetProjectId: targetProject.id,
+                                taskId,
+                                editorId: creatorId,
+                                editorName,
+                            })
+
+                            moveSummary.moved.push({
+                                taskId,
+                                sourceProjectId,
+                                sourceProjectName,
+                                targetProjectId: targetProject.id,
+                                targetProjectName: targetProject.name,
+                                movedTaskCount: moveResult?.movedTaskCount || 1,
+                            })
+
+                            task.move = moveResult
+                            task.projectId = targetProject.id
+                            task.projectName = targetProject.name
+                            if (Array.isArray(task.changes)) {
+                                task.changes = [...task.changes, `moved to project "${targetProject.name}"`]
+                            } else {
+                                task.changes = [`moved to project "${targetProject.name}"`]
+                            }
+                        } catch (moveError) {
+                            moveSummary.failed.push({
+                                taskId,
+                                sourceProjectId,
+                                sourceProjectName,
+                                targetProjectId: targetProject.id,
+                                targetProjectName: targetProject.name,
+                                error: moveError.message,
+                            })
+                            task.move = {
+                                moved: false,
+                                error: moveError.message,
+                            }
+                        }
+                    }
+
+                    const moveSummaryText =
+                        `Move results: ${moveSummary.moved.length} moved` +
+                        (moveSummary.skipped.length > 0 ? `, ${moveSummary.skipped.length} already in target` : '') +
+                        (moveSummary.failed.length > 0 ? `, ${moveSummary.failed.length} failed` : '') +
+                        `.`
+
+                    return {
+                        ...result,
+                        updated: updatedTasks,
+                        move: {
+                            targetProjectId: targetProject.id,
+                            targetProjectName: targetProject.name,
+                            ...moveSummary,
+                        },
+                        message: `${result.message}. ${moveSummaryText}`,
+                    }
+                }
+
+                if (hasMoveRequest && result.success && !toolArgs.updateAll) {
                     const sourceProjectId =
                         (result.project && result.project.id) || normalizedToolArgs.projectId || projectId || null
                     const sourceProjectName = (result.project && result.project.name) || null
