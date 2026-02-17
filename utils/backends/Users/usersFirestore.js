@@ -58,6 +58,8 @@ import {
     watchProjectData,
     watchProjectDataThatIsOnlyForProjectMembers,
 } from '../../InitialLoad/initialLoadHelper'
+import { addGlobalAssistantToProject, moveAssistantToProject } from '../Assistants/assistantsFirestore'
+import { isGlobalAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 
 //ACCESS FUNCTIONS
 
@@ -464,6 +466,29 @@ export async function setUserDescription(userId, extDescription) {
 }
 
 export async function setDefaultProjectId(userId, projectId) {
+    const { loggedUser, loggedUserProjectsMap, projectAssistants } = store.getState()
+    const previousDefaultProjectId = loggedUser?.defaultProjectId
+
+    if (previousDefaultProjectId && previousDefaultProjectId !== projectId) {
+        const previousDefaultProject = loggedUserProjectsMap?.[previousDefaultProjectId]
+        const previousDefaultProjectAssistants = projectAssistants?.[previousDefaultProjectId] || []
+
+        const assistantFromPreviousDefaultProject =
+            previousDefaultProject?.assistantId ||
+            previousDefaultProjectAssistants.find(assistant => assistant.isDefault)?.uid ||
+            previousDefaultProjectAssistants[0]?.uid ||
+            ''
+
+        if (assistantFromPreviousDefaultProject) {
+            if (isGlobalAssistant(assistantFromPreviousDefaultProject)) {
+                await addGlobalAssistantToProject(projectId, assistantFromPreviousDefaultProject)
+                await getDb().doc(`projects/${projectId}`).update({ assistantId: assistantFromPreviousDefaultProject })
+            } else {
+                await moveAssistantToProject(previousDefaultProjectId, projectId, assistantFromPreviousDefaultProject)
+            }
+        }
+    }
+
     await getDb().doc(`users/${userId}`).update({ defaultProjectId: projectId })
 }
 

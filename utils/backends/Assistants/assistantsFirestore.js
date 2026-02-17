@@ -724,6 +724,65 @@ export async function addGlobalAssistantToProject(projectId, assistantId) {
         .update({ globalAssistantIds: firebase.firestore.FieldValue.arrayUnion(assistantId) })
 }
 
+export async function moveAssistantToProject(sourceProjectId, targetProjectId, assistantId) {
+    if (!sourceProjectId || !targetProjectId || !assistantId || sourceProjectId === targetProjectId) return false
+
+    const sourceAssistantRef = getDb().doc(`assistants/${sourceProjectId}/items/${assistantId}`)
+    const targetAssistantRef = getDb().doc(`assistants/${targetProjectId}/items/${assistantId}`)
+
+    const [sourceAssistantDoc, sourceProjectDoc, targetAssistantsSnapshot, sourceTasksSnapshot] = await Promise.all([
+        sourceAssistantRef.get(),
+        getDb().doc(`projects/${sourceProjectId}`).get(),
+        getDb().collection(`assistants/${targetProjectId}/items`).where('isDefault', '==', true).get(),
+        getDb().collection(getAssistantTasksCollectionPath(sourceProjectId, assistantId)).get(),
+    ])
+
+    if (!sourceAssistantDoc.exists) return false
+
+    const sourceAssistantData = sourceAssistantDoc.data()
+    const batch = new BatchWrapper(getDb())
+
+    batch.set(
+        targetAssistantRef,
+        {
+            ...sourceAssistantData,
+            isDefault: true,
+        },
+        { merge: true }
+    )
+
+    sourceTasksSnapshot.forEach(doc => {
+        const task = doc.data()
+        const movedTask = {
+            ...task,
+            assistantId,
+        }
+
+        if (movedTask.activatedInProjectId) {
+            movedTask.activatedInProjectId = targetProjectId
+        }
+
+        batch.set(getAssistantTaskDocRef(targetProjectId, assistantId, doc.id), movedTask, { merge: true })
+        batch.delete(doc.ref)
+    })
+
+    targetAssistantsSnapshot.forEach(doc => {
+        if (doc.id !== assistantId) {
+            batch.update(doc.ref, { isDefault: false })
+        }
+    })
+
+    if (sourceProjectDoc.exists && sourceProjectDoc.data()?.assistantId === assistantId) {
+        batch.update(getDb().doc(`projects/${sourceProjectId}`), { assistantId: '' })
+    }
+
+    batch.update(getDb().doc(`projects/${targetProjectId}`), { assistantId })
+    batch.delete(sourceAssistantRef)
+
+    await batch.commit()
+    return true
+}
+
 export function removeGlobalAssistantFromProject(projectId, assistantId) {
     getDb()
         .doc(`projects/${projectId}`)
