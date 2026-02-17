@@ -45,7 +45,12 @@ import {
     createUserRoleChangedFeed,
 } from './userUpdates'
 import { addWorkstreamMember, getUserWorkstreams, removeWorkstreamMember } from '../Workstreams/workstreamsFirestore'
-import { setProjectInitialData, setUserInfoModalWhenUserJoinsToGuide, setUsersInProject } from '../../../redux/actions'
+import {
+    setProjectInitialData,
+    setUserInfoModalWhenUserJoinsToGuide,
+    setUsersInProject,
+    showConfirmPopup,
+} from '../../../redux/actions'
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
 import { addUserToTemplate } from '../Projects/guidesFirestore'
 import { FOLLOWER_PROJECTS_TYPE, FOLLOWER_USERS_TYPE } from '../../../components/Followers/FollowerConstants'
@@ -468,8 +473,9 @@ export async function setUserDescription(userId, extDescription) {
 export async function setDefaultProjectId(userId, projectId) {
     const { loggedUser, loggedUserProjectsMap, projectAssistants } = store.getState()
     const previousDefaultProjectId = loggedUser?.defaultProjectId
+    const hasDefaultProjectChanged = !!previousDefaultProjectId && previousDefaultProjectId !== projectId
 
-    if (previousDefaultProjectId && previousDefaultProjectId !== projectId) {
+    if (hasDefaultProjectChanged) {
         const previousDefaultProject = loggedUserProjectsMap?.[previousDefaultProjectId]
         const previousDefaultProjectAssistants = projectAssistants?.[previousDefaultProjectId] || []
 
@@ -490,6 +496,10 @@ export async function setDefaultProjectId(userId, projectId) {
     }
 
     await getDb().doc(`users/${userId}`).update({ defaultProjectId: projectId })
+
+    if (hasDefaultProjectChanged) {
+        store.dispatch(showConfirmPopup({ trigger: 'CONFIRM POPUP MANDATORY NOTIFICATION', object: {} }))
+    }
 }
 
 export function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId) {
