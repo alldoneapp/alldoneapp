@@ -63,8 +63,13 @@ import {
     watchProjectData,
     watchProjectDataThatIsOnlyForProjectMembers,
 } from '../../InitialLoad/initialLoadHelper'
-import { addGlobalAssistantToProject, moveAssistantToProject } from '../Assistants/assistantsFirestore'
-import { isGlobalAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
+import {
+    copyPreConfigTasksToNewAssistant,
+    moveAssistantToProject,
+    setAssistantLikeDefault,
+    uploadNewAssistant,
+} from '../Assistants/assistantsFirestore'
+import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 
 //ACCESS FUNCTIONS
 
@@ -487,8 +492,35 @@ export async function setDefaultProjectId(userId, projectId) {
 
         if (assistantFromPreviousDefaultProject) {
             if (isGlobalAssistant(assistantFromPreviousDefaultProject)) {
-                await addGlobalAssistantToProject(projectId, assistantFromPreviousDefaultProject)
-                await getDb().doc(`projects/${projectId}`).update({ assistantId: assistantFromPreviousDefaultProject })
+                const globalAssistant = store
+                    .getState()
+                    .globalAssistants.find(assistant => assistant.uid === assistantFromPreviousDefaultProject)
+
+                if (globalAssistant) {
+                    const assistantPayload = {
+                        ...globalAssistant,
+                        noteIdsByProject: {},
+                        lastVisitBoard: {},
+                        commentsData: null,
+                        fromTemplate: false,
+                        isDefault: false,
+                        copiedFromTemplateAssistantId: globalAssistant.uid,
+                        copiedFromTemplateAssistantDate: Date.now(),
+                    }
+
+                    const newAssistant = await uploadNewAssistant(projectId, assistantPayload, null)
+                    await copyPreConfigTasksToNewAssistant(
+                        GLOBAL_PROJECT_ID,
+                        globalAssistant.uid,
+                        projectId,
+                        newAssistant.uid
+                    )
+                    await setAssistantLikeDefault(projectId, newAssistant.uid)
+
+                    if (previousDefaultProject?.assistantId === assistantFromPreviousDefaultProject) {
+                        await getDb().doc(`projects/${previousDefaultProjectId}`).update({ assistantId: '' })
+                    }
+                }
             } else {
                 await moveAssistantToProject(previousDefaultProjectId, projectId, assistantFromPreviousDefaultProject)
             }
