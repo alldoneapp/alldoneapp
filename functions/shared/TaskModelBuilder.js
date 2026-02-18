@@ -88,7 +88,9 @@ function buildTaskObject({
     const finalEstimations = estimations || { [OPEN_STEP]: 0 }
 
     // Determine privacy settings
-    const finalIsPublicFor = isPrivate ? [userId] : [FEED_PUBLIC_FOR_ALL, userId].filter(Boolean)
+    const finalIsPublicFor = isPrivate
+        ? [userId]
+        : [FEED_PUBLIC_FOR_ALL, userId].filter(value => value !== null && value !== undefined && value !== '')
 
     // Build the complete task object matching Alldone's schema
     const task = {
