@@ -993,10 +993,34 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
     try {
         const { loggedUser } = store.getState()
         const currentUserId = loggedUser?.uid || null
+        const syncTimestamp = Date.now()
+
+        const normalizeOrder = value => (typeof value === 'number' && Number.isFinite(value) ? value : 9999)
+        const localOnlyFields = new Set([
+            'id',
+            'assistantId',
+            'copiedFromTemplateTaskId',
+            'copiedFromTemplateTaskDate',
+            'activatedInProjectId',
+            'lastExecuted',
+            'lastExecutedByUser',
+            'creatorUserId',
+            'activatorUserId',
+            'recurrenceByUser',
+            'activatedUserIds',
+        ])
+
+        const getTemplateTaskPayload = globalTask => {
+            const payload = {}
+            Object.keys(globalTask || {}).forEach(key => {
+                if (!localOnlyFields.has(key)) payload[key] = globalTask[key]
+            })
+            return payload
+        }
 
         // 1. Get global/template tasks
         const globalTasksSnapshot = await getDb()
-            .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`)
+            .collection(getAssistantTasksCollectionPath(GLOBAL_PROJECT_ID, globalAssistantId))
             .where('assistantId', '==', globalAssistantId)
             .get()
 
@@ -1005,42 +1029,55 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
             .collection(getAssistantTasksCollectionPath(localProjectId, localAssistantId))
             .get()
 
+        const globalTasks = []
+        globalTasksSnapshot.forEach(doc => {
+            globalTasks.push({ ...doc.data(), id: doc.id })
+        })
+        globalTasks.sort((a, b) => normalizeOrder(a.order) - normalizeOrder(b.order))
+
         // 3. Build mapping: copiedFromTemplateTaskId -> local task
         const localTasksByTemplateId = {}
+        const localManualTasks = []
         localTasksSnapshot.forEach(doc => {
             const task = doc.data()
             if (task.copiedFromTemplateTaskId) {
                 localTasksByTemplateId[task.copiedFromTemplateTaskId] = { ...task, id: doc.id }
+            } else {
+                localManualTasks.push({ ...task, id: doc.id })
             }
         })
+        localManualTasks.sort((a, b) => normalizeOrder(a.order) - normalizeOrder(b.order))
 
         const batch = new BatchWrapper(getDb())
+        const templateTasksCount = globalTasks.length
 
         // 4. For each global task, update or create local task
-        globalTasksSnapshot.forEach(doc => {
-            const globalTask = doc.data()
-            const localTask = localTasksByTemplateId[doc.id]
+        globalTasks.forEach((globalTask, index) => {
+            const localTask = localTasksByTemplateId[globalTask.id]
+            const templatePayload = getTemplateTaskPayload(globalTask)
+            const templateOrder = index
 
             if (localTask) {
                 // Update existing task - preserve local-only fields (lastExecuted, activatedInProjectId, etc.)
                 const updatePayload = {
-                    title: globalTask.title,
-                    type: globalTask.type,
-                    prompt: globalTask.prompt,
-                    order: globalTask.order,
+                    ...templatePayload,
+                    assistantId: localAssistantId,
+                    copiedFromTemplateTaskId: globalTask.id,
+                    order: templateOrder,
                     // Update sync timestamp
-                    copiedFromTemplateTaskDate: Date.now(),
+                    copiedFromTemplateTaskDate: syncTimestamp,
                 }
                 batch.update(getAssistantTaskDocRef(localProjectId, localAssistantId, localTask.id), updatePayload)
             } else {
                 // Create new local task
                 const newTaskId = getId()
                 const taskCopy = {
-                    ...globalTask,
+                    ...templatePayload,
                     id: newTaskId,
                     assistantId: localAssistantId,
-                    copiedFromTemplateTaskId: doc.id,
-                    copiedFromTemplateTaskDate: Date.now(),
+                    copiedFromTemplateTaskId: globalTask.id,
+                    copiedFromTemplateTaskDate: syncTimestamp,
+                    order: templateOrder,
                     activatedInProjectId: localProjectId,
                     lastExecuted: null,
                     lastExecutedByUser: {},
@@ -1069,8 +1106,20 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
             }
         })
 
+        // Keep manual tasks and ensure they don't collide with template task order.
+        localManualTasks.forEach((task, index) => {
+            const desiredOrder = templateTasksCount + index
+            if (task.order !== desiredOrder) {
+                batch.set(
+                    getAssistantTaskDocRef(localProjectId, localAssistantId, task.id),
+                    { order: desiredOrder },
+                    { merge: true }
+                )
+            }
+        })
+
         await batch.commit()
-        console.log(`✅ Synced ${globalTasksSnapshot.size} tasks from template to assistant ${localAssistantId}`)
+        console.log(`✅ Synced ${globalTasks.length} tasks from template to assistant ${localAssistantId}`)
     } catch (error) {
         console.error('❌ Error syncing pre-configured tasks from template:', error)
         console.error('Error details:', {
