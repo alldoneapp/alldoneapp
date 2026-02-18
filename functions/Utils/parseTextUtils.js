@@ -47,17 +47,20 @@ const getVideoData = text => {
 }
 
 const getMentionData = (text, notRemoveTrigger) => {
-    let userId
-    let mentionText
-    const mentionParts = text.split('#')
+    const safeText = String(text || '')
+    const mentionPartsByAvatarData = safeText.split('###')
+    const mentionWithUserData = mentionPartsByAvatarData[0]
+    const separatorIndex = mentionWithUserData.indexOf('#')
 
-    if (mentionParts.length > 1) {
-        userId = mentionParts[mentionParts.length - 1]
-        mentionText = text.substring(notRemoveTrigger ? 0 : 1, text.length - userId.length - 1)
-    } else {
-        userId = NOT_USER_MENTIONED
-        mentionText = notRemoveTrigger ? text : text.substring(1)
+    let userId = NOT_USER_MENTIONED
+    let mentionTextWithTrigger = mentionWithUserData
+
+    if (separatorIndex > -1) {
+        userId = mentionWithUserData.substring(separatorIndex + 1)
+        mentionTextWithTrigger = mentionWithUserData.substring(0, separatorIndex)
     }
+
+    let mentionText = notRemoveTrigger ? mentionTextWithTrigger : mentionTextWithTrigger.substring(1)
 
     mentionText = mentionText.replaceAll(MENTION_SPACE_CODE, ' ')
 
