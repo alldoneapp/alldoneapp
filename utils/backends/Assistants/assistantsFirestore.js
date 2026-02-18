@@ -917,17 +917,32 @@ export async function copyPreConfigTasksToNewAssistant(
                 copiedFromTemplateTaskId: doc.id,
                 copiedFromTemplateTaskDate: Date.now(),
             }
-
-            if (!taskCopy.creatorUserId && currentUserId) {
-                taskCopy.creatorUserId = currentUserId
-            }
+            delete taskCopy.lastExecutedByUser
+            delete taskCopy.recurrenceByUser
+            delete taskCopy.activatedUserIds
 
             const targetIsGlobal = isGlobalAssistant(targetAssistantId)
 
             if (!targetIsGlobal) {
                 taskCopy.activatedInProjectId = targetProjectId
                 taskCopy.lastExecuted = null
-                taskCopy.activatorUserId = currentUserId
+                taskCopy.lastExecutedByUser = {}
+
+                if (currentUserId) {
+                    taskCopy.creatorUserId = currentUserId
+                    taskCopy.activatorUserId = currentUserId
+                } else {
+                    delete taskCopy.creatorUserId
+                    delete taskCopy.activatorUserId
+                }
+
+                if (taskCopy.recurrence && taskCopy.recurrence !== RECURRENCE_NEVER && currentUserId) {
+                    taskCopy.recurrenceByUser = { [currentUserId]: taskCopy.recurrence }
+                    taskCopy.activatedUserIds = [currentUserId]
+                } else {
+                    taskCopy.recurrenceByUser = {}
+                    taskCopy.activatedUserIds = []
+                }
             }
 
             console.log('Copying task:', task.title || task.name, 'with new ID:', newTaskId)
@@ -1028,11 +1043,22 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
                     copiedFromTemplateTaskDate: Date.now(),
                     activatedInProjectId: localProjectId,
                     lastExecuted: null,
+                    lastExecutedByUser: {},
                 }
-
-                if (!taskCopy.creatorUserId && currentUserId) {
+                if (currentUserId) {
                     taskCopy.creatorUserId = currentUserId
                     taskCopy.activatorUserId = currentUserId
+                } else {
+                    delete taskCopy.creatorUserId
+                    delete taskCopy.activatorUserId
+                }
+
+                if (taskCopy.recurrence && taskCopy.recurrence !== RECURRENCE_NEVER && currentUserId) {
+                    taskCopy.recurrenceByUser = { [currentUserId]: taskCopy.recurrence }
+                    taskCopy.activatedUserIds = [currentUserId]
+                } else {
+                    taskCopy.recurrenceByUser = {}
+                    taskCopy.activatedUserIds = []
                 }
 
                 batch.set(getAssistantTaskDocRef(localProjectId, localAssistantId, newTaskId), taskCopy)

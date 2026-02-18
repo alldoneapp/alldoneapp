@@ -996,6 +996,7 @@ async function checkAndExecuteRecurringTasks() {
         let totalTasksChecked = 0
         let tasksSkippedInactiveUser = 0
         let tasksSkippedTiming = 0
+        let tasksSkippedNotMember = 0
 
         const recurringTypes = [
             RECURRENCE_DAILY,
@@ -1011,6 +1012,7 @@ async function checkAndExecuteRecurringTasks() {
 
         // Step 2a: Get all projects that active users belong to
         const activeUserProjects = new Set()
+        const projectMembersMap = new Map()
         for (const [userId, userData] of activeUsersMap.entries()) {
             // Get user's project memberships
             try {
@@ -1039,6 +1041,10 @@ async function checkAndExecuteRecurringTasks() {
                     }
 
                     activeUserProjects.add(doc.id)
+                    if (!projectMembersMap.has(doc.id)) {
+                        const memberIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
+                        projectMembersMap.set(doc.id, new Set(memberIds))
+                    }
                 })
             } catch (error) {
                 console.warn('Error fetching projects for active user:', {
@@ -1100,6 +1106,19 @@ async function checkAndExecuteRecurringTasks() {
                             const recurrenceForUser =
                                 task?.recurrenceByUser?.[activatedUserId] || task.recurrence || RECURRENCE_NEVER
                             if (!recurrenceForUser || recurrenceForUser === RECURRENCE_NEVER) {
+                                continue
+                            }
+
+                            const projectMembers = projectMembersMap.get(projectId) || new Set()
+                            if (!projectMembers.has(activatedUserId)) {
+                                console.log('Skipping recurring task because activated user is not in project:', {
+                                    projectId,
+                                    assistantId,
+                                    taskId: task.id,
+                                    taskName: task.name,
+                                    activatedUserId,
+                                })
+                                tasksSkippedNotMember++
                                 continue
                             }
 
@@ -1199,6 +1218,7 @@ async function checkAndExecuteRecurringTasks() {
             totalTasksChecked,
             tasksToExecute: tasksToExecute.length,
             tasksSkippedInactiveUser,
+            tasksSkippedNotMember,
             tasksSkippedTiming,
             activeUsers: activeUsersMap.size,
             avgTimePerTask: totalTasksChecked > 0 ? `${(collectionDuration / totalTasksChecked).toFixed(0)}ms` : 'N/A',
