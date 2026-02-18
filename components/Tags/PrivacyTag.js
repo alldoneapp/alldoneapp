@@ -106,7 +106,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                             {smallScreenNavigation || isMobile
                                 ? ''
                                 : object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                                ? translate('Public')
+                                ? translate('Project-wide')
                                 : translate('Private')}
                         </Text>
                         {smallScreenNavigation && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (
@@ -146,7 +146,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                         {smallScreenNavigation || isMobile
                             ? ''
                             : object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                            ? translate('Public')
+                            ? translate('Project-wide')
                             : translate('Private')}
                     </Text>
                     {smallScreenNavigation && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (

@@ -20,7 +20,7 @@ export default function PublicItem({ selected, hovered, onPress }) {
                             style={[styles.subtitle1, localStyles.itemName, selected && localStyles.itemNameSelected]}
                             numberOfLines={1}
                         >
-                            {translate('Public')}
+                            {translate('Project-wide')}
                         </Text>
                         <Text
                             style={[
@@ -30,7 +30,7 @@ export default function PublicItem({ selected, hovered, onPress }) {
                             ]}
                             numberOfLines={1}
                         >
-                            {translate('anybody with link can see')}
+                            {translate('visible to all project members')}
                         </Text>
                     </View>
                 </View>

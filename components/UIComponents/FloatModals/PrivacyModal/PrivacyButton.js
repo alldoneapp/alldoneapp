@@ -90,7 +90,7 @@ export default function PrivacyButton({
                         inEditComponent && smallScreen
                             ? null
                             : isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                            ? translate('Public')
+                            ? translate('Project-wide')
                             : translate('Private')
                     }
                     type={'ghost'}

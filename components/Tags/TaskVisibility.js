@@ -4,6 +4,7 @@ import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import store from '../../redux/store'
 import PropTypes from 'prop-types'
+import { translate } from '../../i18n/TranslationService'
 
 class TaskVisibility extends Component {
     constructor(props) {
@@ -48,7 +49,11 @@ class TaskVisibility extends Component {
                             windowTagStyle(),
                         ]}
                     >
-                        {smallScreenNavigation || isMobile ? '' : isPrivate ? 'Private' : 'Public'}
+                        {smallScreenNavigation || isMobile
+                            ? ''
+                            : isPrivate
+                            ? translate('Private')
+                            : translate('Project-wide')}
                     </Text>
                 </View>
             </TouchableOpacity>

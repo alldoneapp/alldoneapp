@@ -73,7 +73,7 @@ export default function SkillsDefaultPrivacyWrapper({ projectId, style, savePriv
             >
                 <GhostButton
                     ref={ref => (this.buttonRef = ref)}
-                    title={isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? translate('Public') : translate('Private')}
+                    title={isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? translate('Project-wide') : translate('Private')}
                     type={'ghost'}
                     icon={
                         isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? (

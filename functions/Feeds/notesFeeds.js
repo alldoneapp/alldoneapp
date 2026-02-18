@@ -100,8 +100,8 @@ async function createNotePrivacyChangedFeed(
         isPublicFor || isPrivate ? [noteFeedObject.userId] : [FEED_PUBLIC_FOR_ALL]
     )
 
-    const newPrivacy = isPrivate ? 'Private' : 'Public'
-    const oldPrivacy = isPrivate ? 'Public' : 'Private'
+    const newPrivacy = isPrivate ? 'Private' : 'Project-wide'
+    const oldPrivacy = isPrivate ? 'Project-wide' : 'Private'
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_NOTE_PRIVACY_CHANGED,
         lastChangeDate: currentMilliseconds,

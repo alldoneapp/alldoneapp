@@ -36,7 +36,7 @@ export default function General() {
                 />
                 <CheatShortcutItem
                     shortcuts={[{ win: 'Alt + P', mac: '/= + P' }]}
-                    description={translate('Toggles public-private privacy')}
+                    description={translate('Toggles project-wide-private privacy')}
                 />
                 <CheatShortcutItem
                     shortcuts={[{ win: 'Alt + C', mac: '/= + C' }]}

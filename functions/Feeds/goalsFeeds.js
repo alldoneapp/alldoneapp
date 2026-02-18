@@ -197,8 +197,8 @@ async function createGoalPrivacyChangedFeed(projectId, goalId, isPublicFor, batc
 
     await addPrivacyForFeedObject(projectId, isPrivate, goalFeedObject, goalId, 'goals', isPublicFor)
 
-    const newPrivacy = isPrivate ? 'Private' : 'Public'
-    const oldPrivacy = isPrivate ? 'Public' : 'Private'
+    const newPrivacy = isPrivate ? 'Private' : 'Project-wide'
+    const oldPrivacy = isPrivate ? 'Project-wide' : 'Private'
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_GOAL_PRIVACY_CHANGED,
         lastChangeDate: currentMilliseconds,

@@ -429,8 +429,8 @@ export async function createUserPrivacyChangedFeed(
     //     isPublicFor || isPrivate ? [userFeedObject.userId] : [FEED_PUBLIC_FOR_ALL]
     // )
 
-    const newPrivacy = isPrivate ? 'Private' : 'Public'
-    const oldPrivacy = isPrivate ? 'Public' : 'Private'
+    const newPrivacy = isPrivate ? 'Private' : 'Project-wide'
+    const oldPrivacy = isPrivate ? 'Project-wide' : 'Private'
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_USER_PRIVACY_CHANGED,
         lastChangeDate: currentMilliseconds,

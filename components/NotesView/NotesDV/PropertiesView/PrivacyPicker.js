@@ -2,6 +2,7 @@ import React from 'react'
 import GhostButton from '../../../UIControls/GhostButton'
 import Backend from '../../../../utils/BackendBridge'
 import { updateNotePrivacy } from '../../../../utils/backends/Notes/notesFirestore'
+import { translate } from '../../../../i18n/TranslationService'
 
 export default function PrivacyPicker({ projectId, note, disabled }) {
     const onPress = () => {
@@ -12,7 +13,7 @@ export default function PrivacyPicker({ projectId, note, disabled }) {
         <GhostButton
             type={'ghost'}
             icon={note.isPrivate ? 'lock' : 'unlock'}
-            title={note.isPrivate ? 'Private' : 'Public'}
+            title={note.isPrivate ? translate('Private') : translate('Project-wide')}
             onPress={onPress}
             pressed={note.isPrivate}
             disabled={disabled}

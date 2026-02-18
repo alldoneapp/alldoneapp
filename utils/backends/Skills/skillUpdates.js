@@ -304,8 +304,8 @@ async function createSkillPrivacyChangedFeed(projectId, skillId, isPublicFor, ex
 
     addPrivacyForFeedObject(projectId, isPrivate, skillFeedObject, skillId, 'skills', isPublicFor)
 
-    const newPrivacy = isPrivate ? 'Private' : 'Public'
-    const oldPrivacy = isPrivate ? 'Public' : 'Private'
+    const newPrivacy = isPrivate ? 'Private' : 'Project-wide'
+    const oldPrivacy = isPrivate ? 'Project-wide' : 'Private'
 
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_SKILL_PRIVACY_CHANGED,
