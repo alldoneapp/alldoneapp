@@ -16,6 +16,10 @@ export default function General() {
                 />
                 <CheatShortcutItem shortcuts={[{ win: 'Tab' }]} description={translate('Toggles any tab bar')} />
                 <CheatShortcutItem
+                    shortcuts={[{ win: 'S' }]}
+                    description={translate('After holding Option/Alt, opens section switch pop-up from main views')}
+                />
+                <CheatShortcutItem
                     shortcuts={[{ win: 'Alt + F', mac: '/= + F' }]}
                     description={translate('Sets focus to the search field')}
                 />

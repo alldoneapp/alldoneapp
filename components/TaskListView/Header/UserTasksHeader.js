@@ -2,11 +2,13 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import PropTypes from 'prop-types'
 import Popover from 'react-tiny-popover'
+import Hotkeys from 'react-hot-keys'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles from '../../styles/global'
 import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ChangeObjectListModal from '../../UIComponents/FloatModals/ChangeObjectListModal'
+import Shortcut from '../../UIControls/Shortcut'
 import { translate } from '../../../i18n/TranslationService'
 import ToggleByTime from '../ToggleByTime'
 import { checkIfSelectedAllProjects } from '../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -23,6 +25,9 @@ const UserTasksHeader = () => {
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const showShortcuts = useSelector(state => state.showShortcuts)
+    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const [open, setOpen] = useState(false)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
@@ -47,6 +52,12 @@ const UserTasksHeader = () => {
                     : isMiddleScreen && localStyles.headerTextForTablet,
             ]}
         >
+            <Hotkeys
+                disabled={blockShortcuts || !showShortcuts || showFloatPopup !== 0 || !accessGranted}
+                keyName={'s,alt+s'}
+                onKeyDown={() => setOpen(true)}
+                filter={e => true}
+            />
             <Popover
                 content={<ChangeObjectListModal closePopover={() => setOpen(false)} />}
                 onClickOutside={() => setOpen(false)}
@@ -60,6 +71,9 @@ const UserTasksHeader = () => {
                     <Text style={localStyles.headerText}> {translate('Tasks')}</Text>
                 </TouchableOpacity>
             </Popover>
+            {showShortcuts && showFloatPopup === 0 && accessGranted && !smallScreenNavigation && (
+                <Shortcut text={'S'} containerStyle={localStyles.shortcut} />
+            )}
             {inOpenSection && <TaskHeaderMoreButton userId={userId} />}
             <ToggleByTime onToggle={handleToggle} containerStyle={!inOpenSection && { marginLeft: 8 }} />
         </View>
@@ -104,6 +118,9 @@ const localStyles = StyleSheet.create({
     },
     headerTextForTablet: {
         paddingHorizontal: 56,
+    },
+    shortcut: {
+        marginLeft: 8,
     },
 })
 

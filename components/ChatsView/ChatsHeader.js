@@ -4,7 +4,9 @@ import styles, { colors } from '../styles/global'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
 import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
+import Hotkeys from 'react-hot-keys'
 import ChangeObjectListModal from '../UIComponents/FloatModals/ChangeObjectListModal'
+import Shortcut from '../UIControls/Shortcut'
 import { translate } from '../../i18n/TranslationService'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
@@ -14,6 +16,9 @@ function ChatsHeader({ projectId, userId }) {
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const showShortcuts = useSelector(state => state.showShortcuts)
+    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const [open, setOpen] = useState(false)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
@@ -22,6 +27,12 @@ function ChatsHeader({ projectId, userId }) {
 
     return (
         <View style={localStyles.container}>
+            <Hotkeys
+                disabled={blockShortcuts || !showShortcuts || showFloatPopup !== 0 || !accessGranted}
+                keyName={'s,alt+s'}
+                onKeyDown={() => setOpen(true)}
+                filter={e => true}
+            />
             <View style={localStyles.info}>
                 <Popover
                     content={<ChangeObjectListModal closePopover={() => setOpen(false)} />}
@@ -36,6 +47,9 @@ function ChatsHeader({ projectId, userId }) {
                         <Text style={[styles.title5, { color: colors.Text01 }]}>{translate('Chats')}</Text>
                     </TouchableOpacity>
                 </Popover>
+                {showShortcuts && showFloatPopup === 0 && accessGranted && !mobile && (
+                    <Shortcut text={'S'} containerStyle={localStyles.shortcut} />
+                )}
 
                 <ChatsMoreButton projectId={projectId} userId={userId} />
             </View>
@@ -59,5 +73,8 @@ const localStyles = StyleSheet.create({
     info: {
         flexDirection: 'row',
         alignItems: 'baseline',
+    },
+    shortcut: {
+        marginLeft: 8,
     },
 })

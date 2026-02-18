@@ -100,6 +100,37 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [recurrence, setRecurrence] = useState(initialState.recurrence)
     const [startDate, setStartDate] = useState(initialState.startDate)
     const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
+
+    const applyCurrentUserRecurrenceConfig = baseTask => {
+        const currentUserId = loggedUser.uid
+        const taskWithActivation = { ...baseTask }
+        const currentActivatedUserIds = Array.isArray(taskWithActivation.activatedUserIds)
+            ? taskWithActivation.activatedUserIds.filter(Boolean)
+            : []
+        let nextActivatedUserIds = [...new Set(currentActivatedUserIds)]
+
+        const currentRecurrenceByUser =
+            taskWithActivation.recurrenceByUser && typeof taskWithActivation.recurrenceByUser === 'object'
+                ? taskWithActivation.recurrenceByUser
+                : {}
+        const nextRecurrenceByUser = { ...currentRecurrenceByUser }
+
+        if (recurrence && recurrence !== RECURRENCE_NEVER) {
+            nextRecurrenceByUser[currentUserId] = recurrence
+            nextActivatedUserIds = [...new Set([...nextActivatedUserIds, currentUserId])]
+        } else {
+            delete nextRecurrenceByUser[currentUserId]
+            nextActivatedUserIds = nextActivatedUserIds.filter(userId => userId !== currentUserId)
+        }
+
+        return {
+            ...taskWithActivation,
+            creatorUserId: taskWithActivation.creatorUserId || currentUserId,
+            activatorUserId: currentUserId,
+            activatedUserIds: nextActivatedUserIds,
+            recurrenceByUser: nextRecurrenceByUser,
+        }
+    }
     const [webhookUrl, setWebhookUrl] = useState(initialState.webhookUrl)
     const [webhookAuthHeaderName, setWebhookAuthHeaderName] = useState(initialState.webhookAuthHeaderName)
     const [webhookAuth, setWebhookAuth] = useState(initialState.webhookAuth)
@@ -164,6 +195,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       startTime: moment(startDate).format('HH:mm'),
                       userTimezone: parseInt(moment().format('Z')), // Store user's timezone offset
                       creatorUserId: loggedUser.uid, // Store the creator's user ID
+                      activatorUserId: loggedUser.uid,
+                      activatedUserIds: [loggedUser.uid],
                       activatedInProjectId: currentProjectId,
                       sendWhatsApp,
                   }
@@ -197,7 +230,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                   }
                 : { name, type: taskType, prompt: '', variables: [], link, recurrence, sendWhatsApp }
         setTimeout(() => {
-            uploadNewPreConfigTask(projectId, assistantId, newTask)
+            uploadNewPreConfigTask(projectId, assistantId, applyCurrentUserRecurrenceConfig(newTask))
         }, 1000)
     }
 
@@ -232,7 +265,12 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       startDate: utcStartDate,
                       startTime: moment(startDate).format('HH:mm'),
                       userTimezone: parseInt(moment().format('Z')), // Store user's timezone offset
-                      creatorUserId: loggedUser.uid, // Store the creator's user ID
+                      creatorUserId: task.creatorUserId || loggedUser.uid,
+                      activatorUserId: task.activatorUserId || loggedUser.uid,
+                      activatedUserIds:
+                          task.activatedUserIds && task.activatedUserIds.length > 0
+                              ? task.activatedUserIds
+                              : [task.activatorUserId || task.creatorUserId || loggedUser.uid],
                       activatedInProjectId: currentProjectId,
                       sendWhatsApp,
                   }
@@ -283,7 +321,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             sendWhatsAppType: typeof updatedTask.sendWhatsApp,
             taskMetadata: updatedTask.taskMetadata,
         })
-        updatePreConfigTask(projectId, assistantId, updatedTask)
+        updatePreConfigTask(projectId, assistantId, applyCurrentUserRecurrenceConfig(updatedTask))
         closeModal()
     }
 

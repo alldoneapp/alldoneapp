@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import Hotkeys from 'react-hot-keys'
 
 import styles, { colors } from '../styles/global'
 import FollowSwitchableTag from './FollowSwitchableTag/FollowSwitchableTag'
 import UpdatesMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Updates/UpdatesMoreButton'
 import { translate } from '../../i18n/TranslationService'
 import ChangeObjectListModal from '../UIComponents/FloatModals/ChangeObjectListModal'
+import Shortcut from '../UIControls/Shortcut'
 import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
@@ -24,6 +26,9 @@ export default function HeaderGlobalProject({
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const showShortcuts = useSelector(state => state.showShortcuts)
+    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const [open, setOpen] = useState(false)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
@@ -31,6 +36,12 @@ export default function HeaderGlobalProject({
 
     return (
         <View style={localStyles.container}>
+            <Hotkeys
+                disabled={blockShortcuts || !showShortcuts || showFloatPopup !== 0 || !accessGranted}
+                keyName={'s,alt+s'}
+                onKeyDown={() => setOpen(true)}
+                filter={e => true}
+            />
             <Popover
                 content={<ChangeObjectListModal closePopover={() => setOpen(false)} />}
                 onClickOutside={() => setOpen(false)}
@@ -44,6 +55,9 @@ export default function HeaderGlobalProject({
                     <Text style={localStyles.title}>{translate('Updates')}</Text>
                 </TouchableOpacity>
             </Popover>
+            {showShortcuts && showFloatPopup === 0 && accessGranted && !mobile && (
+                <Shortcut text={'S'} containerStyle={localStyles.shortcut} />
+            )}
 
             <UpdatesMoreButton projectId={projectId} user={selectedUser} />
             <View style={localStyles.followTag}>
@@ -77,5 +91,8 @@ const localStyles = StyleSheet.create({
         flex: 1,
         alignItems: 'flex-end',
         justifyContent: 'center',
+    },
+    shortcut: {
+        marginLeft: 8,
     },
 })

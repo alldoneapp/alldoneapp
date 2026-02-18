@@ -4,7 +4,9 @@ import styles, { colors } from '../styles/global'
 import ContactMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Contacts/ContactMoreButton'
 import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
+import Hotkeys from 'react-hot-keys'
 import ChangeObjectListModal from '../UIComponents/FloatModals/ChangeObjectListModal'
+import Shortcut from '../UIControls/Shortcut'
 import { translate } from '../../i18n/TranslationService'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
@@ -14,6 +16,9 @@ const ContactsHeader = ({ contactAmount, projectId, selectedUser }) => {
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const showShortcuts = useSelector(state => state.showShortcuts)
+    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const [open, setOpen] = useState(false)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
@@ -25,6 +30,12 @@ const ContactsHeader = ({ contactAmount, projectId, selectedUser }) => {
 
     return (
         <View style={localStyles.container}>
+            <Hotkeys
+                disabled={blockShortcuts || !showShortcuts || showFloatPopup !== 0 || !accessGranted}
+                keyName={'s,alt+s'}
+                onKeyDown={() => setOpen(true)}
+                filter={e => true}
+            />
             <Popover
                 content={<ChangeObjectListModal closePopover={() => setOpen(false)} />}
                 onClickOutside={() => setOpen(false)}
@@ -38,6 +49,9 @@ const ContactsHeader = ({ contactAmount, projectId, selectedUser }) => {
                     <Text style={styles.title5}>{translate('Contacts')}</Text>
                 </TouchableOpacity>
             </Popover>
+            {showShortcuts && showFloatPopup === 0 && accessGranted && !mobile && (
+                <Shortcut text={'S'} containerStyle={localStyles.shortcut} />
+            )}
 
             <ContactMoreButton projectId={projectId} user={selectedUser} />
             <View style={localStyles.amountContainer}>
@@ -62,5 +76,8 @@ const localStyles = StyleSheet.create({
     amountContainer: {
         height: 28,
         justifyContent: 'flex-end',
+    },
+    shortcut: {
+        marginLeft: 8,
     },
 })

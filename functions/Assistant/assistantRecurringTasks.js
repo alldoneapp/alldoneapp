@@ -24,13 +24,40 @@ const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
 const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 
-async function shouldExecuteTask(task, projectId, userDataCache = null) {
-    if (!task.startDate || !task.startTime || !task.recurrence || task.recurrence === RECURRENCE_NEVER) {
+function getActivatedUserIdsForTask(task) {
+    const recurrenceByUser = task?.recurrenceByUser || {}
+    const recurrenceUserIds = Object.entries(recurrenceByUser)
+        .filter(([, recurrence]) => recurrence && recurrence !== RECURRENCE_NEVER)
+        .map(([userId]) => userId)
+
+    const explicitIds = Array.isArray(task?.activatedUserIds) ? task.activatedUserIds.filter(Boolean) : []
+    const mergedExplicit = [...new Set([...recurrenceUserIds, ...explicitIds])]
+    if (mergedExplicit.length > 0) return mergedExplicit
+
+    if (!task?.recurrence || task.recurrence === RECURRENCE_NEVER) return []
+
+    const fallbackIds = [task?.activatorUserId, task?.creatorUserId, task?.userId].filter(Boolean)
+    return [...new Set(fallbackIds)]
+}
+
+async function shouldExecuteTask(task, projectId, userDataCache = null, options = {}) {
+    const recurrenceForUser =
+        options.recurrenceValue || task?.recurrenceByUser?.[options.targetUserId] || task.recurrence
+    if (!task.startDate || !task.startTime || !recurrenceForUser || recurrenceForUser === RECURRENCE_NEVER) {
         return false
     }
 
-    // For assistant tasks, use creatorUserId (the actual user), not userId (which is the assistant ID)
-    const userId = task.creatorUserId || task.userId
+    // For assistant tasks, use a target activated user first, then fallback values.
+    const userId = options.targetUserId || task.activatorUserId || task.creatorUserId || task.userId
+    if (!userId) return false
+
+    const userLastExecuted = task?.lastExecutedByUser?.[userId] ?? task.lastExecuted
+    const taskForEvaluation = {
+        ...task,
+        activatorUserId: userId,
+        recurrence: recurrenceForUser,
+        lastExecuted: userLastExecuted,
+    }
 
     // Use cached user data if available to avoid repeated database reads
     let userData
@@ -51,14 +78,14 @@ async function shouldExecuteTask(task, projectId, userDataCache = null) {
         }
     }
 
-    const timezoneContext = resolveTimezoneContext(task, userData, {}, getNextExecutionTime)
+    const timezoneContext = resolveTimezoneContext(taskForEvaluation, userData, {}, getNextExecutionTime)
     const evaluation = timezoneContext.selectedEvaluation
 
     if (!evaluation) {
         console.warn('Unable to resolve timezone context for task, skipping execution check.', {
             taskId: task.id,
             taskName: task.name,
-            recurrence: task.recurrence,
+            recurrence: taskForEvaluation.recurrence,
             projectId,
         })
         return false
@@ -71,7 +98,7 @@ async function shouldExecuteTask(task, projectId, userDataCache = null) {
         taskName: task.name,
         startDate: task.startDate,
         startTime: task.startTime,
-        recurrence: task.recurrence,
+        recurrence: taskForEvaluation.recurrence,
         currentTime: evaluation.now.format('YYYY-MM-DD HH:mm:ss Z'),
         originalScheduledTime: evaluation.originalScheduledTime.format('YYYY-MM-DD HH:mm:ss Z'),
         effectiveTimezoneMinutes: evaluation.offsetMinutes,
@@ -98,7 +125,7 @@ async function shouldExecuteTask(task, projectId, userDataCache = null) {
     const lastExecutedUtc = evaluation.lastExecutedLocal.clone().utc()
 
     console.log('KW Special Task last executed - check ob die Datenbank Zeit geändert wurde:', {
-        lastExecuted: task.lastExecuted,
+        lastExecuted: taskForEvaluation.lastExecuted,
         lastExecutedLocal: evaluation.lastExecutedLocal.format('YYYY-MM-DD HH:mm:ss Z'),
         timezoneOffsetMinutes: evaluation.offsetMinutes,
     })
@@ -536,6 +563,14 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
 
     const taskDocRef = admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
     const previousLastExecuted = task.lastExecuted || null
+    const previousLastExecutedByUser = task?.lastExecutedByUser?.[activatorUserId]
+    const recurrenceForUser = task?.recurrenceByUser?.[activatorUserId] || task?.recurrence || RECURRENCE_NEVER
+    const taskWithActivator = {
+        ...task,
+        activatorUserId,
+        recurrence: recurrenceForUser,
+        lastExecuted: previousLastExecutedByUser ?? task.lastExecuted ?? null,
+    }
 
     // Get activator data from cache or fetch from DB
     let activatorData
@@ -556,7 +591,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         return // Skip execution if activator has no gold
     }
 
-    const timezoneContext = resolveTimezoneContext(task, activatorData || {}, {}, getNextExecutionTime)
+    const timezoneContext = resolveTimezoneContext(taskWithActivator, activatorData || {}, {}, getNextExecutionTime)
     const timezoneEvaluation = timezoneContext.selectedEvaluation
 
     const fallbackOffsetMinutes = normalizeTimezoneOffset(activatorData?.timezone || 0) ?? 0
@@ -568,7 +603,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     const originalScheduledForLogs =
         timezoneEvaluation?.originalScheduledTime?.clone() ||
         buildOriginalScheduledMoment({
-            task,
+            task: taskWithActivator,
             offsetMinutes: userTimezoneOffsetMinutes,
         })
 
@@ -592,7 +627,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         taskName: task.name,
         startDate: task.startDate,
         startTime: task.startTime,
-        recurrence: task.recurrence,
+        recurrence: taskWithActivator.recurrence,
         userTimezone: activatorData?.timezone,
         effectiveTimezoneMinutes: userTimezoneOffsetMinutes,
         effectiveTimezoneHours: userTimezoneOffsetHours,
@@ -610,6 +645,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         const startTimestamp = admin.firestore.Timestamp.now()
         await taskDocRef.update({
             lastExecuted: startTimestamp,
+            [`lastExecutedByUser.${activatorUserId}`]: startTimestamp.toMillis(),
             lastExecutionStarted: startTimestamp,
             lastExecutionCompleted: null,
             executionStatus: 'in_progress',
@@ -630,7 +666,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         const isPublicFor = task.isPublicFor || [FEED_PUBLIC_FOR_ALL]
 
         // Get follower IDs for proper notifications
-        const followerIds = await getTaskFollowerIds(executionProjectId, task.id, task)
+        const followerIds = await getTaskFollowerIds(executionProjectId, task.id, taskWithActivator)
 
         // Log parameters for debugging
         console.log('Calling generatePreConfigTaskResult with parameters:', {
@@ -664,7 +700,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             {
                 sendWhatsApp: task.sendWhatsApp,
                 name: task.name,
-                recurrence: task.recurrence,
+                recurrence: taskWithActivator.recurrence,
             }
         )
 
@@ -673,6 +709,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         // Update the lastExecuted timestamp
         await taskDocRef.update({
             lastExecuted: Date.now(),
+            [`lastExecutedByUser.${activatorUserId}`]: Date.now(),
             lastExecutionCompleted: Date.now(),
             executionStatus: 'succeeded',
             lastExecutionError: null,
@@ -683,7 +720,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 ? null
                 : getNextExecutionTime(
                       originalScheduledForLogs.clone(),
-                      task.recurrence,
+                      taskWithActivator.recurrence,
                       executionLocalMoment.clone(),
                       { suppressLogs: true }
                   )
@@ -715,6 +752,12 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             revertPayload.lastExecuted = previousLastExecuted
         } else {
             revertPayload.lastExecuted = admin.firestore.FieldValue.delete()
+        }
+
+        if (typeof previousLastExecutedByUser === 'number') {
+            revertPayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
+        } else {
+            revertPayload[`lastExecutedByUser.${activatorUserId}`] = admin.firestore.FieldValue.delete()
         }
 
         try {
@@ -866,7 +909,7 @@ function isUserActive(userId, activeUsersMap) {
 
 /**
  * Execute tasks in parallel batches
- * @param {Array} tasksToExecute - Array of {projectId, assistantId, task} objects
+ * @param {Array} tasksToExecute - Array of {projectId, assistantId, task, activatorUserId} objects
  * @param {number} concurrency - Number of tasks to execute in parallel
  * @param {Map} userDataCache - Map of userId -> userData for caching
  * @returns {Promise<Array>} - Results from all executions
@@ -895,8 +938,8 @@ async function executeBatch(tasksToExecute, concurrency = 20, userDataCache = nu
 
         const batchStartTime = Date.now()
         const batchResults = await Promise.allSettled(
-            batch.map(({ projectId, assistantId, task }) =>
-                executeAssistantTask(projectId, assistantId, task, userDataCache)
+            batch.map(({ projectId, assistantId, task, activatorUserId }) =>
+                executeAssistantTask(projectId, assistantId, { ...task, activatorUserId }, userDataCache)
             )
         )
 
@@ -1051,73 +1094,91 @@ async function checkAndExecuteRecurringTasks() {
                     totalTasksChecked++
 
                     try {
-                        // Filter 1: Check if user is active (logged in within 30 days)
-                        if (activeUsersMap.size > 0) {
-                            const taskUserId = task.creatorUserId || task.userId
-                            if (!isUserActive(taskUserId, activeUsersMap)) {
+                        const activatedUserIds = getActivatedUserIdsForTask(task)
+
+                        for (const activatedUserId of activatedUserIds) {
+                            const recurrenceForUser =
+                                task?.recurrenceByUser?.[activatedUserId] || task.recurrence || RECURRENCE_NEVER
+                            if (!recurrenceForUser || recurrenceForUser === RECURRENCE_NEVER) {
+                                continue
+                            }
+
+                            // Filter 1: Check if user is active (logged in within 30 days)
+                            if (activeUsersMap.size > 0 && !isUserActive(activatedUserId, activeUsersMap)) {
                                 console.log('Skipping recurring task due to inactive user:', {
                                     projectId,
                                     assistantId,
                                     taskId: task.id,
                                     taskName: task.name,
-                                    taskUserId,
+                                    taskUserId: activatedUserId,
                                 })
                                 tasksSkippedInactiveUser++
                                 continue
                             }
-                        }
 
-                        // Filter 2: Check if task should execute based on timing
-                        console.log('Evaluating recurring task for execution eligibility:', {
-                            projectId,
-                            assistantId,
-                            taskId: task.id,
-                            taskName: task.name,
-                            recurrence: task.recurrence,
-                            startDate: task.startDate,
-                            startTime: task.startTime,
-                        })
-                        if (await shouldExecuteTask(task, projectId, activeUsersMap)) {
-                            console.log('Recurring task marked for execution:', {
+                            // Filter 2: Check if task should execute based on timing
+                            console.log('Evaluating recurring task for execution eligibility:', {
                                 projectId,
                                 assistantId,
                                 taskId: task.id,
                                 taskName: task.name,
+                                recurrence: recurrenceForUser,
+                                startDate: task.startDate,
+                                startTime: task.startTime,
+                                activatedUserId,
                             })
-
-                            // CRITICAL: Update lastExecuted immediately to prevent re-queueing
-                            const taskDocRef = admin
-                                .firestore()
-                                .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
-
-                            try {
-                                await taskDocRef.update({
-                                    lastExecuted: Date.now(),
+                            if (
+                                await shouldExecuteTask(task, projectId, activeUsersMap, {
+                                    targetUserId: activatedUserId,
+                                    recurrenceValue: recurrenceForUser,
                                 })
-                                console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                            ) {
+                                console.log('Recurring task marked for execution:', {
                                     projectId,
                                     assistantId,
                                     taskId: task.id,
                                     taskName: task.name,
+                                    activatedUserId,
                                 })
-                            } catch (error) {
-                                console.error('Failed to pre-emptively update lastExecuted:', {
-                                    error: error.message,
+
+                                // CRITICAL: Update lastExecuted for this user immediately to prevent re-queueing
+                                const taskDocRef = admin
+                                    .firestore()
+                                    .doc(`assistantTasks/${projectId}/${assistantId}/${task.id}`)
+
+                                try {
+                                    await taskDocRef.update({
+                                        lastExecuted: Date.now(),
+                                        [`lastExecutedByUser.${activatedUserId}`]: Date.now(),
+                                    })
+                                    console.log('Pre-emptively updated lastExecuted to prevent duplicate queueing:', {
+                                        projectId,
+                                        assistantId,
+                                        taskId: task.id,
+                                        taskName: task.name,
+                                        activatedUserId,
+                                    })
+                                } catch (error) {
+                                    console.error('Failed to pre-emptively update lastExecuted:', {
+                                        error: error.message,
+                                        projectId,
+                                        assistantId,
+                                        taskId: task.id,
+                                        activatedUserId,
+                                    })
+                                }
+
+                                tasksToExecute.push({ projectId, assistantId, task, activatorUserId: activatedUserId })
+                            } else {
+                                console.log('Recurring task not ready for execution at this run:', {
                                     projectId,
                                     assistantId,
                                     taskId: task.id,
+                                    taskName: task.name,
+                                    activatedUserId,
                                 })
+                                tasksSkippedTiming++
                             }
-
-                            tasksToExecute.push({ projectId, assistantId, task })
-                        } else {
-                            console.log('Recurring task not ready for execution at this run:', {
-                                projectId,
-                                assistantId,
-                                taskId: task.id,
-                                taskName: task.name,
-                            })
-                            tasksSkippedTiming++
                         }
                     } catch (error) {
                         console.error('Error checking task:', {
@@ -1148,7 +1209,7 @@ async function checkAndExecuteRecurringTasks() {
         // but provides an extra layer of protection
         const taskMap = new Map()
         for (const taskEntry of tasksToExecute) {
-            const key = `${taskEntry.projectId}/${taskEntry.assistantId}/${taskEntry.task.id}`
+            const key = `${taskEntry.projectId}/${taskEntry.assistantId}/${taskEntry.task.id}/${taskEntry.activatorUserId}`
             if (!taskMap.has(key)) {
                 taskMap.set(key, taskEntry)
             } else {
@@ -1157,6 +1218,7 @@ async function checkAndExecuteRecurringTasks() {
                     assistantId: taskEntry.assistantId,
                     taskId: taskEntry.task.id,
                     taskName: taskEntry.task.name,
+                    activatorUserId: taskEntry.activatorUserId,
                 })
             }
         }

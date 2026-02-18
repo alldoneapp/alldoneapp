@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
+import Hotkeys from 'react-hot-keys'
 import v4 from 'uuid/v4'
 
 import store from '../../redux/store'
 import styles, { colors } from '../styles/global'
 import NoteMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Notes/NoteMoreButton'
+import Shortcut from '../UIControls/Shortcut'
 import { ALL_PROJECTS_INDEX, checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import ChangeObjectListModal from '../UIComponents/FloatModals/ChangeObjectListModal'
 import { translate } from '../../i18n/TranslationService'
@@ -28,6 +30,9 @@ export default function NotesHeader() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const showShortcuts = useSelector(state => state.showShortcuts)
+    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const [projectIds, setProjectIds] = useState([])
     const [open, setOpen] = useState(false)
     const [notesAmount, setNotesAmount] = useState(0)
@@ -62,6 +67,12 @@ export default function NotesHeader() {
 
     return (
         <View style={localStyles.container}>
+            <Hotkeys
+                disabled={blockShortcuts || !showShortcuts || showFloatPopup !== 0 || !accessGranted}
+                keyName={'s,alt+s'}
+                onKeyDown={() => setOpen(true)}
+                filter={e => true}
+            />
             <View style={localStyles.info}>
                 <View>
                     <Popover
@@ -78,6 +89,9 @@ export default function NotesHeader() {
                         </TouchableOpacity>
                     </Popover>
                 </View>
+                {showShortcuts && showFloatPopup === 0 && accessGranted && !mobile && (
+                    <Shortcut text={'S'} containerStyle={localStyles.shortcut} />
+                )}
                 <View style={{ top: 2 }}>
                     <NoteMoreButton projectId={project?.id} user={currentUser} />
                 </View>
@@ -109,5 +123,8 @@ const localStyles = StyleSheet.create({
     info: {
         flexDirection: 'row',
         alignItems: 'baseline',
+    },
+    shortcut: {
+        marginLeft: 8,
     },
 })
