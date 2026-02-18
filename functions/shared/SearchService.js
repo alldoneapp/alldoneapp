@@ -1037,8 +1037,8 @@ class SearchService {
                 break
             case ENTITY_TYPES.CONTACTS:
             case ENTITY_TYPES.USERS:
-                // Contacts/users use isPrivate field + exclude assistants for users
-                filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+                // Enforce visibility via access list, not isPrivate flag
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
                 if (entityType === ENTITY_TYPES.USERS) {
                     filters.push('isAssistant:false')
                 }
@@ -1046,13 +1046,13 @@ class SearchService {
             case ENTITY_TYPES.ASSISTANTS:
                 // Assistants are public but marked as isAssistant:true
                 filters.push('isAssistant:true')
-                filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
                 break
             case ENTITY_TYPES.TASKS:
             case ENTITY_TYPES.NOTES:
             default:
-                // Tasks and notes use isPrivate field
-                filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+                // Enforce visibility via access list, not isPrivate flag
+                filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
                 break
         }
 
@@ -1584,7 +1584,7 @@ class SearchService {
         let query = noteTitle || ''
 
         // Add project filter if specified
-        let filters = [`(isPrivate:false OR isPublicFor:${userId})`]
+        let filters = [`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`]
 
         if (projectId) {
             filters.push(`projectId:${projectId}`)

@@ -688,8 +688,8 @@ class TaskSearchService {
                 }
             }
 
-            // Visibility filter (tasks use isPrivate field)
-            filters.push(`(isPrivate:false OR isPublicFor:${userId})`)
+            // Enforce visibility via access list, not isPrivate flag
+            filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
 
             const searchOptions = {
                 filters: filters.join(' AND '),

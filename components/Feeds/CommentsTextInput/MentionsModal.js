@@ -257,18 +257,18 @@ export default function MentionsModal({
 
         if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
             filters = isGuide
-                ? `projectId:${projectId} AND userId:${loggedUser.uid} AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
-                : `projectId:${projectId} AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
+                ? `projectId:${projectId} AND userId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
             // Search notes across all projects the user has access to
-            filters = `(isPrivate:false OR isPublicFor:${loggedUser.uid})`
+            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
             filters = isGuide
                 ? `projectId:${projectId} AND ownerId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
                 : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
             // Search contacts across all projects the user has access to
-            filters = `(isPrivate:false OR isPublicFor:${loggedUser.uid})`
+            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
             filters = `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         }

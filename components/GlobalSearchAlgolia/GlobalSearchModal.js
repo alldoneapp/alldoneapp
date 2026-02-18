@@ -483,9 +483,9 @@ export default function GlobalSearchModal() {
         if (indexPrefix === GOALS_INDEX_NAME_PREFIX || indexPrefix === CHATS_INDEX_NAME_PREFIX) {
             filters = `(${projectsIdsFilter}) AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            filters = `(${projectsIdsFilter}) AND (isPrivate:false OR isPublicFor:${loggedUser.uid}) AND isAssistant:false`
+            filters = `(${projectsIdsFilter}) AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid}) AND isAssistant:false`
         } else {
-            filters = `(${projectsIdsFilter}) AND (isPrivate:false OR isPublicFor:${loggedUser.uid})`
+            filters = `(${projectsIdsFilter}) AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         }
 
         try {
