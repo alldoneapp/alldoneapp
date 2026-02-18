@@ -4,9 +4,93 @@ const { deductGold } = require('../Gold/goldHelper')
 
 const ENRICHMENT_GOLD_COST = 30
 
+function isValidHttpUrl(value) {
+    return typeof value === 'string' && /^https?:\/\//i.test(value.trim())
+}
+
+function addUrlCandidate(candidates, source, url) {
+    if (!isValidHttpUrl(url)) return
+    candidates.push({ source, url: url.trim() })
+}
+
+function buildUrlFromVectorImage(vectorImage) {
+    if (!vectorImage || typeof vectorImage !== 'object') return null
+    const rootUrl = vectorImage.rootUrl
+    const artifacts = Array.isArray(vectorImage.artifacts) ? vectorImage.artifacts : []
+    if (!isValidHttpUrl(rootUrl) || artifacts.length === 0) return null
+
+    const sortedArtifacts = [...artifacts].sort((a, b) => {
+        const areaA = (a?.width || 0) * (a?.height || 0)
+        const areaB = (b?.width || 0) * (b?.height || 0)
+        return areaB - areaA
+    })
+
+    for (const artifact of sortedArtifacts) {
+        const segment = artifact?.fileIdentifyingUrlPathSegment || artifact?.fileIdentifyingUrl
+        if (typeof segment === 'string' && segment.trim()) {
+            return `${rootUrl}${segment}`
+        }
+    }
+    return null
+}
+
+function collectUrlsFromImageObject(candidates, source, imageObject) {
+    if (!imageObject || typeof imageObject !== 'object') return
+
+    addUrlCandidate(candidates, source, imageObject.url)
+    addUrlCandidate(candidates, source, imageObject.imageUrl)
+    addUrlCandidate(candidates, source, imageObject.originalUrl)
+    addUrlCandidate(candidates, source, imageObject.croppedImage)
+    addUrlCandidate(candidates, source, imageObject.displayImage)
+
+    const fromVectorImage = buildUrlFromVectorImage(imageObject.vectorImage)
+    addUrlCandidate(candidates, source, fromVectorImage)
+}
+
+function getLinkedInPhotoCandidate(profile) {
+    const candidates = []
+
+    addUrlCandidate(candidates, 'profile.profilePicHighQuality', profile.profilePicHighQuality)
+    addUrlCandidate(candidates, 'profile.profilePic', profile.profilePic)
+    addUrlCandidate(candidates, 'profile.profilePicture', profile.profilePicture)
+    addUrlCandidate(candidates, 'profile.avatar', profile.avatar)
+
+    if (Array.isArray(profile.profilePicAllDimensions)) {
+        profile.profilePicAllDimensions.forEach((item, index) =>
+            collectUrlsFromImageObject(candidates, `profile.profilePicAllDimensions[${index}]`, item)
+        )
+    } else {
+        collectUrlsFromImageObject(candidates, 'profile.profilePicAllDimensions', profile.profilePicAllDimensions)
+    }
+
+    if (Array.isArray(profile.profilePictureAllDimensions)) {
+        profile.profilePictureAllDimensions.forEach((item, index) =>
+            collectUrlsFromImageObject(candidates, `profile.profilePictureAllDimensions[${index}]`, item)
+        )
+    } else {
+        collectUrlsFromImageObject(
+            candidates,
+            'profile.profilePictureAllDimensions',
+            profile.profilePictureAllDimensions
+        )
+    }
+
+    const preferredCandidate =
+        candidates.find(c => c.source.includes('HighQuality')) ||
+        candidates.find(c => c.source.includes('AllDimensions')) ||
+        candidates[0]
+
+    return preferredCandidate || { source: 'none', url: '' }
+}
+
 async function uploadLinkedInPhoto(photoUrl, projectId, contactId) {
     console.log('[LinkedIn Enrichment] Downloading photo from:', photoUrl)
-    const photoResponse = await fetch(photoUrl)
+    const photoResponse = await fetch(photoUrl, {
+        headers: {
+            Accept: 'image/*,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (compatible; AlldoneBot/1.0)',
+        },
+    })
     if (!photoResponse.ok) {
         console.warn('[LinkedIn Enrichment] Failed to download photo:', photoResponse.status)
         return null
@@ -102,8 +186,10 @@ const enrichContactViaLinkedIn = async (data, userId) => {
         description: profile.about || '',
     }
 
-    // Upload LinkedIn photo to Firebase Storage if available
-    const linkedInPhotoUrl = profile.profilePicHighQuality || profile.profilePic || ''
+    // Upload LinkedIn photo to Firebase Storage if available.
+    // Apify may return null for profilePic/profilePicHighQuality while still providing URLs in profilePicAllDimensions.
+    const { source: linkedInPhotoSource, url: linkedInPhotoUrl } = getLinkedInPhotoCandidate(profile)
+    console.log('[LinkedIn Enrichment] Selected photo source:', linkedInPhotoSource)
     if (linkedInPhotoUrl && projectId && contactId) {
         try {
             const storageUrl = await uploadLinkedInPhoto(linkedInPhotoUrl, projectId, contactId)
@@ -113,6 +199,8 @@ const enrichContactViaLinkedIn = async (data, userId) => {
         } catch (photoError) {
             console.warn('[LinkedIn Enrichment] Photo upload failed:', photoError.message)
         }
+    } else {
+        console.log('[LinkedIn Enrichment] No usable LinkedIn photo URL found for this profile')
     }
 
     console.log('[LinkedIn Enrichment] Enriched data:', JSON.stringify(enrichedData))

@@ -412,9 +412,9 @@ class ContactProperties extends Component {
                                         <Popover
                                             content={
                                                 <ChangeTextFieldModal
-                                                    header={translate('Edit LinkedIn URL')}
-                                                    subheader={translate('Type the LinkedIn profile URL')}
-                                                    label={translate('LinkedIn URL')}
+                                                    header={'Edit LinkedIn URL'}
+                                                    subheader={'Type the LinkedIn profile URL'}
+                                                    label={'LinkedIn URL'}
                                                     placeholder={'https://www.linkedin.com/in/...'}
                                                     closePopover={() => this.hideModal('showLinkedInModal')}
                                                     onSaveData={value => this.changePropertyValue('linkedInUrl', value)}
