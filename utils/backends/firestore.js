@@ -135,6 +135,7 @@ import {
 } from '../../components/Workstreams/WorkstreamHelper'
 import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 import { SIDEBAR_COLLAPSED } from '../../components/SidebarMenu/Collapsible/CollapsibleHelper'
+import { SIDEBAR_NAVIGATION_SIMPLE } from '../SidebarNavigationModes'
 import GoogleApi from '../../apis/google/GoogleApi'
 import apiCalendar from '../../apis/google/calendar/apiCalendar'
 import { setServerTokenInGoogleApi, hasServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
@@ -3454,7 +3455,7 @@ export function mapUserData(userId, user) {
         somedayTaskTriggerPercent: user.somedayTaskTriggerPercent != null ? user.somedayTaskTriggerPercent : 10,
         numberGoalsAllTeams: user.numberGoalsAllTeams != null ? user.numberGoalsAllTeams : 5,
         numberChatsAllTeams: user.numberChatsAllTeams != null ? user.numberChatsAllTeams : 5,
-        numberUsersSidebar: user.numberUsersSidebar != null ? user.numberUsersSidebar : 3,
+        numberUsersSidebar: user.numberUsersSidebar != null ? user.numberUsersSidebar : 5,
         defaultCameraId: user.defaultCameraId ? user.defaultCameraId : 'default',
         defaultAudioInputId: user.defaultAudioInputId ? user.defaultAudioInputId : 'default',
         lastEditionDate: user.lastEditionDate ? user.lastEditionDate : Date.now(),
@@ -3472,6 +3473,7 @@ export function mapUserData(userId, user) {
         pushNotificationsStatus: user.pushNotificationsStatus ? user.pushNotificationsStatus : false,
         workstreams: user.workstreams ? user.workstreams : {},
         themeName: user.themeName ? user.themeName : COLORS_THEME_MODERN,
+        sidebarNavigationMode: user.sidebarNavigationMode || SIDEBAR_NAVIGATION_SIMPLE,
         sidebarExpanded: user.sidebarExpanded ? user.sidebarExpanded : SIDEBAR_COLLAPSED,
         gold: user.gold ? user.gold : 0,
         dailyGold: user.dailyGold || user.dailyGold === 0 ? user.dailyGold : DAILY_GOLD_LIMIT,

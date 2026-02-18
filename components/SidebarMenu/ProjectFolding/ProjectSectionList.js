@@ -19,13 +19,17 @@ import Chats from './SectionItems/Chats'
 import { PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 import Goals from './SectionItems/Goals'
 import NavigationService from '../../../utils/NavigationService'
+import TasksBoards from './SectionItems/TasksBoards'
+import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 
 export default function ProjectSectionList({ projectData, projectType, isShared, inAllProjects }) {
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const route = useSelector(state => state.route)
+    const sidebarNavigationMode = useSelector(state => state.loggedUser.sidebarNavigationMode)
 
     const projectColor = projectData?.color || PROJECT_COLOR_DEFAULT
+    const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
 
     function navigateToRoot() {
         // Navigate to root if not in root
@@ -34,7 +38,20 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
         }
     }
 
-    return (
+    return simpleNavigation ? (
+        <View>
+            {projectData && (
+                <TasksBoards
+                    projectId={projectData.id}
+                    projectColor={projectColor}
+                    projectIndex={projectData.index}
+                    projectType={projectType}
+                    isShared={isShared}
+                    globalAssistantIds={projectData.globalAssistantIds}
+                />
+            )}
+        </View>
+    ) : (
         <View>
             <Tasks
                 navigateToRoot={navigateToRoot}

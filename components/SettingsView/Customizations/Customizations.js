@@ -19,6 +19,7 @@ import Language from './Properties/Language'
 import { useTranslator } from '../../../i18n/TranslationService'
 import Header from './Header'
 import DefaultProject from './Properties/DefaultProject/DefaultProject'
+import SidebarNavigation from './Properties/SidebarNavigation'
 
 const Customizations = () => {
     useTranslator()
@@ -53,6 +54,10 @@ const Customizations = () => {
 
                 <View style={{ flex: 1 }}>
                     <Theme userId={loggedUser.uid} themeName={loggedUser.themeName} />
+                    <SidebarNavigation
+                        userId={loggedUser.uid}
+                        sidebarNavigationMode={loggedUser.sidebarNavigationMode}
+                    />
                     <DefaultProject user={loggedUser} />
                     <Language userId={loggedUser.uid} language={loggedUser.language} />
                     <NotificationEmail

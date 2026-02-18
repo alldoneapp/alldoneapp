@@ -53,6 +53,7 @@ import { GLOBAL_PROJECT_ID } from '../components/AdminPanel/Assistants/assistant
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import { getGoalData } from './backends/Goals/goalsFirestore'
 import { getChatMeta } from './backends/Chats/chatsFirestore'
+import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
 
 class SharedHelper {
     static processUrl = async (isLoggedIn, URL, onIsMember, onIsShared, onNotShared, onNotMatch, onJoinToTemplate) => {
@@ -534,6 +535,7 @@ export const ANONYMOUS_USER_DATA = {
     photoURL: 'https://mystaging.alldone.app/images/generic-user.svg',
     isAnonymous: true,
     themeName: COLORS_THEME_MODERN,
+    sidebarNavigationMode: SIDEBAR_NAVIGATION_SIMPLE,
     sidebarExpanded: SIDEBAR_COLLAPSED,
     language: getDeviceLanguage(),
     timezone: parseInt(momentTz().format('Z')),

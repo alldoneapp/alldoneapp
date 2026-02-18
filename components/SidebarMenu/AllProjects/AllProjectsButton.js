@@ -11,7 +11,7 @@ import {
 } from '../../../redux/actions'
 import styles, { em2px } from '../../styles/global'
 import { PROJECT_TYPE_ACTIVE, PROJECT_TYPE_GUIDE } from '../../SettingsView/ProjectsSettings/ProjectsSettings'
-import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { checkIfSelectedAllProjects } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../utils/NavigationService'
 import { FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
 import { ROOT_ROUTES } from '../../../utils/TabNavigationConstants'
@@ -23,6 +23,8 @@ import useCollapsibleSidebar from '../Collapsible/UseCollapsibleSidebar'
 import useOnHover from '../../../hooks/UseOnHover'
 import AmountBadgeContainer from './AmountBadgeContainer'
 import ItemShortcut from '../Items/Common/ItemShortcut'
+import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
+import AmountBadge from '../ProjectFolding/Common/AmountBadge'
 
 export default function AllProjectsButton() {
     const dispatch = useDispatch()
@@ -34,8 +36,14 @@ export default function AllProjectsButton() {
     const selectedTypeOfProject = useSelector(state => state.selectedTypeOfProject)
     const shortcutSelectedProjectIndex = useSelector(state => state.shortcutSelectedProjectIndex)
     const route = useSelector(state => state.route)
+    const sidebarNavigationMode = useSelector(state => state.loggedUser.sidebarNavigationMode)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const sidebarNumbers = useSelector(state => state.sidebarNumbers)
+    const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
+    const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+    const simpleNavigation = isSimpleSidebarNavigation(sidebarNavigationMode)
 
     const { expanded } = useCollapsibleSidebar()
 
@@ -47,6 +55,17 @@ export default function AllProjectsButton() {
     const { hover, onHover, offHover } = useOnHover(highlight, highlight)
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.AllProjects')
+
+    let allProjectsTasksAmount = 0
+    for (let projectId in sidebarNumbers) {
+        if (
+            sidebarNumbers[projectId]?.[loggedUserId] &&
+            !templateProjectIds.includes(projectId) &&
+            !archivedProjectIds.includes(projectId)
+        ) {
+            allProjectsTasksAmount += sidebarNumbers[projectId][loggedUserId]
+        }
+    }
 
     useEffect(() => {
         if (checkIfSelectedAllProjects(shortcutSelectedProjectIndex)) onPress()
@@ -96,7 +115,12 @@ export default function AllProjectsButton() {
                 )}
             </View>
 
-            {!inAllProjects && <AmountBadgeContainer />}
+            {simpleNavigation && expanded && allProjectsTasksAmount > 0 && (
+                <View style={localStyles.simpleAmountContainer}>
+                    <AmountBadge amount={allProjectsTasksAmount} highlight={inAllProjects} active={inAllProjects} />
+                </View>
+            )}
+            {!simpleNavigation && !inAllProjects && <AmountBadgeContainer />}
         </TouchableOpacity>
     )
 }
@@ -144,5 +168,10 @@ const localStyles = StyleSheet.create({
         fontSize: 16,
         lineHeight: 24,
         letterSpacing: em2px(0.02),
+    },
+    simpleAmountContainer: {
+        marginRight: 24,
+        paddingLeft: 8,
+        flexDirection: 'row',
     },
 })

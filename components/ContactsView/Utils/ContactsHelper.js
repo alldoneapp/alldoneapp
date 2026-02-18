@@ -704,7 +704,7 @@ export const getNewDefaultUser = (customData = {}) => {
 
         numberGoalsAllTeams: 5,
         numberChatsAllTeams: 5,
-        numberUsersSidebar: 3,
+        numberUsersSidebar: 5,
         defaultCameraId: 'default',
         defaultAudioInputId: 'default',
         lastEditorId: customData.uid,

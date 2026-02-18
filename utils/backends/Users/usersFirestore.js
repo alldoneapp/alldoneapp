@@ -818,6 +818,10 @@ export async function setUserThemeName(userId, themeName) {
     getDb().doc(`users/${userId}`).update({ themeName })
 }
 
+export async function setUserSidebarNavigationMode(userId, sidebarNavigationMode) {
+    getDb().doc(`users/${userId}`).update({ sidebarNavigationMode })
+}
+
 export async function setUserSidebarExpanded(userId, expanded) {
     getDb().doc(`users/${userId}`).update({ sidebarExpanded: expanded })
 }
