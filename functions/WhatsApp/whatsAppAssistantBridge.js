@@ -12,6 +12,8 @@ const { getConversationHistory, storeAssistantMessageInTopic } = require('./what
 
 const MAX_TOOL_ITERATIONS = 10
 const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
+const TASK_CREATION_FAILURE_MESSAGE = 'I could not create that task because of a technical issue. Please try again.'
+const GENERIC_TOOL_FAILURE_MESSAGE = 'I could not complete that action because of a technical issue. Please try again.'
 
 /**
  * Process a WhatsApp message through the AI assistant pipeline.
@@ -144,6 +146,14 @@ async function collectStreamWithToolCalls(
 ) {
     let responseText = ''
     let currentConversation = conversationHistory
+    const toolEvidence = {
+        createTask: {
+            called: false,
+            succeeded: false,
+            taskId: null,
+            projectId: null,
+        },
+    }
 
     for await (const chunk of stream) {
         // Handle tool calls
@@ -184,10 +194,25 @@ async function collectStreamWithToolCalls(
                     toolResult = await executeToolNatively(toolName, toolArgs, projectId, assistantId, requestUserId, {
                         message: getMessageTextForTokenCounting(conversationHistory.find(m => m[0] === 'user')?.[1]),
                     })
+
+                    if (toolName === 'create_task') {
+                        const taskId = toolResult?.taskId || toolResult?.taskid || null
+                        const createdProjectId = toolResult?.projectId || toolResult?.projectid || null
+                        const success = toolResult?.success === true
+
+                        toolEvidence.createTask.called = true
+                        toolEvidence.createTask.taskId = taskId
+                        toolEvidence.createTask.projectId = createdProjectId
+                        toolEvidence.createTask.succeeded = success && !!taskId && !!createdProjectId
+
+                        if (success && (!taskId || !createdProjectId)) {
+                            throw new Error('create_task returned success without taskId/projectId')
+                        }
+                    }
                 } catch (error) {
                     console.error('WhatsApp: Tool execution failed:', error.message)
                     responseText += `\n\nError executing ${toolName}: ${error.message}`
-                    return responseText
+                    return toolName === 'create_task' ? TASK_CREATION_FAILURE_MESSAGE : GENERIC_TOOL_FAILURE_MESSAGE
                 }
 
                 // Build updated conversation with tool result
@@ -260,7 +285,49 @@ async function collectStreamWithToolCalls(
         }
     }
 
-    return responseText.trim()
+    return enforceSafeTaskResponse(responseText.trim(), toolEvidence)
+}
+
+function enforceSafeTaskResponse(responseText, toolEvidence) {
+    if (!responseText) return responseText
+
+    if (containsUndefinedPlaceholders(responseText)) {
+        console.warn('WhatsApp: Blocking assistant response with undefined placeholders')
+        return TASK_CREATION_FAILURE_MESSAGE
+    }
+
+    const createTaskEvidence = toolEvidence?.createTask
+    if (createTaskEvidence?.called && !createTaskEvidence?.succeeded) {
+        console.warn('WhatsApp: Blocking assistant task success message due to missing create_task IDs', {
+            taskId: createTaskEvidence.taskId,
+            projectId: createTaskEvidence.projectId,
+        })
+        return TASK_CREATION_FAILURE_MESSAGE
+    }
+
+    if (mentionsTaskCreation(responseText) && !createTaskEvidence?.called) {
+        console.warn('WhatsApp: Blocking assistant task creation claim without create_task tool call evidence')
+        return TASK_CREATION_FAILURE_MESSAGE
+    }
+
+    return responseText
+}
+
+function containsUndefinedPlaceholders(text) {
+    if (!text) return false
+    return /\bundefined\b/i.test(text)
+}
+
+function mentionsTaskCreation(text) {
+    if (!text) return false
+    const taskCreationPatterns = [
+        /\bcreated (a |the )?(new )?(task|todo)\b/i,
+        /\b(task|todo)\b.{0,30}\b(created|added)\b/i,
+        /\badded (a |the )?(new )?(task|todo)\b/i,
+        /\baufgabe\b.{0,30}\b(erstellt|angelegt)\b/i,
+        /\b(erstellt|angelegt)\b.{0,30}\baufgabe\b/i,
+    ]
+    return taskCreationPatterns.some(pattern => pattern.test(text))
 }
 
 module.exports = {

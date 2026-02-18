@@ -1438,10 +1438,28 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     }
                 )
 
+                // Enforce strict create_task result contract to prevent undefined IDs leaking to user messages
+                const creationSucceeded = result?.success !== false
+                const resolvedTaskId = result?.taskId || result?.taskid || result?.id || result?.task?.id || null
+                const resolvedProjectId = targetProjectId || result?.projectId || result?.projectid || null
+
+                if (!creationSucceeded) {
+                    throw new Error(result?.message || 'Task creation returned unsuccessful result')
+                }
+                if (!resolvedTaskId || !resolvedProjectId) {
+                    console.error('📝 CREATE_TASK TOOL: Invalid result contract', {
+                        success: result?.success,
+                        taskId: result?.taskId,
+                        projectId: result?.projectId,
+                        resultKeys: result ? Object.keys(result) : [],
+                    })
+                    throw new Error('Task created without valid taskId/projectId')
+                }
+
                 // Handle alert if alertEnabled is true
                 if (toolArgs.alertEnabled && processedDueDate) {
                     console.log('📝 CREATE_TASK TOOL: Enabling alert', {
-                        taskId: result.taskId,
+                        taskId: resolvedTaskId,
                         dueDate: processedDueDate,
                     })
 
@@ -1451,13 +1469,13 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
 
                     console.log('📝 CREATE_TASK TOOL: Calling setTaskAlert', {
-                        taskId: result.taskId,
-                        projectId: targetProjectId,
+                        taskId: resolvedTaskId,
+                        projectId: resolvedProjectId,
                         alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
                     })
 
                     // Update alert server-side (Cloud)
-                    await setTaskAlertCloud(targetProjectId, result.taskId, true, alertMoment, {
+                    await setTaskAlertCloud(resolvedProjectId, resolvedTaskId, true, alertMoment, {
                         ...result.task,
                         dueDate: processedDueDate,
                     })
@@ -1466,9 +1484,9 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 }
 
                 // Fetch project name if not already resolved (for context/default project fallbacks)
-                if (!targetProjectName && targetProjectId) {
+                if (!targetProjectName && resolvedProjectId) {
                     try {
-                        const projectDoc = await db.collection('projects').doc(targetProjectId).get()
+                        const projectDoc = await db.collection('projects').doc(resolvedProjectId).get()
                         if (projectDoc.exists) {
                             targetProjectName = projectDoc.data().name || null
                         }
@@ -1478,9 +1496,9 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 }
 
                 return {
-                    success: result.success,
-                    taskId: result.taskId,
-                    projectId: targetProjectId,
+                    success: true,
+                    taskId: resolvedTaskId,
+                    projectId: resolvedProjectId,
                     projectName: targetProjectName,
                     message: result.message,
                     task: result.task,
