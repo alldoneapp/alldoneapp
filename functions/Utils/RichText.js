@@ -141,12 +141,27 @@ const parseRichText = text => {
 }
 
 const getDomain = link => {
-    let hostname = link
+    const safeLink = String(link || '').trim()
+    if (!safeLink) return ''
 
-    if (link.indexOf('//') > -1) {
-        hostname = link.split('//')[1]
+    const cleanedLink = safeLink.replace(/[.,;:!?]+$/, '')
+    const normalizedLink = /^[a-z][a-z0-9+.-]*:\/\//i.test(cleanedLink) ? cleanedLink : `https://${cleanedLink}`
+
+    let hostname = cleanedLink
+    try {
+        const parsed = new URL(normalizedLink)
+        const host = parsed.hostname.replace(/^www\./i, '')
+        const path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : ''
+        const search = parsed.search || ''
+        const hash = parsed.hash || ''
+        hostname = `${host}${path}${search}${hash}`
+    } catch (e) {
+        if (hostname.indexOf('//') > -1) {
+            hostname = hostname.split('//').slice(1).join('//')
+        }
+        hostname = hostname.replace(/^www\./i, '')
     }
-    hostname = hostname.replace('www.', '')
+
     return shrinkTagText(hostname)
 }
 

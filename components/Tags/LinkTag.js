@@ -909,13 +909,27 @@ export default function LinkTag({
 }
 
 export const getDomain = link => {
-    let hostname = link
+    const safeLink = String(link || '').trim()
+    if (!safeLink) return ''
 
-    if (link.indexOf('//') > -1) {
-        hostname = link.split('//')[1]
+    // Remove trailing punctuation that often appears in natural text.
+    const cleanedLink = safeLink.replace(/[.,;:!?]+$/, '')
+    const normalizedLink = /^[a-z][a-z0-9+.-]*:\/\//i.test(cleanedLink) ? cleanedLink : `https://${cleanedLink}`
+
+    try {
+        const parsed = new URL(normalizedLink)
+        const host = parsed.hostname.replace(/^www\./i, '')
+        const path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : ''
+        const search = parsed.search || ''
+        const hash = parsed.hash || ''
+        return `${host}${path}${search}${hash}`
+    } catch (e) {
+        let hostname = cleanedLink
+        if (hostname.indexOf('//') > -1) {
+            hostname = hostname.split('//').slice(1).join('//')
+        }
+        return hostname.replace(/^www\./i, '')
     }
-    hostname = hostname.replace('www.', '')
-    return hostname
 }
 
 export const getPathname = url => {
