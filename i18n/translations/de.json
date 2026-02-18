@@ -1064,6 +1064,7 @@
     "Start a new chat with the assistant": "Starte einen neuen Chat mit dem Assistenten",
     "Start a new chat": "Starte einen neuen Chat",
     "What can I do for you today?": "Wie kann ich dir heute helfen?",
+    "Last comment": "Letzter Kommentar",
     "Webhook": "Webhook",
     "Webhook URL": "Webhook URL",
     "Webhook URL placeholder": "https://ihr-service.com/api/endpunkt",

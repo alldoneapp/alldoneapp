@@ -9,6 +9,7 @@ import { watchTasksInWorkflow, unwatchTasksInWorkflow } from '../../../utils/bac
 import { filterPendingTasks } from '../../HashtagFilters/FilterHelpers/FilterTasks'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 
 export default function PendingTasksByProject({ project, inSelectedProject }) {
@@ -62,11 +63,23 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
         <View style={localStyles.container}>
             {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
                 <View style={{ marginTop: 16 }}>
-                    <AssistantLine />
+                    <AssistantLine showLastComment={false} />
                 </View>
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
-            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && <AssistantLine />}
+            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
+                <AssistantLine showLastComment={false} removeBottomSpace={true} />
+            )}
+            {!isAnonymous && inSelectedProject && (
+                <View
+                    style={[
+                        localStyles.lastCommentContainer,
+                        !isUsingDefaultProjectAssistant && localStyles.lastCommentContainerNoTopMargin,
+                    ]}
+                >
+                    <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                </View>
+            )}
             {filteredTasksByDateAndStep.map((item, index) => {
                 const dateFormated = item[0]
                 const tasksByStep = item[1]
@@ -98,5 +111,11 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
 const localStyles = StyleSheet.create({
     container: {
         marginBottom: 24,
+    },
+    lastCommentContainer: {
+        marginTop: 12,
+    },
+    lastCommentContainerNoTopMargin: {
+        marginTop: 0,
     },
 })

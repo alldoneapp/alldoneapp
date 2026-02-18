@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, View, Text } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { getCommentData } from './AssistantOptions/helper'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 import LastComment from './LastComment/LastComment'
+import { translate } from '../../../i18n/TranslationService'
+import { colors } from '../../styles/global'
 
-export default function LastCommentArea() {
+export default function LastCommentArea({ withTopMargin = true, useCardBackground = false }) {
     const defaultAssistant = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
@@ -30,7 +32,7 @@ export default function LastCommentArea() {
         }
     }, [aModalIsOpen, projectChatLastNotification, lastAssistantCommentData])
 
-    const { commentCreator, commentProject, isAssistant } = getCommentData(
+    const { commentCreator, commentProject } = getCommentData(
         project,
         currentProjectChatLastNotification,
         currentLastAssistantCommentData,
@@ -43,7 +45,14 @@ export default function LastCommentArea() {
     }
 
     return (
-        <View style={localStyles.container}>
+        <View
+            style={[
+                localStyles.container,
+                withTopMargin && localStyles.containerWithTopMargin,
+                useCardBackground && localStyles.cardContainer,
+            ]}
+        >
+            <Text style={localStyles.title}>{translate('Last comment')}</Text>
             <LastComment
                 project={commentProject}
                 setAModalIsOpen={setAModalIsOpen}
@@ -57,6 +66,23 @@ export default function LastCommentArea() {
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
-        marginTop: 32,
+    },
+    containerWithTopMargin: {
+        marginTop: 24,
+    },
+    cardContainer: {
+        backgroundColor: colors.Grey200,
+        borderRadius: 4,
+        paddingLeft: 10,
+        paddingRight: 16,
+        paddingTop: 14,
+        paddingBottom: 12,
+    },
+    title: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: colors.Text03,
+        marginBottom: 8,
+        textAlign: 'center',
     },
 })

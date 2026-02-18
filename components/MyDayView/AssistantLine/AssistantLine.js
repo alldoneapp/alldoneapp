@@ -7,11 +7,10 @@ import AssistantOptions from './AssistantOptions/AssistantOptions'
 import { calculateAmountOfOptionButtons } from './AssistantOptions/helper'
 import LastCommentArea from './LastCommentArea'
 
-export default function AssistantLine() {
+export default function AssistantLine({ showLastComment = true, removeBottomSpace = false }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
-    const globalAssistants = useSelector(state => state.globalAssistants)
     const loggedUser = useSelector(state => state.loggedUser)
     const [amountOfButtonOptions, setAmountOfButtonOptions] = useState(0)
 
@@ -37,9 +36,12 @@ export default function AssistantLine() {
     }
 
     return (
-        <View style={localStyles.container} onLayout={onLayout}>
+        <View
+            style={[localStyles.container, removeBottomSpace && localStyles.containerWithoutBottomSpace]}
+            onLayout={onLayout}
+        >
             <AssistantOptions amountOfButtonOptions={amountOfButtonOptions} />
-            <LastCommentArea />
+            {showLastComment && <LastCommentArea withTopMargin={true} />}
         </View>
     )
 }
@@ -56,6 +58,9 @@ const localStyles = StyleSheet.create({
         paddingRight: 16,
         paddingTop: 14,
         paddingBottom: 12,
+    },
+    containerWithoutBottomSpace: {
+        marginBottom: 0,
     },
     loadingContainer: {
         flex: 1,

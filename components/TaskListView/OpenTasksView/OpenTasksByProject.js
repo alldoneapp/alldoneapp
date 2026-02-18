@@ -19,6 +19,7 @@ import {
     setOpenMilestonesInProjectInTasks,
 } from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
 
@@ -120,7 +121,7 @@ export default function OpenTasksByProject({
                     <NeedShowMoreEmptyGoalsButton projectId={projectId} />
                     {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
                         <View style={{ marginTop: 16 }}>
-                            <AssistantLine />
+                            <AssistantLine showLastComment={false} />
                         </View>
                     )}
                     <ProjectHeader
@@ -130,7 +131,14 @@ export default function OpenTasksByProject({
                         showAddTask={!isAssistant}
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                     />
-                    {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && <AssistantLine />}
+                    {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
+                        <AssistantLine showLastComment={false} removeBottomSpace={true} />
+                    )}
+                    {!isAnonymous && inSelectedProject && (
+                        <View style={{ marginTop: isUsingDefaultProjectAssistant ? 12 : 0 }}>
+                            <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                        </View>
+                    )}
                     {filteredOpenTasksDates.map((dateFormated, index) => {
                         return (
                             <OpenTasksByDate

@@ -13,6 +13,7 @@ import ShowMoreButtonsArea from './ShowMoreButtonsArea'
 import useEarlierSubtasks from './useEarlierSubtasks'
 import moment from 'moment'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
@@ -74,11 +75,23 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
         <View style={localStyles.container}>
             {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
                 <View style={{ marginTop: 16 }}>
-                    <AssistantLine />
+                    <AssistantLine showLastComment={false} />
                 </View>
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
-            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && <AssistantLine />}
+            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
+                <AssistantLine showLastComment={false} removeBottomSpace={true} />
+            )}
+            {!isAnonymous && inSelectedProject && (
+                <View
+                    style={[
+                        localStyles.lastCommentContainer,
+                        !isUsingDefaultProjectAssistant && localStyles.lastCommentContainerNoTopMargin,
+                    ]}
+                >
+                    <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                </View>
+            )}
             {filteredTasksByDate.map((item, index) => {
                 const dateFormated = item[0]
                 const taskList = item[1]
@@ -114,5 +127,11 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
 const localStyles = StyleSheet.create({
     container: {
         marginBottom: 16,
+    },
+    lastCommentContainer: {
+        marginTop: 12,
+    },
+    lastCommentContainerNoTopMargin: {
+        marginTop: 0,
     },
 })
