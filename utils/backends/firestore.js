@@ -575,7 +575,12 @@ export function initGoogleTagManager(userId) {
 export function initFCM(userId) {
     const uid = userId ? userId : store.getState().loggedUser.uid
     const userRef = db.doc(`/users/${uid}`)
-    if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
+    if (
+        firebase.messaging &&
+        firebase.messaging.isSupported &&
+        firebase.messaging.isSupported() &&
+        typeof Notification !== 'undefined'
+    ) {
         // Use modern Notification API instead of deprecated messaging.requestPermission()
         Notification.requestPermission()
             .then(permission => {
@@ -621,7 +626,12 @@ export function initFCM(userId) {
 
 // Helper function to request notification permission - must be called from a user gesture
 export async function requestNotificationPermission() {
-    if (!firebase.messaging || !firebase.messaging.isSupported || !firebase.messaging.isSupported()) {
+    if (
+        !firebase.messaging ||
+        !firebase.messaging.isSupported ||
+        !firebase.messaging.isSupported() ||
+        typeof Notification === 'undefined'
+    ) {
         return { success: false, reason: 'Messaging not supported' }
     }
 
@@ -666,7 +676,12 @@ export async function requestNotificationPermission() {
 }
 
 export function initFCMonLoad() {
-    if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
+    if (
+        firebase.messaging &&
+        firebase.messaging.isSupported &&
+        firebase.messaging.isSupported() &&
+        typeof Notification !== 'undefined'
+    ) {
         // Check if permission was already granted before requesting
         // Only request permission in response to a user gesture to avoid browser violations
         if (Notification.permission === 'granted') {
@@ -823,7 +838,12 @@ export function getDb() {
 }
 
 export function getIsMessagingSupported() {
-    return firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()
+    return (
+        firebase.messaging &&
+        firebase.messaging.isSupported &&
+        firebase.messaging.isSupported() &&
+        typeof Notification !== 'undefined'
+    )
 }
 
 export async function tryAddUserToProjectByUidOrEmail(uidOrEmail, projectId) {

@@ -21,6 +21,7 @@ const NotificationSettingsModal = ({ setIsOpen }) => {
     const [pushNotifications, setPushNotifications] = useState(pushNotificationsStatus)
     const [whatsAppEnabled, setWhatsAppEnabled] = useState(!!receiveWhatsApp)
     const isSupported = getIsMessagingSupported()
+    const hasNotificationAPI = typeof Notification !== 'undefined'
 
     const onSave = () => {
         setUserReceiveEmails(uid, emailNotifications)
@@ -83,7 +84,7 @@ const NotificationSettingsModal = ({ setIsOpen }) => {
                         {translate('Push notifications are not supported')}
                     </Text>
                 )}
-                {Notification.permission === 'denied' && (
+                {hasNotificationAPI && Notification.permission === 'denied' && (
                     <Text style={[localStyles.subtitle, { color: colors.UtilityYellow150 }]}>
                         {translate('Push notifications are disabled')}
                     </Text>
