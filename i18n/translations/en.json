@@ -1407,6 +1407,7 @@
     "Select the AI temperature": "Select the AI temperature",
     "Assistant temperature": "Assistant temperature",
     "Please do": "Please do :)",
+    "Just paste": "Just paste",
     "Output": "Output",
     "You will get the following prompt to send to": "You will get the following prompt to send to %{assistantName}:",
     "Fill out the form to tell the AI Assistant what you need": "Fill out the form to tell the AI Assistant what you need",

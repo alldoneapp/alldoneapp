@@ -14,12 +14,12 @@ import { colors } from '../../../styles/global'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import CloseButton from '../../../FollowUp/CloseButton'
 import Line from '../GoalMilestoneModal/Line'
-import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
+import { createBotQuickTopic, generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 import store from '../../../../redux/store'
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
-import { setPreConfigTaskExecuting } from '../../../../redux/actions'
+import { setPreConfigTaskExecuting, setTriggerChatDraft } from '../../../../redux/actions'
 
 export default function PreConfigTaskGeneratorModal({
     projectId,
@@ -65,6 +65,33 @@ export default function PreConfigTaskGeneratorModal({
                 sendWhatsApp: !!task.sendWhatsApp,
             }
             generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt, aiSettings, taskMetadata)
+        }
+    }
+
+    const justPaste = async () => {
+        closeModal()
+        if (processPromp) {
+            processPromp(generatedPrompt)
+            return
+        }
+
+        try {
+            const topicData = await createBotQuickTopic(assistant, '', {
+                skipNavigation: false,
+                enableAssistant: true,
+                projectId,
+            })
+
+            if (topicData?.chatId) {
+                store.dispatch(
+                    setTriggerChatDraft({
+                        text: generatedPrompt,
+                        chatId: topicData.chatId,
+                    })
+                )
+            }
+        } catch (error) {
+            console.error('Failed to create topic and paste pre-config task prompt:', error)
         }
     }
 
@@ -203,7 +230,7 @@ export default function PreConfigTaskGeneratorModal({
                     assistantName={assistant.displayName}
                     projectId={projectId}
                 />
-                <ButtonsArea addTask={addTask} />
+                <ButtonsArea addTask={addTask} justPaste={justPaste} />
             </CustomScrollView>
         </View>
     )

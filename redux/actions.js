@@ -831,6 +831,14 @@ export const setTriggerChatSubmit = payload => {
     return action
 }
 
+export const setTriggerChatDraft = payload => {
+    const action = {
+        type: 'Trigger chat draft',
+        payload,
+    }
+    return action
+}
+
 export const unsetAddTaskRepeatMode = () => {
     const action = {
         type: 'Unset add task repeat mode',

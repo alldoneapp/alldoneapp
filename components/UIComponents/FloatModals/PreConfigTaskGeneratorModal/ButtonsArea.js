@@ -4,9 +4,15 @@ import { StyleSheet, View } from 'react-native'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function ButtonsArea({ addTask }) {
+export default function ButtonsArea({ addTask, justPaste }) {
     return (
         <View style={localStyles.buttonContainer}>
+            <Button
+                title={translate('Just paste')}
+                onPress={justPaste}
+                type={'secondary'}
+                buttonStyle={{ marginRight: 8 }}
+            />
             <Button title={translate('Please do')} onPress={addTask} type={'primary'} />
         </View>
     )
@@ -15,7 +21,7 @@ export default function ButtonsArea({ addTask }) {
 const localStyles = StyleSheet.create({
     buttonContainer: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'flex-end',
         marginTop: 16,
     },
 })

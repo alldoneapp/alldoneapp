@@ -19,6 +19,7 @@ import {
     setMainChatEditor,
     setQuotedNoteText,
     setQuotedText,
+    setTriggerChatDraft,
     setTriggerChatSubmit,
 } from '../../../../redux/actions'
 import ChatInputButtons from './ChatInputButtons'
@@ -216,6 +217,7 @@ export default function ChatInput({
     }, [quotedText])
 
     const triggerChatSubmit = useSelector(state => state.triggerChatSubmit)
+    const triggerChatDraft = useSelector(state => state.triggerChatDraft)
 
     useEffect(() => {
         if (triggerChatSubmit && chatEditor) {
@@ -246,6 +248,23 @@ export default function ChatInput({
             dispatch(setTriggerChatSubmit(null))
         }
     }, [triggerChatSubmit, chatEditor])
+
+    useEffect(() => {
+        if (triggerChatDraft && chatEditor) {
+            const hasTargetChat = !triggerChatDraft.chatId || triggerChatDraft.chatId === objectId
+            if (hasTargetChat && triggerChatDraft.text) {
+                const Delta = ReactQuill.Quill.import('delta')
+                chatEditor.setContents(new Delta().insert(triggerChatDraft.text + '\n'))
+                setInputText(triggerChatDraft.text)
+                chatEditor.setSelection(triggerChatDraft.text.length, 0)
+                setTimeout(() => inputRef.current?.focus(), 50)
+            }
+
+            if (hasTargetChat) {
+                dispatch(setTriggerChatDraft(null))
+            }
+        }
+    }, [triggerChatDraft, chatEditor, objectId])
 
     const handlePerplexityResponse = (editor, content) => {
         if (!editor || !content) {

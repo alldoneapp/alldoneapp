@@ -1408,6 +1408,7 @@
     "Select the AI temperature": "Seleccione la temperatura de la IA",
     "Assistant temperature": "Temperatura del asistente",
     "Please do": "Por favor, hazlo :)",
+    "Just paste": "Solo pegar",
     "Output": "Salida",
     "You will get the following prompt to send to": "Recibirá el siguiente mensaje para enviar a %{assistantName}:",
     "Fill out the form to tell the AI Assistant what you need": "Complete el formulario para decirle al Asistente de IA lo que necesitas",

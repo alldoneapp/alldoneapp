@@ -102,12 +102,14 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
     store.dispatch(startLoadingData())
     const { loggedUser, selectedProjectIndex } = store.getState()
 
-    const { enableAssistant = true, skipNavigation = false } = options
+    const { enableAssistant = true, skipNavigation = false, projectId: customProjectId = null } = options
 
     try {
-        const projectId = checkIfSelectedProject(selectedProjectIndex)
-            ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
-            : loggedUser.defaultProjectId
+        const projectId =
+            customProjectId ||
+            (checkIfSelectedProject(selectedProjectIndex)
+                ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
+                : loggedUser.defaultProjectId)
 
         if (!projectId) {
             store.dispatch(stopLoadingData())

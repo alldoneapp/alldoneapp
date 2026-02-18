@@ -352,6 +352,7 @@ export const initialState = {
     navigationSource: null,
     showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
+    triggerChatDraft: null,
     iframeModalData: { visible: false, url: '', name: '' },
     preConfigTaskModalData: { visible: false, task: null, assistant: null, projectId: null },
 }
@@ -3074,6 +3075,11 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 triggerChatSubmit: action.payload,
+            }
+        case 'Trigger chat draft':
+            return {
+                ...state,
+                triggerChatDraft: action.payload,
             }
         default:
             return state
