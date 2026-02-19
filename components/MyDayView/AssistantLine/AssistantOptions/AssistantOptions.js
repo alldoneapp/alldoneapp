@@ -165,7 +165,6 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                     scrollEnabled={inputHeight >= 120}
                     onKeyPress={handleKeyPress}
                     onContentSizeChange={e => {
-                        if (!message) return
                         const h = e.nativeEvent.contentSize.height
                         setInputHeight(Math.min(Math.max(h, 40), 120))
                     }}

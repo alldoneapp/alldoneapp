@@ -8,8 +8,9 @@ import { colors } from '../../../../styles/global'
 import AssistantAvatar from '../../../../AdminPanel/Assistants/AssistantAvatar'
 import { getAssistantInProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
 
-export default function BotButtonInModal({ onPress, projectId, assistantId }) {
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
+export default function BotButtonInModal({ onPress, projectId, assistantId, isAssistantEnabled }) {
+    const defaultAssistantEnabled = useSelector(state => state.assistantEnabled)
+    const assistantEnabled = isAssistantEnabled !== undefined ? isAssistantEnabled : defaultAssistantEnabled
     const blockShortcuts = useSelector(state => state.blockShortcuts)
 
     const { photoURL50 } = getAssistantInProjectObject(projectId, assistantId)

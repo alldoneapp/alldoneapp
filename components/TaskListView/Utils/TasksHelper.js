@@ -522,7 +522,7 @@ class TasksHelper {
 
     static processURLAllProjectsNotes = (navigation, tab = FOLLOWED_TAB) => {
         const { selectedSidebarTab } = store.getState()
-        if (!selectedSidebarTab) navigation.navigate('Root')
+        navigation.navigate('Root')
         store.dispatch(navigateToAllProjectsNotes({ notesActiveTab: tab }))
         URLsNotes.replace(tab === ALL_TAB ? URL_ALL_PROJECTS_NOTES_ALL : URL_ALL_PROJECTS_NOTES_FOLLOWED)
     }
@@ -530,7 +530,7 @@ class TasksHelper {
     static processURLAllProjectsGoals = (navigation, section = URL_ALL_PROJECTS_GOALS_OPEN) => {
         const { selectedSidebarTab } = store.getState()
         const { index: toggleIndex } = TasksHelper.getToggleSectionByURLConstant(section, true)
-        if (!selectedSidebarTab) navigation.navigate('Root')
+        navigation.navigate('Root')
         store.dispatch(navigateToGoals({ goalsActiveTab: toggleIndex, selectedProjectIndex: ALL_PROJECTS_INDEX }))
         URLsGoals.replace(section)
     }
@@ -711,9 +711,7 @@ class TasksHelper {
         // Am I member of this project?
         const projectIndex = findIndex(loggedUserProjects, ['id', projectId])
 
-        if (!selectedSidebarTab) {
-            navigation.navigate('Root')
-        }
+        navigation.navigate('Root')
 
         const joinProject = async () => {
             const redirectFn = () => URLsNotes.replace(URL_ALL_PROJECTS_NOTES_ALL)
@@ -748,7 +746,7 @@ class TasksHelper {
             // If I'm not a member, then try to join to it
             await joinProject()
         }
-        // navigation.navigate('Root')
+        navigation.navigate('Root')
     }
 
     static processURLProjectsUserGoals = async (
@@ -795,9 +793,7 @@ class TasksHelper {
                 currentUser = currentProjectUsers[userIndex]
             }
 
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
 
             store.dispatch([switchProject(projectIndex), setSelectedSidebarTab(DV_TAB_ROOT_GOALS)])
 
@@ -871,7 +867,7 @@ class TasksHelper {
                 await joinProject()
             }
         }
-        // navigation.navigate('Root')
+        navigation.navigate('Root')
     }
 
     static processURLTaskDetails = async (navigation, projectId, taskId) => {
@@ -888,11 +884,9 @@ class TasksHelper {
         } else if (checkIfSelectedProject(projectIndex)) {
             store.dispatch([storeCurrentUser(loggedUser), switchProject(projectIndex)])
             URLsTasks.replace(URL_PROJECT_USER_TASKS_OPEN, null, projectId, loggedUser.uid)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToAllProjectsTasks())
             URLsTasks.replace(URL_ALL_PROJECTS_TASKS_OPEN)
         }
@@ -913,11 +907,9 @@ class TasksHelper {
         } else if (checkIfSelectedProject(projectIndex)) {
             store.dispatch([storeCurrentUser(loggedUser), switchProject(projectIndex)])
             URLsNotes.replace(URL_PROJECT_USER_NOTES_FOLLOWED, null, projectId, loggedUser.uid)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToAllProjectsNotes())
             URLsNotes.replace(URL_ALL_PROJECTS_NOTES_FOLLOWED)
         }
@@ -938,11 +930,9 @@ class TasksHelper {
         } else if (checkIfSelectedProject(projectIndex)) {
             store.dispatch([storeCurrentUser(loggedUser), switchProject(projectIndex)])
             URLsGoals.replace(URL_PROJECT_USER_GOALS_OPEN, null, projectId, loggedUser.uid)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToGoals({ selectedProjectIndex: ALL_PROJECTS_INDEX }))
             URLsGoals.replace(URL_ALL_PROJECTS_GOALS_OPEN)
         }
@@ -1053,11 +1043,9 @@ class TasksHelper {
                 setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
             ])
             URLsTasks.replace(URL_PROJECT_USER_TASKS, data, projectId, loggedUser.uid)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToAllProjectsTasks())
             URLsTasks.replace(URL_ALL_PROJECTS_TASKS_OPEN)
         }
@@ -1133,11 +1121,9 @@ class TasksHelper {
                 setSelectedSidebarTab(DV_TAB_ROOT_GOALS),
             ])
             URLsGoals.replace(URL_PROJECT_USER_GOALS_OPEN, data, projectId, loggedUser.uid)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToGoals({ selectedProjectIndex: ALL_PROJECTS_INDEX }))
             URLsGoals.replace(URL_ALL_PROJECTS_GOALS_OPEN)
         }
@@ -1274,14 +1260,10 @@ class TasksHelper {
                 setSelectedSidebarTab(DV_TAB_ROOT_NOTES),
             ])
             URLsNotes.replace(URL_PROJECT_USER_NOTES_FOLLOWED, data, projectId, loggedUser.uid)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         } else {
             URLsNotes.replace(URL_ALL_PROJECTS_NOTES_FOLLOWED)
-            if (!selectedSidebarTab) {
-                navigation.navigate('Root')
-            }
+            navigation.navigate('Root')
         }
     }
 

@@ -63,6 +63,7 @@ export default function ChatInput({
 
     const { id: objectId, type: chatType } = chat
 
+    const isAssistantActive = chat && chat.isAssistantEnabled !== false
     const disabledEdition = editing && loggedUserId !== creatorId
 
     const updateEditor = editor => {
@@ -105,14 +106,14 @@ export default function ChatInput({
 
         const textToSubmit = typeof eventOrText === 'string' ? eventOrText : inputText
 
-        if (assistantEnabled && gold === 0) {
+        if (isAssistantActive && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
         } else {
             if (!checkIsLimitedByXp(projectId)) {
                 inputRef.current.clear()
 
-                if (assistantEnabled) setWaitingForBotAnswer(true)
+                if (isAssistantActive) setWaitingForBotAnswer(true)
 
                 // Re-enable auto-scroll when user sends a message
                 if (onMessageSent) onMessageSent()
@@ -366,6 +367,7 @@ export default function ChatInput({
                 assistantId={assistantId}
                 objectId={chat.id}
                 objectType={objectType}
+                assistantEnabled={isAssistantActive}
             />
         </View>
     )

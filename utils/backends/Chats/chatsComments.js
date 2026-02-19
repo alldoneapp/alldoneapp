@@ -589,20 +589,21 @@ export async function createObjectMessage(
 
         createGenericTaskWhenMention(projectId, objectId, newMentionIds, GENERIC_COMMENT_TYPE, objectType, assistantId)
 
-        // Check if this is a webhook task - if so, don't trigger regular AI assistant
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
         await Promise.all(promises).then(() => {
+            const isThreadAssistantEnabled = object ? object.isAssistantEnabled !== false : assistantEnabled
+
             // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
             console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
                 editingCommentId,
-                assistantEnabled,
+                isThreadAssistantEnabled,
                 isWebhookTask,
                 skipAssistantTrigger,
                 objectType,
                 hasTaskMetadata: !!object?.taskMetadata,
             })
-            if (!editingCommentId && assistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
+            if (!editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
                 const clientSubmissionTime = Date.now()
                 const clientSubmissionTimestamp = new Date().toISOString()
                 console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {

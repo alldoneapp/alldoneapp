@@ -8,13 +8,17 @@ import Shortcut, { SHORTCUT_LIGHT } from '../../../../UIControls/Shortcut'
 import { translate } from '../../../../../i18n/TranslationService'
 import { setAssistantEnabled } from '../../../../../redux/actions'
 
-export default function StartChatingOption({ closeModal, assistant, inChatTab }) {
+export default function StartChatingOption({ closeModal, assistant, toggleAssistantEnabled, inChatTab }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const onPress = () => {
-        closeModal()
-        dispatch(setAssistantEnabled(true))
+        if (toggleAssistantEnabled) {
+            toggleAssistantEnabled(true)
+        } else {
+            closeModal()
+            dispatch(setAssistantEnabled(true))
+        }
     }
 
     return (

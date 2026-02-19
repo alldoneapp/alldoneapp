@@ -17,6 +17,7 @@ export default function BotButtonWrapper({
     projectId,
     assistantId,
     setAssistantId,
+    assistantEnabled,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -68,9 +69,19 @@ export default function BotButtonWrapper({
             contentLocation={smallScreenNavigation ? null : undefined}
         >
             {inModal ? (
-                <BotButtonInModal onPress={openModal} projectId={projectId} assistantId={assistantId} />
+                <BotButtonInModal
+                    onPress={openModal}
+                    projectId={projectId}
+                    assistantId={assistantId}
+                    isAssistantEnabled={assistantEnabled}
+                />
             ) : (
-                <BotButton onPress={openModal} projectId={projectId} assistantId={assistantId} />
+                <BotButton
+                    onPress={openModal}
+                    projectId={projectId}
+                    assistantId={assistantId}
+                    isAssistantEnabled={assistantEnabled}
+                />
             )}
         </Popover>
     )

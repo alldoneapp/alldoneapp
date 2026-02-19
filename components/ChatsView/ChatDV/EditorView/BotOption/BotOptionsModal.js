@@ -27,6 +27,7 @@ import { setSkillAssistant } from '../../../../../utils/backends/Skills/skillsFi
 
 import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFirestore'
 import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actions'
+import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 
 export default function BotOptionsModal({
     objectType,
@@ -87,6 +88,24 @@ export default function BotOptionsModal({
         onSelectBotOption()
     }
 
+    const toggleAssistantEnabled = isEnabled => {
+        closeModal()
+        setObjectAssistantEnabled(projectId, objectId, objectType, isEnabled)
+        if (parentObject) {
+            const updatedObject = { ...parentObject, isAssistantEnabled: isEnabled }
+            if (objectType === 'tasks') {
+                dispatch(setTaskInDetailView(updatedObject))
+            } else if (objectType === 'notes') {
+                dispatch(setSelectedNote(updatedObject))
+            }
+            if (updateObjectState) {
+                updateObjectState(updatedObject)
+            }
+        }
+        dispatch(setAssistantEnabled(isEnabled))
+        if (onSelectBotOption) onSelectBotOption()
+    }
+
     useEffect(() => {
         storeModal(BOT_OPTION_MODAL_ID)
         return () => {
@@ -145,10 +164,8 @@ export default function BotOptionsModal({
                     )}
                     <StartChatingOption
                         assistant={assistant}
-                        closeModal={() => {
-                            closeModal()
-                            onSelectBotOption()
-                        }}
+                        closeModal={closeModal}
+                        toggleAssistantEnabled={toggleAssistantEnabled}
                         inChatTab={inChatTab}
                     />
                     <PreConfigTasksArea
@@ -163,10 +180,8 @@ export default function BotOptionsModal({
                         <>
                             <Line style={{ marginVertical: 4 }} />
                             <StopChatingOption
-                                closeModal={() => {
-                                    closeModal()
-                                    onSelectBotOption()
-                                }}
+                                closeModal={closeModal}
+                                toggleAssistantEnabled={toggleAssistantEnabled}
                             />
                         </>
                     )}

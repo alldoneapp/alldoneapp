@@ -37,6 +37,7 @@ export default function ChatInputButtons({
     assistantId,
     objectId,
     objectType,
+    assistantEnabled,
 }) {
     const dispatch = useDispatch()
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -126,6 +127,7 @@ export default function ChatInputButtons({
                         projectId={projectId}
                         assistantId={assistantId}
                         objectType={objectType}
+                        assistantEnabled={assistantEnabled}
                     />
                 )}
             </View>

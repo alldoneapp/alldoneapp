@@ -309,7 +309,7 @@ export const parseFeedComment = (text, isGenericTask, bold) => {
             }
         } else if (REGEX_URL.test(word)) {
             // Check if the word ends with punctuation that should be separated
-            const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+            const urlMatch = word.match(/^(.*?)([\.,;:!?]+)$/)
             if (urlMatch) {
                 const urlPart = urlMatch[1]
                 const punctuation = urlMatch[2]

@@ -10,6 +10,7 @@ import { hideFloatPopup, setSelectedSidebarTab } from '../../../redux/actions'
 import store from '../../../redux/store'
 import { MIN_URLS_IN_HISTORY } from '../../../URLSystem/URLTrigger'
 import { DV_TAB_ROOT_NOTES } from '../../../utils/TabNavigationConstants'
+import { getDvLink } from '../../../utils/LinkingHelper'
 import SharedHelper from '../../../utils/SharedHelper'
 
 export default function BackButton({ parentStyle, upperStyle, buttonStyle, projectId, note }) {
@@ -17,7 +18,7 @@ export default function BackButton({ parentStyle, upperStyle, buttonStyle, proje
 
     const onPress = () => {
         const { lastVisitedScreen } = store.getState()
-        const commonPath = `projects/${projectId}/notes/${note.id}`
+        const commonPath = getDvLink(projectId, note.id, 'notes')
 
         dispatch(hideFloatPopup())
         if (lastVisitedScreen.length >= MIN_URLS_IN_HISTORY) {

@@ -83,7 +83,6 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     scrollEnabled={inputHeight >= 120}
                     onKeyPress={handleKeyPress}
                     onContentSizeChange={e => {
-                        if (!message) return
                         const h = e.nativeEvent.contentSize.height
                         setInputHeight(Math.min(Math.max(h, 40), 120))
                     }}

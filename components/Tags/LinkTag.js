@@ -292,6 +292,8 @@ export default function LinkTag({
             } else {
                 setTagIcon('link')
                 setEnableLink(true)
+                setTitle(getDomain(link))
+                setLinkUrl(addProtocol(link))
             }
         }
 

@@ -34,7 +34,7 @@ export default function UserTitle({ contact, project, isContact }) {
                         </View>
                     )}
                 </View>
-                <View style={{ marginLeft: 12, maxWidth: '50%', flexWrap: 'nowrap' }}>
+                <View style={{ marginLeft: 12, maxWidth: '50%', flexWrap: 'nowrap', flexShrink: 1 }}>
                     {isContact ? (
                         <SocialText
                             hashtagStyle={styles.title6}
@@ -51,7 +51,9 @@ export default function UserTitle({ contact, project, isContact }) {
                         </SocialText>
                     ) : (
                         <TouchableOpacity onPress={navigateToProfile}>
-                            <Text style={localStyles.name}>{mainInfo}</Text>
+                            <Text style={localStyles.name} numberOfLines={1}>
+                                {mainInfo}
+                            </Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -99,6 +101,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignSelf: 'flex-end',
         marginRight: 8,
+        flexShrink: 1,
     },
     name: {
         ...styles.title4,

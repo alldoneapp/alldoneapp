@@ -28,8 +28,52 @@ import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
+import { createObjectMessage } from './backends/Chats/chatsComments'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
+
+export const setObjectAssistantEnabled = async (projectId, objectId, objectType, isAssistantEnabled) => {
+    if (!objectId || !objectType) return
+
+    let collectionPath = ''
+    switch (objectType) {
+        case 'tasks':
+            collectionPath = `items/${projectId}/tasks`
+            break
+        case 'chats':
+        case 'topics':
+            collectionPath = `chatObjects/${projectId}/chats`
+            break
+        case 'notes':
+            collectionPath = `notesObjects/${projectId}/notes`
+            break
+        case 'contacts':
+            collectionPath = `contactsObjects/${projectId}/contacts`
+            break
+        case 'users':
+        case 'assistants':
+            collectionPath = `users`
+            break
+        case 'skills':
+            collectionPath = `skillsObjects/${projectId}/skills`
+            break
+        case 'goals':
+            collectionPath = `goals/${projectId}/items`
+            break
+        default:
+            return
+    }
+
+    const docPath =
+        objectType === 'users' || objectType === 'assistants'
+            ? `${collectionPath}/${objectId}`
+            : `${collectionPath}/${objectId}`
+    try {
+        await getDb().doc(docPath).update({ isAssistantEnabled })
+    } catch (e) {
+        console.error('Error setObjectAssistantEnabled:', e)
+    }
+}
 
 export const generateUserIdsToNotifyForNewComments = (projectId, isPublicFor, creatorId) => {
     let userIds = getProjectUsersIds(projectId)

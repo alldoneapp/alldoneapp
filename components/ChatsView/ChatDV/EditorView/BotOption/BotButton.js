@@ -7,8 +7,9 @@ import { execShortcutFn } from '../../../../../utils/HelperFunctions'
 import { getAssistantInProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../../../../AdminPanel/Assistants/AssistantAvatar'
 
-export default function BotButton({ onPress, projectId, assistantId }) {
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
+export default function BotButton({ onPress, projectId, assistantId, isAssistantEnabled }) {
+    const defaultAssistantEnabled = useSelector(state => state.assistantEnabled)
+    const assistantEnabled = isAssistantEnabled !== undefined ? isAssistantEnabled : defaultAssistantEnabled
     const blockShortcuts = useSelector(state => state.blockShortcuts)
 
     const { photoURL50 } = getAssistantInProjectObject(projectId, assistantId)

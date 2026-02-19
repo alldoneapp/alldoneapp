@@ -114,7 +114,7 @@ class ContactsHelper {
 
     static processURLAllProjectsPeople = (navigation, tab = FOLLOWED_TAB) => {
         const { selectedSidebarTab } = store.getState()
-        if (!selectedSidebarTab) navigation.navigate('Root')
+        navigation.navigate('Root')
         store.dispatch(navigateToAllProjectsContacts({ contactsActiveTab: tab }))
         URLsPeople.replace(tab === ALL_TAB ? URL_ALL_PROJECTS_PEOPLE_ALL : URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
     }
@@ -123,9 +123,7 @@ class ContactsHelper {
         const user = TasksHelper.getUserInProject(projectId, userId) || getWorkstreamInProject(projectId, userId)
         const currentUser = user !== null ? user : store.getState().loggedUser
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
-        if (!store.getState().selectedSidebarTab) {
-            navigation.navigate('Root')
-        }
+        navigation.navigate('Root')
         store.dispatch([
             switchProject(projectIndex),
             storeCurrentUser(currentUser),
@@ -144,7 +142,7 @@ class ContactsHelper {
                 currentUser.uid
             )
         }
-        // navigation.navigate('Root')
+        navigation.navigate('Root')
     }
 
     static navigateToUserProfile = (projectId, userId) => {
@@ -208,7 +206,7 @@ class ContactsHelper {
                 navigation.navigate('Root')
             }
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToAllProjectsContacts())
             URLsPeople.replace(URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
         }
@@ -367,7 +365,7 @@ class ContactsHelper {
                 navigation.navigate('Root')
             }
         } else {
-            if (!selectedSidebarTab) navigation.navigate('Root')
+            navigation.navigate('Root')
             store.dispatch(navigateToAllProjectsContacts())
             URLsPeople.replace(URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
         }
