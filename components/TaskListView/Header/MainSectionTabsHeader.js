@@ -247,7 +247,7 @@ const localStyles = StyleSheet.create({
         borderBottomColor: 'transparent',
     },
     tabButtonCompactDesktop: {
-        paddingHorizontal: 6,
+        paddingHorizontal: 8,
         marginHorizontal: 0,
     },
     tabButtonMobile: {
