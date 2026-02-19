@@ -63,7 +63,7 @@ export default function ChatInput({
 
     const { id: objectId, type: chatType } = chat
 
-    const isAssistantActive = chat && chat.isAssistantEnabled !== false
+    const isAssistantActive = chat && chat.isAssistantEnabled === true
     const disabledEdition = editing && loggedUserId !== creatorId
 
     const updateEditor = editor => {

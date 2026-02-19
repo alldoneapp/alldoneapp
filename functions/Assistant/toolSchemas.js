@@ -81,7 +81,8 @@ const toolSchemas = {
                     status: {
                         type: 'string',
                         enum: ['open', 'done', 'all'],
-                        description: 'Filter tasks by status',
+                        description:
+                            'Filter tasks by status. NOTE: You CANNOT use the "date" filter if status is "all".',
                     },
                     date: {
                         type: 'string',

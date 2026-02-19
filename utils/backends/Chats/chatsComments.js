@@ -140,7 +140,7 @@ export function watchChatNotifications(projectId, userId, watcherKey, callback) 
         })
 }
 
-const getParentObjectData = async (projectId, objectId, objectType) => {
+export const getParentObjectData = async (projectId, objectId, objectType) => {
     let isPublicFor = null
     let assistantId = ''
     let followObjectsType = null
@@ -592,7 +592,7 @@ export async function createObjectMessage(
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
         await Promise.all(promises).then(() => {
-            const isThreadAssistantEnabled = object ? object.isAssistantEnabled !== false : assistantEnabled
+            const isThreadAssistantEnabled = object ? object.isAssistantEnabled === true : assistantEnabled
 
             // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
             console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {

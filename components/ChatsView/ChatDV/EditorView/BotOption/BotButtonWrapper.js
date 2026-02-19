@@ -25,6 +25,11 @@ export default function BotButtonWrapper({
     const noticeAboutTheBotBehavior = useSelector(state => state.loggedUser.noticeAboutTheBotBehavior)
     const showNotificationAboutTheBotBehavior = useSelector(state => state.showNotificationAboutTheBotBehavior)
     const [isOpen, setIsOpen] = useState(false)
+    const [optimisticAssistantEnabled, setOptimisticAssistantEnabled] = useState(assistantEnabled)
+
+    useEffect(() => {
+        setOptimisticAssistantEnabled(assistantEnabled)
+    }, [assistantEnabled])
 
     const openModal = () => {
         if (!noticeAboutTheBotBehavior) dispatch(setShowNotificationAboutTheBotBehavior(true))
@@ -57,6 +62,12 @@ export default function BotButtonWrapper({
                         objectType={objectType}
                         setAssistantId={setAssistantId}
                         inChatTab={true}
+                        parentObject={{ isAssistantEnabled: optimisticAssistantEnabled }}
+                        updateObjectState={updatedObj => {
+                            if (updatedObj.isAssistantEnabled !== undefined) {
+                                setOptimisticAssistantEnabled(updatedObj.isAssistantEnabled)
+                            }
+                        }}
                     />
                 ) : (
                     <RunOutOfGoldAssistantModal closeModal={closeModal} />
@@ -73,14 +84,14 @@ export default function BotButtonWrapper({
                     onPress={openModal}
                     projectId={projectId}
                     assistantId={assistantId}
-                    isAssistantEnabled={assistantEnabled}
+                    isAssistantEnabled={optimisticAssistantEnabled}
                 />
             ) : (
                 <BotButton
                     onPress={openModal}
                     projectId={projectId}
                     assistantId={assistantId}
-                    isAssistantEnabled={assistantEnabled}
+                    isAssistantEnabled={optimisticAssistantEnabled}
                 />
             )}
         </Popover>

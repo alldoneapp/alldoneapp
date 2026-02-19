@@ -826,6 +826,12 @@ class AlldoneSimpleMCPServer {
             parentId = null,
         } = args
 
+        if (date && status === 'all') {
+            throw new Error(
+                'Date filtering is not supported when status is "all". Please specify status "open" to filter by due date, or "done" to filter by completion date.'
+            )
+        }
+
         // Get authenticated user from header
         const userId = await this.getAuthenticatedUserForClient(request)
         const db = admin.firestore()
@@ -2745,7 +2751,8 @@ class AlldoneSimpleMCPServer {
                                     status: {
                                         type: 'string',
                                         enum: ['open', 'done', 'all'],
-                                        description: 'Task status filter (default: open)',
+                                        description:
+                                            'Task status filter (default: open). NOTE: You CANNOT use the "date" filter if status is "all".',
                                     },
                                     date: {
                                         type: 'string',

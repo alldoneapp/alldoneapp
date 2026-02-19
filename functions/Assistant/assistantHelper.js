@@ -1621,6 +1621,14 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const projectService = new ProjectService({
                 database: admin.firestore(),
             })
+
+            const effectiveStatus = toolArgs.status || 'open'
+            if (toolArgs.date && effectiveStatus === 'all') {
+                throw new Error(
+                    'Date filtering is not supported when status is "all". Please specify status "open" to filter by due date, or "done" to filter by completion date.'
+                )
+            }
+
             await projectService.initialize()
 
             const includeArchived = toolArgs.includeArchived || false

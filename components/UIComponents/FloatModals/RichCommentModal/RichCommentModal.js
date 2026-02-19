@@ -27,7 +27,11 @@ import BotMessagePlaceholder from './BotMessagePlaceholder'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { getDvChatTabLink } from '../../../../utils/LinkingHelper'
-import { markChatMessagesAsRead, repairChatMetadata } from '../../../../utils/backends/Chats/chatsComments'
+import {
+    markChatMessagesAsRead,
+    repairChatMetadata,
+    getParentObjectData,
+} from '../../../../utils/backends/Chats/chatsComments'
 
 export default function RichCommentModal({
     projectId,
@@ -69,7 +73,7 @@ export default function RichCommentModal({
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
-    const commentListRef = useRef()
+    const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(true)
     const [initialComment, setInitialComment] = useState(currentComment || '')
     const messages = useGetMessages(
         true,
@@ -112,11 +116,24 @@ export default function RichCommentModal({
     }, [externalAssistantId])
 
     useEffect(() => {
-        dispatch(setAssistantEnabled(false))
+        getParentObjectData(projectId, objectId, objectType).then(data => {
+            if (data && data.object) {
+                const threadEnabled = data.object.isAssistantEnabled === true
+                setIsThreadAssistantEnabled(threadEnabled)
+                if (threadEnabled) {
+                    dispatch(setAssistantEnabled(true))
+                } else {
+                    dispatch(setAssistantEnabled(false))
+                }
+            } else {
+                setIsThreadAssistantEnabled(true)
+                dispatch(setAssistantEnabled(true))
+            }
+        })
         return () => {
             dispatch(setAssistantEnabled(false))
         }
-    }, [])
+    }, [projectId, objectId, objectType])
 
     useEffect(() => {
         const subscription = Dimensions.addEventListener('change', ({ window, screen }) => {
@@ -297,6 +314,7 @@ export default function RichCommentModal({
                                 objectAssistantId: assistantId,
                                 objectType: objectType,
                             }}
+                            isAssistantEnabled={isThreadAssistantEnabled}
                         />
                         {waitingForBotAnswer && comments.length > 0 && comments[0].creatorId !== assistantId && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
