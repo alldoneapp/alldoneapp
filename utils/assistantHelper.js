@@ -28,7 +28,6 @@ import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
-import { createObjectMessage } from './backends/Chats/chatsComments'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
