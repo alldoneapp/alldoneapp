@@ -20,6 +20,7 @@ function MoreButtonWrapper(
         onOpenModal,
         onCloseModal,
         disabled,
+        iconSize,
         popupAlign,
         popupPosition,
         shortcut = 'M',
@@ -95,10 +96,17 @@ function MoreButtonWrapper(
                         buttonStyle={buttonStyle}
                         disabled={disabled}
                         shortcut={shortcut}
+                        iconSize={iconSize}
                     />
                 </Popover>
             ) : (
-                <MoreButton onPress={openModal} buttonStyle={buttonStyle} disabled={disabled} shortcut={shortcut} />
+                <MoreButton
+                    onPress={openModal}
+                    buttonStyle={buttonStyle}
+                    disabled={disabled}
+                    shortcut={shortcut}
+                    iconSize={iconSize}
+                />
             )}
         </View>
     )

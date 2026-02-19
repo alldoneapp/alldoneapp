@@ -11,6 +11,7 @@ import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFi
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
+import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function PendingTasksByProject({ project, inSelectedProject }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -67,6 +68,7 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
                 </View>
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
+            {inSelectedProject && <UserTasksHeader />}
             {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
                 <AssistantLine showLastComment={false} removeBottomSpace={true} />
             )}

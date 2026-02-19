@@ -17,6 +17,7 @@ import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
+import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function DoneTasksByProject({ project, inSelectedProject }) {
     const dispatch = useDispatch()
@@ -79,6 +80,7 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
                 </View>
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
+            {inSelectedProject && <UserTasksHeader />}
             {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
                 <AssistantLine showLastComment={false} removeBottomSpace={true} />
             )}

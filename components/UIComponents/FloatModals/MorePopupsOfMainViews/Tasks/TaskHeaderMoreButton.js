@@ -7,7 +7,14 @@ import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
 import SyncCalendarModalItem from './SyncCalendarModalItem'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 
-export default function TaskHeaderMoreButton({ userId, wrapperStyle, buttonStyle, disabled, shortcut = 'M' }) {
+export default function TaskHeaderMoreButton({
+    userId,
+    wrapperStyle,
+    buttonStyle,
+    disabled,
+    shortcut = 'M',
+    iconSize,
+}) {
     const projectId = useSelector(state => {
         const { selectedProjectIndex, loggedUserProjects } = state
 
@@ -56,6 +63,7 @@ export default function TaskHeaderMoreButton({ userId, wrapperStyle, buttonStyle
             disabled={disabled}
             shortcut={shortcut}
             wrapperStyle={wrapperStyle}
+            iconSize={iconSize}
         >
             {renderItems().map((item, index) => item((index + 1).toString()))}
         </MoreButtonWrapper>

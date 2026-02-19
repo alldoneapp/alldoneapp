@@ -57,7 +57,7 @@ export default function UpcomingMilestoneRow({ projectId }) {
     }
 
     return (
-        <View style={{ paddingBottom: 8 }}>
+        <View style={{ paddingTop: 20, paddingBottom: 8 }}>
             <MilestonePresentation
                 onPress={goToGoalsTab}
                 milestone={nextUpcoming}

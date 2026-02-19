@@ -1,7 +1,7 @@
 import React, { useRef } from 'react'
 import Button from '../../../../UIControls/Button'
 
-export default function MoreButton({ onPress, buttonStyle, disabled }) {
+export default function MoreButton({ onPress, buttonStyle, disabled, iconSize = 20 }) {
     const btnRef = useRef()
 
     return (
@@ -14,7 +14,7 @@ export default function MoreButton({ onPress, buttonStyle, disabled }) {
             onPress={onPress}
             accessible={false}
             disabled={disabled}
-            iconSize={20}
+            iconSize={iconSize}
         />
     )
 }

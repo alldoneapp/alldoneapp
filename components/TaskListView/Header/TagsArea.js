@@ -14,6 +14,7 @@ import AddGoalTag from '../../Tags/AddGoalTag'
 import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
+import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 
 export default function TagsArea({
     projectId,
@@ -29,6 +30,7 @@ export default function TagsArea({
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
+    const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     const workflowEntries = workflow ? Object.entries(workflow).sort(chronoEntriesOrder) : []
@@ -79,13 +81,23 @@ export default function TagsArea({
                 </TouchableOpacity>
             )}
             {showAddTask && loggedUserCanUpdateObject && accessGranted && (
-                <AddTaskTag
-                    projectId={projectId}
-                    style={{ marginLeft: 8 }}
-                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                    sourceType={FEED_TASK_OBJECT_TYPE}
-                    expandTaskListIfNeeded={true}
-                />
+                <>
+                    <AddTaskTag
+                        projectId={projectId}
+                        style={{ marginLeft: 8 }}
+                        setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                        sourceType={FEED_TASK_OBJECT_TYPE}
+                        expandTaskListIfNeeded={true}
+                    />
+                    {taskViewToggleSection === 'Open' && (
+                        <TaskHeaderMoreButton
+                            userId={currentUserId}
+                            wrapperStyle={localStyles.taskMoreWrapper}
+                            buttonStyle={localStyles.taskMoreButton}
+                            iconSize={16}
+                        />
+                    )}
+                </>
             )}
             {showAddGoal && loggedUserCanUpdateObject && accessGranted && (
                 <AddGoalTag projectId={projectId} style={{ marginLeft: 8 }} />
@@ -119,5 +131,15 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginLeft: 6,
         marginRight: 8,
+    },
+    taskMoreWrapper: {
+        marginLeft: 2,
+        marginTop: 3,
+    },
+    taskMoreButton: {
+        width: 18,
+        height: 18,
+        minWidth: 18,
+        minHeight: 18,
     },
 })

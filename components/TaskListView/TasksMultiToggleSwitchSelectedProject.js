@@ -15,8 +15,6 @@ export default function TasksMultiToggleSwitchSelectedProject() {
             return null
         }
     }, shallowEqual)
-    const mobile = useSelector(state => state.smallScreenNavigation)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const currentSectionIndex = useSelector(state => state.taskViewToggleIndex)
     const openTasksAmount = useSelector(state => state.openTasksAmount)
     const doneTasksAmount = useSelector(state => state.doneTasksAmount)
@@ -31,10 +29,7 @@ export default function TasksMultiToggleSwitchSelectedProject() {
 
     return (
         <MultiToggleSwitch
-            containerStyle={[
-                localStyles.toggleSwitch,
-                mobile ? localStyles.toggleSwitchMobile : isMiddleScreen && localStyles.toggleSwitchTablet,
-            ]}
+            containerStyle={localStyles.toggleSwitch}
             options={
                 isAssistant
                     ? [
@@ -108,15 +103,6 @@ export default function TasksMultiToggleSwitchSelectedProject() {
 
 const localStyles = {
     toggleSwitch: {
-        position: 'absolute',
-        right: 104,
-        top: 44,
-        zIndex: 10,
-    },
-    toggleSwitchMobile: {
-        right: 16,
-    },
-    toggleSwitchTablet: {
-        right: 56,
+        alignSelf: 'center',
     },
 }

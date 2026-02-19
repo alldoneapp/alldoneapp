@@ -7,6 +7,8 @@ import AllProjectData from './AllProjectData'
 import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
 import AddTaskTag from '../../../Tags/AddTaskTag'
 import Avatar from '../../../Avatar'
+import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
+import ToggleByTime from '../../ToggleByTime'
 
 export default function AllProjectsLine() {
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
@@ -27,16 +29,25 @@ export default function AllProjectsLine() {
                     externalStyle={localStyles.avatar}
                 />
                 <AllProjectData />
+                <ToggleByTime containerStyle={localStyles.toggleByTimeInline} />
             </View>
             <View style={localStyles.leftContainer}>
                 {inOpenSection && (
-                    <AddTaskTag
-                        projectId={defaultProjectId}
-                        style={{ marginLeft: 8 }}
-                        sourceType={FEED_TASK_OBJECT_TYPE}
-                        expandTaskListIfNeeded={true}
-                        showProjectSelector={true}
-                    />
+                    <>
+                        <AddTaskTag
+                            projectId={defaultProjectId}
+                            style={{ marginLeft: 8 }}
+                            sourceType={FEED_TASK_OBJECT_TYPE}
+                            expandTaskListIfNeeded={true}
+                            showProjectSelector={true}
+                        />
+                        <TaskHeaderMoreButton
+                            userId={loggedUserId}
+                            wrapperStyle={localStyles.taskMoreWrapper}
+                            buttonStyle={localStyles.taskMoreButton}
+                            iconSize={16}
+                        />
+                    </>
                 )}
             </View>
         </View>
@@ -67,5 +78,20 @@ const localStyles = StyleSheet.create({
     },
     avatar: {
         marginRight: 10,
+    },
+    taskMoreWrapper: {
+        marginLeft: 2,
+        marginTop: 3,
+    },
+    taskMoreButton: {
+        width: 18,
+        height: 18,
+        minWidth: 18,
+        minHeight: 18,
+    },
+    toggleByTimeInline: {
+        marginTop: 0,
+        marginLeft: 8,
+        height: 24,
     },
 })

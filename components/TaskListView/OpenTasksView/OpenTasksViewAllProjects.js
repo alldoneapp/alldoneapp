@@ -10,6 +10,7 @@ import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
 import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
+import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function OpenTasksViewAllProjects() {
     const dispatch = useDispatch()
@@ -66,6 +67,7 @@ export default function OpenTasksViewAllProjects() {
             ]}
         >
             <AllProjectsLine />
+            <UserTasksHeader />
             <AssistantLine />
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox />}
             {sortedLoggedUserProjectIds.map(projectId => {

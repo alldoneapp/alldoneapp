@@ -9,8 +9,6 @@ export default function TasksMultiToggleSwitchAllProjects() {
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
     const workflow = useSelector(state => state.currentUser.workflow)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const mobile = useSelector(state => state.smallScreenNavigation)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const currentSectionIndex = useSelector(state => state.taskViewToggleIndex)
     const openTasksAmount = useSelector(state => state.openTasksAmount)
     const doneTasksAmount = useSelector(state => state.doneTasksAmount)
@@ -39,10 +37,7 @@ export default function TasksMultiToggleSwitchAllProjects() {
 
     return (
         <MultiToggleSwitch
-            containerStyle={[
-                localStyles.toggleSwitch,
-                mobile ? localStyles.toggleSwitchMobile : isMiddleScreen && localStyles.toggleSwitchTablet,
-            ]}
+            containerStyle={localStyles.toggleSwitch}
             options={
                 haveWorkflow
                     ? [
@@ -94,15 +89,6 @@ export default function TasksMultiToggleSwitchAllProjects() {
 
 const localStyles = {
     toggleSwitch: {
-        position: 'absolute',
-        right: 104,
-        top: 44,
-        zIndex: 10,
-    },
-    toggleSwitchMobile: {
-        right: 16,
-    },
-    toggleSwitchTablet: {
-        right: 56,
+        alignSelf: 'center',
     },
 }

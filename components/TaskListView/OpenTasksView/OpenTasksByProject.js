@@ -22,6 +22,7 @@ import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
+import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -131,6 +132,7 @@ export default function OpenTasksByProject({
                         showAddTask={!isAssistant}
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                     />
+                    {inSelectedProject && <UserTasksHeader />}
                     {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
                         <AssistantLine showLastComment={false} removeBottomSpace={true} />
                     )}

@@ -14,7 +14,6 @@ import {
     DV_TAB_ROOT_GOALS,
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
-    DV_TAB_ROOT_UPDATES,
 } from '../../../utils/TabNavigationConstants'
 import ChangeObjectListModalItem from './ChangeObjectListModalItem'
 
@@ -27,7 +26,6 @@ export default function ChangeObjectListModal({ closePopover }) {
         { text: 'Notes', icon: 'file-text', value: DV_TAB_ROOT_NOTES, shortcut: '3' },
         { text: 'Contacts', icon: 'users', value: DV_TAB_ROOT_CONTACTS, shortcut: '4' },
         { text: 'Chats', icon: 'comments-thread', value: DV_TAB_ROOT_CHATS, shortcut: '5' },
-        { text: 'Updates', icon: 'bell', value: DV_TAB_ROOT_UPDATES, shortcut: '6' },
     ]
 
     return (
