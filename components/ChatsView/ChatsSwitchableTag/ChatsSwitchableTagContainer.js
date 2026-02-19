@@ -37,9 +37,6 @@ export default function ChatsSwitchableTagContainer() {
 
 const localStyles = StyleSheet.create({
     container: {
-        position: 'absolute',
-        right: 0,
-        top: 44,
-        zIndex: 10,
+        alignSelf: 'center',
     },
 })

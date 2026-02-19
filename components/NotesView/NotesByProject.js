@@ -14,6 +14,8 @@ import ProjectHeader from '../TaskListView/Header/ProjectHeader'
 import NotesSticky from './NotesSticky'
 import { isEqual } from 'lodash'
 import { filterNotes, filterStickyNotes } from '../HashtagFilters/FilterHelpers/FilterNotes'
+import NotesHeader from './NotesHeader'
+import NoteMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Notes/NoteMoreButton'
 
 export default class NotesByProject extends PureComponent {
     constructor(props) {
@@ -348,7 +350,7 @@ export default class NotesByProject extends PureComponent {
     }
 
     render() {
-        const { selectedProjectIndex } = store.getState()
+        const { selectedProjectIndex, currentUser } = store.getState()
         const { project } = this.props
 
         const { filteredNotes, filteredStickyNotes, pressedShowMore, needShowMoreButton } = this.state
@@ -361,12 +363,28 @@ export default class NotesByProject extends PureComponent {
 
         const notesAmount = calcNotesAmountByProjectIndex(project.index)
         const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+        const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
         const showShowMoreButton = needShowMoreButton && notesAmount > 0
 
         return (
             <View style={{ marginBottom: inAllProjects ? 25 : 32 }}>
-                <ProjectHeader projectIndex={project.index} projectId={project.id} />
+                <ProjectHeader
+                    projectIndex={project.index}
+                    projectId={project.id}
+                    customRight={
+                        inSelectedProject ? (
+                            <NoteMoreButton
+                                projectId={project.id}
+                                user={currentUser}
+                                wrapperStyle={localStyles.moreButtonWrapper}
+                                buttonStyle={localStyles.moreButton}
+                                iconSize={16}
+                            />
+                        ) : null
+                    }
+                />
+                {inSelectedProject && <NotesHeader />}
                 <NotesSticky
                     fStickyNotes={filteredStickyNotes}
                     inAllProjects={inAllProjects}
@@ -404,4 +422,17 @@ export default class NotesByProject extends PureComponent {
             </View>
         )
     }
+}
+
+const localStyles = {
+    moreButtonWrapper: {
+        marginTop: 3,
+        marginLeft: 2,
+    },
+    moreButton: {
+        width: 18,
+        height: 18,
+        minWidth: 18,
+        minHeight: 18,
+    },
 }

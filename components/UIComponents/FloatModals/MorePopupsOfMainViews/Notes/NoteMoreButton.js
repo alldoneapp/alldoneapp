@@ -5,7 +5,15 @@ import { useSelector } from 'react-redux'
 import { FOLLOWED_TAB } from '../../../../Feeds/Utils/FeedsConstants'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
 
-export default function NoteMoreButton({ projectId, user, wrapperStyle, buttonStyle, disabled, shortcut = 'M' }) {
+export default function NoteMoreButton({
+    projectId,
+    user,
+    wrapperStyle,
+    buttonStyle,
+    disabled,
+    shortcut = 'M',
+    iconSize,
+}) {
     const notesActiveTab = useSelector(state => state.notesActiveTab)
     const tab = notesActiveTab === FOLLOWED_TAB ? 'followed' : 'all'
     const modalRef = useRef()
@@ -38,6 +46,7 @@ export default function NoteMoreButton({ projectId, user, wrapperStyle, buttonSt
             disabled={disabled}
             shortcut={shortcut}
             wrapperStyle={wrapperStyle}
+            iconSize={iconSize}
         >
             {renderItems().map((item, index) => item((index + 1).toString()))}
         </MoreButtonWrapper>

@@ -1,10 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import {
-    ALL_PROJECTS_INDEX,
-    checkIfSelectedAllProjects,
-    checkIfSelectedProject,
-} from '../SettingsView/ProjectsSettings/ProjectHelper'
+import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import ChatsHeader from './ChatsHeader'
 import { useDispatch, useSelector } from 'react-redux'
 import { DV_TAB_ROOT_CHATS } from '../../utils/TabNavigationConstants'
@@ -20,7 +16,6 @@ import ChatsByProject from './ChatsByProject'
 import { sortBy } from 'lodash'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
-import ChatsSwitchableTagContainer from './ChatsSwitchableTag/ChatsSwitchableTagContainer'
 
 function ChatsView() {
     const dispatch = useDispatch()
@@ -35,8 +30,6 @@ function ChatsView() {
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-
-    const project = inAllProjects ? ALL_PROJECTS_INDEX : loggedUserProjects[selectedProjectIndex]
 
     const projects = loggedUserProjects.filter(
         project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
@@ -84,9 +77,7 @@ function ChatsView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            <ChatsHeader projectId={project?.id} userId={loggedUserId} />
-
-            <ChatsSwitchableTagContainer />
+            {inAllProjects && <ChatsHeader />}
 
             <HashtagFiltersView />
 

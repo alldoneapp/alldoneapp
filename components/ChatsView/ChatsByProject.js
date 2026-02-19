@@ -24,6 +24,8 @@ import MarkAsRead from './MarkAsRead'
 import StickyChats from './StickyChats'
 import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
+import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
+import ChatsHeader from './ChatsHeader'
 
 function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProject }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -52,6 +54,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
     const today = moment().format('YYYYMMDD')
     const { [today]: todayChats, ...rest } = chats
     const isThereChats = Object.keys(chats).length > 0 || Object.keys(stickyChats).length > 0
+    const inSelectedProject = !isInAllProjects
 
     useEffect(() => {
         const watcherKey = v4()
@@ -100,8 +103,30 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
-                customRight={<MarkAsRead projectId={project.id} userId={loggedUser.uid} />}
+                customRight={
+                    isInAllProjects ? (
+                        <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                    ) : (
+                        <View style={localStyles.headerActions}>
+                            <ChatsMoreButton
+                                projectId={project.id}
+                                userId={loggedUser.uid}
+                                wrapperStyle={localStyles.moreButtonWrapper}
+                                buttonStyle={localStyles.moreButton}
+                                iconSize={16}
+                            />
+                        </View>
+                    )
+                }
             />
+            {inSelectedProject && (
+                <>
+                    <ChatsHeader />
+                    <View style={localStyles.markAsReadRow}>
+                        <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                    </View>
+                </>
+            )}
 
             <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />
 
@@ -159,6 +184,26 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
 }
 
 const localStyles = StyleSheet.create({
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    markAsReadRow: {
+        alignItems: 'flex-start',
+        paddingLeft: 12,
+        marginTop: -8,
+        marginBottom: 8,
+    },
+    moreButtonWrapper: {
+        marginTop: 3,
+        marginLeft: 2,
+    },
+    moreButton: {
+        width: 18,
+        height: 18,
+        minWidth: 18,
+        minHeight: 18,
+    },
     container: {
         flexDirection: 'row',
         justifyContent: 'center',

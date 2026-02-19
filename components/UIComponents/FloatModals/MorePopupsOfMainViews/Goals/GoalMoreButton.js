@@ -14,7 +14,7 @@ import { checkIfSelectedProject } from '../../../../SettingsView/ProjectsSetting
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
 import { translate } from '../../../../../i18n/TranslationService'
 
-export default function GoalMoreButton() {
+export default function GoalMoreButton({ wrapperStyle, buttonStyle, disabled, shortcut = 'M', iconSize }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -97,7 +97,11 @@ export default function GoalMoreButton() {
     return (
         <MoreButtonWrapper
             ref={modalRef}
-            shortcut={'M'}
+            shortcut={shortcut}
+            wrapperStyle={wrapperStyle}
+            buttonStyle={buttonStyle}
+            disabled={disabled}
+            iconSize={iconSize}
             customModal={
                 showWeeklyTaskPopup ? (
                     <RichCreateTaskModal

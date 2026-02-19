@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import GoalsHeader from './GoalsHeader'
-import GoalsMultiToggleSwitch from './GoalsMultiToggleSwitch'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
 import {
@@ -123,8 +122,7 @@ export default function GoalsView() {
                 activeDragGoalMode && { marginBottom: 48 },
             ]}
         >
-            <GoalsHeader />
-            <GoalsMultiToggleSwitch />
+            {inAllProjects && <GoalsHeader />}
             <HashtagFiltersView />
 
             {inAllProjects ? (

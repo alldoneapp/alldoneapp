@@ -38,9 +38,6 @@ export default function GoalsMultiToggleSwitchAllProjects() {
 
 const localStyles = StyleSheet.create({
     toggleSwitch: {
-        position: 'absolute',
-        right: 0,
-        top: 44,
-        zIndex: 10,
+        alignSelf: 'center',
     },
 })

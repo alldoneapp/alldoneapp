@@ -15,6 +15,7 @@ import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/Projec
 import { FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
 import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
+import GoalMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Goals/GoalMoreButton'
 
 export default function TagsArea({
     projectId,
@@ -100,7 +101,14 @@ export default function TagsArea({
                 </>
             )}
             {showAddGoal && loggedUserCanUpdateObject && accessGranted && (
-                <AddGoalTag projectId={projectId} style={{ marginLeft: 8 }} />
+                <>
+                    <AddGoalTag projectId={projectId} style={{ marginLeft: 8 }} />
+                    <GoalMoreButton
+                        wrapperStyle={localStyles.goalMoreWrapper}
+                        buttonStyle={localStyles.goalMoreButton}
+                        iconSize={16}
+                    />
+                </>
             )}
         </View>
     )
@@ -137,6 +145,16 @@ const localStyles = StyleSheet.create({
         marginTop: 3,
     },
     taskMoreButton: {
+        width: 18,
+        height: 18,
+        minWidth: 18,
+        minHeight: 18,
+    },
+    goalMoreWrapper: {
+        marginLeft: 2,
+        marginTop: 3,
+    },
+    goalMoreButton: {
         width: 18,
         height: 18,
         minWidth: 18,

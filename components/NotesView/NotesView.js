@@ -13,8 +13,7 @@ import URLsNotes, {
     URL_PROJECT_USER_NOTES_FOLLOWED,
 } from '../../URLSystem/Notes/URLsNotes'
 import { calcNotesAmount } from './NotesHelper'
-import { resetLoadingData, setNavigationRoute, updateNotesActiveTab, resetNotesAmounts } from '../../redux/actions'
-import MultiToggleSwitch from '../UIControls/MultiToggleSwitch/MultiToggleSwitch'
+import { resetLoadingData, setNavigationRoute, resetNotesAmounts } from '../../redux/actions'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import moment from 'moment'
 import { DV_TAB_ROOT_NOTES } from '../../utils/TabNavigationConstants'
@@ -46,6 +45,7 @@ function NotesView() {
         sortedLoggedUserProjects.map(project => project.id)
     )
 
+    const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
     const projects = loggedUserProjects.filter(
@@ -115,24 +115,11 @@ function NotesView() {
         <View
             style={[
                 localStyles.container,
-                checkIfSelectedAllProjects(selectedProjectIndex) && localStyles.containerSpace,
+                inAllProjects && localStyles.containerSpace,
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            <NotesHeader />
-
-            <View style={localStyles.toggleSwitch}>
-                <MultiToggleSwitch
-                    options={[
-                        { icon: 'eye', text: 'Followed', badge: null },
-                        { icon: 'several-file-text', text: 'All', badge: null },
-                    ]}
-                    currentIndex={notesActiveTab}
-                    onChangeOption={index => {
-                        dispatch(updateNotesActiveTab(index))
-                    }}
-                />
-            </View>
+            {inAllProjects && <NotesHeader />}
 
             <HashtagFiltersView />
 
@@ -194,12 +181,6 @@ const localStyles = StyleSheet.create({
     },
     containerTablet: {
         marginHorizontal: 56,
-    },
-    toggleSwitch: {
-        position: 'absolute',
-        right: 0,
-        top: 44,
-        zIndex: 10,
     },
 })
 

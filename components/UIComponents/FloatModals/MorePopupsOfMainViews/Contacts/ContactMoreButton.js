@@ -5,7 +5,15 @@ import { useSelector } from 'react-redux'
 import { FOLLOWED_TAB } from '../../../../Feeds/Utils/FeedsConstants'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
 
-export default function ContactMoreButton({ projectId, user, wrapperStyle, buttonStyle, disabled, shortcut = 'M' }) {
+export default function ContactMoreButton({
+    projectId,
+    user,
+    wrapperStyle,
+    buttonStyle,
+    disabled,
+    shortcut = 'M',
+    iconSize,
+}) {
     const contactsActiveTab = useSelector(state => state.contactsActiveTab)
     const tab = contactsActiveTab === FOLLOWED_TAB ? 'followed' : 'all'
     const modalRef = useRef()
@@ -38,6 +46,7 @@ export default function ContactMoreButton({ projectId, user, wrapperStyle, butto
             disabled={disabled}
             shortcut={shortcut}
             wrapperStyle={wrapperStyle}
+            iconSize={iconSize}
         >
             {renderItems().map((item, index) => item((index + 1).toString()))}
         </MoreButtonWrapper>

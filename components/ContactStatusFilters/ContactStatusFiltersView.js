@@ -165,6 +165,8 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
+        paddingLeft: 12,
+        paddingTop: 8,
         marginBottom: 8,
     },
     statusItem: {

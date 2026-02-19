@@ -15,7 +15,9 @@ const MarkAsRead = ({ projectId, userId }) => {
     return (
         <TouchableOpacity style={localStyles.container} onPress={markRead}>
             <Icon name="double-check" size={16} color={colors.Text03} />
-            <Text style={localStyles.text}>{translate('mark as read')}</Text>
+            <Text style={localStyles.text} numberOfLines={1}>
+                {translate('mark as read')}
+            </Text>
         </TouchableOpacity>
     )
 }
@@ -27,14 +29,16 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         borderColor: colors.Text03,
         borderWidth: 1,
-        paddingVertical: 8,
-        paddingLeft: 4,
-        paddingRight: 8,
+        height: 28,
+        paddingVertical: 0,
+        paddingLeft: 6,
+        paddingRight: 10,
     },
     text: {
-        ...global.subtitle2,
+        ...global.caption1,
         color: colors.Text03,
         marginLeft: 6,
+        flexShrink: 0,
     },
 })
 

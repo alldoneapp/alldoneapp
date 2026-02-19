@@ -11,7 +11,7 @@ import { markMessagesAsRead } from '../../../../../utils/backends/Chats/chatsCom
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../../../redux/store'
 
-export default function ChatsMoreButton({ projectId, userId, wrapperStyle, buttonStyle, disabled }) {
+export default function ChatsMoreButton({ projectId, userId, wrapperStyle, buttonStyle, disabled, iconSize }) {
     const contactsActiveTab = useSelector(state => state.contactsActiveTab)
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -47,6 +47,7 @@ export default function ChatsMoreButton({ projectId, userId, wrapperStyle, butto
             disabled={disabled}
             shortcut={'M'}
             wrapperStyle={wrapperStyle}
+            iconSize={iconSize}
         >
             <CopyLinkModalItem key={'gmbtn-copy-link'} link={link} shortcut={'1'} onPress={dismissModal} />
             <OpenInNewWindowModalItem key={'gmbtn-open-new-win'} shortcut={'2'} onPress={dismissModal} />

@@ -20,6 +20,9 @@ import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contac
 import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import NewContactSection from './NewContactSection'
 import ContactListEmptyProject from './ContactListEmptyProject'
+import ContactMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Contacts/ContactMoreButton'
+import ContactsHeader from './ContactsHeader'
+import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
 
 export default function ContactListByProject({
     members,
@@ -33,6 +36,8 @@ export default function ContactListByProject({
     const [contactsList, setContactsList] = useState([])
     const [pressedShowMore, setPressedShowMore] = useState(false)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
+    const loggedUser = useSelector(state => state.loggedUser)
+    const projectContacts = useSelector(state => state.projectContacts)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const lastAddNewContact = useSelector(state => state.lastAddNewContact)
     const [filters, filtersArray] = useSelectorHashtagFilters()
@@ -129,7 +134,20 @@ export default function ContactListByProject({
             <ProjectHeader
                 projectIndex={loggedUserProjects[projectIndex].index}
                 projectId={loggedUserProjects[projectIndex].id}
+                customRight={
+                    inSelectedProject ? (
+                        <ContactMoreButton
+                            projectId={project.id}
+                            user={loggedUser}
+                            wrapperStyle={localStyles.moreButtonWrapper}
+                            buttonStyle={localStyles.moreButton}
+                            iconSize={16}
+                        />
+                    ) : null
+                }
             />
+            {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
+            {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
 
             <NewContactSection projectIndex={projectIndex} newItemRef={newItemRef} dismissibleRefs={dismissibleRefs} />
 
@@ -195,4 +213,17 @@ export default function ContactListByProject({
             dismissibleRefs={dismissibleRefs}
         />
     ) : null
+}
+
+const localStyles = {
+    moreButtonWrapper: {
+        marginTop: 3,
+        marginLeft: 2,
+    },
+    moreButton: {
+        width: 18,
+        height: 18,
+        minWidth: 18,
+        minHeight: 18,
+    },
 }

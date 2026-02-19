@@ -31,6 +31,7 @@ import AddGoals from './AddGoals'
 import { allGoals } from '../AllSections/allSectionHelper'
 import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import MilestonesListEmptyProject from './MilestonesListEmptyProject'
+import GoalsHeader from './GoalsHeader'
 
 export default function MilestonesListByProject({
     projectIndex,
@@ -148,6 +149,7 @@ export default function MilestonesListByProject({
     return canShowProject ? (
         <View>
             <ProjectHeader projectIndex={project.index} projectId={project.id} showAddGoal={inOpenTab} />
+            {selectedProjectIndex === project.index && <GoalsHeader />}
             {loggedUserCanUpdateObject && inOpenTab && !isAnonymous && milestones.length === 0 && (
                 <AddGoals
                     projectId={projectId}

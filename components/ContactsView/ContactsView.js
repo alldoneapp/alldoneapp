@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native'
 import { orderBy, sortBy } from 'lodash'
 import { useSelector, useDispatch } from 'react-redux'
 
-import store from '../../redux/store'
 import ContactsHeader from './ContactsHeader'
 import ContactListByProject from './ContactListByProject'
 import ProjectHelper, {
@@ -16,11 +15,10 @@ import URLsPeople, {
     URL_PROJECT_PEOPLE_ALL,
     URL_PROJECT_PEOPLE_FOLLOWED,
 } from '../../URLSystem/People/URLsPeople'
-import MultiToggleSwitch from '../UIControls/MultiToggleSwitch/MultiToggleSwitch'
-import { setNavigationRoute, updateContactsActiveTab } from '../../redux/actions'
+import { setNavigationRoute } from '../../redux/actions'
 import { FOLLOWER_CONTACTS_TYPE, FOLLOWER_USERS_TYPE } from '../Followers/FollowerConstants'
 import Backend from '../../utils/BackendBridge'
-import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
+import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import { DV_TAB_ROOT_CONTACTS } from '../../utils/TabNavigationConstants'
 import ContactsHelper from './Utils/ContactsHelper'
 import NothingToShow from '../UIComponents/NothingToShow'
@@ -239,28 +237,12 @@ export default function ContactsView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            <ContactsHeader
-                contactAmount={contactsActiveTab === 0 ? fContactsAmount : contactsAmount}
-                projectId={project?.id}
-                selectedUser={loggedUser}
-            />
-
-            <View style={localStyles.toggleSwitch}>
-                <MultiToggleSwitch
-                    options={[
-                        { icon: 'eye', text: 'Followed', badge: null },
-                        { icon: 'users', text: 'All', badge: null },
-                    ]}
-                    currentIndex={contactsActiveTab}
-                    onChangeOption={index => {
-                        store.dispatch(updateContactsActiveTab(index === 0 ? FOLLOWED_TAB : ALL_TAB))
-                    }}
-                />
-            </View>
+            {inAllProjects && (
+                <ContactsHeader contactAmount={contactsActiveTab === 0 ? fContactsAmount : contactsAmount} />
+            )}
+            {inAllProjects && <ContactStatusFiltersView projectContacts={projectContacts} />}
 
             <HashtagFiltersView />
-
-            <ContactStatusFiltersView projectContacts={projectContacts} />
 
             {contactsAmount > 0 ? (
                 inAllProjects ? (
@@ -316,11 +298,5 @@ const localStyles = StyleSheet.create({
     },
     containerTablet: {
         marginHorizontal: 56,
-    },
-    toggleSwitch: {
-        position: 'absolute',
-        right: 0,
-        top: 44,
-        zIndex: 10,
     },
 })
