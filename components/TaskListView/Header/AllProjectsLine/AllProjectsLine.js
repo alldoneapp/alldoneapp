@@ -10,7 +10,7 @@ import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
 
-export default function AllProjectsLine() {
+export default function AllProjectsLine({ showActions = true }) {
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -32,7 +32,7 @@ export default function AllProjectsLine() {
                 <ToggleByTime containerStyle={localStyles.toggleByTimeInline} />
             </View>
             <View style={localStyles.leftContainer}>
-                {inOpenSection && (
+                {showActions && inOpenSection && (
                     <>
                         <AddTaskTag
                             projectId={defaultProjectId}

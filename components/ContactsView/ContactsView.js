@@ -25,6 +25,7 @@ import NothingToShow from '../UIComponents/NothingToShow'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
 import { PROJECT_TYPE_GUIDE } from '../SettingsView/ProjectsSettings/ProjectsSettings'
+import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
 export default function ContactsView() {
     const dispatch = useDispatch()
@@ -237,6 +238,7 @@ export default function ContactsView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
+            {inAllProjects && <AllProjectsLine showActions={false} />}
             {inAllProjects && (
                 <ContactsHeader contactAmount={contactsActiveTab === 0 ? fContactsAmount : contactsAmount} />
             )}

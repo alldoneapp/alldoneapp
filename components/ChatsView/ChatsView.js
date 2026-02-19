@@ -16,6 +16,7 @@ import ChatsByProject from './ChatsByProject'
 import { sortBy } from 'lodash'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
+import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
 function ChatsView() {
     const dispatch = useDispatch()
@@ -77,6 +78,7 @@ function ChatsView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
+            {inAllProjects && <AllProjectsLine showActions={false} />}
             {inAllProjects && <ChatsHeader />}
 
             <HashtagFiltersView />

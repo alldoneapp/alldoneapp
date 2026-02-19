@@ -22,6 +22,7 @@ import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
 import { checkIfThereAreNewComments } from '../ChatsView/Utils/ChatHelper'
+import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
 function NotesView() {
     const dispatch = useDispatch()
@@ -119,6 +120,7 @@ function NotesView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
+            {inAllProjects && <AllProjectsLine showActions={false} />}
             {inAllProjects && <NotesHeader />}
 
             <HashtagFiltersView />
