@@ -1,9 +1,9 @@
-import React, { useState } from 'react'
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import PropTypes from 'prop-types'
 import { useSelector, useDispatch } from 'react-redux'
 
-import styles, { colors } from '../../styles/global'
+import styles, { colors, SCREEN_BREAKPOINT_NAV } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import TasksMultiToggleSwitch from '../TasksMultiToggleSwitch'
 import ProjectHelper, {
@@ -24,8 +24,12 @@ import { allGoals } from '../../AllSections/allSectionHelper'
 
 const UserTasksHeader = ({ showSectionToggle }) => {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const getViewportWidth = () =>
+        typeof window !== 'undefined' && typeof window.innerWidth === 'number'
+            ? window.innerWidth
+            : Dimensions.get('window').width
+    const [viewportWidth, setViewportWidth] = useState(getViewportWidth())
+    const useMobileLayout = viewportWidth < SCREEN_BREAKPOINT_NAV
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
@@ -42,6 +46,13 @@ const UserTasksHeader = ({ showSectionToggle }) => {
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const accessGranted = !isAnonymous && (inAllProjects || (project && realProjectIds.includes(project.id)))
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        const onResize = () => setViewportWidth(getViewportWidth())
+        window.addEventListener('resize', onResize)
+        return () => window.removeEventListener('resize', onResize)
+    }, [])
+
     const onPressSectionTab = sectionValue => {
         if (sectionValue === selectedSidebarTab || !accessGranted) return
 
@@ -50,7 +61,7 @@ const UserTasksHeader = ({ showSectionToggle }) => {
 
         const actionsToDispatch = [hideFloatPopup(), setSelectedSidebarTab(sectionValue)]
 
-        if (smallScreenNavigation) actionsToDispatch.push(hideWebSideBar())
+        if (useMobileLayout) actionsToDispatch.push(hideWebSideBar())
 
         const isGuide = ProjectHelper.checkIfProjectIsGuide(selectedProjectIndex)
         let newCurrentUser = loggedUser
@@ -64,15 +75,8 @@ const UserTasksHeader = ({ showSectionToggle }) => {
     }
 
     return (
-        <View
-            style={[
-                localStyles.container,
-                smallScreenNavigation
-                    ? localStyles.headerTextForMobile
-                    : isMiddleScreen && localStyles.headerTextForTablet,
-            ]}
-        >
-            {smallScreenNavigation ? (
+        <View style={localStyles.container}>
+            {useMobileLayout ? (
                 <View style={localStyles.controlsRowMobile}>
                     <ScrollView
                         horizontal={true}
@@ -141,8 +145,10 @@ const UserTasksHeader = ({ showSectionToggle }) => {
                     </View>
 
                     {showSectionToggle && (
-                        <View style={localStyles.sectionToggleRow}>
-                            <TasksMultiToggleSwitch />
+                        <View style={localStyles.sectionToggleContainer}>
+                            <View style={localStyles.sectionToggleRow}>
+                                <TasksMultiToggleSwitch />
+                            </View>
                         </View>
                     )}
                 </View>
@@ -188,7 +194,7 @@ const localStyles = StyleSheet.create({
     controlsRowWithSwitch: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
     },
     controlsRowMobile: {
         width: '100%',
@@ -201,12 +207,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-start',
         flex: 1,
-    },
-    headerTextForMobile: {
-        paddingHorizontal: 16,
-    },
-    headerTextForTablet: {
-        paddingHorizontal: 56,
+        minWidth: 0,
     },
     tabsContainer: {
         flexDirection: 'row',
@@ -217,6 +218,8 @@ const localStyles = StyleSheet.create({
     tabsContainerMobile: {
         paddingHorizontal: 0,
         minWidth: '100%',
+        flexGrow: 1,
+        justifyContent: 'center',
     },
     tabsContainerDisabled: {
         opacity: 0.6,
@@ -231,9 +234,9 @@ const localStyles = StyleSheet.create({
         borderBottomColor: 'transparent',
     },
     tabButtonMobile: {
-        height: 34,
-        paddingHorizontal: 10,
-        marginHorizontal: 1,
+        height: 40,
+        paddingHorizontal: 13,
+        marginHorizontal: 2,
     },
     tabButtonSelected: {
         borderBottomColor: colors.Primary100,
@@ -243,7 +246,7 @@ const localStyles = StyleSheet.create({
         color: '#6B778C',
     },
     tabTextMobile: {
-        fontSize: 12,
+        ...styles.subtitle1,
     },
     tabTextSelected: {
         color: colors.Primary100,
@@ -252,7 +255,11 @@ const localStyles = StyleSheet.create({
     sectionToggleRow: {
         marginTop: 0,
         marginBottom: 0,
-        marginLeft: 16,
+        marginLeft: 0,
+    },
+    sectionToggleContainer: {
+        flex: 1,
+        alignItems: 'flex-end',
     },
     sectionToggleRowMobile: {
         marginTop: 22,
