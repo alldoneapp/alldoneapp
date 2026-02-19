@@ -73,6 +73,7 @@ export default function RichCommentModal({
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
+    const commentListRef = useRef()
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(true)
     const [initialComment, setInitialComment] = useState(currentComment || '')
     const messages = useGetMessages(

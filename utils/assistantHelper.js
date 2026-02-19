@@ -191,6 +191,7 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
 
         // Enable assistant BEFORE creating the message so the trigger condition is met
         if (enableAssistant) {
+            await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).update({ isAssistantEnabled: true })
             store.dispatch(setAssistantEnabled(true))
             console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
         }
@@ -283,6 +284,9 @@ const createTopicForPreConfigTask = async (
                 STAYWARD_COMMENT,
                 loggedUser.uid // parentObjectCreatorId
             )
+
+            // Explicitly enable the assistant on this thread now
+            await getDb().doc(`chatObjects/${projectId}/chats/${taskId}`).update({ isAssistantEnabled: true })
 
             console.log('Chat object created successfully for task:', taskId)
         } else {
