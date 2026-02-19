@@ -1651,6 +1651,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                         status: toolArgs.status || 'open',
                         date: toolArgs.date || null,
                         limit: taskLimit,
+                        perProjectLimit: taskLimit,
                         selectMinimalFields: true,
                         timezoneOffset,
                     },
@@ -1660,7 +1661,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                         return acc
                     }, {})
                 )
-                tasks = result.tasks || []
+                tasks = (result.tasks || []).slice(0, taskLimit)
             } else {
                 // Get tasks from single project
                 const result = await retrievalService.getTasks({

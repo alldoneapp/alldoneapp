@@ -925,12 +925,17 @@ class AlldoneSimpleMCPServer {
                         userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
                         // Return only minimal fields for each task
                         selectMinimalFields: true,
-                        perProjectLimit,
+                        perProjectLimit: 1000,
+                        limit: 1000,
                         timezoneOffset,
                     },
                     accessibleProjectIds,
                     projectsData
                 )
+
+                if (result.tasks && Array.isArray(result.tasks)) {
+                    result.tasks = result.tasks.slice(0, 1000)
+                }
 
                 return {
                     ...result,
@@ -984,7 +989,8 @@ class AlldoneSimpleMCPServer {
                     userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
                     // Return only minimal fields for each task
                     selectMinimalFields: true,
-                    perProjectLimit,
+                    perProjectLimit: 1000,
+                    limit: 1000,
                     projectName: projectData.name,
                     timezoneOffset,
                 })
