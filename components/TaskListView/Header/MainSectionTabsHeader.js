@@ -35,6 +35,7 @@ export default function MainSectionTabsHeader({ showSectionToggle, renderSection
     const [viewportWidth, setViewportWidth] = useState(getViewportWidth())
 
     const useMobileLayout = viewportWidth < SCREEN_BREAKPOINT_NAV
+    const useCompactDesktopTabs = !useMobileLayout && viewportWidth < 1500
     const tabs = [
         { text: 'Tasks', value: DV_TAB_ROOT_TASKS },
         { text: 'Goals', value: DV_TAB_ROOT_GOALS },
@@ -142,7 +143,11 @@ export default function MainSectionTabsHeader({ showSectionToggle, renderSection
                                 return (
                                     <TouchableOpacity
                                         key={tab.value}
-                                        style={[localStyles.tabButton, selected && localStyles.tabButtonSelected]}
+                                        style={[
+                                            localStyles.tabButton,
+                                            useCompactDesktopTabs && localStyles.tabButtonCompactDesktop,
+                                            selected && localStyles.tabButtonSelected,
+                                        ]}
                                         onPress={() => onPressSectionTab(tab.value)}
                                         disabled={!accessGranted}
                                         accessible={false}
@@ -158,7 +163,16 @@ export default function MainSectionTabsHeader({ showSectionToggle, renderSection
 
                     {showRightArea && (
                         <View style={localStyles.rightArea}>
-                            {sectionToggle && <View style={localStyles.sectionToggleRow}>{sectionToggle}</View>}
+                            {sectionToggle && (
+                                <View
+                                    style={[
+                                        localStyles.sectionToggleRow,
+                                        useCompactDesktopTabs && localStyles.sectionToggleRowCompactDesktop,
+                                    ]}
+                                >
+                                    {sectionToggle}
+                                </View>
+                            )}
                             {rightAccessory && <View style={localStyles.rightAccessoryRow}>{rightAccessory}</View>}
                         </View>
                     )}
@@ -232,10 +246,14 @@ const localStyles = StyleSheet.create({
         borderBottomWidth: 2,
         borderBottomColor: 'transparent',
     },
+    tabButtonCompactDesktop: {
+        paddingHorizontal: 6,
+        marginHorizontal: 0,
+    },
     tabButtonMobile: {
         height: 40,
-        paddingHorizontal: 13,
-        marginHorizontal: 2,
+        paddingHorizontal: 8,
+        marginHorizontal: 0,
     },
     tabButtonSelected: {
         borderBottomColor: colors.Primary100,
@@ -258,6 +276,9 @@ const localStyles = StyleSheet.create({
     },
     sectionToggleRow: {
         marginRight: 10,
+    },
+    sectionToggleRowCompactDesktop: {
+        marginRight: 6,
     },
     rightAccessoryRow: {
         flexDirection: 'row',
