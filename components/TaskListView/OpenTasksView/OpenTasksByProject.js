@@ -23,6 +23,7 @@ import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
 import UserTasksHeader from '../Header/UserTasksHeader'
+import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -61,6 +62,12 @@ export default function OpenTasksByProject({
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
     const projectAssistants = useSelector(state => state.projectAssistants?.[projectId] || [])
     const globalAssistants = useSelector(state => state.globalAssistants || [])
+    const globalLastAssistantCommentData = useSelector(
+        state => state.loggedUser?.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
+    )
+    const globalProjectChatLastNotification = useSelector(
+        state => state.projectChatLastNotification?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
+    )
     const isUsingDefaultProjectAssistant = (() => {
         if (projectId === defaultProjectId || !defaultProjectId) return false
         if (!project?.assistantId) return true
@@ -71,6 +78,12 @@ export default function OpenTasksByProject({
             globalAssistants.some(a => a.uid === project.assistantId)
         return !isLocalProjectAssistant && !isGlobalInProject
     })()
+    const latestAssistantCommentProjectId =
+        globalProjectChatLastNotification?.projectId || globalLastAssistantCommentData?.projectId || null
+    const showCrossProjectLastCommentAboveHeader =
+        isUsingDefaultProjectAssistant &&
+        !!latestAssistantCommentProjectId &&
+        latestAssistantCommentProjectId !== projectId
 
     useEffect(() => {
         const watcherKey = v4()
@@ -122,7 +135,10 @@ export default function OpenTasksByProject({
                     <NeedShowMoreEmptyGoalsButton projectId={projectId} />
                     {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
                         <View style={{ marginTop: 16 }}>
-                            <AssistantLine showLastComment={false} />
+                            <AssistantLine showLastComment={false} removeBottomSpace={true} />
+                            {showCrossProjectLastCommentAboveHeader && (
+                                <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                            )}
                         </View>
                     )}
                     <ProjectHeader
@@ -136,9 +152,13 @@ export default function OpenTasksByProject({
                     {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
                         <AssistantLine showLastComment={false} removeBottomSpace={true} />
                     )}
-                    {!isAnonymous && inSelectedProject && (
+                    {!isAnonymous && inSelectedProject && !showCrossProjectLastCommentAboveHeader && (
                         <View style={{ marginTop: isUsingDefaultProjectAssistant ? 12 : 0 }}>
-                            <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                            <LastCommentArea
+                                withTopMargin={false}
+                                useCardBackground={true}
+                                useAssistantProjectContext={false}
+                            />
                         </View>
                     )}
                     {filteredOpenTasksDates.map((dateFormated, index) => {

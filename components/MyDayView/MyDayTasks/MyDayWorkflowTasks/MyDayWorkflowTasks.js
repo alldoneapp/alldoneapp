@@ -16,7 +16,7 @@ export default function MyDayWorkflowTasks() {
     return (
         <>
             <AllProjectsLine />
-            <AssistantLine />
+            <AssistantLine useAssistantProjectContext={false} />
             {tasksLoaded && needToShowEmptyBoardPicture ? (
                 <AllProjectsEmptyInbox />
             ) : (

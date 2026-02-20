@@ -2,23 +2,32 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, View, Text } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import { getCommentData } from './AssistantOptions/helper'
+import { getAssistantLineData, getCommentData } from './AssistantOptions/helper'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 import LastComment from './LastComment/LastComment'
 import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 
-export default function LastCommentArea({ withTopMargin = true, useCardBackground = false }) {
-    const defaultAssistant = useSelector(state => state.defaultAssistant.uid)
+export default function LastCommentArea({
+    withTopMargin = true,
+    useCardBackground = false,
+    useAssistantProjectContext = true,
+}) {
+    const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
-    const lastAssistantCommentData = useSelector(
-        state => state.loggedUser.lastAssistantCommentData[project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
+    const { assistantProject, assistantProjectId } = getAssistantLineData(
+        selectedProject,
+        defaultAssistantId,
+        defaultProjectId
     )
-    const projectChatLastNotification = useSelector(
-        state => state.projectChatLastNotification[project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
-    )
+    const project = useAssistantProjectContext ? assistantProject || selectedProject : selectedProject
+    const projectKey = useAssistantProjectContext
+        ? assistantProjectId || project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+        : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+    const lastAssistantCommentData = useSelector(state => state.loggedUser.lastAssistantCommentData[projectKey])
+    const projectChatLastNotification = useSelector(state => state.projectChatLastNotification[projectKey])
     const [aModalIsOpen, setAModalIsOpen] = useState(false)
     const [currentProjectChatLastNotification, setCurrentProjectChatLastNotification] = useState(
         projectChatLastNotification
@@ -36,7 +45,7 @@ export default function LastCommentArea({ withTopMargin = true, useCardBackgroun
         project,
         currentProjectChatLastNotification,
         currentLastAssistantCommentData,
-        defaultAssistant,
+        defaultAssistantId,
         defaultProjectId
     )
 

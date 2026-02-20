@@ -75,6 +75,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
                 skipNavigation: true,
                 enableAssistant: true,
+                projectId: assistantProjectId,
             })
 
             if (!topicData) {
@@ -107,7 +108,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
             isSendingRef.current = false
             setIsSending(false)
         }
-    }, [assistant, assistantProject, message, gold])
+    }, [assistant, assistantProject, assistantProjectId, message, gold])
 
     const handleKeyPress = useCallback(
         e => {
@@ -127,8 +128,7 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
         assistantProject,
         assistant.uid,
         tasks,
-        amountOfButtonOptions,
-        selectedProject?.id
+        amountOfButtonOptions
     )
 
     const hasQuickActions = optionsLikeButtons.length > 0 || showSubmenu

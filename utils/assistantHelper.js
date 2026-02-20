@@ -18,7 +18,10 @@ import {
 import HelperFunctions from './HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../i18n/TranslationService'
-import { getAssistantInProjectObject } from '../components/AdminPanel/Assistants/assistantsHelper'
+import {
+    getAssistantInProjectObject,
+    getAssistantProjectId,
+} from '../components/AdminPanel/Assistants/assistantsHelper'
 import { moveTasksFromOpen, setTaskAssistant, uploadNewTask } from './backends/Tasks/tasksFirestore'
 import { setNoteAssistant } from './backends/Notes/notesFirestore'
 import { setGoalAssistant } from './backends/Goals/goalsFirestore'
@@ -148,11 +151,12 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
     const { enableAssistant = true, skipNavigation = false, projectId: customProjectId = null } = options
 
     try {
-        const projectId =
-            customProjectId ||
-            (checkIfSelectedProject(selectedProjectIndex)
-                ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
-                : loggedUser.defaultProjectId)
+        const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
+            ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
+            : loggedUser.defaultProjectId
+        const assistantProjectId =
+            assistant && assistant.uid ? getAssistantProjectId(assistant.uid, selectedProjectId) : null
+        const projectId = customProjectId || assistantProjectId || selectedProjectId || loggedUser.defaultProjectId
 
         if (!projectId) {
             store.dispatch(stopLoadingData())

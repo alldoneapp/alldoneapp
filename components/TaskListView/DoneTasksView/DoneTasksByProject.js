@@ -18,6 +18,7 @@ import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewComm
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
 import UserTasksHeader from '../Header/UserTasksHeader'
+import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 
 export default function DoneTasksByProject({ project, inSelectedProject }) {
     const dispatch = useDispatch()
@@ -32,6 +33,12 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
     const projectAssistants = useSelector(state => state.projectAssistants?.[project.id] || [])
     const globalAssistants = useSelector(state => state.globalAssistants || [])
+    const globalLastAssistantCommentData = useSelector(
+        state => state.loggedUser?.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
+    )
+    const globalProjectChatLastNotification = useSelector(
+        state => state.projectChatLastNotification?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
+    )
     const isUsingDefaultProjectAssistant = (() => {
         if (project.id === defaultProjectId || !defaultProjectId) return false
         if (!project?.assistantId) return true
@@ -41,6 +48,12 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
             globalAssistants.some(a => a.uid === project.assistantId)
         return !isLocalProjectAssistant && !isGlobalInProject
     })()
+    const latestAssistantCommentProjectId =
+        globalProjectChatLastNotification?.projectId || globalLastAssistantCommentData?.projectId || null
+    const showCrossProjectLastCommentAboveHeader =
+        isUsingDefaultProjectAssistant &&
+        !!latestAssistantCommentProjectId &&
+        latestAssistantCommentProjectId !== project.id
 
     const { todayTasksByDate, todaySubtasksByTask, todayEstimationByDate } = useTodayTasks(project)
     const { earlierTasksByDate, earlierEstimationByDate, earlierCompletedDateToCheck } = useEarlierTasks(
@@ -76,7 +89,12 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
         <View style={localStyles.container}>
             {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
                 <View style={{ marginTop: 16 }}>
-                    <AssistantLine showLastComment={false} />
+                    <AssistantLine showLastComment={false} removeBottomSpace={true} />
+                    {showCrossProjectLastCommentAboveHeader && (
+                        <View style={localStyles.lastCommentContainerNoTopMargin}>
+                            <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                        </View>
+                    )}
                 </View>
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
@@ -84,14 +102,18 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
             {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
                 <AssistantLine showLastComment={false} removeBottomSpace={true} />
             )}
-            {!isAnonymous && inSelectedProject && (
+            {!isAnonymous && inSelectedProject && !showCrossProjectLastCommentAboveHeader && (
                 <View
                     style={[
                         localStyles.lastCommentContainer,
                         !isUsingDefaultProjectAssistant && localStyles.lastCommentContainerNoTopMargin,
                     ]}
                 >
-                    <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                    <LastCommentArea
+                        withTopMargin={false}
+                        useCardBackground={true}
+                        useAssistantProjectContext={false}
+                    />
                 </View>
             )}
             {filteredTasksByDate.map((item, index) => {

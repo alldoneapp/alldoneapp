@@ -46,7 +46,7 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
             >
                 <AllProjectsLine />
                 <UserTasksHeader />
-                <AssistantLine />
+                <AssistantLine useAssistantProjectContext={false} />
                 {sortedProjects.map(project => (
                     <PendingTasksByProject key={project.id} project={project} />
                 ))}

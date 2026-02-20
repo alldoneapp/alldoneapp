@@ -33,7 +33,7 @@ export default function MyDayOpenTasks() {
     return (
         <>
             <AllProjectsLine />
-            <AssistantLine />
+            <AssistantLine useAssistantProjectContext={false} />
             {tasksLoaded && needToShowEmptyBoardPicture ? (
                 <AllProjectsEmptyInbox />
             ) : (

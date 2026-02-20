@@ -7,7 +7,11 @@ import AssistantOptions from './AssistantOptions/AssistantOptions'
 import { calculateAmountOfOptionButtons } from './AssistantOptions/helper'
 import LastCommentArea from './LastCommentArea'
 
-export default function AssistantLine({ showLastComment = true, removeBottomSpace = false }) {
+export default function AssistantLine({
+    showLastComment = true,
+    removeBottomSpace = false,
+    useAssistantProjectContext = true,
+}) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
@@ -41,7 +45,9 @@ export default function AssistantLine({ showLastComment = true, removeBottomSpac
             onLayout={onLayout}
         >
             <AssistantOptions amountOfButtonOptions={amountOfButtonOptions} />
-            {showLastComment && <LastCommentArea withTopMargin={true} />}
+            {showLastComment && (
+                <LastCommentArea withTopMargin={true} useAssistantProjectContext={useAssistantProjectContext} />
+            )}
         </View>
     )
 }

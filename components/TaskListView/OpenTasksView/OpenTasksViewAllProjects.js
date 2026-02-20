@@ -68,7 +68,7 @@ export default function OpenTasksViewAllProjects() {
         >
             <AllProjectsLine />
             <UserTasksHeader />
-            <AssistantLine />
+            <AssistantLine useAssistantProjectContext={false} />
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox />}
             {sortedLoggedUserProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false

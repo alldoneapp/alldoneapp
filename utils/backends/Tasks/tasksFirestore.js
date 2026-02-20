@@ -183,6 +183,29 @@ const updateEditionData = data => {
     data.lastEditorId = loggedUser.uid
 }
 
+const isPlainObject = value => {
+    if (!value || Object.prototype.toString.call(value) !== '[object Object]') return false
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+}
+
+// Firestore rejects undefined values (including nested maps/arrays).
+const removeUndefinedForFirestore = value => {
+    if (value === undefined) return undefined
+    if (Array.isArray(value)) {
+        return value.map(item => removeUndefinedForFirestore(item)).filter(item => item !== undefined)
+    }
+    if (isPlainObject(value)) {
+        const cleaned = {}
+        Object.entries(value).forEach(([key, nestedValue]) => {
+            const sanitizedValue = removeUndefinedForFirestore(nestedValue)
+            if (sanitizedValue !== undefined) cleaned[key] = sanitizedValue
+        })
+        return cleaned
+    }
+    return value
+}
+
 export async function updateTaskData(projectId, taskId, data, batch) {
     console.log(`[HumanReadableID] updateTaskData called for task ${taskId}`)
     console.log(
@@ -194,13 +217,20 @@ export async function updateTaskData(projectId, taskId, data, batch) {
     console.log(`[HumanReadableID] Using batch: ${!!batch}`)
 
     updateEditionData(data)
+    const safeData = removeUndefinedForFirestore(data)
+    if (!safeData || Object.keys(safeData).length === 0) {
+        console.warn(`[HumanReadableID] Skipping empty update payload for task ${taskId}`)
+        return
+    }
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
 
     // If this update might overwrite humanReadableId and we're not in a batch, use a transaction
     // to preserve the existing humanReadableId
     if (
         !batch &&
-        (!data.hasOwnProperty('humanReadableId') || data.humanReadableId === null || data.humanReadableId === undefined)
+        (!safeData.hasOwnProperty('humanReadableId') ||
+            safeData.humanReadableId === null ||
+            safeData.humanReadableId === undefined)
     ) {
         console.log(`[HumanReadableID] Using transaction to preserve humanReadableId for task ${taskId}`)
         try {
@@ -210,17 +240,17 @@ export async function updateTaskData(projectId, taskId, data, batch) {
                     const currentTask = taskDoc.data()
                     console.log(`[HumanReadableID] Current task humanReadableId: ${currentTask.humanReadableId}`)
                     // Preserve existing humanReadableId if the update doesn't explicitly set one
-                    if (currentTask.humanReadableId && !data.humanReadableId) {
+                    if (currentTask.humanReadableId && !safeData.humanReadableId) {
                         console.log(
                             `[HumanReadableID] Preserving existing humanReadableId ${currentTask.humanReadableId} for task ${taskId}`
                         )
-                        data.humanReadableId = currentTask.humanReadableId
+                        safeData.humanReadableId = currentTask.humanReadableId
                     }
                 } else {
                     console.warn(`[HumanReadableID] Task document ${taskId} does not exist during transaction`)
                 }
                 console.log(`[HumanReadableID] Performing transaction update for task ${taskId}`)
-                transaction.update(ref, data)
+                transaction.update(ref, safeData)
             })
             console.log(`[HumanReadableID] Transaction update completed for task ${taskId}`)
             return
@@ -235,13 +265,15 @@ export async function updateTaskData(projectId, taskId, data, batch) {
 
     // Regular update (either in batch or fallback)
     console.log(`[HumanReadableID] Performing ${batch ? 'batch' : 'regular'} update for task ${taskId}`)
-    batch ? batch.update(ref, data) : await ref.update(data)
+    batch ? batch.update(ref, safeData) : await ref.update(safeData)
     console.log(`[HumanReadableID] Update completed for task ${taskId}`)
 }
 
 async function updateTaskDataDirectly(projectId, taskId, data, batch) {
+    const safeData = removeUndefinedForFirestore(data)
+    if (!safeData || Object.keys(safeData).length === 0) return
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
-    batch ? batch.update(ref, data) : await ref.update(data)
+    batch ? batch.update(ref, safeData) : await ref.update(safeData)
 }
 
 const storeLastAddedTaskId = taskId => {

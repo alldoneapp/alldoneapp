@@ -47,7 +47,7 @@ export default function DoneTasksViewAllProjects() {
             >
                 <AllProjectsLine />
                 <UserTasksHeader />
-                <AssistantLine />
+                <AssistantLine useAssistantProjectContext={false} />
                 {sortedLoggedUserProjects.map(project => (
                     <DoneTasksByProject key={project.id} project={project} />
                 ))}
