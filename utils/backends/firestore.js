@@ -3284,6 +3284,7 @@ export function mapNoteData(noteId, note) {
         isPremium: note.isPremium ? note.isPremium : false,
         linkedToTemplate: note.linkedToTemplate ? note.linkedToTemplate : false,
         assistantId: note.assistantId ? note.assistantId : '',
+        isAssistantEnabled: note.isAssistantEnabled,
         commentsData: note.commentsData ? note.commentsData : '',
     }
 }
@@ -3319,6 +3320,7 @@ export function mapGoalData(goalId, goal) {
         isPremium: goal.isPremium ? goal.isPremium : false,
         lockKey: goal.lockKey ? goal.lockKey : '',
         assistantId: goal.assistantId ? goal.assistantId : '',
+        isAssistantEnabled: goal.isAssistantEnabled,
         commentsData: goal.commentsData ? goal.commentsData : '',
         timesPostponed: goal.timesPostponed ?? 0,
     }
@@ -3399,6 +3401,7 @@ export function mapTaskData(taskId, task) {
         lockKey: task.lockKey ? task.lockKey : '',
         assigneeType: task.assigneeType ? task.assigneeType : TASK_ASSIGNEE_USER_TYPE,
         assistantId: task.assistantId ? task.assistantId : '',
+        isAssistantEnabled: task.isAssistantEnabled,
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,
@@ -3434,6 +3437,7 @@ export function mapSkillData(skillId, skill) {
         lastEditorId: skill.lastEditorId || '',
         completion: skill.completion || 0,
         assistantId: skill.assistantId || '',
+        isAssistantEnabled: skill.isAssistantEnabled,
         commentsData: skill.commentsData || '',
     }
 }
@@ -3520,6 +3524,7 @@ export function mapUserData(userId, user) {
         inFocusTaskProjectId: user.inFocusTaskProjectId ? user.inFocusTaskProjectId : '',
         noteIdsByProject: user.noteIdsByProject ? user.noteIdsByProject : {},
         assistantId: user.assistantId ? user.assistantId : '',
+        isAssistantEnabled: user.isAssistantEnabled,
         activeFullSearchDate: user.activeFullSearchDate ? user.activeFullSearchDate : null,
         commentsData: user.commentsData ? user.commentsData : {},
         firstLoginDateInDay: user.firstLoginDateInDay ? user.firstLoginDateInDay : 0,
@@ -3560,6 +3565,7 @@ export function mapContactData(contactId, contact) {
         lastVisitBoard: contact.lastVisitBoard ? contact.lastVisitBoard : {},
         lastVisitBoardInGoals: contact.lastVisitBoardInGoals ? contact.lastVisitBoardInGoals : {},
         assistantId: contact.assistantId ? contact.assistantId : '',
+        isAssistantEnabled: contact.isAssistantEnabled,
         commentsData: contact.commentsData ? contact.commentsData : null,
         openTasksAmount: contact.openTasksAmount ? contact.openTasksAmount : 0,
         contactStatusId: contact.contactStatusId ? contact.contactStatusId : null,
