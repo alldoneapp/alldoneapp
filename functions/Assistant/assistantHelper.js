@@ -70,7 +70,7 @@ const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
 const EXTERNAL_TOOLS_KEY = 'external_tools'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
-const MAX_TALK_TO_ASSISTANT_TARGETS = 20
+const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 10
@@ -99,6 +99,9 @@ function getCachedEnvFunctions() {
 const openAIClients = new Map()
 const externalToolUserIdentityCache = new Map()
 const EXTERNAL_TOOL_USER_IDENTITY_CACHE_TTL = 5 * 60 * 1000
+const delegationCapabilitiesCache = new Map()
+const DELEGATION_CAPABILITIES_CACHE_TTL = 5 * 60 * 1000
+const MAX_DELEGATION_CAPABILITY_EXAMPLES = 5
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
@@ -384,6 +387,74 @@ async function getAssistantPreConfigTaskDocs(projectId, assistantId) {
     return Array.from(byTaskId.values())
 }
 
+const normalizeDelegationCapabilityName = name =>
+    String(name || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, 80)
+
+function buildDelegationCapabilitiesSummary(tasks) {
+    const seen = new Set()
+    const taskNames = []
+
+    ;(Array.isArray(tasks) ? tasks : []).forEach(task => {
+        const rawName = normalizeDelegationCapabilityName(task?.name)
+        if (!rawName) return
+        const dedupeKey = rawName.toLowerCase()
+        if (seen.has(dedupeKey)) return
+        seen.add(dedupeKey)
+        taskNames.push(rawName)
+    })
+
+    if (taskNames.length === 0) return ''
+
+    const examples = taskNames
+        .slice(0, MAX_DELEGATION_CAPABILITY_EXAMPLES)
+        .map(name => `"${name.replace(/"/g, "'")}"`)
+        .join(', ')
+    const remainingCount = taskNames.length - Math.min(taskNames.length, MAX_DELEGATION_CAPABILITY_EXAMPLES)
+
+    return remainingCount > 0
+        ? `Can help with pre-config tasks like ${examples}, and ${remainingCount} more.`
+        : `Can help with pre-config tasks like ${examples}.`
+}
+
+async function getDelegationCapabilitiesSummary(projectId, assistantId) {
+    if (!projectId || !assistantId) return ''
+
+    const cacheKey = `${projectId}:${assistantId}`
+    const now = Date.now()
+    const cached = delegationCapabilitiesCache.get(cacheKey)
+    if (cached && now - cached.timestamp < DELEGATION_CAPABILITIES_CACHE_TTL) {
+        return cached.summary
+    }
+
+    let summary = ''
+    try {
+        const tasks = await getAssistantPreConfigTaskDocs(projectId, assistantId)
+        summary = buildDelegationCapabilitiesSummary(tasks)
+    } catch (error) {
+        console.warn('⚠️ DELEGATION: Failed loading capability summary', {
+            projectId,
+            assistantId,
+            error: error.message,
+        })
+        summary = ''
+    }
+
+    delegationCapabilitiesCache.set(cacheKey, {
+        summary,
+        timestamp: now,
+    })
+
+    if (delegationCapabilitiesCache.size > 1000) {
+        const oldestKey = delegationCapabilitiesCache.keys().next().value
+        delegationCapabilitiesCache.delete(oldestKey)
+    }
+
+    return summary
+}
+
 async function getReachableExternalIntegrationTools({
     projectId,
     assistantId,
@@ -609,6 +680,7 @@ const buildTalkToAssistantToolSchema = target => ({
             `${
                 target.description ? `Assistant description: ${String(target.description).trim().slice(0, 180)}. ` : ''
             }` +
+            `${target.capabilitiesSummary ? `${target.capabilitiesSummary} ` : ''}` +
             'Pass a clear instruction. The assistant will execute with its own enabled tools and return the result.',
         parameters: {
             type: 'object',
@@ -634,7 +706,14 @@ async function getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext 
         requestUserId: toolRuntimeContext?.requestUserId,
     })
 
-    return targets.map(buildTalkToAssistantToolSchema)
+    const targetsWithCapabilities = await Promise.all(
+        targets.map(async target => ({
+            ...target,
+            capabilitiesSummary: await getDelegationCapabilitiesSummary(target.projectId, target.assistantId),
+        }))
+    )
+
+    return targetsWithCapabilities.map(buildTalkToAssistantToolSchema)
 }
 
 async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = null) {
@@ -645,7 +724,27 @@ async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = 
         assistantId: toolRuntimeContext?.assistantId,
         requestUserId: toolRuntimeContext?.requestUserId,
     })
-    return targets.find(target => target.toolName === toolName) || null
+    const resolvedTarget = targets.find(target => target.toolName === toolName) || null
+
+    console.log('🔁 DELEGATION: resolveDelegationTargetByToolName', {
+        toolName,
+        callerProjectId: toolRuntimeContext?.projectId || null,
+        callerAssistantId: toolRuntimeContext?.assistantId || null,
+        requestUserId: toolRuntimeContext?.requestUserId || null,
+        reachableTargetsCount: targets.length,
+        resolved: !!resolvedTarget,
+        resolvedTargetProjectId: resolvedTarget?.projectId || null,
+        resolvedTargetAssistantId: resolvedTarget?.assistantId || null,
+        resolvedTargetDisplayName: resolvedTarget?.displayName || null,
+        reachableTargetsPreview: targets.slice(0, 20).map(target => ({
+            toolName: target.toolName,
+            projectId: target.projectId,
+            assistantId: target.assistantId,
+            displayName: target.displayName,
+        })),
+    })
+
+    return resolvedTarget
 }
 
 async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
@@ -1902,6 +2001,23 @@ async function executeDelegatedAssistantRequest({
     const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
     const targetInstructions = targetAssistant.instructions || 'You are a helpful assistant.'
 
+    console.log('🔁 DELEGATION: executeDelegatedAssistantRequest target loaded', {
+        callerProjectId,
+        callerAssistantId,
+        requestUserId,
+        targetToolName: target?.toolName || null,
+        targetProjectId: target?.projectId || null,
+        targetProjectName: target?.projectName || null,
+        targetAssistantId: target?.assistantId || null,
+        targetDisplayName,
+        targetModel,
+        targetTemperature,
+        targetAllowedToolsCount: targetAllowedTools.length,
+        targetAllowedTools,
+        hasExternalToolsToggle: targetAllowedTools.includes(EXTERNAL_TOOLS_KEY),
+        hasDelegationToggle: targetAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY),
+    })
+
     const delegatedUserContext = {
         ...(userContext || {}),
         delegationDepth: currentDepth + 1,
@@ -2110,6 +2226,17 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
         if (!target) {
             throw new Error(`Delegation target is not accessible: ${toolName}`)
         }
+
+        console.log('🔁 DELEGATION: tool call target selected', {
+            toolName,
+            callerProjectId: projectId || null,
+            callerAssistantId: assistantId || null,
+            requestUserId: requestUserId || null,
+            targetProjectId: target.projectId,
+            targetProjectName: target.projectName,
+            targetAssistantId: target.assistantId,
+            targetDisplayName: target.displayName,
+        })
 
         return executeDelegatedAssistantRequest({
             target,
