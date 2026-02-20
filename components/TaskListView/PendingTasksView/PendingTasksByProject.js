@@ -80,7 +80,11 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
                     <AssistantLine showLastComment={false} removeBottomSpace={true} />
                     {showCrossProjectLastCommentAboveHeader && (
                         <View style={localStyles.lastCommentContainerNoTopMargin}>
-                            <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                            <LastCommentArea
+                                withTopMargin={false}
+                                useCardBackground={true}
+                                useGlobalLatestComment={true}
+                            />
                         </View>
                     )}
                 </View>
@@ -97,11 +101,7 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
                         !isUsingDefaultProjectAssistant && localStyles.lastCommentContainerNoTopMargin,
                     ]}
                 >
-                    <LastCommentArea
-                        withTopMargin={false}
-                        useCardBackground={true}
-                        useAssistantProjectContext={false}
-                    />
+                    <LastCommentArea withTopMargin={false} useCardBackground={true} useGlobalLatestComment={true} />
                 </View>
             )}
             {filteredTasksByDateAndStep.map((item, index) => {

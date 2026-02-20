@@ -12,6 +12,7 @@ export default function LastCommentArea({
     withTopMargin = true,
     useCardBackground = false,
     useAssistantProjectContext = true,
+    useGlobalLatestComment = false,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -23,7 +24,9 @@ export default function LastCommentArea({
         defaultProjectId
     )
     const project = useAssistantProjectContext ? assistantProject || selectedProject : selectedProject
-    const projectKey = useAssistantProjectContext
+    const projectKey = useGlobalLatestComment
+        ? ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+        : useAssistantProjectContext
         ? assistantProjectId || project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
         : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
     const lastAssistantCommentData = useSelector(state => state.loggedUser.lastAssistantCommentData[projectKey])

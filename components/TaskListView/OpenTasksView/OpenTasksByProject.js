@@ -137,7 +137,11 @@ export default function OpenTasksByProject({
                         <View style={{ marginTop: 16 }}>
                             <AssistantLine showLastComment={false} removeBottomSpace={true} />
                             {showCrossProjectLastCommentAboveHeader && (
-                                <LastCommentArea withTopMargin={false} useCardBackground={true} />
+                                <LastCommentArea
+                                    withTopMargin={false}
+                                    useCardBackground={true}
+                                    useGlobalLatestComment={true}
+                                />
                             )}
                         </View>
                     )}
@@ -157,7 +161,7 @@ export default function OpenTasksByProject({
                             <LastCommentArea
                                 withTopMargin={false}
                                 useCardBackground={true}
-                                useAssistantProjectContext={false}
+                                useGlobalLatestComment={true}
                             />
                         </View>
                     )}
