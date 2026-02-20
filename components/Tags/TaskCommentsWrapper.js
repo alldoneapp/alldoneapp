@@ -87,7 +87,7 @@ export default function TaskCommentsWrapper({
         }
     }
 
-    const addComment = async (comment, mentions2, isPrivate, hasKarma) => {
+    const addComment = async (comment, mentions2, isPrivate, hasKarma, explicitAssistantEnabled) => {
         if (
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
@@ -105,8 +105,19 @@ export default function TaskCommentsWrapper({
                 objectId,
                 assistantId,
                 commentLength: comment?.length,
+                explicitAssistantEnabled,
             })
-            await createObjectMessage(projectId, objectId, comment, objectType, STAYWARD_COMMENT, null, null)
+            await createObjectMessage(
+                projectId,
+                objectId,
+                comment,
+                objectType,
+                STAYWARD_COMMENT,
+                null,
+                null,
+                false, // skipAssistantTrigger
+                explicitAssistantEnabled
+            )
             console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
                 timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
             })

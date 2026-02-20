@@ -164,13 +164,13 @@ export default function RichCommentModal({
             if (assistantEnabled) setWaitingForBotAnswer(true)
 
             if (inTaskModal) {
-                processDone(comment.trim(), mentions, privacy, hasKarma)
+                processDone(comment.trim(), mentions, privacy, hasKarma, isThreadAssistantEnabled)
                 console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
                     timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                 })
             } else {
                 updateNewAttachmentsData(projectId, comment).then(text => {
-                    processDone(text.trim(), mentions, privacy, hasKarma)
+                    processDone(text.trim(), mentions, privacy, hasKarma, isThreadAssistantEnabled)
                     console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
                         timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                     })

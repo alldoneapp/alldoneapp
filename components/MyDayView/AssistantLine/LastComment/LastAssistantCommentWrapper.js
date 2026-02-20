@@ -71,7 +71,7 @@ export default function LastAssistantCommentWrapper({
         }
     }
 
-    const addComment = async comment => {
+    const addComment = async (comment, mentions, privacy, hasKarma, explicitAssistantEnabled) => {
         if (
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
@@ -80,7 +80,17 @@ export default function LastAssistantCommentWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            await createObjectMessage(projectId, objectId, comment, objectType, STAYWARD_COMMENT, null, null)
+            await createObjectMessage(
+                projectId,
+                objectId,
+                comment,
+                objectType,
+                STAYWARD_COMMENT,
+                null,
+                null,
+                false,
+                explicitAssistantEnabled
+            )
             if (!assistantEnabled) closeModal()
         }
     }

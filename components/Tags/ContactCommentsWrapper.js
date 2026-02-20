@@ -61,7 +61,7 @@ export default function ContactCommentsWrapper({
         }
     }
 
-    const addComment = async comment => {
+    const addComment = async (comment, mentions, privacy, hasKarma, explicitAssistantEnabled) => {
         if (
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
@@ -70,7 +70,17 @@ export default function ContactCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            createObjectMessage(projectId, contactId, comment, 'contacts', null, null, null)
+            createObjectMessage(
+                projectId,
+                contactId,
+                comment,
+                'contacts',
+                null,
+                null,
+                null,
+                false,
+                explicitAssistantEnabled
+            )
             if (!assistantEnabled) closeModal()
         }
     }

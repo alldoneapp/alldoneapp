@@ -62,7 +62,7 @@ export default function CommentsWrapper({
         }
     }
 
-    const addComment = async (comment, mentions2, isPrivate, hasKarma) => {
+    const addComment = async (comment, mentions2, isPrivate, hasKarma, explicitAssistantEnabled) => {
         if (
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
@@ -97,19 +97,89 @@ export default function CommentsWrapper({
             })
 
             if (taskId) {
-                await createObjectMessage(projectId, taskId, comment, 'tasks', STAYWARD_COMMENT, null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    taskId,
+                    comment,
+                    'tasks',
+                    STAYWARD_COMMENT,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             } else if (noteId) {
-                await createObjectMessage(projectId, noteId, comment, 'notes', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    noteId,
+                    comment,
+                    'notes',
+                    null,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             } else if (goalId) {
-                await createObjectMessage(projectId, goalId, comment, 'goals', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    goalId,
+                    comment,
+                    'goals',
+                    null,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             } else if (skillId) {
-                await createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    skillId,
+                    comment,
+                    'skills',
+                    null,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             } else if (userId) {
-                await createObjectMessage(projectId, userId, comment, 'contacts', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    userId,
+                    comment,
+                    'contacts',
+                    null,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             } else if (contactId) {
-                await createObjectMessage(projectId, contactId, comment, 'contacts', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    contactId,
+                    comment,
+                    'contacts',
+                    null,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             } else if (assistantId) {
-                await createObjectMessage(projectId, assistantId, comment, 'assistants', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    assistantId,
+                    comment,
+                    'assistants',
+                    null,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             }
 
             console.log('⏱️ [TIMING] CLIENT: CommentsWrapper createObjectMessage completed', {

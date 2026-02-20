@@ -49,7 +49,7 @@ export default function CommentWrapperTag({
         }
     }
 
-    const addComment = async comment => {
+    const addComment = async (comment, mentions, privacy, hasKarma, explicitAssistantEnabled) => {
         if (
             !isQuillTagEditorOpen &&
             !isMentionModalOpen &&
@@ -58,7 +58,17 @@ export default function CommentWrapperTag({
             !isBotWarningModalOpen &&
             comment
         ) {
-            createObjectMessage(projectId, assistantId, comment, 'assistants', null, null, null)
+            createObjectMessage(
+                projectId,
+                assistantId,
+                comment,
+                'assistants',
+                null,
+                null,
+                null,
+                false,
+                explicitAssistantEnabled
+            )
             if (!assistantEnabled) closeModal()
         }
     }

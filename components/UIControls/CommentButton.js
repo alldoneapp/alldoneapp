@@ -84,7 +84,7 @@ class CommentButton extends Component {
         }
     }
 
-    changeValue = (comment, mentions, isPrivate, hasKarma) => {
+    changeValue = (comment, mentions, isPrivate, hasKarma, explicitAssistantEnabled) => {
         const { isQuillTagEditorOpen, openModals, assistantEnabled } = store.getState()
         const { projectId, task } = this.props
         if (
@@ -100,7 +100,17 @@ class CommentButton extends Component {
                 this.props.saveCommentBeforeSaveTask(comment)
                 this.hidePopover()
             } else {
-                createObjectMessage(projectId, task.id, comment, 'tasks', STAYWARD_COMMENT, null, null)
+                createObjectMessage(
+                    projectId,
+                    task.id,
+                    comment,
+                    'tasks',
+                    STAYWARD_COMMENT,
+                    null,
+                    null,
+                    false,
+                    explicitAssistantEnabled
+                )
             }
         }
     }

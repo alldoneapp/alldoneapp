@@ -92,7 +92,9 @@ export default function ChatInput({
                     chatType,
                     chatType === 'tasks' ? STAYWARD_COMMENT : null,
                     messageId,
-                    initialText
+                    initialText,
+                    false, // skipAssistantTrigger
+                    isAssistantActive // explicitAssistantEnabled
                 )
             })
             setAmountOfNewCommentsToHighligth(0)
@@ -126,7 +128,9 @@ export default function ChatInput({
                         chatType,
                         chatType === 'tasks' ? STAYWARD_COMMENT : null,
                         null,
-                        null
+                        null,
+                        false, // skipAssistantTrigger
+                        isAssistantActive // explicitAssistantEnabled
                     )
                 })
                 setAmountOfNewCommentsToHighligth(0)

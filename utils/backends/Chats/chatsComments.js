@@ -455,7 +455,8 @@ export async function createObjectMessage(
     commentType,
     editingCommentId,
     oldComment,
-    skipAssistantTrigger = false
+    skipAssistantTrigger = false,
+    explicitAssistantEnabled = null
 ) {
     const promises = []
     promises.push(getParentObjectData(projectId, objectId, objectType))
@@ -592,7 +593,12 @@ export async function createObjectMessage(
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
         await Promise.all(promises).then(() => {
-            const isThreadAssistantEnabled = object ? object.isAssistantEnabled === true : assistantEnabled
+            const isThreadAssistantEnabled =
+                explicitAssistantEnabled !== null
+                    ? explicitAssistantEnabled
+                    : object
+                    ? object.isAssistantEnabled === true
+                    : assistantEnabled
 
             // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
             console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {

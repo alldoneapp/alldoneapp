@@ -764,7 +764,7 @@ async function copyChatsForFolloupTaskAndGenerateCommentsData(projectId, oldTask
     return commentsData
 }
 
-export async function createFollowUpTask(projectId, task, dueDate, comment, newEstimation) {
+export async function createFollowUpTask(projectId, task, dueDate, comment, newEstimation, explicitAssistantEnabled) {
     const { loggedUser } = store.getState()
 
     const newTaskId = getId()
@@ -807,11 +807,41 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
 
     const linkToNewTask = `${window.location.origin}/projects/${projectId}/tasks/${newTaskId}/properties`
     const commentOldTask = `Follow up task created: ${linkToNewTask}`
-    createObjectMessage(projectId, task.id, commentOldTask, 'tasks', STAYWARD_COMMENT, null, null)
+    createObjectMessage(
+        projectId,
+        task.id,
+        commentOldTask,
+        'tasks',
+        STAYWARD_COMMENT,
+        null,
+        null,
+        false,
+        explicitAssistantEnabled
+    )
 
     if (comment && comment.trim()) {
-        createObjectMessage(projectId, task.id, comment, 'tasks', STAYWARD_COMMENT, null, null)
-        createObjectMessage(projectId, newTaskId, comment, 'tasks', STAYWARD_COMMENT, null, null)
+        createObjectMessage(
+            projectId,
+            task.id,
+            comment,
+            'tasks',
+            STAYWARD_COMMENT,
+            null,
+            null,
+            false,
+            explicitAssistantEnabled
+        )
+        createObjectMessage(
+            projectId,
+            newTaskId,
+            comment,
+            'tasks',
+            STAYWARD_COMMENT,
+            null,
+            null,
+            false,
+            explicitAssistantEnabled
+        )
     }
 
     createFollowUpBacklinksToNotes(projectId, newTaskId, task.id)
@@ -2338,12 +2368,32 @@ const getTaskCompletedTime = task => {
     }
 }
 
-export async function moveTasksFromOpen(projectId, task, stepToMoveId, comment, commentType, estimations, checkBoxId) {
+export async function moveTasksFromOpen(
+    projectId,
+    task,
+    stepToMoveId,
+    comment,
+    commentType,
+    estimations,
+    checkBoxId,
+    explicitAssistantEnabled
+) {
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const { parentId, subtaskIds, userId } = task
 
-    if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null)
+    if (comment)
+        createObjectMessage(
+            projectId,
+            task.id,
+            comment,
+            'tasks',
+            commentType,
+            null,
+            null,
+            false,
+            explicitAssistantEnabled
+        )
 
     const ownerIsWorkstream = userId.startsWith(WORKSTREAM_ID_PREFIX)
     const newUserId = ownerIsWorkstream ? loggedUserId : userId

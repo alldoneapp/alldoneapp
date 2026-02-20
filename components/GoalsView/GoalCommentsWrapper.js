@@ -76,7 +76,7 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
         }
     }, [dispatch])
 
-    const addComment = async (comment, mentions, isPrivate, hasKarma) => {
+    const addComment = async (comment, mentions, isPrivate, hasKarma, explicitAssistantEnabled) => {
         console.debug('GoalCommentsWrapper: addComment start', {
             goalId: goal?.id,
             isUnmounted: isUnmountedRef.current,
@@ -90,7 +90,17 @@ export default function GoalCommentsWrapper({ commentsData, projectId, goal, tag
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            await createObjectMessage(projectId, goal.id, comment, 'goals', null, null, null)
+            await createObjectMessage(
+                projectId,
+                goal.id,
+                comment,
+                'goals',
+                null,
+                null,
+                null,
+                false,
+                explicitAssistantEnabled
+            )
 
             if (!isUnmountedRef.current && !assistantEnabled) {
                 closeModal()
