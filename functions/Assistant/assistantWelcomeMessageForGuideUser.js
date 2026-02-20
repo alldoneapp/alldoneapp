@@ -47,7 +47,10 @@ async function generateBotWelcomeMessageForGuideUser(
     )
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
+    await addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset, {
+        projectId,
+        assistantId: assistant.uid || assistantId,
+    })
     messages.push(['system', template])
     const toolRuntimeContext = {
         projectId,

@@ -63,7 +63,10 @@ async function processWhatsAppAssistantMessage(
 
     // Build messages array
     const messages = []
-    addBaseInstructions(messages, displayName, user.language, instructions, allowedTools, userTimezoneOffset)
+    await addBaseInstructions(messages, displayName, user.language, instructions, allowedTools, userTimezoneOffset, {
+        projectId,
+        assistantId: assistant.uid || assistantId,
+    })
 
     // Add WhatsApp-specific formatting rules
     messages.push([

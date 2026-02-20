@@ -109,7 +109,8 @@ async function askToOpenAIBotOptimized(
                 instructions,
                 allowedTools,
                 userTimezoneOffset,
-                userId
+                userId,
+                assistant.uid || assistantId
             ),
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),

@@ -178,7 +178,10 @@ async function generateBotDailyTopicFirstComment(
     const template = generateDailySummaryContent(tasksByProjectsData, totalTasks, todayDate, lastSessionDate, userName)
 
     const messages = []
-    addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset)
+    await addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset, {
+        projectId: defaultProjectId,
+        assistantId: assistant.uid || assistantId,
+    })
     messages.push(['system', template])
     const toolRuntimeContext = {
         projectId: defaultProjectId,

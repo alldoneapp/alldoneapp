@@ -102,6 +102,9 @@ const EXTERNAL_TOOL_USER_IDENTITY_CACHE_TTL = 5 * 60 * 1000
 const delegationCapabilitiesCache = new Map()
 const DELEGATION_CAPABILITIES_CACHE_TTL = 5 * 60 * 1000
 const MAX_DELEGATION_CAPABILITY_EXAMPLES = 5
+const preConfiguredTasksContextCache = new Map()
+const PRECONFIGURED_TASKS_CONTEXT_CACHE_TTL = 5 * 60 * 1000
+const MAX_PRECONFIGURED_TASK_CONTEXT_ITEMS = 20
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
@@ -360,7 +363,7 @@ function resolveToolExecution(externalIntegration, tool, task) {
 
 async function getAssistantPreConfigTaskDocs(projectId, assistantId) {
     const db = admin.firestore()
-    const [assistantPathDocs, legacyPathDocs] = await Promise.all([
+    const queryPromises = [
         db
             .collection(`assistantTasks/${projectId}/${assistantId}`)
             .get()
@@ -370,11 +373,28 @@ async function getAssistantPreConfigTaskDocs(projectId, assistantId) {
             .where('assistantId', '==', assistantId)
             .get()
             .catch(() => null),
-    ])
+    ]
+
+    // Global assistants can have their pre-config tasks stored under globalProject.
+    if (projectId !== GLOBAL_PROJECT_ID) {
+        queryPromises.push(
+            db
+                .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/${assistantId}`)
+                .get()
+                .catch(() => null),
+            db
+                .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`)
+                .where('assistantId', '==', assistantId)
+                .get()
+                .catch(() => null)
+        )
+    }
+
+    const snapshots = await Promise.all(queryPromises)
 
     const byTaskId = new Map()
 
-    ;[assistantPathDocs, legacyPathDocs].forEach(snapshot => {
+    snapshots.forEach(snapshot => {
         if (!snapshot || !snapshot.docs) return
         snapshot.docs.forEach(doc => {
             if (!doc.exists) return
@@ -454,6 +474,111 @@ async function getDelegationCapabilitiesSummary(projectId, assistantId) {
     }
 
     return summary
+}
+
+const normalizePreConfiguredTaskText = (value, maxLength = 260) =>
+    String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, maxLength)
+
+function buildPreConfiguredTasksContextMessage(tasks) {
+    const relevantTasks = []
+
+    ;(Array.isArray(tasks) ? tasks : []).forEach(task => {
+        const type = typeof task?.type === 'string' ? task.type.trim() : ''
+        if (type !== 'prompt' && type !== 'link') return
+
+        const name = normalizePreConfiguredTaskText(task?.name || task?.id || 'Unnamed task', 80)
+        const id = normalizePreConfiguredTaskText(task?.id || '', 60)
+
+        if (type === 'prompt') {
+            const prompt = normalizePreConfiguredTaskText(task?.prompt || '', 260)
+            if (!prompt) return
+            relevantTasks.push({ type, name, id, executionInstruction: `Prompt: "${prompt}"` })
+            return
+        }
+
+        const link = normalizePreConfiguredTaskText(task?.link || '', 220)
+        if (!link) return
+        relevantTasks.push({ type, name, id, executionInstruction: `External link: ${link}` })
+    })
+
+    if (relevantTasks.length === 0) {
+        return {
+            message: '',
+            includedCount: 0,
+            totalCount: 0,
+        }
+    }
+
+    const includedTasks = relevantTasks.slice(0, MAX_PRECONFIGURED_TASK_CONTEXT_ITEMS)
+    const lines = [
+        'You have access to these pre-configured tasks (prompt and external link types):',
+        ...includedTasks.map(
+            (task, index) =>
+                `${index + 1}. [${task.type}] "${task.name}" (${task.id || 'no-id'}) -> ${task.executionInstruction}`
+        ),
+    ]
+
+    const hiddenCount = relevantTasks.length - includedTasks.length
+    if (hiddenCount > 0) {
+        lines.push(`...and ${hiddenCount} additional pre-configured tasks not listed here.`)
+    }
+
+    lines.push(
+        'When the user asks to execute one of these tasks, follow its stored execution instruction exactly and do not claim completion unless execution actually happened.'
+    )
+
+    return {
+        message: lines.join('\n'),
+        includedCount: includedTasks.length,
+        totalCount: relevantTasks.length,
+    }
+}
+
+async function getPreConfiguredTasksContextMessage(projectId, assistantId) {
+    if (!projectId || !assistantId) {
+        return {
+            message: '',
+            includedCount: 0,
+            totalCount: 0,
+        }
+    }
+
+    const cacheKey = `${projectId}:${assistantId}`
+    const now = Date.now()
+    const cached = preConfiguredTasksContextCache.get(cacheKey)
+    if (cached && now - cached.timestamp < PRECONFIGURED_TASKS_CONTEXT_CACHE_TTL) {
+        return cached.data
+    }
+
+    let data = {
+        message: '',
+        includedCount: 0,
+        totalCount: 0,
+    }
+    try {
+        const tasks = await getAssistantPreConfigTaskDocs(projectId, assistantId)
+        data = buildPreConfiguredTasksContextMessage(tasks)
+    } catch (error) {
+        console.warn('⚠️ PRECONFIG CONTEXT: Failed loading assistant tasks', {
+            projectId,
+            assistantId,
+            error: error.message,
+        })
+    }
+
+    preConfiguredTasksContextCache.set(cacheKey, {
+        data,
+        timestamp: now,
+    })
+    if (preConfiguredTasksContextCache.size > 1000) {
+        const oldestKey = preConfiguredTasksContextCache.keys().next().value
+        preConfiguredTasksContextCache.delete(oldestKey)
+    }
+
+    return data
 }
 
 function messageLikelyRequiresToolExecution(message) {
@@ -2052,7 +2177,10 @@ async function executeDelegatedAssistantRequest({
     }
 
     const messages = []
-    addBaseInstructions(messages, targetDisplayName, 'English', targetInstructions, targetAllowedTools)
+    await addBaseInstructions(messages, targetDisplayName, 'English', targetInstructions, targetAllowedTools, null, {
+        projectId: target.projectId,
+        assistantId: target.assistantId,
+    })
     messages.push([
         'system',
         `You are handling a delegated request from assistant "${callerAssistantId}" in project "${callerProjectId}". ` +
@@ -4822,7 +4950,15 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     return settings
 }
 
-function addBaseInstructions(messages, name, language, instructions, allowedTools = [], userTimezoneOffset = null) {
+async function addBaseInstructions(
+    messages,
+    name,
+    language,
+    instructions,
+    allowedTools = [],
+    userTimezoneOffset = null,
+    assistantContext = null
+) {
     // messages.push(['system', `Your responses must be limited to ${COMPLETION_MAX_TOKENS} tokens.`])
     messages.push(['system', `You are an AI assistant  and your name is: "${parseTextForUseLiKePrompt(name || '')}"`])
     // Prevent AI from summarizing/referencing previous conversation before answering
@@ -4865,6 +5001,19 @@ function addBaseInstructions(messages, name, language, instructions, allowedTool
                 `Only use tools when the user clearly intends an action (e.g. "create a task called X", "add X to my tasks", "search for Y", "remind me to Z"). ` +
                 `When in doubt whether the user wants an action or is just chatting, respond with text only.`,
         ])
+    }
+    const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
+        assistantContext?.projectId,
+        assistantContext?.assistantId
+    )
+    if (preConfiguredTasksContext.message) {
+        messages.push(['system', parseTextForUseLiKePrompt(preConfiguredTasksContext.message)])
+        console.log('🤖 PRECONFIG CONTEXT: Added pre-configured task instructions', {
+            projectId: assistantContext?.projectId || null,
+            assistantId: assistantContext?.assistantId || null,
+            includedTasks: preConfiguredTasksContext.includedCount,
+            totalRelevantTasks: preConfiguredTasksContext.totalCount,
+        })
     }
     messages.push([
         'system',
@@ -5087,7 +5236,8 @@ async function getOptimizedContextMessages(
     instructions,
     allowedTools,
     userTimezoneOffset,
-    userId
+    userId,
+    assistantId
 ) {
     // Start all operations in parallel
     const parallelPromises = [
@@ -5158,7 +5308,10 @@ async function getOptimizedContextMessages(
     }
 
     // Add base instructions
-    addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset)
+    await addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset, {
+        projectId,
+        assistantId,
+    })
 
     // Add topic/context information if available
     if (chatData && chatData.title) {

@@ -239,13 +239,17 @@ async function generatePreConfigTaskResult(
 
         // Step 2: Prepare context messages
         const step2Start = Date.now()
-        addBaseInstructions(
+        await addBaseInstructions(
             contextMessages,
             displayName,
             language,
             instructions,
             Array.isArray(settings.allowedTools) ? settings.allowedTools : [],
-            userTimezoneOffset
+            userTimezoneOffset,
+            {
+                projectId,
+                assistantId: settings.uid || assistantId,
+            }
         )
         contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
         const step2Duration = Date.now() - step2Start
