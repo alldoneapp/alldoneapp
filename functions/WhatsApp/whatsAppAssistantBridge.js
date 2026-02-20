@@ -15,6 +15,8 @@ const MAX_TOOL_ITERATIONS = 10
 const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
 const TASK_CREATION_FAILURE_MESSAGE = 'I could not create that task because of a technical issue. Please try again.'
 const GENERIC_TOOL_FAILURE_MESSAGE = 'I could not complete that action because of a technical issue. Please try again.'
+const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
+const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
 
 /**
  * Process a WhatsApp message through the AI assistant pipeline.
@@ -26,6 +28,8 @@ const GENERIC_TOOL_FAILURE_MESSAGE = 'I could not complete that action because o
  * @param {string} messageText - The user's message
  * @param {string} assistantId
  * @param {Array|undefined} userMessageContent - Optional multimodal content for current user message
+ * @param {Object|undefined} options
+ * @param {boolean|undefined} options.skipCurrentMessageAppend - Skip appending current user message when it was already persisted to history
  * @returns {Promise<string>} The AI response text
  */
 async function processWhatsAppAssistantMessage(
@@ -34,8 +38,10 @@ async function processWhatsAppAssistantMessage(
     chatId,
     messageText,
     assistantId,
-    userMessageContent
+    userMessageContent,
+    options = {}
 ) {
+    const skipCurrentMessageAppend = options?.skipCurrentMessageAppend === true
     // Fetch user data and assistant config in parallel
     const [user, assistant] = await Promise.all([
         getUserData(userId),
@@ -68,6 +74,14 @@ async function processWhatsAppAssistantMessage(
         assistantId: assistant.uid || assistantId,
     })
 
+    if (allowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'You can delegate work to specialized assistants via tools named talk_to_assistant_*. ' +
+                'When a user request matches a specialist (for example writing, marketing, language, research), prefer delegation to that specialist.',
+        ])
+    }
+
     // Add WhatsApp-specific formatting rules
     messages.push([
         'system',
@@ -83,8 +97,10 @@ async function processWhatsAppAssistantMessage(
         messages.push([role, content])
     })
 
-    // Add the current user message
-    messages.push(['user', userMessageContent || messageText])
+    // Add the current user message unless the caller already stored it in chat history.
+    if (!skipCurrentMessageAppend) {
+        messages.push(['user', userMessageContent || messageText])
+    }
 
     // Call the AI
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools, toolRuntimeContext)
@@ -227,6 +243,16 @@ async function collectStreamWithToolCalls(
                 }
 
                 // Build updated conversation with tool result
+                const delegationFailed =
+                    toolName.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX) &&
+                    toolResult &&
+                    typeof toolResult === 'object' &&
+                    toolResult.success === false
+                const followUpInstruction = delegationFailed
+                    ? `The delegated assistant result indicates failure (status: ${toolResult.status || 'unknown'}). ` +
+                      `Do not claim completion. Try another suitable talk_to_assistant_* tool now, or explain exactly what is missing if no suitable tool exists.`
+                    : 'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call other available tools.'
+
                 const updatedConversation = [
                     ...currentConversation,
                     {
@@ -250,8 +276,7 @@ async function collectStreamWithToolCalls(
                     },
                     {
                         role: 'user',
-                        content:
-                            'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
+                        content: followUpInstruction,
                     },
                 ]
 

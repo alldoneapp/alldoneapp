@@ -1,7 +1,5 @@
 const admin = require('firebase-admin')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
-const { getOrCreateWhatsAppDailyTopic, storeUserMessageInTopic } = require('./whatsAppDailyTopic')
-const { processWhatsAppAssistantMessage } = require('./whatsAppAssistantBridge')
 const { transcribeWhatsAppVoiceMessage } = require('./whatsAppVoiceTranscription')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getUserData } = require('../Users/usersFirestore')
@@ -197,49 +195,45 @@ async function handleIncomingWhatsAppMessage(req, res) {
         // Get the user's default assistant
         const assistantId = await getDefaultAssistantId(user, projectId)
 
-        // Get or create today's daily topic
-        const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId)
+        const queuePayload = {
+            messageSid: messageSid || uuidv4(),
+            fromNumber,
+            userId,
+            projectId,
+            assistantId: assistantId || null,
+            messageText,
+            storedMessageText: isVoice ? messageText : storedMessageText || messageText,
+            userMessageContent: Array.isArray(userMessageContent) ? userMessageContent : null,
+            isVoice: !!isVoice,
+            processedImageCount,
+            createdAt: Date.now(),
+        }
 
-        // Store user message in topic
-        await storeUserMessageInTopic(projectId, chatId, userId, isVoice ? messageText : storedMessageText, isVoice, {
-            imageCount: processedImageCount,
-        })
+        const enqueueResult = await enqueueIncomingWhatsAppMessage(queuePayload)
+        if (enqueueResult.duplicate) {
+            console.log('WhatsApp Incoming: Duplicate MessageSid detected, skipping enqueue', {
+                messageSid: queuePayload.messageSid,
+                userId,
+            })
+            return res.status(200).send('OK')
+        }
 
         // Update last WhatsApp message timestamp
         await admin.firestore().doc(`users/${userId}`).update({
             lastWhatsAppMessageTimestamp: Date.now(),
         })
 
-        // Process through AI assistant
-        console.log('WhatsApp Incoming: Processing through assistant', {
+        console.log('WhatsApp Incoming: Enqueued for async processing', {
             userId,
             projectId,
-            chatId,
-            assistantId,
+            assistantId: assistantId || null,
+            messageSid: queuePayload.messageSid,
+            queuePath: enqueueResult.queuePath,
             messageLength: messageText.length,
         })
 
-        const aiResponse = await processWhatsAppAssistantMessage(
-            userId,
-            projectId,
-            chatId,
-            messageText,
-            assistantId,
-            userMessageContent
-        )
-
-        // Send response back via WhatsApp
-        if (aiResponse) {
-            await service.sendWhatsAppMessage(fromNumber, aiResponse)
-        } else {
-            await service.sendWhatsAppMessage(
-                fromNumber,
-                'Sorry, I was unable to generate a response. Please try again.'
-            )
-        }
-
         const duration = Date.now() - startTime
-        console.log('WhatsApp Incoming: Complete', { userId, duration: `${duration}ms` })
+        console.log('WhatsApp Incoming: ACK complete', { userId, duration: `${duration}ms` })
 
         return res.status(200).send('OK')
     } catch (error) {
@@ -261,6 +255,50 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         return res.status(200).send('OK') // Always return 200 to Twilio to avoid retries
+    }
+}
+
+async function enqueueIncomingWhatsAppMessage(payload) {
+    const db = admin.firestore()
+    const normalizedMessageSid = String(payload.messageSid || uuidv4()).trim()
+    const userId = String(payload.userId || '').trim()
+    if (!normalizedMessageSid || !userId) {
+        throw new Error('Cannot enqueue WhatsApp message without MessageSid and userId')
+    }
+
+    const dedupRef = db.doc(`whatsAppInboundDedup/${normalizedMessageSid}`)
+    const queueRef = db.doc(`whatsAppInboundQueue/${userId}/items/${normalizedMessageSid}`)
+    const now = Date.now()
+    let duplicate = false
+
+    await db.runTransaction(async transaction => {
+        const dedupDoc = await transaction.get(dedupRef)
+        if (dedupDoc.exists) {
+            duplicate = true
+            return
+        }
+
+        transaction.set(dedupRef, {
+            messageSid: normalizedMessageSid,
+            userId,
+            fromNumber: payload.fromNumber || '',
+            createdAt: now,
+        })
+
+        transaction.set(queueRef, {
+            ...payload,
+            messageSid: normalizedMessageSid,
+            userId,
+            status: 'pending',
+            attempts: 0,
+            receivedAt: now,
+            updatedAt: now,
+        })
+    })
+
+    return {
+        duplicate,
+        queuePath: queueRef.path,
     }
 }
 

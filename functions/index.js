@@ -2657,3 +2657,17 @@ exports.whatsAppIncomingMessage = onRequest(
         await handleIncomingWhatsAppMessage(req, res)
     }
 )
+
+// WHATSAPP INBOUND QUEUE PROCESSOR - Async processing for inbound webhook items
+exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
+    {
+        document: 'whatsAppInboundQueue/{userId}/items/{messageSid}',
+        timeoutSeconds: 540,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { processWhatsAppInboundQueueItem } = require('./WhatsApp/whatsAppInboundQueueProcessor')
+        await processWhatsAppInboundQueueItem(event)
+    }
+)
