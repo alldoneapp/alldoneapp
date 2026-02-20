@@ -1272,11 +1272,10 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             const moment = require('moment-timezone')
             const db = admin.firestore()
 
-            // Determine target project ID with four-level fallback (matching MCP behavior)
+            // Determine target project ID with three-level fallback
             // 1. Explicit projectId in toolArgs (highest priority)
             // 2. Project name resolution (if projectName provided)
-            // 3. Chat context projectId (assistant-specific fallback)
-            // 4. User's default project (matching MCP behavior)
+            // 3. Current assistant project (required default behavior)
             let targetProjectId = toolArgs.projectId
             let targetProjectName = null
 
@@ -1309,27 +1308,56 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 }
             }
 
-            // Fallback to chat context projectId
-            if (!targetProjectId) {
-                targetProjectId = projectId
-            }
-
-            // If still no projectId, try user's default project (matching MCP)
+            // Fallback to current assistant project
             if (!targetProjectId) {
                 try {
-                    const db = admin.firestore()
+                    const candidateProjectIds = []
+                    const appendProjectId = value => {
+                        if (typeof value === 'string' && value.trim() && !candidateProjectIds.includes(value.trim())) {
+                            candidateProjectIds.push(value.trim())
+                        }
+                    }
+
+                    // Prioritize likely assistant locations first
+                    appendProjectId(projectId)
+
                     const userDoc = await db.collection('users').doc(creatorId).get()
                     if (userDoc.exists) {
-                        targetProjectId = userDoc.data().defaultProjectId || null
+                        const userData = userDoc.data() || {}
+                        appendProjectId(userData.defaultProjectId)
+                        if (Array.isArray(userData.projectIds)) {
+                            userData.projectIds.forEach(pid => appendProjectId(pid))
+                        }
+                    }
+
+                    // Global assistant is valid in this app and can own preconfigured tasks
+                    appendProjectId(GLOBAL_PROJECT_ID)
+
+                    if (candidateProjectIds.length > 0) {
+                        const assistantRefs = candidateProjectIds.map(pid =>
+                            db.doc(`assistants/${pid}/items/${assistantId}`)
+                        )
+                        const assistantDocs = await db.getAll(...assistantRefs)
+                        const assistantIndex = assistantDocs.findIndex(doc => doc.exists)
+
+                        if (assistantIndex >= 0) {
+                            targetProjectId = candidateProjectIds[assistantIndex]
+                            if (targetProjectId !== GLOBAL_PROJECT_ID) {
+                                const assistantProjectDoc = await db.collection('projects').doc(targetProjectId).get()
+                                if (assistantProjectDoc.exists) {
+                                    targetProjectName = assistantProjectDoc.data().name || null
+                                }
+                            }
+                        }
                     }
                 } catch (error) {
-                    console.error('Error getting user default project:', error)
+                    console.error('Error resolving assistant project for create_task:', error)
                 }
             }
 
             if (!targetProjectId) {
                 throw new Error(
-                    'No project specified and no default project found. Please specify a projectId, projectName, or set a default project.'
+                    'No project specified and no assistant project found. Please specify a projectId or projectName.'
                 )
             }
 
@@ -1342,9 +1370,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                     ? 'toolArgs.projectId'
                     : toolArgs.projectName
                     ? 'toolArgs.projectName'
-                    : projectId
-                    ? 'context'
-                    : 'defaultProject',
+                    : 'assistantProject',
             })
 
             // Get user data for feed creation and timezone

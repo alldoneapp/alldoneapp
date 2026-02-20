@@ -9,7 +9,7 @@ const toolSchemas = {
         function: {
             name: 'create_task',
             description:
-                'Creates a new task with optional reminder/alert. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X" or "create a task to Y at Z time" requests. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, etc.) are optional. If no project is specified, the task will be created in the current chat context project or the user\'s default project. The response includes the projectId where the task was created.',
+                'Creates a new task with optional reminder/alert. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X" or "create a task to Y at Z time" requests. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, etc.) are optional. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -34,12 +34,12 @@ const toolSchemas = {
                     projectId: {
                         type: 'string',
                         description:
-                            "Optional: the project ID where the task should be created. If not specified, uses the current chat context project or the user's default project.",
+                            'Optional: the project ID where the task should be created. If not specified, uses the project of the current assistant.',
                     },
                     projectName: {
                         type: 'string',
                         description:
-                            "Optional: the project name where the task should be created. IMPORTANT: Use the EXACT project name as shown in the user's project list - do not translate or modify it (e.g., use 'Privat' not 'Private'). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the current chat context project or the user's default project. You do NOT need to provide a project name - if omitted, the task is created in the current or default project.",
+                            "Optional: the project name where the task should be created. IMPORTANT: Use the EXACT project name as shown in the user's project list - do not translate or modify it (e.g., use 'Privat' not 'Private'). If both projectId and projectName are provided, projectId takes precedence. If not specified, uses the project of the current assistant. You do NOT need to provide a project name - if omitted, the task is created in the current assistant project.",
                     },
                 },
                 required: ['name'],
