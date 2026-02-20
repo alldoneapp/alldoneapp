@@ -156,6 +156,7 @@ export default class EditForm extends Component {
             chatAssistantData,
             setAssistantId,
             isAssistantEnabled,
+            updateObjectState,
         } = this.props
 
         return (
@@ -254,6 +255,7 @@ export default class EditForm extends Component {
                                 objectType={objectType}
                                 setAssistantId={setAssistantId}
                                 assistantEnabled={isAssistantEnabled}
+                                updateObjectState={updateObjectState}
                             />
                         )}
                     </View>

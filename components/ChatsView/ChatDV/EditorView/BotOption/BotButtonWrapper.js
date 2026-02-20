@@ -18,6 +18,7 @@ export default function BotButtonWrapper({
     assistantId,
     setAssistantId,
     assistantEnabled,
+    updateObjectState,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -66,6 +67,9 @@ export default function BotButtonWrapper({
                         updateObjectState={updatedObj => {
                             if (updatedObj.isAssistantEnabled !== undefined) {
                                 setOptimisticAssistantEnabled(updatedObj.isAssistantEnabled)
+                            }
+                            if (updateObjectState) {
+                                updateObjectState(updatedObj)
                             }
                         }}
                     />

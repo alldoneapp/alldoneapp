@@ -316,6 +316,7 @@ export default function RichCommentModal({
                                 objectType: objectType,
                             }}
                             isAssistantEnabled={isThreadAssistantEnabled}
+                            updateObjectState={updateObjectState}
                         />
                         {waitingForBotAnswer && comments.length > 0 && comments[0].creatorId !== assistantId && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
