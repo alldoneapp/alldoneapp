@@ -9,6 +9,8 @@ export const TOOL_OPTIONS = [
     { key: 'search', labelKey: 'Search content' },
     { key: 'get_note', labelKey: 'Get note content' },
     { key: 'web_search', labelKey: 'Search the internet' },
+    { key: 'external_tools', labelKey: 'Use external app tools' },
+    { key: 'talk_to_assistant', labelKey: 'Talk to assistants' },
 ]
 
 export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {

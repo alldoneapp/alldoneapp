@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 const moment = require('moment')
 const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
@@ -65,6 +66,14 @@ const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
+const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
+const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
+const EXTERNAL_TOOLS_KEY = 'external_tools'
+const EXTERNAL_TOOL_PREFIX = 'external_tool_'
+const MAX_TALK_TO_ASSISTANT_TARGETS = 20
+const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
+const MAX_ASSISTANT_DELEGATION_DEPTH = 2
+const MAX_NATIVE_TOOL_CALL_ITERATIONS = 10
 
 // Service instance caches for reuse across tool executions (performance optimization)
 // Similar pattern to MCP server for consistency
@@ -187,6 +196,525 @@ const getTemperature = temperatureKey => {
     else if (temperatureKey === TEMPERATURE_NORMAL) return 0.7
     else if (temperatureKey === TEMPERATURE_HIGH) return 1
     return 1.3
+}
+
+const normalizeToolNameToken = value => {
+    const normalized = String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+    return normalized || 'assistant'
+}
+
+const buildTalkToAssistantToolName = (projectId, assistantId, displayName) => {
+    const slug = normalizeToolNameToken(displayName).slice(0, 20)
+    const hash = crypto.createHash('sha1').update(`${projectId}:${assistantId}`).digest('hex').slice(0, 12)
+    return `${TALK_TO_ASSISTANT_TOOL_PREFIX}${slug}_${hash}`.slice(0, 64)
+}
+
+const isTalkToAssistantToolName = toolName =>
+    typeof toolName === 'string' && toolName.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX)
+
+const isExternalIntegrationToolName = toolName =>
+    typeof toolName === 'string' && toolName.startsWith(EXTERNAL_TOOL_PREFIX)
+
+const buildExternalIntegrationToolName = ({ projectId, assistantId, taskId, integrationId, toolKey, toolName }) => {
+    const slug = normalizeToolNameToken(`${integrationId || ''}_${toolKey || toolName || 'tool'}`).slice(0, 22)
+    const hash = crypto
+        .createHash('sha1')
+        .update(`${projectId}:${assistantId}:${taskId}:${integrationId}:${toolKey}:${toolName}`)
+        .digest('hex')
+        .slice(0, 12)
+    return `${EXTERNAL_TOOL_PREFIX}${slug}_${hash}`.slice(0, 64)
+}
+
+const isObject = value => value && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeExternalToolInputSchema = schema => {
+    if (!isObject(schema)) {
+        return {
+            type: 'object',
+            properties: {},
+            required: [],
+        }
+    }
+
+    const normalized = { ...schema }
+    if (normalized.type !== 'object') normalized.type = 'object'
+    if (!isObject(normalized.properties)) normalized.properties = {}
+    if (!Array.isArray(normalized.required)) normalized.required = []
+    return normalized
+}
+
+function resolveIntegrationOrigin(task, externalIntegration) {
+    if (typeof externalIntegration?.origin === 'string' && externalIntegration.origin.trim()) {
+        try {
+            return new URL(externalIntegration.origin).origin
+        } catch (_) {}
+    }
+
+    if (typeof task?.link === 'string' && task.link.trim()) {
+        try {
+            return new URL(task.link).origin
+        } catch (_) {}
+    }
+
+    return null
+}
+
+function resolveToolExecution(externalIntegration, tool, task) {
+    const integrationOrigin = resolveIntegrationOrigin(task, externalIntegration)
+    if (!integrationOrigin) return null
+
+    const execution = isObject(tool?.execution) ? tool.execution : {}
+    const methodRaw = String(execution.method || 'POST').toUpperCase()
+    const method = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(methodRaw) ? methodRaw : 'POST'
+
+    let url = null
+    if (typeof execution.url === 'string' && execution.url.trim()) {
+        try {
+            const parsed = new URL(execution.url.trim())
+            if (parsed.protocol !== 'https:' || parsed.origin !== integrationOrigin) return null
+            url = parsed.toString()
+        } catch (_) {
+            return null
+        }
+    } else if (typeof execution.path === 'string' && execution.path.trim()) {
+        const cleanPath = execution.path.trim().startsWith('/') ? execution.path.trim() : `/${execution.path.trim()}`
+        try {
+            const parsed = new URL(integrationOrigin)
+            parsed.pathname = cleanPath
+            parsed.search = ''
+            parsed.hash = ''
+            url = parsed.toString()
+        } catch (_) {
+            return null
+        }
+    }
+
+    if (!url) return null
+
+    return {
+        method,
+        url,
+        timeoutMs: Math.min(30000, Math.max(1000, Number(execution.timeoutMs) || 10000)),
+    }
+}
+
+async function getAssistantPreConfigTaskDocs(projectId, assistantId) {
+    const db = admin.firestore()
+    const [assistantPathDocs, legacyPathDocs] = await Promise.all([
+        db
+            .collection(`assistantTasks/${projectId}/${assistantId}`)
+            .get()
+            .catch(() => null),
+        db
+            .collection(`assistantTasks/${projectId}/preConfigTasks`)
+            .where('assistantId', '==', assistantId)
+            .get()
+            .catch(() => null),
+    ])
+
+    const byTaskId = new Map()
+
+    ;[assistantPathDocs, legacyPathDocs].forEach(snapshot => {
+        if (!snapshot || !snapshot.docs) return
+        snapshot.docs.forEach(doc => {
+            if (!doc.exists) return
+            const data = doc.data() || {}
+            const taskId = data.id || doc.id
+            if (!taskId) return
+            byTaskId.set(taskId, { ...data, id: taskId })
+        })
+    })
+
+    return Array.from(byTaskId.values())
+}
+
+async function getReachableExternalIntegrationTools({
+    projectId,
+    assistantId,
+    requestUserId,
+    maxTargets = MAX_EXTERNAL_INTEGRATION_TOOLS,
+}) {
+    if (!projectId || !assistantId || !requestUserId) return []
+
+    const db = admin.firestore()
+    const userDoc = await db.doc(`users/${requestUserId}`).get()
+    if (!userDoc.exists) return []
+
+    const userData = userDoc.data() || {}
+    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
+    if (!accessibleProjectIds.includes(projectId)) return []
+
+    const tasks = await getAssistantPreConfigTaskDocs(projectId, assistantId)
+    const targets = []
+    const seen = new Set()
+
+    tasks.forEach(task => {
+        if (targets.length >= maxTargets) return
+        if (task?.type !== 'iframe') return
+
+        const taskMetadata = isObject(task.taskMetadata) ? task.taskMetadata : {}
+        const externalIntegration = isObject(taskMetadata.externalIntegration) ? taskMetadata.externalIntegration : {}
+        const rawTools = Array.isArray(externalIntegration.tools) ? externalIntegration.tools : []
+
+        rawTools.forEach(rawTool => {
+            if (targets.length >= maxTargets) return
+            if (!isObject(rawTool)) return
+
+            const key = normalizeToolNameToken(rawTool.key || rawTool.id || rawTool.name || '')
+            if (!key) return
+
+            const execution = resolveToolExecution(externalIntegration, rawTool, task)
+            if (!execution) return
+
+            const integrationId = normalizeToolNameToken(
+                externalIntegration.integrationId || externalIntegration.id || task.id
+            )
+            const toolName = buildExternalIntegrationToolName({
+                projectId,
+                assistantId,
+                taskId: task.id,
+                integrationId,
+                toolKey: key,
+                toolName: rawTool.name,
+            })
+
+            if (seen.has(toolName)) return
+            seen.add(toolName)
+
+            const inputSchema = normalizeExternalToolInputSchema(rawTool.inputSchema)
+            const integrationName =
+                String(externalIntegration.integrationName || externalIntegration.name || integrationId).trim() ||
+                integrationId
+            const displayName = String(rawTool.name || key).trim() || key
+            const description =
+                String(rawTool.description || `Execute ${displayName} in ${integrationName}`).trim() ||
+                `Execute ${displayName} in ${integrationName}`
+
+            targets.push({
+                toolName,
+                projectId,
+                assistantId,
+                taskId: task.id,
+                integrationId,
+                integrationName,
+                toolKey: key,
+                displayName,
+                description,
+                inputSchema,
+                execution,
+            })
+        })
+    })
+
+    return targets.slice(0, maxTargets)
+}
+
+const buildExternalIntegrationToolSchema = target => ({
+    type: 'function',
+    function: {
+        name: target.toolName,
+        description:
+            `Use external integration "${target.integrationName}" to execute "${target.displayName}". ` +
+            `${target.description}`,
+        parameters: target.inputSchema,
+    },
+})
+
+async function getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext = null) {
+    if (!Array.isArray(allowedTools) || !allowedTools.includes(EXTERNAL_TOOLS_KEY)) return []
+
+    const targets = await getReachableExternalIntegrationTools({
+        projectId: toolRuntimeContext?.projectId,
+        assistantId: toolRuntimeContext?.assistantId,
+        requestUserId: toolRuntimeContext?.requestUserId,
+    })
+    return targets.map(buildExternalIntegrationToolSchema)
+}
+
+async function resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeContext = null) {
+    if (!isExternalIntegrationToolName(toolName)) return null
+
+    const targets = await getReachableExternalIntegrationTools({
+        projectId: toolRuntimeContext?.projectId,
+        assistantId: toolRuntimeContext?.assistantId,
+        requestUserId: toolRuntimeContext?.requestUserId,
+    })
+    return targets.find(target => target.toolName === toolName) || null
+}
+
+const getAccessibleProjectIdsFromUserData = userData => {
+    const allIds = []
+    const appendIds = ids => {
+        if (!Array.isArray(ids)) return
+        ids.forEach(id => {
+            if (typeof id === 'string' && id.trim() && !allIds.includes(id.trim())) {
+                allIds.push(id.trim())
+            }
+        })
+    }
+    appendIds(userData?.projectIds)
+    appendIds(userData?.guideProjectIds)
+    appendIds(userData?.templateProjectIds)
+    appendIds(userData?.archivedProjectIds)
+    return allIds
+}
+
+async function getReachableDelegationTargets({
+    projectId,
+    assistantId,
+    requestUserId,
+    maxTargets = MAX_TALK_TO_ASSISTANT_TARGETS,
+}) {
+    if (!projectId || !assistantId || !requestUserId) {
+        return []
+    }
+
+    const db = admin.firestore()
+    const userDoc = await db.doc(`users/${requestUserId}`).get()
+    if (!userDoc.exists) {
+        return []
+    }
+
+    const userData = userDoc.data() || {}
+    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
+    if (!accessibleProjectIds.includes(projectId)) {
+        return []
+    }
+
+    const defaultProjectId = userData.defaultProjectId || null
+    const [callerAssistantDoc, defaultProjectDoc, defaultProjectAssistantDoc] = await db.getAll(
+        db.doc(`assistants/${projectId}/items/${assistantId}`),
+        defaultProjectId ? db.doc(`projects/${defaultProjectId}`) : db.doc(`projects/__missing__`),
+        defaultProjectId
+            ? db.doc(`assistants/${defaultProjectId}/items/${assistantId}`)
+            : db.doc(`assistants/__missing__/items/__missing__`)
+    )
+
+    let isPrivilegedDefaultProjectAssistant = false
+
+    if (defaultProjectId && defaultProjectDoc.exists && defaultProjectAssistantDoc.exists) {
+        const defaultProjectAssistantId = defaultProjectDoc.exists ? defaultProjectDoc.data()?.assistantId : null
+        isPrivilegedDefaultProjectAssistant = defaultProjectAssistantId
+            ? defaultProjectAssistantId === assistantId
+            : (defaultProjectAssistantDoc.data() || {}).isDefault === true
+    }
+
+    const callerExistsInCurrentProject = callerAssistantDoc.exists
+    if (!callerExistsInCurrentProject && !isPrivilegedDefaultProjectAssistant) {
+        return []
+    }
+
+    const scopedProjectIds = isPrivilegedDefaultProjectAssistant ? accessibleProjectIds : [projectId]
+    const projectNames = new Map()
+    const targets = []
+
+    for (let i = 0; i < scopedProjectIds.length && targets.length < maxTargets; i++) {
+        const targetProjectId = scopedProjectIds[i]
+
+        const [projectDoc, assistantsSnapshot] = await Promise.all([
+            db.doc(`projects/${targetProjectId}`).get(),
+            db.collection(`assistants/${targetProjectId}/items`).orderBy('lastEditionDate', 'desc').limit(50).get(),
+        ])
+
+        const projectName = projectDoc.exists ? projectDoc.data()?.name || targetProjectId : targetProjectId
+        projectNames.set(targetProjectId, projectName)
+
+        assistantsSnapshot.docs.forEach(doc => {
+            if (targets.length >= maxTargets) return
+
+            const targetAssistantId = doc.id
+            if (targetAssistantId === assistantId) return
+
+            const targetAssistant = doc.data() || {}
+            targets.push({
+                toolName: buildTalkToAssistantToolName(
+                    targetProjectId,
+                    targetAssistantId,
+                    targetAssistant.displayName || targetAssistantId
+                ),
+                projectId: targetProjectId,
+                projectName: projectNames.get(targetProjectId) || targetProjectId,
+                assistantId: targetAssistantId,
+                displayName: targetAssistant.displayName || 'Assistant',
+                description: targetAssistant.description || '',
+            })
+        })
+    }
+
+    return targets.slice(0, maxTargets)
+}
+
+const buildTalkToAssistantToolSchema = target => ({
+    type: 'function',
+    function: {
+        name: target.toolName,
+        description:
+            `Delegate work to assistant "${target.displayName}" in project "${target.projectName}". ` +
+            `${
+                target.description ? `Assistant description: ${String(target.description).trim().slice(0, 180)}. ` : ''
+            }` +
+            'Pass a clear instruction. The assistant will execute with its own enabled tools and return the result.',
+        parameters: {
+            type: 'object',
+            properties: {
+                message: {
+                    type: 'string',
+                    description: 'Instruction for the assistant. Include all required context and expected output.',
+                },
+            },
+            required: ['message'],
+        },
+    },
+})
+
+async function getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext = null) {
+    if (!Array.isArray(allowedTools) || !allowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {
+        return []
+    }
+
+    const targets = await getReachableDelegationTargets({
+        projectId: toolRuntimeContext?.projectId,
+        assistantId: toolRuntimeContext?.assistantId,
+        requestUserId: toolRuntimeContext?.requestUserId,
+    })
+
+    return targets.map(buildTalkToAssistantToolSchema)
+}
+
+async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = null) {
+    if (!isTalkToAssistantToolName(toolName)) return null
+
+    const targets = await getReachableDelegationTargets({
+        projectId: toolRuntimeContext?.projectId,
+        assistantId: toolRuntimeContext?.assistantId,
+        requestUserId: toolRuntimeContext?.requestUserId,
+    })
+    return targets.find(target => target.toolName === toolName) || null
+}
+
+async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
+    if (!Array.isArray(assistantAllowedTools)) return false
+    if (assistantAllowedTools.includes(toolName)) {
+        return toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
+    }
+
+    const hasDelegationToggle = assistantAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)
+    if (hasDelegationToggle && isTalkToAssistantToolName(toolName)) {
+        const target = await resolveDelegationTargetByToolName(toolName, toolRuntimeContext)
+        return !!target
+    }
+
+    const hasExternalToolsToggle = assistantAllowedTools.includes(EXTERNAL_TOOLS_KEY)
+    if (hasExternalToolsToggle && isExternalIntegrationToolName(toolName)) {
+        const target = await resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeContext)
+        return !!target
+    }
+
+    return false
+}
+
+async function collectAssistantTextWithToolCalls({
+    stream,
+    conversationHistory,
+    modelKey,
+    temperatureKey,
+    allowedTools,
+    toolRuntimeContext,
+    userContext = null,
+}) {
+    let responseText = ''
+    let currentConversation = conversationHistory
+    let currentToolCalls = null
+    let toolCallIteration = 0
+
+    const collectStreamContent = async activeStream => {
+        let nextToolCalls = null
+        for await (const chunk of activeStream) {
+            if (chunk.additional_kwargs?.tool_calls && Array.isArray(chunk.additional_kwargs.tool_calls)) {
+                nextToolCalls = chunk.additional_kwargs.tool_calls
+            } else if (chunk.content) {
+                responseText += chunk.content
+            }
+        }
+        return nextToolCalls
+    }
+
+    currentToolCalls = await collectStreamContent(stream)
+
+    while (currentToolCalls && currentToolCalls.length > 0 && toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS) {
+        toolCallIteration++
+
+        const toolCall = currentToolCalls[0]
+        const toolName = toolCall?.function?.name
+        const toolCallId = toolCall?.id
+        let toolArgs = {}
+
+        try {
+            toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+        } catch (error) {
+            throw new Error(`Failed to parse tool arguments for ${toolName}`)
+        }
+
+        const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
+        if (!isAllowed) {
+            throw new Error(`Tool not permitted: ${toolName}`)
+        }
+
+        const toolResult = await executeToolNatively(
+            toolName,
+            toolArgs,
+            toolRuntimeContext?.projectId,
+            toolRuntimeContext?.assistantId,
+            toolRuntimeContext?.requestUserId,
+            userContext
+        )
+
+        currentConversation = [
+            ...currentConversation,
+            {
+                role: 'assistant',
+                content: responseText,
+                tool_calls: [
+                    {
+                        id: toolCallId,
+                        type: 'function',
+                        function: {
+                            name: toolName,
+                            arguments: JSON.stringify(toolArgs),
+                        },
+                    },
+                ],
+            },
+            {
+                role: 'tool',
+                content: JSON.stringify(toolResult),
+                tool_call_id: toolCallId,
+            },
+            {
+                role: 'user',
+                content:
+                    'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
+            },
+        ]
+
+        const resumedStream = await interactWithChatStream(
+            currentConversation,
+            modelKey,
+            temperatureKey,
+            allowedTools,
+            toolRuntimeContext
+        )
+        currentToolCalls = await collectStreamContent(resumedStream)
+    }
+
+    if (toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS) {
+        responseText += '\n\nMaximum tool call iterations reached.'
+    }
+
+    return responseText.trim()
 }
 
 async function spentGold(userId, goldToReduce) {
@@ -353,7 +881,13 @@ const calculateGoldToReduce = (userGold, totalTokens, model) => {
     return goldToReduce
 }
 
-async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey, allowedTools = []) {
+async function interactWithChatStream(
+    formattedPrompt,
+    modelKey,
+    temperatureKey,
+    allowedTools = [],
+    toolRuntimeContext = null
+) {
     const streamStartTime = Date.now()
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
@@ -467,7 +1001,14 @@ async function interactWithChatStream(formattedPrompt, modelKey, temperatureKey,
         // Add tools if model supports native tools and tools are allowed
         if (modelSupportsNativeTools(modelKey) && Array.isArray(allowedTools) && allowedTools.length > 0) {
             const { getToolSchemas } = require('./toolSchemas')
-            const toolSchemas = getToolSchemas(allowedTools)
+            const staticAllowedTools = allowedTools.filter(
+                toolName => toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
+            )
+            const staticToolSchemas = getToolSchemas(staticAllowedTools)
+            const delegationToolSchemas = await getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext)
+            const externalToolSchemas = await getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext)
+            const toolSchemas = [...staticToolSchemas, ...delegationToolSchemas, ...externalToolSchemas]
+
             if (toolSchemas.length > 0) {
                 console.log(
                     'Using native tool schemas:',
@@ -1253,6 +1794,178 @@ async function moveNoteToDifferentProject(params) {
     }
 }
 
+async function executeDelegatedAssistantRequest({
+    target,
+    toolArgs,
+    requestUserId,
+    callerProjectId,
+    callerAssistantId,
+    userContext = null,
+}) {
+    const message = typeof toolArgs?.message === 'string' ? toolArgs.message.trim() : ''
+    if (!message) {
+        throw new Error('talk_to_assistant requires a non-empty "message" argument')
+    }
+
+    const currentDepth = Number.isFinite(userContext?.delegationDepth) ? userContext.delegationDepth : 0
+    if (currentDepth >= MAX_ASSISTANT_DELEGATION_DEPTH) {
+        throw new Error(`Maximum delegation depth reached (${MAX_ASSISTANT_DELEGATION_DEPTH})`)
+    }
+
+    const callerNode = `${callerProjectId}:${callerAssistantId}`
+    const targetNode = `${target.projectId}:${target.assistantId}`
+    const existingPath = Array.isArray(userContext?.delegationPath) ? userContext.delegationPath : [callerNode]
+    if (existingPath.includes(targetNode)) {
+        throw new Error('Delegation loop detected')
+    }
+
+    const db = admin.firestore()
+    const targetAssistantDoc = await db.doc(`assistants/${target.projectId}/items/${target.assistantId}`).get()
+    if (!targetAssistantDoc.exists) {
+        throw new Error('Target assistant no longer exists or is not accessible')
+    }
+
+    const targetAssistant = targetAssistantDoc.data() || {}
+    const targetAllowedTools = Array.isArray(targetAssistant.allowedTools) ? targetAssistant.allowedTools : []
+    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_2)
+    const targetTemperature = targetAssistant.temperature || TEMPERATURE_NORMAL
+    const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
+    const targetInstructions = targetAssistant.instructions || 'You are a helpful assistant.'
+
+    const delegatedUserContext = {
+        ...(userContext || {}),
+        delegationDepth: currentDepth + 1,
+        delegationPath: [...existingPath, targetNode],
+        delegatedByAssistantId: callerAssistantId,
+        delegatedByProjectId: callerProjectId,
+    }
+    const delegatedToolRuntimeContext = {
+        projectId: target.projectId,
+        assistantId: target.assistantId,
+        requestUserId,
+    }
+
+    const messages = []
+    addBaseInstructions(messages, targetDisplayName, 'English', targetInstructions, targetAllowedTools)
+    messages.push([
+        'system',
+        `You are handling a delegated request from assistant "${callerAssistantId}" in project "${callerProjectId}". ` +
+            'Complete the task using your available tools and return a concise result for the calling assistant.',
+    ])
+    messages.push(['user', parseTextForUseLiKePrompt(message)])
+
+    const stream = await interactWithChatStream(
+        messages,
+        targetModel,
+        targetTemperature,
+        targetAllowedTools,
+        delegatedToolRuntimeContext
+    )
+    const assistantResponse = await collectAssistantTextWithToolCalls({
+        stream,
+        conversationHistory: messages,
+        modelKey: targetModel,
+        temperatureKey: targetTemperature,
+        allowedTools: targetAllowedTools,
+        toolRuntimeContext: delegatedToolRuntimeContext,
+        userContext: delegatedUserContext,
+    })
+
+    return {
+        success: true,
+        status: 'success',
+        targetAssistantId: target.assistantId,
+        targetAssistantName: targetDisplayName,
+        targetProjectId: target.projectId,
+        targetProjectName: target.projectName,
+        assistantResponse,
+        delegationDepth: delegatedUserContext.delegationDepth,
+    }
+}
+
+async function executeExternalIntegrationTool({ target, toolArgs, requestUserId, callerProjectId, callerAssistantId }) {
+    if (!target?.execution?.url) {
+        throw new Error('External tool execution URL is missing')
+    }
+
+    const requestId = uuidv4()
+    const method = target.execution.method || 'POST'
+    const timeoutMs = Number(target.execution.timeoutMs) || 10000
+    const payload = {
+        toolKey: target.toolKey,
+        arguments: isObject(toolArgs) ? toolArgs : {},
+        context: {
+            requestId,
+            userId: requestUserId || '',
+            assistantId: callerAssistantId || '',
+            projectId: callerProjectId || '',
+            integrationId: target.integrationId || '',
+            taskId: target.taskId || '',
+        },
+    }
+
+    const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Alldone-Request-Id': requestId,
+        'X-Alldone-Tool-Key': target.toolKey || '',
+    }
+
+    const envFunctions = getCachedEnvFunctions()
+    const signingSecret = envFunctions?.EXTERNAL_TOOLS_SIGNING_SECRET || ''
+    const timestamp = Date.now().toString()
+    const body = JSON.stringify(payload)
+    if (signingSecret) {
+        const signature = crypto.createHmac('sha256', signingSecret).update(`${timestamp}.${body}`).digest('hex')
+        headers['X-Alldone-Timestamp'] = timestamp
+        headers['X-Alldone-Signature'] = signature
+    }
+
+    let url = target.execution.url
+    const requestInit = {
+        method,
+        headers,
+        signal: AbortSignal.timeout(Math.min(30000, Math.max(1000, timeoutMs))),
+    }
+
+    if (method === 'GET') {
+        const parsedUrl = new URL(url)
+        parsedUrl.searchParams.set('toolKey', target.toolKey || '')
+        parsedUrl.searchParams.set('requestId', requestId)
+        parsedUrl.searchParams.set('args', JSON.stringify(payload.arguments || {}))
+        url = parsedUrl.toString()
+    } else {
+        requestInit.body = body
+    }
+
+    const response = await fetch(url, requestInit)
+    const rawText = await response.text()
+
+    let responseData = null
+    if (rawText && rawText.trim()) {
+        try {
+            responseData = JSON.parse(rawText)
+        } catch (_) {
+            responseData = { raw: rawText.trim() }
+        }
+    }
+
+    if (!response.ok) {
+        const remoteError = responseData?.error || responseData?.message || `HTTP ${response.status}`
+        throw new Error(`External tool failed (${target.displayName}): ${remoteError}`)
+    }
+
+    return {
+        success: responseData?.success !== false,
+        integrationId: target.integrationId,
+        integrationName: target.integrationName,
+        toolKey: target.toolKey,
+        toolName: target.displayName,
+        status: responseData?.status || 'ok',
+        result: Object.prototype.hasOwnProperty.call(responseData || {}, 'result') ? responseData.result : responseData,
+    }
+}
+
 /**
  * Execute a tool natively and return the raw result (not processed by LLM)
  * This is used for OpenAI native tool calling
@@ -1264,6 +1977,60 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
 
     // Get creator ID - use requestUserId if available, otherwise use assistantId
     const creatorId = requestUserId || assistantId
+
+    if (isTalkToAssistantToolName(toolName)) {
+        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId)
+        const callerAllowedTools = Array.isArray(callerAssistant?.allowedTools) ? callerAssistant.allowedTools : []
+
+        if (!callerAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {
+            throw new Error(`Tool not permitted: ${toolName}`)
+        }
+
+        const target = await resolveDelegationTargetByToolName(toolName, {
+            projectId,
+            assistantId,
+            requestUserId,
+        })
+        if (!target) {
+            throw new Error(`Delegation target is not accessible: ${toolName}`)
+        }
+
+        return executeDelegatedAssistantRequest({
+            target,
+            toolArgs,
+            requestUserId,
+            callerProjectId: projectId,
+            callerAssistantId: assistantId,
+            userContext,
+        })
+    }
+
+    if (isExternalIntegrationToolName(toolName)) {
+        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId)
+        const callerAllowedTools = Array.isArray(callerAssistant?.allowedTools) ? callerAssistant.allowedTools : []
+
+        if (!callerAllowedTools.includes(EXTERNAL_TOOLS_KEY)) {
+            throw new Error(`Tool not permitted: ${toolName}`)
+        }
+
+        const target = await resolveExternalIntegrationToolTargetByName(toolName, {
+            projectId,
+            assistantId,
+            requestUserId,
+        })
+
+        if (!target) {
+            throw new Error(`External tool is not accessible: ${toolName}`)
+        }
+
+        return executeExternalIntegrationTool({
+            target,
+            toolArgs,
+            requestUserId,
+            callerProjectId: projectId,
+            callerAssistantId: assistantId,
+        })
+    }
 
     switch (toolName) {
         case 'create_task': {
@@ -2709,7 +3476,8 @@ async function storeChunks(
     conversationHistory = null,
     modelKey = null,
     temperatureKey = null,
-    allowedTools = []
+    allowedTools = [],
+    toolRuntimeContext = null
 ) {
     const chunksStartTime = Date.now()
     console.log('🔄 [TIMING] storeChunks START', {
@@ -2742,6 +3510,12 @@ async function storeChunks(
             commentId,
             followerCount: currentFollowerIds?.length,
         })
+
+        const runtimeContextForTools = toolRuntimeContext || {
+            projectId,
+            assistantId,
+            requestUserId,
+        }
 
         let commentText = ''
         let thinkingMode = false
@@ -2881,14 +3655,17 @@ async function storeChunks(
                 let currentConversation = conversationHistory
                 let currentToolCalls = chunk.additional_kwargs.tool_calls
                 let toolCallIteration = 0
-                const MAX_TOOL_ITERATIONS = 10 // Prevent infinite loops
 
-                while (currentToolCalls && currentToolCalls.length > 0 && toolCallIteration < MAX_TOOL_ITERATIONS) {
+                while (
+                    currentToolCalls &&
+                    currentToolCalls.length > 0 &&
+                    toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS
+                ) {
                     toolCallIteration++
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Starting tool call iteration #' + toolCallIteration, {
                             toolCallsCount: currentToolCalls.length,
-                            maxIterations: MAX_TOOL_ITERATIONS,
+                            maxIterations: MAX_NATIVE_TOOL_CALL_ITERATIONS,
                         })
                     }
 
@@ -2913,8 +3690,12 @@ async function storeChunks(
                     }
 
                     // Check permissions
-                    const assistant = await getAssistantForChat(projectId, assistantId)
-                    const allowed = Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes(toolName)
+                    const assistant = await getAssistantForChat(projectId, assistantId, requestUserId)
+                    const allowed = await isToolAllowedForExecution(
+                        Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
+                        toolName,
+                        runtimeContextForTools
+                    )
 
                     if (!allowed) {
                         if (ENABLE_DETAILED_LOGGING) {
@@ -2948,7 +3729,7 @@ async function storeChunks(
                             toolArgs,
                             projectId,
                             assistantId,
-                            requestUserId,
+                            runtimeContextForTools.requestUserId || requestUserId,
                             userContext
                         )
                         const toolResultString = JSON.stringify(toolResult, null, 2)
@@ -3052,7 +3833,8 @@ async function storeChunks(
                         updatedConversation,
                         modelKey,
                         temperatureKey,
-                        allowedTools
+                        allowedTools,
+                        runtimeContextForTools
                     )
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
@@ -3176,10 +3958,10 @@ async function storeChunks(
                 } // End of while loop
 
                 // Check if we hit max iterations
-                if (toolCallIteration >= MAX_TOOL_ITERATIONS) {
+                if (toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS) {
                     await flushPendingUpdate() // Flush any pending updates first
                     console.warn('🔧 NATIVE TOOL CALL: Hit max tool call iterations!', {
-                        maxIterations: MAX_TOOL_ITERATIONS,
+                        maxIterations: MAX_NATIVE_TOOL_CALL_ITERATIONS,
                     })
                     commentText += '\n\n⚠️ Maximum tool call iterations reached'
                     await commentRef.update({ commentText, isLoading: false })
@@ -3434,7 +4216,8 @@ async function storeBotAnswerStream(
     temperatureKey = null,
     allowedTools = [],
     commonData = null, // Optional pre-fetched common data to reduce time-to-first-token
-    functionStartTime = null // Optional function start time for time-to-first-token tracking
+    functionStartTime = null, // Optional function start time for time-to-first-token tracking
+    toolRuntimeContext = null
 ) {
     const streamProcessStart = Date.now()
     // Store function start time globally for time-to-first-token tracking
@@ -3488,7 +4271,8 @@ async function storeBotAnswerStream(
                   conversationHistory,
                   modelKey,
                   temperatureKey,
-                  allowedTools
+                  allowedTools,
+                  toolRuntimeContext
               )
             : ''
         const storeChunksDuration = Date.now() - storeChunksStart
@@ -4270,6 +5054,7 @@ module.exports = {
     getCommonData, // Export for parallel fetching to reduce time-to-first-token
     normalizeModelKey, // Export for model normalization and backward compatibility
     executeToolNatively, // Export for WhatsApp assistant bridge
+    isToolAllowedForExecution,
     // Optimized functions with caching
     getCachedEnvFunctions,
     getOpenAIClient,

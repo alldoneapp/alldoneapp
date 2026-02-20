@@ -140,7 +140,18 @@ async function askToOpenAIBotOptimized(
 
         // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()
-        const stream = await interactWithChatStream(contextMessages, model, temperature, allowedTools)
+        const toolRuntimeContext = {
+            projectId,
+            assistantId: assistant.uid || assistantId,
+            requestUserId: userId,
+        }
+        const stream = await interactWithChatStream(
+            contextMessages,
+            model,
+            temperature,
+            allowedTools,
+            toolRuntimeContext
+        )
         const step4Duration = Date.now() - step4Start
 
         console.log('✅ [TIMING] Step 4 - Stream creation (optimized)', {
@@ -171,7 +182,8 @@ async function askToOpenAIBotOptimized(
             temperature,
             allowedTools,
             commonData, // Pass pre-fetched data
-            timeToFirstTokenStart // Pass entry time for accurate time-to-first-token tracking
+            timeToFirstTokenStart, // Pass entry time for accurate time-to-first-token tracking
+            toolRuntimeContext
         )
         const step5Duration = Date.now() - step5Start
 
@@ -293,7 +305,8 @@ async function storeBotAnswerStreamOptimized(
     temperatureKey,
     allowedTools,
     commonData, // Pre-fetched data
-    functionStartTime = null // Function start time for time-to-first-token tracking
+    functionStartTime = null, // Function start time for time-to-first-token tracking
+    toolRuntimeContext = null
 ) {
     const { project, chat, chatLink } = commonData || (await getCommonDataOptimized(projectId, objectType, objectId))
 
@@ -319,7 +332,8 @@ async function storeBotAnswerStreamOptimized(
         temperatureKey,
         allowedTools,
         commonData, // Pass pre-fetched common data to reduce time-to-first-token
-        functionStartTime // Pass function start time for time-to-first-token tracking
+        functionStartTime, // Pass function start time for time-to-first-token tracking
+        toolRuntimeContext
     )
 }
 

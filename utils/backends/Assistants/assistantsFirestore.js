@@ -8,6 +8,7 @@ import {
     globalWatcherUnsub,
     logEvent,
     proccessPictureForAvatar,
+    runHttpsCallableFunction,
     uploadAvatarPhotos,
 } from '../firestore'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
@@ -502,6 +503,24 @@ export async function updateAssistantAvatar(projectId, assistant, pictureFile) {
 
         if (!isGlobalAssistant(assistant.uid))
             assistantPictureChangedUpdatesChain(projectId, assistant, updatedData.photoURL50)
+    }
+}
+
+export async function discoverExternalToolsForIframeLink(link) {
+    const sourceUrl = typeof link === 'string' ? link.trim() : ''
+    if (!sourceUrl) {
+        return { success: false, error: 'Missing iframe URL' }
+    }
+
+    try {
+        return await runHttpsCallableFunction('discoverExternalToolsSecondGen', { url: sourceUrl }, { timeout: 20000 })
+    } catch (error) {
+        console.error('Error discovering external tools for iframe link:', error)
+        return {
+            success: false,
+            sourceUrl,
+            error: error.message || 'Failed to discover external tools',
+        }
     }
 }
 

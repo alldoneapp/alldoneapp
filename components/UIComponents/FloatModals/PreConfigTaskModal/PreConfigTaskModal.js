@@ -5,7 +5,11 @@ import moment from 'moment'
 
 import VariableModal from '../VariableModal/VariableModal'
 import TaskModal, { TASK_TYPE_PROMPT, TASK_TYPE_WEBHOOK, TASK_TYPE_IFRAME } from './TaskModal'
-import { updatePreConfigTask, uploadNewPreConfigTask } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import {
+    discoverExternalToolsForIframeLink,
+    updatePreConfigTask,
+    uploadNewPreConfigTask,
+} from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PRE_CONFIG_TASK } from '../../ConfirmPopup'
 import { showConfirmPopup } from '../../../../redux/actions'
 import {
@@ -165,7 +169,48 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         setName(value)
     }, [])
 
-    const addTask = () => {
+    const getIframeTaskMetadata = async existingTaskMetadata => {
+        const baseMetadata =
+            existingTaskMetadata && typeof existingTaskMetadata === 'object' ? { ...existingTaskMetadata } : {}
+        const cleanLink = typeof link === 'string' ? link.trim() : ''
+        const discoveredAt = Date.now()
+
+        if (!cleanLink) return baseMetadata
+
+        const currentIntegration =
+            baseMetadata.externalIntegration && typeof baseMetadata.externalIntegration === 'object'
+                ? { ...baseMetadata.externalIntegration }
+                : {}
+
+        const discovered = await discoverExternalToolsForIframeLink(cleanLink)
+        const hasDiscoveredTools =
+            discovered?.success && Array.isArray(discovered?.tools) && discovered.tools.length > 0
+
+        baseMetadata.externalIntegration = {
+            ...currentIntegration,
+            sourceUrl: cleanLink,
+            discoveredAt,
+            ...(hasDiscoveredTools
+                ? {
+                      version: discovered.version || currentIntegration.version || '1.0',
+                      integrationId: discovered.integrationId || currentIntegration.integrationId || '',
+                      integrationName: discovered.integrationName || currentIntegration.integrationName || '',
+                      origin: discovered.origin || currentIntegration.origin || '',
+                      manifestUrl: discovered.manifestUrl || currentIntegration.manifestUrl || '',
+                      tools: discovered.tools,
+                      lastDiscoveryError: '',
+                  }
+                : {
+                      tools: Array.isArray(currentIntegration.tools) ? currentIntegration.tools : [],
+                      lastDiscoveryError: discovered?.error || 'Could not discover external tools',
+                  }),
+            discoveryAttempts: Array.isArray(discovered?.attempts) ? discovered.attempts : [],
+        }
+
+        return baseMetadata
+    }
+
+    const addTask = async () => {
         console.log('Adding task with startDate:', {
             startDate,
             formattedDate: moment(startDate).format('YYYY-MM-DD'),
@@ -178,6 +223,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
 
         // Convert startDate to UTC by removing the local timezone offset
         const utcStartDate = moment(startDate).utc().valueOf()
+        const iframeTaskMetadata = taskType === TASK_TYPE_IFRAME ? await getIframeTaskMetadata() : null
 
         const newTask =
             taskType === TASK_TYPE_PROMPT
@@ -225,6 +271,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       prompt: '',
                       variables: [],
                       link,
+                      taskMetadata: iframeTaskMetadata || {},
                       recurrence,
                       sendWhatsApp,
                   }
@@ -234,7 +281,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         }, 1000)
     }
 
-    const saveTask = () => {
+    const saveTask = async () => {
         console.log('Saving task with startDate:', {
             startDate,
             formattedDate: moment(startDate).format('YYYY-MM-DD'),
@@ -248,6 +295,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
 
         // Convert startDate to UTC by removing the local timezone offset
         const utcStartDate = moment(startDate).utc().valueOf()
+        const iframeTaskMetadata =
+            taskType === TASK_TYPE_IFRAME ? await getIframeTaskMetadata(task?.taskMetadata || {}) : null
 
         const updatedTask =
             taskType === TASK_TYPE_PROMPT
@@ -301,6 +350,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       prompt: '',
                       variables: [],
                       link,
+                      taskMetadata: iframeTaskMetadata || {},
                       recurrence: recurrence ?? null,
                       sendWhatsApp,
                   }

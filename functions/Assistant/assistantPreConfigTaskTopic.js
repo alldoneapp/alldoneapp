@@ -260,6 +260,11 @@ async function generatePreConfigTaskResult(
         console.log('Prepared chat prompt with model and temperature:', { model, temperature })
 
         const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : []
+        const toolRuntimeContext = {
+            projectId,
+            assistantId: settings.uid || assistantId,
+            requestUserId: userId,
+        }
 
         // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token
         const step3Start = Date.now()
@@ -270,7 +275,7 @@ async function generatePreConfigTaskResult(
             contextMessagesCount: contextMessages.length,
         })
         const [stream, commonData] = await Promise.all([
-            interactWithChatStream(contextMessages, model, temperature, allowedTools),
+            interactWithChatStream(contextMessages, model, temperature, allowedTools, toolRuntimeContext),
             getCommonData(projectId, 'tasks', objectId),
         ])
         const step3Duration = Date.now() - step3Start
@@ -317,7 +322,8 @@ async function generatePreConfigTaskResult(
             temperature, // temperatureKey
             allowedTools,
             commonData, // Pass pre-fetched common data
-            timeToFirstTokenStart // Pass entry time for accurate time-to-first-token tracking
+            timeToFirstTokenStart, // Pass entry time for accurate time-to-first-token tracking
+            toolRuntimeContext
         )
         const step4Duration = Date.now() - step4Start
 

@@ -27,10 +27,15 @@ async function generateBotWelcomeMessageForGuide(
     const messages = []
     addBaseInstructions(messages, displayName, language, instructions, allowedTools)
     messages.push(['system', template])
+    const toolRuntimeContext = {
+        projectId,
+        assistantId: assistant.uid || assistantId,
+        requestUserId: userIdsToNotify?.[0] || null,
+    }
 
     // Fetch common data in parallel with API call to reduce time-to-first-token
     const [stream, commonData] = await Promise.all([
-        interactWithChatStream(messages, model, temperature, allowedTools),
+        interactWithChatStream(messages, model, temperature, allowedTools, toolRuntimeContext),
         getCommonData(projectId, 'topics', objectId),
     ])
 
@@ -51,7 +56,9 @@ async function generateBotWelcomeMessageForGuide(
         model, // modelKey
         temperature, // temperatureKey
         allowedTools,
-        commonData // Pass pre-fetched common data
+        commonData, // Pass pre-fetched common data
+        null,
+        toolRuntimeContext
     )
 }
 

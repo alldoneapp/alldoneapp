@@ -1279,7 +1279,7 @@ exports.askToBotSecondGen = onCall(
         if (auth) {
             console.log(`📊 [TIMING] Module require (pre-loaded): 0ms`)
             const {
-                userId,
+                userId: requestedUserId,
                 messageId,
                 projectId,
                 objectType,
@@ -1290,6 +1290,13 @@ exports.askToBotSecondGen = onCall(
                 assistantId,
                 followerIds,
             } = data
+            const userId = auth.uid
+            if (requestedUserId && requestedUserId !== userId) {
+                console.warn('askToBotSecondGen: ignoring mismatched userId from payload', {
+                    requestedUserId,
+                    authUserId: userId,
+                })
+            }
             console.log('📊 [TIMING] Function setup complete, calling askToOpenAIBot:', {
                 setupTime: `${Date.now() - functionEntryTime}ms`,
                 userId,
@@ -1425,7 +1432,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
         if (auth) {
             const { generatePreConfigTaskResult } = require('./Assistant/assistantPreConfigTaskTopic')
             const {
-                userId,
+                userId: requestedUserId,
                 projectId,
                 taskId,
                 userIdsToNotify,
@@ -1436,6 +1443,13 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 aiSettings,
                 taskMetadata,
             } = data
+            const userId = auth.uid
+            if (requestedUserId && requestedUserId !== userId) {
+                console.warn('generatePreConfigTaskResultSecondGen: ignoring mismatched userId from payload', {
+                    requestedUserId,
+                    authUserId: userId,
+                })
+            }
             const result = await generatePreConfigTaskResult(
                 userId,
                 projectId,
@@ -1460,6 +1474,34 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
             return result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
+exports.discoverExternalToolsSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+
+        const sourceUrl = data?.url
+        if (typeof sourceUrl !== 'string' || !sourceUrl.trim()) {
+            throw new HttpsError('invalid-argument', 'A valid HTTPS URL is required')
+        }
+
+        try {
+            const { discoverExternalToolsFromUrl } = require('./Assistant/externalToolsDiscovery')
+            return await discoverExternalToolsFromUrl(sourceUrl)
+        } catch (error) {
+            console.error('discoverExternalToolsSecondGen failed:', error)
+            throw new HttpsError('internal', error.message || 'Failed to discover external tools')
         }
     }
 )

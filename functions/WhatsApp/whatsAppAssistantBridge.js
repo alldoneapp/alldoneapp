@@ -6,6 +6,7 @@ const {
     reduceGoldWhenChatWithAI,
     executeToolNatively,
     getMessageTextForTokenCounting,
+    isToolAllowedForExecution,
 } = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
@@ -47,6 +48,11 @@ async function processWhatsAppAssistantMessage(
 
     const { model, temperature, instructions, displayName, allowedTools: rawTools } = assistant
     const allowedTools = Array.isArray(rawTools) ? rawTools : []
+    const toolRuntimeContext = {
+        projectId,
+        assistantId: assistant.uid || assistantId,
+        requestUserId: userId,
+    }
 
     // Extract user timezone
     const userTimezoneOffset =
@@ -78,7 +84,7 @@ async function processWhatsAppAssistantMessage(
     messages.push(['user', userMessageContent || messageText])
 
     // Call the AI
-    const stream = await interactWithChatStream(messages, model, temperature, allowedTools)
+    const stream = await interactWithChatStream(messages, model, temperature, allowedTools, toolRuntimeContext)
 
     // Collect the full response, handling tool calls
     const responseText = await collectStreamWithToolCalls(
@@ -88,8 +94,9 @@ async function processWhatsAppAssistantMessage(
         temperature,
         allowedTools,
         projectId,
-        assistantId,
-        userId
+        assistant.uid || assistantId,
+        userId,
+        toolRuntimeContext
     )
 
     // Store AI response in topic and update lastAssistantCommentData for AssistantLine
@@ -142,7 +149,8 @@ async function collectStreamWithToolCalls(
     allowedTools,
     projectId,
     assistantId,
-    requestUserId
+    requestUserId,
+    toolRuntimeContext = null
 ) {
     let responseText = ''
     let currentConversation = conversationHistory
@@ -179,7 +187,7 @@ async function collectStreamWithToolCalls(
                 }
 
                 // Check permissions
-                const allowed = allowedTools.includes(toolName)
+                const allowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
                 if (!allowed) {
                     console.warn('WhatsApp: Tool not permitted:', toolName)
                     responseText += `\n\nTool not permitted: ${toolName}`
@@ -251,7 +259,8 @@ async function collectStreamWithToolCalls(
                     updatedConversation,
                     modelKey,
                     temperatureKey,
-                    allowedTools
+                    allowedTools,
+                    toolRuntimeContext
                 )
 
                 // Process the resumed stream
