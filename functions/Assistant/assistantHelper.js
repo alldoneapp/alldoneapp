@@ -97,12 +97,65 @@ function getCachedEnvFunctions() {
 
 // Cache OpenAI clients (performance optimization)
 const openAIClients = new Map()
+const externalToolUserIdentityCache = new Map()
+const EXTERNAL_TOOL_USER_IDENTITY_CACHE_TTL = 5 * 60 * 1000
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
         openAIClients.set(apiKey, new OpenAI({ apiKey }))
     }
     return openAIClients.get(apiKey)
+}
+
+async function getExternalToolUserIdentity(userId) {
+    const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
+    if (!normalizedUserId) {
+        return { userId: '', email: '', notificationEmail: '' }
+    }
+
+    const now = Date.now()
+    const cached = externalToolUserIdentityCache.get(normalizedUserId)
+    if (cached && now - cached.timestamp < EXTERNAL_TOOL_USER_IDENTITY_CACHE_TTL) {
+        return cached.data
+    }
+
+    let email = ''
+    let notificationEmail = ''
+    try {
+        const userDoc = await admin.firestore().doc(`users/${normalizedUserId}`).get()
+        if (userDoc.exists) {
+            const userData = userDoc.data() || {}
+            if (typeof userData.email === 'string' && userData.email.trim()) {
+                email = userData.email.trim().toLowerCase()
+            }
+            if (typeof userData.notificationEmail === 'string' && userData.notificationEmail.trim()) {
+                notificationEmail = userData.notificationEmail.trim().toLowerCase()
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ EXTERNAL TOOL: Failed loading user identity', {
+            userId: normalizedUserId,
+            error: error.message,
+        })
+    }
+
+    const identity = {
+        userId: normalizedUserId,
+        email,
+        notificationEmail,
+    }
+
+    externalToolUserIdentityCache.set(normalizedUserId, {
+        timestamp: now,
+        data: identity,
+    })
+
+    if (externalToolUserIdentityCache.size > 1000) {
+        const oldestKey = externalToolUserIdentityCache.keys().next().value
+        externalToolUserIdentityCache.delete(oldestKey)
+    }
+
+    return identity
 }
 
 /**
@@ -1009,6 +1062,23 @@ async function interactWithChatStream(
             const externalToolSchemas = await getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext)
             const toolSchemas = [...staticToolSchemas, ...delegationToolSchemas, ...externalToolSchemas]
 
+            console.log('🔧 TOOL SCHEMAS: Assembled for request', {
+                staticAllowedToolsCount: staticAllowedTools.length,
+                staticToolSchemasCount: staticToolSchemas.length,
+                delegationToolSchemasCount: delegationToolSchemas.length,
+                externalToolSchemasCount: externalToolSchemas.length,
+                externalToolsToggleEnabled: allowedTools.includes(EXTERNAL_TOOLS_KEY),
+                toolRuntimeContext,
+            })
+
+            if (allowedTools.includes(EXTERNAL_TOOLS_KEY) && externalToolSchemas.length === 0) {
+                console.warn('🔧 TOOL SCHEMAS: External tools are enabled but none are reachable at runtime', {
+                    projectId: toolRuntimeContext?.projectId,
+                    assistantId: toolRuntimeContext?.assistantId,
+                    requestUserId: toolRuntimeContext?.requestUserId,
+                })
+            }
+
             if (toolSchemas.length > 0) {
                 console.log(
                     'Using native tool schemas:',
@@ -1891,14 +1961,23 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
     const requestId = uuidv4()
     const method = target.execution.method || 'POST'
     const timeoutMs = Number(target.execution.timeoutMs) || 10000
+    const userIdentity = await getExternalToolUserIdentity(requestUserId)
+    const userEmail = userIdentity.email || userIdentity.notificationEmail || ''
     const payload = {
         toolKey: target.toolKey,
         arguments: isObject(toolArgs) ? toolArgs : {},
+        args: isObject(toolArgs) ? toolArgs : {},
+        input: isObject(toolArgs) ? toolArgs : {},
         context: {
             requestId,
             userId: requestUserId || '',
+            alldoneUserId: requestUserId || '',
+            userEmail,
+            alldoneUserEmail: userEmail,
             assistantId: callerAssistantId || '',
+            alldoneAssistantId: callerAssistantId || '',
             projectId: callerProjectId || '',
+            alldoneProjectId: callerProjectId || '',
             integrationId: target.integrationId || '',
             taskId: target.taskId || '',
         },
@@ -1909,6 +1988,10 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
         Accept: 'application/json',
         'X-Alldone-Request-Id': requestId,
         'X-Alldone-Tool-Key': target.toolKey || '',
+        'X-Alldone-User-Id': requestUserId || '',
+        'X-Alldone-User-Email': userEmail,
+        'X-Alldone-Assistant-Id': callerAssistantId || '',
+        'X-Alldone-Project-Id': callerProjectId || '',
     }
 
     const envFunctions = getCachedEnvFunctions()
@@ -1928,11 +2011,26 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
         signal: AbortSignal.timeout(Math.min(30000, Math.max(1000, timeoutMs))),
     }
 
+    console.log('🌐 EXTERNAL TOOL: Dispatching request', {
+        requestId,
+        integrationId: target.integrationId,
+        integrationName: target.integrationName,
+        toolKey: target.toolKey,
+        toolName: target.displayName,
+        method,
+        url,
+        timeoutMs,
+        argsKeys: Object.keys(payload.arguments || {}),
+        hasUserEmail: !!userEmail,
+        hasSigningSecret: !!signingSecret,
+    })
+
     if (method === 'GET') {
         const parsedUrl = new URL(url)
         parsedUrl.searchParams.set('toolKey', target.toolKey || '')
         parsedUrl.searchParams.set('requestId', requestId)
         parsedUrl.searchParams.set('args', JSON.stringify(payload.arguments || {}))
+        parsedUrl.searchParams.set('context', JSON.stringify(payload.context || {}))
         url = parsedUrl.toString()
     } else {
         requestInit.body = body
@@ -1950,13 +2048,29 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
         }
     }
 
+    console.log('🌐 EXTERNAL TOOL: Response received', {
+        requestId,
+        status: response.status,
+        ok: response.ok,
+        hasBody: !!rawText,
+        responseSuccess: responseData?.success,
+        responseStatus: responseData?.status,
+        responseError: responseData?.error || responseData?.message || '',
+    })
+
     if (!response.ok) {
         const remoteError = responseData?.error || responseData?.message || `HTTP ${response.status}`
-        throw new Error(`External tool failed (${target.displayName}): ${remoteError}`)
+        throw new Error(`External tool failed (${target.displayName}, request ${requestId}): ${remoteError}`)
+    }
+
+    if (responseData?.success === false) {
+        const remoteError = responseData?.error || responseData?.message || 'External tool returned success=false'
+        throw new Error(`External tool rejected (${target.displayName}, request ${requestId}): ${remoteError}`)
     }
 
     return {
         success: responseData?.success !== false,
+        requestId,
         integrationId: target.integrationId,
         integrationName: target.integrationName,
         toolKey: target.toolKey,
@@ -1979,7 +2093,9 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
     const creatorId = requestUserId || assistantId
 
     if (isTalkToAssistantToolName(toolName)) {
-        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId)
+        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+            forceRefresh: true,
+        })
         const callerAllowedTools = Array.isArray(callerAssistant?.allowedTools) ? callerAssistant.allowedTools : []
 
         if (!callerAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {
@@ -2006,7 +2122,9 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
     }
 
     if (isExternalIntegrationToolName(toolName)) {
-        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId)
+        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+            forceRefresh: true,
+        })
         const callerAllowedTools = Array.isArray(callerAssistant?.allowedTools) ? callerAssistant.allowedTools : []
 
         if (!callerAllowedTools.includes(EXTERNAL_TOOLS_KEY)) {
@@ -3690,7 +3808,9 @@ async function storeChunks(
                     }
 
                     // Check permissions
-                    const assistant = await getAssistantForChat(projectId, assistantId, requestUserId)
+                    const assistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+                        forceRefresh: true,
+                    })
                     const allowed = await isToolAllowedForExecution(
                         Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
                         toolName,
@@ -4345,35 +4465,44 @@ const primeDefaultAssistantCache = async () => {
 
 primeDefaultAssistantCache()
 
-async function getAssistantForChat(projectId, assistantId, userId = null) {
+async function getAssistantForChat(projectId, assistantId, userId = null, options = {}) {
     const fetchStart = Date.now()
     const now = Date.now()
     const cacheKey = getAssistantProjectCacheKey(projectId, assistantId)
+    const forceRefresh = options?.forceRefresh === true
 
-    // Check cache first
-    let cached = assistantCache.get(cacheKey)
-    if (cached && now - cached.timestamp < ASSISTANT_CACHE_TTL) {
-        console.log('⚙️ ASSISTANT SETTINGS: Using cached assistant data', {
-            cacheHit: true,
-            duration: `${Date.now() - fetchStart}ms`,
-            cacheSource: 'project',
-        })
-        return cached.data
-    }
-
-    // Fallback to assistant-only cache entry
-    if (!cached) {
-        const assistantOnlyKey = getAssistantOnlyCacheKey(assistantId)
-        const assistantOnlyCached = assistantCache.get(assistantOnlyKey)
-        if (assistantOnlyCached && now - assistantOnlyCached.timestamp < ASSISTANT_CACHE_TTL) {
-            assistantCache.set(cacheKey, assistantOnlyCached)
+    let cached = null
+    if (!forceRefresh) {
+        // Check cache first
+        cached = assistantCache.get(cacheKey)
+        if (cached && now - cached.timestamp < ASSISTANT_CACHE_TTL) {
             console.log('⚙️ ASSISTANT SETTINGS: Using cached assistant data', {
                 cacheHit: true,
                 duration: `${Date.now() - fetchStart}ms`,
-                cacheSource: 'assistant_only',
+                cacheSource: 'project',
             })
-            return assistantOnlyCached.data
+            return cached.data
         }
+
+        // Fallback to assistant-only cache entry
+        if (!cached) {
+            const assistantOnlyKey = getAssistantOnlyCacheKey(assistantId)
+            const assistantOnlyCached = assistantCache.get(assistantOnlyKey)
+            if (assistantOnlyCached && now - assistantOnlyCached.timestamp < ASSISTANT_CACHE_TTL) {
+                assistantCache.set(cacheKey, assistantOnlyCached)
+                console.log('⚙️ ASSISTANT SETTINGS: Using cached assistant data', {
+                    cacheHit: true,
+                    duration: `${Date.now() - fetchStart}ms`,
+                    cacheSource: 'assistant_only',
+                })
+                return assistantOnlyCached.data
+            }
+        }
+    } else {
+        console.log('⚙️ ASSISTANT SETTINGS: Bypassing cache (force refresh)', {
+            projectId,
+            assistantId,
+        })
     }
 
     let assistant = null
@@ -4458,7 +4587,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     const parallelStart = Date.now()
     const [taskDoc, assistant] = await Promise.all([
         admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`).get(),
-        getAssistantForChat(projectId, assistantId),
+        getAssistantForChat(projectId, assistantId, null, { forceRefresh: true }),
     ])
     const parallelDuration = Date.now() - parallelStart
     console.log('⚙️ ASSISTANT SETTINGS: Parallel fetch completed', {

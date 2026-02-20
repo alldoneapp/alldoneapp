@@ -120,7 +120,7 @@ async function generatePreConfigTaskResult(
     } else if (hasValidAiSettings) {
         settingsSource = 'assistant_with_client_overrides'
         const [assistant = {}, fetchedUser] = await Promise.all([
-            getAssistantForChat(projectId, assistantId),
+            getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
             userPromise,
         ])
         user = fetchedUser

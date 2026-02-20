@@ -67,7 +67,7 @@ async function askToOpenAIBotOptimized(
         const step1Start = Date.now()
         const [user, assistant] = await Promise.all([
             getUserData(userId),
-            getAssistantForChat(projectId, assistantId, userId),
+            getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
         ])
         const step1Duration = Date.now() - step1Start
 
