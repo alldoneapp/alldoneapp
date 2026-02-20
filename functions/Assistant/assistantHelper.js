@@ -764,6 +764,14 @@ async function getReachableDelegationTargets({
 
     const callerExistsInCurrentProject = callerAssistantDoc.exists
     if (!callerExistsInCurrentProject && !isPrivilegedDefaultProjectAssistant) {
+        console.log('🔁 DELEGATION: caller assistant not eligible for delegation scope', {
+            callerProjectId: projectId,
+            callerAssistantId: assistantId,
+            requestUserId,
+            callerExistsInCurrentProject,
+            isPrivilegedDefaultProjectAssistant,
+            defaultProjectId,
+        })
         return []
     }
 
@@ -4829,12 +4837,14 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
         const parallelDuration = Date.now() - parallelStart
         const globalAssistant = globalDoc?.exists ? { ...globalDoc.data(), uid: globalDoc.id } : null
         const projectAssistant = projectDoc?.exists ? { ...projectDoc.data(), uid: projectDoc.id } : null
-        assistant = globalAssistant || projectAssistant
+        // Project-level assistant settings must override global defaults when both exist.
+        assistant = projectAssistant || globalAssistant
         console.log('⚙️ ASSISTANT SETTINGS: Fetched assistant data (batched)', {
             cacheHit: false,
             parallelDuration: `${parallelDuration}ms`,
             foundInGlobal: !!globalAssistant,
             foundInProject: !!projectAssistant,
+            selectedSource: projectAssistant ? 'project' : globalAssistant ? 'global' : 'none',
         })
 
         // If not found, check user's default project (for cross-project assistant use)

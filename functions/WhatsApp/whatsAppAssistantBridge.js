@@ -45,7 +45,7 @@ async function processWhatsAppAssistantMessage(
     // Fetch user data and assistant config in parallel
     const [user, assistant] = await Promise.all([
         getUserData(userId),
-        getAssistantForChat(projectId, assistantId, userId),
+        getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
     ])
 
     if (!user || user.gold <= 0) {
@@ -54,6 +54,13 @@ async function processWhatsAppAssistantMessage(
 
     const { model, temperature, instructions, displayName, allowedTools: rawTools } = assistant
     const allowedTools = Array.isArray(rawTools) ? rawTools : []
+    console.log('WhatsApp Assistant: Runtime tools loaded', {
+        projectId,
+        requestedAssistantId: assistantId || null,
+        resolvedAssistantId: assistant?.uid || assistantId || null,
+        allowedToolsCount: allowedTools.length,
+        hasDelegationToggle: allowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY),
+    })
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
