@@ -104,6 +104,20 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [recurrence, setRecurrence] = useState(initialState.recurrence)
     const [startDate, setStartDate] = useState(initialState.startDate)
     const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
+    const getInitialIframeDiscoveryStatus = () => {
+        const integration =
+            task?.taskMetadata?.externalIntegration && typeof task.taskMetadata.externalIntegration === 'object'
+                ? task.taskMetadata.externalIntegration
+                : {}
+        const toolsCount = Array.isArray(integration.tools) ? integration.tools.length : 0
+        const error = typeof integration.lastDiscoveryError === 'string' ? integration.lastDiscoveryError : ''
+        return {
+            loading: false,
+            toolsCount,
+            error,
+        }
+    }
+    const [iframeDiscoveryStatus, setIframeDiscoveryStatus] = useState(getInitialIframeDiscoveryStatus)
 
     const applyCurrentUserRecurrenceConfig = baseTask => {
         const currentUserId = loggedUser.uid
@@ -182,6 +196,12 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                 ? { ...baseMetadata.externalIntegration }
                 : {}
 
+        setIframeDiscoveryStatus({
+            loading: true,
+            toolsCount: Array.isArray(currentIntegration.tools) ? currentIntegration.tools.length : 0,
+            error: '',
+        })
+
         const discovered = await discoverExternalToolsForIframeLink(cleanLink)
         const hasDiscoveredTools =
             discovered?.success && Array.isArray(discovered?.tools) && discovered.tools.length > 0
@@ -206,6 +226,12 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                   }),
             discoveryAttempts: Array.isArray(discovered?.attempts) ? discovered.attempts : [],
         }
+
+        setIframeDiscoveryStatus({
+            loading: false,
+            toolsCount: hasDiscoveredTools ? discovered.tools.length : 0,
+            error: hasDiscoveredTools ? '' : discovered?.error || 'Could not discover external tools',
+        })
 
         return baseMetadata
     }
@@ -479,6 +505,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     setWebhookAuthHeaderName={setWebhookAuthHeaderName}
                     webhookAuth={webhookAuth}
                     setWebhookAuth={setWebhookAuth}
+                    iframeDiscoveryStatus={iframeDiscoveryStatus}
                 />
             )}
         </View>

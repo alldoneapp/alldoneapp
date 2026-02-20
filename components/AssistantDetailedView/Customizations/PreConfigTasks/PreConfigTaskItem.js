@@ -10,6 +10,7 @@ import {
     TASK_TYPE_PROMPT,
     TASK_TYPE_EXTERNAL_LINK,
     TASK_TYPE_WEBHOOK,
+    TASK_TYPE_IFRAME,
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { RECURRENCE_MAP, RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
@@ -38,6 +39,18 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
     }
 
     const recurrenceGroups = Object.entries(groupedByRecurrence)
+    const externalIntegration =
+        task?.taskMetadata?.externalIntegration && typeof task.taskMetadata.externalIntegration === 'object'
+            ? task.taskMetadata.externalIntegration
+            : {}
+    const discoveredToolsCount = Array.isArray(externalIntegration.tools) ? externalIntegration.tools.length : 0
+    const discoveryError =
+        typeof externalIntegration.lastDiscoveryError === 'string' ? externalIntegration.lastDiscoveryError : ''
+    const showIframeDiscoveryStatus = type === TASK_TYPE_IFRAME && (discoveredToolsCount > 0 || !!discoveryError)
+    const iframeDiscoveryStatusText =
+        discoveredToolsCount > 0
+            ? translate('External tools discovered count', { count: discoveredToolsCount })
+            : translate('External tool discovery failed')
 
     // Get icon based on task type
     const getIconForTaskType = () => {
@@ -48,6 +61,8 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
                 return 'external-link'
             case TASK_TYPE_WEBHOOK:
                 return 'link-2'
+            case TASK_TYPE_IFRAME:
+                return 'monitor'
             default:
                 return 'cpu' // fallback
         }
@@ -63,9 +78,22 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
         >
             <View style={rowStyle}>
                 <Icon name={getIconForTaskType()} size={24} color={colors.Text03} style={localStyles.leadingIcon} />
-                <Text style={localStyles.taskNameText} numberOfLines={1}>
-                    {name}
-                </Text>
+                <View style={localStyles.textArea}>
+                    <Text style={localStyles.taskNameText} numberOfLines={1}>
+                        {name}
+                    </Text>
+                    {showIframeDiscoveryStatus && (
+                        <Text
+                            style={[
+                                localStyles.discoveryStatusText,
+                                discoveredToolsCount > 0 ? localStyles.discoverySuccess : localStyles.discoveryError,
+                            ]}
+                            numberOfLines={1}
+                        >
+                            {iframeDiscoveryStatusText}
+                        </Text>
+                    )}
+                </View>
                 {recurrenceGroups.length > 0 && (
                     <View style={localStyles.tagsArea}>
                         {recurrenceGroups.map(([recurrenceValue, userIds]) => {
@@ -119,9 +147,7 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
 const localStyles = StyleSheet.create({
     fullRowClickable: {
         flexDirection: 'row',
-        height: 56,
         minHeight: 56,
-        maxHeight: 56,
         paddingLeft: 8,
         paddingRight: 16, // To ensure space for the trailing edit icon within clickable area
         paddingVertical: 8,
@@ -131,11 +157,23 @@ const localStyles = StyleSheet.create({
     leadingIcon: {
         marginRight: 8,
     },
+    textArea: {
+        flex: 1,
+        marginRight: 8,
+    },
     taskNameText: {
         ...styles.subtitle2,
         color: colors.Text03,
-        flex: 1, // Takes available space, pushing the edit icon to the right
-        marginRight: 8, // Space between text and edit icon
+    },
+    discoveryStatusText: {
+        ...styles.caption2,
+        marginTop: 2,
+    },
+    discoverySuccess: {
+        color: colors.Green300,
+    },
+    discoveryError: {
+        color: colors.Yellow300,
     },
     tagsArea: {
         flexDirection: 'row',

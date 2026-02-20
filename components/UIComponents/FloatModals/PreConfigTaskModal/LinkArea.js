@@ -6,10 +6,40 @@ import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function LinkArea({ disabled, linkInputRef, link, setLink, isValid }) {
+export default function LinkArea({
+    disabled,
+    linkInputRef,
+    link,
+    setLink,
+    isValid,
+    showDiscoveryStatus = false,
+    discoveryStatus = null,
+}) {
+    const trimmedLink = typeof link === 'string' ? link.trim() : ''
+    const shouldShowStatus = showDiscoveryStatus && !!trimmedLink && isValid
+
+    const getStatusData = () => {
+        if (!shouldShowStatus) return null
+        if (discoveryStatus?.loading) {
+            return { text: translate('Discovering external tools...'), style: localStyles.statusPending }
+        }
+        if (Number.isFinite(discoveryStatus?.toolsCount) && discoveryStatus.toolsCount > 0) {
+            return {
+                text: translate('External tools discovered count', { count: discoveryStatus.toolsCount }),
+                style: localStyles.statusSuccess,
+            }
+        }
+        if (discoveryStatus?.error) {
+            return { text: translate('External tool discovery failed'), style: localStyles.statusError }
+        }
+        return { text: translate('External tools will be discovered on save'), style: localStyles.statusPending }
+    }
+
+    const statusData = getStatusData()
+
     return (
         <View style={localStyles.section}>
-            <Text style={localStyles.text}>{translate('Link')}</Text>
+            <Text style={localStyles.label}>{translate('Link')}</Text>
             <CustomTextInput3
                 ref={linkInputRef}
                 containerStyle={localStyles.input}
@@ -23,7 +53,8 @@ export default function LinkArea({ disabled, linkInputRef, link, setLink, isVali
                 disabledTags={true}
                 disabledEdition={disabled}
             />
-            {!isValid && !!link.trim() && <Text style={localStyles.text}>{translate('The link is invalid')}</Text>}
+            {!isValid && !!trimmedLink && <Text style={localStyles.feedback}>{translate('The link is invalid')}</Text>}
+            {!!statusData && <Text style={[localStyles.feedback, statusData.style]}>{statusData.text}</Text>}
         </View>
     )
 }
@@ -33,15 +64,24 @@ const localStyles = StyleSheet.create({
         flex: 1,
         marginTop: 12,
     },
-    text: {
+    label: {
         ...styles.subtitle2,
         color: colors.Text02,
         marginBottom: 4,
     },
-    text: {
+    feedback: {
         ...styles.subtitle2,
         color: colors.Text02,
         marginTop: 4,
+    },
+    statusPending: {
+        color: colors.Text03,
+    },
+    statusSuccess: {
+        color: colors.Green300,
+    },
+    statusError: {
+        color: colors.Yellow300,
     },
     input: {
         ...styles.body1,
