@@ -71,6 +71,28 @@ const updateEditionData = async data => {
     data.lastEditorId = loggedUser.uid
 }
 
+const isPlainObject = value => {
+    if (!value || Object.prototype.toString.call(value) !== '[object Object]') return false
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+}
+
+const sanitizeForFirestore = value => {
+    if (value === undefined) return undefined
+    if (Array.isArray(value)) {
+        return value.map(item => sanitizeForFirestore(item)).filter(item => item !== undefined)
+    }
+    if (isPlainObject(value)) {
+        const cleaned = {}
+        Object.entries(value).forEach(([key, nestedValue]) => {
+            const safeNestedValue = sanitizeForFirestore(nestedValue)
+            if (safeNestedValue !== undefined) cleaned[key] = safeNestedValue
+        })
+        return cleaned
+    }
+    return value
+}
+
 async function updateNoteData(projectId, noteId, data, batch) {
     await updateEditionData(data)
     const ref = getDb().doc(`noteItems/${projectId}/notes/${noteId}`)
@@ -104,7 +126,7 @@ export async function uploadNewNote(projectId, noteData) {
                 await getDb()
                     .collection(`noteItems/${projectId}/notes`)
                     .doc(noteId)
-                    .set({ ...noteDataCopy, title: noteDataCopy.title.toLowerCase() })
+                    .set(sanitizeForFirestore({ ...noteDataCopy, title: noteDataCopy.title.toLowerCase() }))
                 noteDocSet = true
             } catch (error) {
                 if (error.code === 'failed-precondition' && attempt < maxRetries - 1) {
@@ -388,8 +410,8 @@ export async function setNoteProject(currentProject, newProject, note, oldAssign
     delete noteMeta.id
     delete noteMeta.state
 
-    updateEditionData(noteMeta)
-    batch.set(getDb().doc(`noteItems/${newProject.id}/notes/${noteId}`), noteMeta)
+    await updateEditionData(noteMeta)
+    batch.set(getDb().doc(`noteItems/${newProject.id}/notes/${noteId}`), sanitizeForFirestore(noteMeta))
     batch.delete(getDb().doc(`noteItems/${currentProject.id}/notes/${noteId}`))
 
     await getDb()

@@ -1,3 +1,25 @@
+const isPlainObject = value => {
+    if (!value || Object.prototype.toString.call(value) !== '[object Object]') return false
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+}
+
+const sanitizeForFirestore = value => {
+    if (value === undefined) return undefined
+    if (Array.isArray(value)) {
+        return value.map(item => sanitizeForFirestore(item)).filter(item => item !== undefined)
+    }
+    if (isPlainObject(value)) {
+        const cleaned = {}
+        Object.entries(value).forEach(([key, nestedValue]) => {
+            const safeNestedValue = sanitizeForFirestore(nestedValue)
+            if (safeNestedValue !== undefined) cleaned[key] = safeNestedValue
+        })
+        return cleaned
+    }
+    return value
+}
+
 class BatchWrapper {
     #batchs = []
     #batch
@@ -30,25 +52,29 @@ class BatchWrapper {
 
     update(ref, object) {
         if (this.#batchs.length === 0) this.initBatch()
+        const safeObject = sanitizeForFirestore(object)
+        if (!safeObject || Object.keys(safeObject).length === 0) return
 
         if (this.#counter < this.#actionsLimit) {
-            this.#batch.update(ref, object)
+            this.#batch.update(ref, safeObject)
             this.#counter++
         } else {
             this.initBatch()
-            this.update(ref, object)
+            this.update(ref, safeObject)
         }
     }
 
     set(ref, object, params) {
         if (this.#batchs.length === 0) this.initBatch()
+        const safeObject = sanitizeForFirestore(object)
+        if (safeObject === undefined) return
 
         if (this.#counter < this.#actionsLimit) {
-            this.#batch.set(ref, object, params)
+            this.#batch.set(ref, safeObject, params)
             this.#counter++
         } else {
             this.initBatch()
-            this.set(ref, object, params)
+            this.set(ref, safeObject, params)
         }
     }
 

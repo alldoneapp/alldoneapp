@@ -319,6 +319,7 @@ export let notesStorage
 let functions
 let messaging
 let db
+let firestoreSettingsApplied = false
 let somePrefix = 'Offline'
 let someId = -1
 let syncToBackend = true
@@ -444,6 +445,14 @@ export async function initFirebase(onComplete) {
         console.warn('Firebase app already initialized, reusing existing instance')
     }
     db = firebase.firestore()
+    if (!firestoreSettingsApplied) {
+        try {
+            db.settings({ ignoreUndefinedProperties: true })
+            firestoreSettingsApplied = true
+        } catch (error) {
+            console.warn('Failed to apply Firestore client settings:', error.message)
+        }
+    }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     const forceEmulator = window.location.search.includes('emulator=true')

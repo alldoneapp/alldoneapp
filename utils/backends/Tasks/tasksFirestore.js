@@ -425,18 +425,19 @@ export async function uploadNewTask(
             `[HumanReadableID] About to commit task ${taskId} to database with humanReadableId: ${taskCopy.humanReadableId}`
         )
         console.log(`🚨 FIRESTORE PATH: items/${projectId}/tasks/${taskId} 🚨`)
+        const safeTaskCopy = removeUndefinedForFirestore(taskCopy)
 
         awaitForTaskCreation
             ? await getDb()
                   .doc(`items/${projectId}/tasks/${taskId}`)
-                  .set(taskCopy)
+                  .set(safeTaskCopy)
                   .then(() => {
                       console.log(`[HumanReadableID] Task ${taskId} committed to database (awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
             : getDb()
                   .doc(`items/${projectId}/tasks/${taskId}`)
-                  .set(taskCopy)
+                  .set(safeTaskCopy)
                   .then(() => {
                       console.log(`[HumanReadableID] Task ${taskId} committed to database (non-awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
@@ -1786,7 +1787,7 @@ export async function setTaskProject(currentProject, newProject, task, oldAssign
 
     delete taskCopy.time
     delete taskCopy.projectId
-    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(taskCopy)
+    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
 
     if (route === 'TaskDetailedView') {
         NavigationService.navigate('TaskDetailedView', {
@@ -1878,7 +1879,7 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
 
     delete taskCopy.time
     delete taskCopy.projectId
-    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(taskCopy)
+    await getDb().doc(`items/${newProject.id}/tasks/${task.id}`).set(removeUndefinedForFirestore(taskCopy))
 
     const promises = []
     promises.push(
