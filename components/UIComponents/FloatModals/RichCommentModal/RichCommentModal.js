@@ -143,6 +143,12 @@ export default function RichCommentModal({
         return () => subscription?.remove()
     })
 
+    const updateObjectState = updatedObj => {
+        if (updatedObj && updatedObj.isAssistantEnabled !== undefined) {
+            setIsThreadAssistantEnabled(updatedObj.isAssistantEnabled)
+        }
+    }
+
     const done = ({ comment, mentions, privacy, hasKarma }) => {
         const clientSubmissionTime = Date.now()
         console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
