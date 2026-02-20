@@ -262,10 +262,11 @@ const normalizeToolNameToken = value => {
     return normalized || 'assistant'
 }
 
-const buildTalkToAssistantToolName = (projectId, assistantId, displayName) => {
-    const slug = normalizeToolNameToken(displayName).slice(0, 20)
+const buildTalkToAssistantToolName = (projectId, assistantId, displayName, projectName = '') => {
+    const projectSlug = normalizeToolNameToken(projectName || projectId).slice(0, 14)
+    const assistantSlug = normalizeToolNameToken(displayName).slice(0, 18)
     const hash = crypto.createHash('sha1').update(`${projectId}:${assistantId}`).digest('hex').slice(0, 12)
-    return `${TALK_TO_ASSISTANT_TOOL_PREFIX}${slug}_${hash}`.slice(0, 64)
+    return `${TALK_TO_ASSISTANT_TOOL_PREFIX}${projectSlug}_${assistantSlug}_${hash}`
 }
 
 const isTalkToAssistantToolName = toolName =>
@@ -453,6 +454,16 @@ async function getDelegationCapabilitiesSummary(projectId, assistantId) {
     }
 
     return summary
+}
+
+function messageLikelyRequiresToolExecution(message) {
+    const text = String(message || '').toLowerCase()
+    if (!text) return false
+
+    // Action-oriented requests should not be marked as successful without an actual tool execution.
+    return /\b(add|create|update|delete|save|publish|post|send|book|schedule|submit|append|remove|change|set|sync|upload)\b/.test(
+        text
+    )
 }
 
 async function getReachableExternalIntegrationTools({
@@ -657,7 +668,8 @@ async function getReachableDelegationTargets({
                 toolName: buildTalkToAssistantToolName(
                     targetProjectId,
                     targetAssistantId,
-                    targetAssistant.displayName || targetAssistantId
+                    targetAssistant.displayName || targetAssistantId,
+                    projectName
                 ),
                 projectId: targetProjectId,
                 projectName: projectNames.get(targetProjectId) || targetProjectId,
@@ -676,7 +688,8 @@ const buildTalkToAssistantToolSchema = target => ({
     function: {
         name: target.toolName,
         description:
-            `Delegate work to assistant "${target.displayName}" in project "${target.projectName}". ` +
+            `Delegate work to assistant "${target.displayName}" in project "${target.projectName}" ` +
+            `(project ID: "${target.projectId}"). ` +
             `${
                 target.description ? `Assistant description: ${String(target.description).trim().slice(0, 180)}. ` : ''
             }` +
@@ -781,6 +794,7 @@ async function collectAssistantTextWithToolCalls({
     let currentConversation = conversationHistory
     let currentToolCalls = null
     let toolCallIteration = 0
+    const executedToolNames = []
 
     const collectStreamContent = async activeStream => {
         let nextToolCalls = null
@@ -823,6 +837,7 @@ async function collectAssistantTextWithToolCalls({
             toolRuntimeContext?.requestUserId,
             userContext
         )
+        executedToolNames.push(toolName)
 
         currentConversation = [
             ...currentConversation,
@@ -848,7 +863,7 @@ async function collectAssistantTextWithToolCalls({
             {
                 role: 'user',
                 content:
-                    'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
+                    'Based on the tool results above, provide your response. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.',
             },
         ]
 
@@ -866,7 +881,12 @@ async function collectAssistantTextWithToolCalls({
         responseText += '\n\nMaximum tool call iterations reached.'
     }
 
-    return responseText.trim()
+    return {
+        assistantResponse: responseText.trim(),
+        executedToolCallsCount: toolCallIteration,
+        executedToolNames,
+        reachedMaxToolIterations: toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS,
+    }
 }
 
 async function spentGold(userId, goldToReduce) {
@@ -2047,7 +2067,7 @@ async function executeDelegatedAssistantRequest({
         targetAllowedTools,
         delegatedToolRuntimeContext
     )
-    const assistantResponse = await collectAssistantTextWithToolCalls({
+    const delegationRun = await collectAssistantTextWithToolCalls({
         stream,
         conversationHistory: messages,
         modelKey: targetModel,
@@ -2056,15 +2076,53 @@ async function executeDelegatedAssistantRequest({
         toolRuntimeContext: delegatedToolRuntimeContext,
         userContext: delegatedUserContext,
     })
+    const assistantResponse = delegationRun?.assistantResponse || ''
+    const executedToolCallsCount = Number(delegationRun?.executedToolCallsCount) || 0
+    const executedToolNames = Array.isArray(delegationRun?.executedToolNames) ? delegationRun.executedToolNames : []
+    const targetHasEnabledTools = targetAllowedTools.length > 0
+    const requiresToolExecution = messageLikelyRequiresToolExecution(message)
+
+    let success = true
+    let status = 'success'
+    let warning = null
+
+    if (executedToolCallsCount === 0 && !targetHasEnabledTools) {
+        success = false
+        status = 'target_has_no_tools'
+        warning = 'Target assistant has no enabled tools and cannot execute action-oriented requests.'
+    } else if (executedToolCallsCount === 0 && requiresToolExecution) {
+        success = false
+        status = 'no_tool_executed'
+        warning = 'Delegated assistant did not execute any tool calls for an action-oriented request.'
+    }
+
+    console.log('🔁 DELEGATION: execution outcome', {
+        callerProjectId,
+        callerAssistantId,
+        targetProjectId: target.projectId,
+        targetAssistantId: target.assistantId,
+        requiresToolExecution,
+        targetHasEnabledTools,
+        executedToolCallsCount,
+        executedToolNames,
+        success,
+        status,
+        warning,
+    })
 
     return {
-        success: true,
-        status: 'success',
+        success,
+        status,
         targetAssistantId: target.assistantId,
         targetAssistantName: targetDisplayName,
         targetProjectId: target.projectId,
         targetProjectName: target.projectName,
         assistantResponse,
+        warning,
+        requiresToolExecution,
+        targetAllowedToolsCount: targetAllowedTools.length,
+        executedToolCallsCount,
+        executedToolNames,
         delegationDepth: delegatedUserContext.delegationDepth,
     }
 }
@@ -4040,7 +4098,7 @@ async function storeChunks(
                         {
                             role: 'user',
                             content:
-                                'Based on the tool results above, please provide your response to the user. If you need additional information, you may call other available tools.',
+                                'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.',
                         },
                     ]
 
