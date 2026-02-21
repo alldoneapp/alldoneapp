@@ -374,30 +374,77 @@ async function checkRateLimit(userId) {
  * Get the default assistant ID for a user.
  */
 async function getDefaultAssistantId(user, projectId) {
-    // Check if user has a preferred assistant
-    if (user?.defaultAssistantId) {
-        return user.defaultAssistantId
+    const db = admin.firestore()
+    const normalizedProjectId = String(projectId || '').trim()
+    const userDefaultAssistantId = typeof user?.defaultAssistantId === 'string' ? user.defaultAssistantId.trim() : ''
+
+    if (!normalizedProjectId) return null
+
+    const assistantExistsInProjectOrGlobal = async assistantId => {
+        if (!assistantId) return false
+        const [projectAssistantDoc, globalAssistantDoc] = await db.getAll(
+            db.doc(`assistants/${normalizedProjectId}/items/${assistantId}`),
+            db.doc(`assistants/globalProject/items/${assistantId}`)
+        )
+        return projectAssistantDoc.exists || globalAssistantDoc.exists
     }
 
-    // Try to get the global default assistant
+    // 1) Prefer project's configured assistant to align with app project context.
     try {
-        const defaultAssistant = await getDefaultAssistantData(admin)
-        if (defaultAssistant?.uid) {
-            return defaultAssistant.uid
+        const projectDoc = await db.doc(`projects/${normalizedProjectId}`).get()
+        const projectAssistantId = projectDoc.exists ? String(projectDoc.data()?.assistantId || '').trim() : ''
+        if (projectAssistantId && (await assistantExistsInProjectOrGlobal(projectAssistantId))) {
+            console.log('WhatsApp: Selected assistant from project.assistantId', {
+                projectId: normalizedProjectId,
+                assistantId: projectAssistantId,
+            })
+            return projectAssistantId
         }
     } catch (error) {
-        console.warn('WhatsApp: Could not fetch default assistant:', error.message)
+        console.warn('WhatsApp: Could not resolve project assistant:', error.message)
     }
 
-    // Fallback: query the first assistant in the project
-    try {
-        const snapshot = await admin.firestore().collection(`assistants/${projectId}/items`).limit(1).get()
+    // 2) Fallback to user's preferred assistant.
+    if (userDefaultAssistantId) {
+        try {
+            if (await assistantExistsInProjectOrGlobal(userDefaultAssistantId)) {
+                console.log('WhatsApp: Selected assistant from user.defaultAssistantId fallback', {
+                    projectId: normalizedProjectId,
+                    assistantId: userDefaultAssistantId,
+                })
+                return userDefaultAssistantId
+            }
+        } catch (error) {
+            console.warn('WhatsApp: Could not validate user.defaultAssistantId:', error.message)
+        }
+    }
 
+    // 3) Fallback to first assistant in the project.
+    try {
+        const snapshot = await db.collection(`assistants/${normalizedProjectId}/items`).limit(1).get()
         if (!snapshot.empty) {
+            console.log('WhatsApp: Selected first assistant in project fallback', {
+                projectId: normalizedProjectId,
+                assistantId: snapshot.docs[0].id,
+            })
             return snapshot.docs[0].id
         }
     } catch (error) {
-        console.warn('WhatsApp: Could not find project assistant:', error.message)
+        console.warn('WhatsApp: Could not find assistant in project:', error.message)
+    }
+
+    // 4) Last fallback: global default assistant.
+    try {
+        const defaultAssistant = await getDefaultAssistantData(admin)
+        if (defaultAssistant?.uid) {
+            console.log('WhatsApp: Selected global default assistant fallback', {
+                projectId: normalizedProjectId,
+                assistantId: defaultAssistant.uid,
+            })
+            return defaultAssistant.uid
+        }
+    } catch (error) {
+        console.warn('WhatsApp: Could not fetch global default assistant:', error.message)
     }
 
     return null
