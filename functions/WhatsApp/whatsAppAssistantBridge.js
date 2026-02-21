@@ -225,9 +225,19 @@ async function collectStreamWithToolCalls(
                 // Execute tool
                 let toolResult
                 try {
-                    toolResult = await executeToolNatively(toolName, toolArgs, projectId, assistantId, requestUserId, {
-                        message: getMessageTextForTokenCounting(conversationHistory.find(m => m[0] === 'user')?.[1]),
-                    })
+                    const normalizedToolArgs = normalizeWhatsAppToolArgs(toolName, toolArgs, projectId)
+                    toolResult = await executeToolNatively(
+                        toolName,
+                        normalizedToolArgs,
+                        projectId,
+                        assistantId,
+                        requestUserId,
+                        {
+                            message: getMessageTextForTokenCounting(
+                                conversationHistory.find(m => m[0] === 'user')?.[1]
+                            ),
+                        }
+                    )
 
                     if (toolName === 'create_task') {
                         const taskId = toolResult?.taskId || toolResult?.taskid || null
@@ -372,6 +382,24 @@ function mentionsTaskCreation(text) {
         /\b(erstellt|angelegt)\b.{0,30}\baufgabe\b/i,
     ]
     return taskCreationPatterns.some(pattern => pattern.test(text))
+}
+
+function normalizeWhatsAppToolArgs(toolName, toolArgs, fallbackProjectId) {
+    if (toolName !== 'create_task') return toolArgs
+
+    const hasProjectId = typeof toolArgs?.projectId === 'string' && toolArgs.projectId.trim().length > 0
+    const hasProjectName = typeof toolArgs?.projectName === 'string' && toolArgs.projectName.trim().length > 0
+
+    if (hasProjectId || hasProjectName || !fallbackProjectId) return toolArgs
+
+    console.log('WhatsApp: create_task missing project, defaulting to context project', {
+        fallbackProjectId,
+    })
+
+    return {
+        ...toolArgs,
+        projectId: fallbackProjectId,
+    }
 }
 
 module.exports = {
