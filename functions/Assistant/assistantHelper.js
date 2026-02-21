@@ -745,8 +745,14 @@ async function getReachableDelegationTargets({
     }
 
     const defaultProjectId = userData.defaultProjectId || null
-    const [callerAssistantDoc, defaultProjectDoc, defaultProjectAssistantDoc] = await db.getAll(
+    const [
+        callerAssistantDoc,
+        callerGlobalAssistantDoc,
+        defaultProjectDoc,
+        defaultProjectAssistantDoc,
+    ] = await db.getAll(
         db.doc(`assistants/${projectId}/items/${assistantId}`),
+        db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`),
         defaultProjectId ? db.doc(`projects/${defaultProjectId}`) : db.doc(`projects/__missing__`),
         defaultProjectId
             ? db.doc(`assistants/${defaultProjectId}/items/${assistantId}`)
@@ -755,20 +761,24 @@ async function getReachableDelegationTargets({
 
     let isPrivilegedDefaultProjectAssistant = false
 
-    if (defaultProjectId && defaultProjectDoc.exists && defaultProjectAssistantDoc.exists) {
-        const defaultProjectAssistantId = defaultProjectDoc.exists ? defaultProjectDoc.data()?.assistantId : null
+    if (defaultProjectId && defaultProjectDoc.exists) {
+        const defaultProjectAssistantId = defaultProjectDoc.data()?.assistantId || null
+        const defaultProjectMarksAssistantAsDefault = (defaultProjectAssistantDoc.data() || {}).isDefault === true
         isPrivilegedDefaultProjectAssistant = defaultProjectAssistantId
             ? defaultProjectAssistantId === assistantId
-            : (defaultProjectAssistantDoc.data() || {}).isDefault === true
+            : defaultProjectMarksAssistantAsDefault
     }
 
     const callerExistsInCurrentProject = callerAssistantDoc.exists
-    if (!callerExistsInCurrentProject && !isPrivilegedDefaultProjectAssistant) {
+    const callerExistsInGlobal = callerGlobalAssistantDoc.exists
+    const callerExistsInProjectContext = callerExistsInCurrentProject || callerExistsInGlobal
+    if (!callerExistsInProjectContext && !isPrivilegedDefaultProjectAssistant) {
         console.log('🔁 DELEGATION: caller assistant not eligible for delegation scope', {
             callerProjectId: projectId,
             callerAssistantId: assistantId,
             requestUserId,
             callerExistsInCurrentProject,
+            callerExistsInGlobal,
             isPrivilegedDefaultProjectAssistant,
             defaultProjectId,
         })
