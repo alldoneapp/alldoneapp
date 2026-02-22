@@ -60,15 +60,18 @@ export default function OpenTasksByProject({
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const isDefaultProject = projectId === defaultProjectId
     const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
     const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
-    const hasDifferentAssistantThanDefaultProject =
-        !!defaultProjectId &&
-        !!defaultProject &&
-        projectId !== defaultProjectId &&
+    const isUsingDefaultProjectAssistant =
+        !isDefaultProject &&
         !!defaultProjectAssistantId &&
         !!selectedProjectAssistantId &&
-        selectedProjectAssistantId !== defaultProjectAssistantId
+        selectedProjectAssistantId === defaultProjectAssistantId
+    const showAboveHeaderDefaultAssistant =
+        !isAnonymous && inSelectedProject && !isDefaultProject && !!defaultProject && !!defaultProjectAssistantId
+    const showBelowHeaderSelectedAssistant =
+        !isAnonymous && inSelectedProject && (isDefaultProject || !isUsingDefaultProjectAssistant)
 
     useEffect(() => {
         const watcherKey = v4()
@@ -118,11 +121,11 @@ export default function OpenTasksByProject({
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
                     <NeedShowMoreOpenTasksButton projectId={projectId} />
                     <NeedShowMoreEmptyGoalsButton projectId={projectId} />
-                    {!isAnonymous && inSelectedProject && hasDifferentAssistantThanDefaultProject && (
+                    {showAboveHeaderDefaultAssistant && (
                         <View style={{ marginTop: 16 }}>
                             <AssistantLine
                                 showLastComment={true}
-                                startCollapsed={true}
+                                startCollapsed={!isUsingDefaultProjectAssistant}
                                 useGlobalLatestComment={true}
                                 projectOverride={defaultProject}
                                 assistantIdOverride={defaultProjectAssistantId}
@@ -137,8 +140,8 @@ export default function OpenTasksByProject({
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                     />
                     {inSelectedProject && <UserTasksHeader />}
-                    {!isAnonymous && inSelectedProject && (
-                        <View style={{ marginTop: hasDifferentAssistantThanDefaultProject ? 12 : 0 }}>
+                    {showBelowHeaderSelectedAssistant && (
+                        <View style={{ marginTop: showAboveHeaderDefaultAssistant ? 12 : 0 }}>
                             <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
                         </View>
                     )}

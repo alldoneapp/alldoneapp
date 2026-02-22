@@ -26,15 +26,18 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const isDefaultProject = project.id === defaultProjectId
     const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
     const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
-    const hasDifferentAssistantThanDefaultProject =
-        !!defaultProjectId &&
-        !!defaultProject &&
-        project.id !== defaultProjectId &&
+    const isUsingDefaultProjectAssistant =
+        !isDefaultProject &&
         !!defaultProjectAssistantId &&
         !!selectedProjectAssistantId &&
-        selectedProjectAssistantId !== defaultProjectAssistantId
+        selectedProjectAssistantId === defaultProjectAssistantId
+    const showAboveHeaderDefaultAssistant =
+        !isAnonymous && inSelectedProject && !isDefaultProject && !!defaultProject && !!defaultProjectAssistantId
+    const showBelowHeaderSelectedAssistant =
+        !isAnonymous && inSelectedProject && (isDefaultProject || !isUsingDefaultProjectAssistant)
 
     const updateTasks = (tasksByDateAndStep, estimationValue, amountOfTasksByDate) => {
         setTasksByDateAndStep(tasksByDateAndStep)
@@ -61,11 +64,11 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
 
     return filteredTasksByDateAndStep.length > 0 || inSelectedProject ? (
         <View style={localStyles.container}>
-            {!isAnonymous && inSelectedProject && hasDifferentAssistantThanDefaultProject && (
+            {showAboveHeaderDefaultAssistant && (
                 <View style={{ marginTop: 16 }}>
                     <AssistantLine
                         showLastComment={true}
-                        startCollapsed={true}
+                        startCollapsed={!isUsingDefaultProjectAssistant}
                         useGlobalLatestComment={true}
                         projectOverride={defaultProject}
                         assistantIdOverride={defaultProjectAssistantId}
@@ -74,11 +77,11 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
             {inSelectedProject && <UserTasksHeader />}
-            {!isAnonymous && inSelectedProject && (
+            {showBelowHeaderSelectedAssistant && (
                 <View
                     style={[
                         localStyles.lastCommentContainer,
-                        !hasDifferentAssistantThanDefaultProject && localStyles.lastCommentContainerNoTopMargin,
+                        !showAboveHeaderDefaultAssistant && localStyles.lastCommentContainerNoTopMargin,
                     ]}
                 >
                     <AssistantLine showLastComment={true} useAssistantProjectContext={false} />

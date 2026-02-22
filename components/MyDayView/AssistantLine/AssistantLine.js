@@ -112,21 +112,29 @@ function CollapsedAssistantRow({
     projectOverride,
     assistantIdOverride,
 }) {
+    const isMobile = useSelector(state => state.smallScreenNavigation)
+
     return (
-        <TouchableOpacity style={localStyles.collapsedRow} onPress={onPress}>
-            <View style={localStyles.collapsedLeft}>
+        <TouchableOpacity
+            style={[localStyles.collapsedRow, isMobile && localStyles.collapsedRowMobile]}
+            onPress={onPress}
+        >
+            <View style={[localStyles.collapsedLeft, isMobile && localStyles.collapsedLeftMobile]}>
                 <AssistantAvatar
                     photoURL={assistant?.photoURL50 || assistant?.photoURL300 || assistant?.photoURL}
                     assistantId={assistant?.uid}
                     size={24}
                     imageStyle={localStyles.collapsedAvatar}
                 />
-                <Text numberOfLines={1} style={localStyles.collapsedAssistantName}>
+                <Text
+                    numberOfLines={1}
+                    style={[localStyles.collapsedAssistantName, isMobile && localStyles.collapsedAssistantNameMobile]}
+                >
                     {assistant?.displayName || 'Assistant'}
                 </Text>
             </View>
             {showLastComment && (
-                <View style={localStyles.collapsedTagWrapper}>
+                <View style={[localStyles.collapsedTagWrapper, isMobile && localStyles.collapsedTagWrapperMobile]}>
                     <LastCommentArea
                         withTopMargin={false}
                         useAssistantProjectContext={useAssistantProjectContext}
@@ -137,7 +145,12 @@ function CollapsedAssistantRow({
                     />
                 </View>
             )}
-            <Icon name={'chevron-down'} size={16} color={colors.Text03} style={localStyles.chevron} />
+            <Icon
+                name={'chevron-down'}
+                size={16}
+                color={colors.Text03}
+                style={[localStyles.chevron, isMobile && localStyles.chevronMobile]}
+            />
         </TouchableOpacity>
     )
 }
@@ -169,11 +182,19 @@ const localStyles = StyleSheet.create({
         width: '100%',
         minHeight: 32,
     },
+    collapsedRowMobile: {
+        minHeight: 36,
+        paddingRight: 2,
+    },
     collapsedLeft: {
         flexDirection: 'row',
         alignItems: 'center',
         minWidth: 0,
         marginRight: 10,
+        flexShrink: 1,
+    },
+    collapsedLeftMobile: {
+        marginRight: 6,
     },
     collapsedAvatar: {
         borderRadius: 6,
@@ -184,15 +205,28 @@ const localStyles = StyleSheet.create({
         color: colors.Text02,
         fontWeight: '600',
         maxWidth: 180,
+        flexShrink: 1,
+    },
+    collapsedAssistantNameMobile: {
+        marginLeft: 6,
+        maxWidth: 92,
     },
     collapsedTagWrapper: {
         marginLeft: 'auto',
         marginRight: 8,
         alignItems: 'flex-end',
         maxWidth: 320,
+        minWidth: 0,
+    },
+    collapsedTagWrapperMobile: {
+        marginRight: 4,
+        maxWidth: '56%',
     },
     chevron: {
         marginLeft: 0,
+    },
+    chevronMobile: {
+        marginLeft: 2,
     },
     loadingContainer: {
         flex: 1,

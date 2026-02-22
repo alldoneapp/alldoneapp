@@ -45,6 +45,52 @@ try {
     firebaseConfig.init(admin)
 }
 
+function getAccessibleProjectIdsFromUserData(userData = {}) {
+    const allIds = new Set()
+    ;['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds'].forEach(key => {
+        const ids = userData?.[key]
+        if (!Array.isArray(ids)) return
+        ids.forEach(id => {
+            if (typeof id === 'string' && id.trim()) allIds.add(id.trim())
+        })
+    })
+    return Array.from(allIds)
+}
+
+async function assertAssistantProjectAccess(userId, projectId, assistantId) {
+    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+    if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
+    const userData = userDoc.data() || {}
+    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
+
+    if (projectId !== 'globalProject') {
+        if (!accessibleProjectIds.includes(projectId)) {
+            throw new HttpsError('permission-denied', 'No access to project')
+        }
+        return
+    }
+
+    const assistantDoc = await admin.firestore().doc(`assistants/globalProject/items/${assistantId}`).get()
+    if (!assistantDoc.exists) throw new HttpsError('not-found', 'Assistant not found')
+
+    let hasAccessToGlobalAssistant = false
+    for (let i = 0; i < accessibleProjectIds.length; i++) {
+        const projectDoc = await admin.firestore().doc(`projects/${accessibleProjectIds[i]}`).get()
+        if (!projectDoc.exists) continue
+        const globalAssistantIds = Array.isArray(projectDoc.data()?.globalAssistantIds)
+            ? projectDoc.data().globalAssistantIds
+            : []
+        if (globalAssistantIds.includes(assistantId)) {
+            hasAccessToGlobalAssistant = true
+            break
+        }
+    }
+
+    if (!hasAccessToGlobalAssistant) {
+        throw new HttpsError('permission-denied', 'No access to global assistant')
+    }
+}
+
 // MCP SERVER (defer ESM-only deps to runtime)
 
 exports.mcpServer = onRequest(
@@ -1474,6 +1520,157 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
             return result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
+exports.getAssistantDelegationDescriptionStatusSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const projectId = typeof data?.projectId === 'string' ? data.projectId.trim() : ''
+        const assistantId = typeof data?.assistantId === 'string' ? data.assistantId.trim() : ''
+        if (!projectId || !assistantId) {
+            throw new HttpsError('invalid-argument', 'projectId and assistantId are required')
+        }
+
+        await assertAssistantProjectAccess(auth.uid, projectId, assistantId)
+
+        const {
+            collectAssistantDelegationInputs,
+            buildDelegationInputHash,
+            buildDelegationCapabilitiesSummaryFromTasks,
+            buildLegacyDelegationToolDescription,
+            getEffectiveDelegationDescriptionSource,
+            normalizeText,
+        } = require('./Assistant/delegationToolDescriptionHelper')
+
+        let inputs
+        try {
+            inputs = await collectAssistantDelegationInputs(projectId, assistantId)
+        } catch (error) {
+            if (error?.message === 'Assistant not found') {
+                throw new HttpsError('not-found', 'Assistant not found')
+            }
+            throw error
+        }
+        const currentInputHash = buildDelegationInputHash(inputs)
+        const assistant = inputs.assistant || {}
+        const manual = normalizeText(assistant.delegationToolDescriptionManual, 1000)
+        const storedInputHash = normalizeText(assistant.delegationToolDescriptionInputHash, 120)
+        const isStale = !manual && storedInputHash !== currentInputHash
+
+        let projectName = projectId
+        try {
+            const projectDoc = await admin.firestore().doc(`projects/${projectId}`).get()
+            if (projectDoc.exists) {
+                projectName = normalizeText(projectDoc.data()?.name, 120) || projectId
+            }
+        } catch (_) {}
+
+        const capabilitiesSummary = buildDelegationCapabilitiesSummaryFromTasks(inputs.tasks || [])
+        const legacyDescription = buildLegacyDelegationToolDescription({
+            displayName: assistant.displayName,
+            projectName,
+            projectId,
+            assistantDescription: assistant.description,
+            capabilitiesSummary,
+        })
+        const effectiveDescription = manual || legacyDescription
+
+        return {
+            projectId,
+            assistantId,
+            delegationToolDescriptionManual: manual,
+            delegationToolDescriptionGenerated: normalizeText(assistant.delegationToolDescriptionGenerated, 1000),
+            delegationToolDescriptionGeneratedAt: assistant.delegationToolDescriptionGeneratedAt || null,
+            delegationToolDescriptionInputHash: storedInputHash,
+            currentInputHash,
+            isStale,
+            effectiveDescription,
+            effectiveSource: getEffectiveDelegationDescriptionSource(assistant),
+        }
+    }
+)
+
+exports.generateAssistantDelegationDescriptionSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const projectId = typeof data?.projectId === 'string' ? data.projectId.trim() : ''
+        const assistantId = typeof data?.assistantId === 'string' ? data.assistantId.trim() : ''
+        const language = typeof data?.language === 'string' ? data.language : 'en'
+        if (!projectId || !assistantId) {
+            throw new HttpsError('invalid-argument', 'projectId and assistantId are required')
+        }
+
+        await assertAssistantProjectAccess(auth.uid, projectId, assistantId)
+
+        const {
+            collectAssistantDelegationInputs,
+            buildDelegationInputHash,
+            generateDelegationDescription,
+            getEffectiveDelegationDescriptionSource,
+            normalizeText,
+        } = require('./Assistant/delegationToolDescriptionHelper')
+
+        let inputs
+        try {
+            inputs = await collectAssistantDelegationInputs(projectId, assistantId)
+        } catch (error) {
+            if (error?.message === 'Assistant not found') {
+                throw new HttpsError('not-found', 'Assistant not found')
+            }
+            throw error
+        }
+        const currentInputHash = buildDelegationInputHash(inputs)
+        const generatedText = await generateDelegationDescription(inputs, language)
+        const generatedAt = Date.now()
+
+        await inputs.assistantRef.update({
+            delegationToolDescriptionManual: generatedText,
+            delegationToolDescriptionGenerated: generatedText,
+            delegationToolDescriptionGeneratedAt: generatedAt,
+            delegationToolDescriptionInputHash: currentInputHash,
+            lastEditionDate: generatedAt,
+            lastEditorId: auth.uid,
+        })
+
+        const updatedAssistant = {
+            ...(inputs.assistant || {}),
+            delegationToolDescriptionGenerated: generatedText,
+            delegationToolDescriptionGeneratedAt: generatedAt,
+            delegationToolDescriptionInputHash: currentInputHash,
+        }
+
+        return {
+            projectId,
+            assistantId,
+            delegationToolDescriptionManual: normalizeText(generatedText, 1000),
+            delegationToolDescriptionGenerated: normalizeText(generatedText, 1000),
+            delegationToolDescriptionGeneratedAt: generatedAt,
+            delegationToolDescriptionInputHash: currentInputHash,
+            currentInputHash,
+            isStale: false,
+            effectiveDescription: normalizeText(generatedText, 1000),
+            effectiveSource: getEffectiveDelegationDescriptionSource({
+                ...updatedAssistant,
+                delegationToolDescriptionManual: generatedText,
+            }),
         }
     }
 )

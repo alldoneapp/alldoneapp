@@ -364,6 +364,26 @@ export function updateAssistantInstructions(projectId, assistant, instructions) 
         assistantInstructionsChangedUpdatesChain(projectId, assistant, assistant.instructions, instructions)
 }
 
+export function updateAssistantDelegationDescriptionManual(projectId, assistant, manualText) {
+    const delegationToolDescriptionManual = typeof manualText === 'string' ? manualText.trim() : ''
+    updateAssistantData(projectId, assistant.uid, { delegationToolDescriptionManual }, null)
+}
+
+export async function getAssistantDelegationDescriptionStatus(projectId, assistantId) {
+    return await runHttpsCallableFunction('getAssistantDelegationDescriptionStatusSecondGen', {
+        projectId,
+        assistantId,
+    })
+}
+
+export async function generateAssistantDelegationDescription(projectId, assistantId, language = 'en') {
+    return await runHttpsCallableFunction('generateAssistantDelegationDescriptionSecondGen', {
+        projectId,
+        assistantId,
+        language,
+    })
+}
+
 export function setAssistantLikeDefault(projectId, assistantId) {
     console.log('🔄 setAssistantLikeDefault called:', { projectId, assistantId })
 
@@ -996,6 +1016,10 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
         instructions: globalAssistant.instructions,
         model: globalAssistant.model,
         temperature: globalAssistant.temperature,
+        delegationToolDescriptionManual: globalAssistant.delegationToolDescriptionManual || '',
+        delegationToolDescriptionGenerated: globalAssistant.delegationToolDescriptionGenerated || '',
+        delegationToolDescriptionGeneratedAt: globalAssistant.delegationToolDescriptionGeneratedAt || null,
+        delegationToolDescriptionInputHash: globalAssistant.delegationToolDescriptionInputHash || '',
         prompt: globalAssistant.prompt,
         thirdPartLink: globalAssistant.thirdPartLink,
         type: globalAssistant.type,

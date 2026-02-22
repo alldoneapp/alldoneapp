@@ -12,6 +12,7 @@ import InstructionsProperty from './Instructions/InstructionsProperty'
 import ModelProperty from './Model/ModelProperty'
 import TemperatureProperty from './Temperature/TemperatureProperty'
 import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
+import DelegationDescriptionProperty from './DelegationDescription/DelegationDescriptionProperty'
 import AddPreConfigTask from './PreConfigTasks/AddPreConfigTask'
 import PreConfigTaskList from './PreConfigTasks/PreConfigTaskList'
 import DeleteAssistant from './DeleteAssistant'
@@ -139,6 +140,11 @@ export default function AssistantCustomizations({
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <TemperatureProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <DelegationDescriptionProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
                 </View>
             </View>
             <CustomizationsHeader text="Assistant tasks" rightContent={canEditAssitant && renderOrganizeButton()} />

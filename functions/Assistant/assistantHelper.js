@@ -819,6 +819,8 @@ async function getReachableDelegationTargets({
                 assistantId: targetAssistantId,
                 displayName: targetAssistant.displayName || 'Assistant',
                 description: targetAssistant.description || '',
+                delegationToolDescriptionManual: targetAssistant.delegationToolDescriptionManual || '',
+                delegationToolDescriptionGenerated: targetAssistant.delegationToolDescriptionGenerated || '',
             })
         })
     }
@@ -830,14 +832,31 @@ const buildTalkToAssistantToolSchema = target => ({
     type: 'function',
     function: {
         name: target.toolName,
-        description:
-            `Delegate work to assistant "${target.displayName}" in project "${target.projectName}" ` +
-            `(project ID: "${target.projectId}"). ` +
-            `${
-                target.description ? `Assistant description: ${String(target.description).trim().slice(0, 180)}. ` : ''
-            }` +
-            `${target.capabilitiesSummary ? `${target.capabilitiesSummary} ` : ''}` +
-            'Pass a clear instruction. The assistant will execute with its own enabled tools and return the result.',
+        description: (() => {
+            const manualDescription = String(target.delegationToolDescriptionManual || '')
+                .trim()
+                .slice(0, 520)
+            const generatedDescription = String(target.delegationToolDescriptionGenerated || '')
+                .trim()
+                .slice(0, 260)
+            const assistantDescription = String(target.description || '')
+                .trim()
+                .slice(0, 180)
+            const selectedDescription = manualDescription || generatedDescription || assistantDescription
+            const includeCapabilitiesFallback = !manualDescription && !generatedDescription
+
+            if (manualDescription) {
+                return manualDescription
+            }
+
+            return (
+                `Delegate work to assistant "${target.displayName}" in project "${target.projectName}" ` +
+                `(project ID: "${target.projectId}"). ` +
+                `${selectedDescription ? `Assistant description: ${selectedDescription}. ` : ''}` +
+                `${includeCapabilitiesFallback && target.capabilitiesSummary ? `${target.capabilitiesSummary} ` : ''}` +
+                'Pass a clear instruction. The assistant will execute with its own enabled tools and return the result.'
+            )
+        })(),
         parameters: {
             type: 'object',
             properties: {
