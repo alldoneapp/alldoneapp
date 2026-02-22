@@ -9,10 +9,8 @@ import { watchTasksInWorkflow, unwatchTasksInWorkflow } from '../../../utils/bac
 import { filterPendingTasks } from '../../HashtagFilters/FilterHelpers/FilterTasks'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import UserTasksHeader from '../Header/UserTasksHeader'
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 
 export default function PendingTasksByProject({ project, inSelectedProject }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -24,31 +22,19 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const [amountOfTasksByDate, setAmountOfTasksByDate] = useState({})
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(project.id)
 
-    // Check if this project is using the default project's assistant
+    // Check if this project is using a different assistant than the default project
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const projectAssistants = useSelector(state => state.projectAssistants?.[project.id] || [])
-    const globalAssistants = useSelector(state => state.globalAssistants || [])
-    const globalLastAssistantCommentData = useSelector(
-        state => state.loggedUser?.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
-    )
-    const globalProjectChatLastNotification = useSelector(
-        state => state.projectChatLastNotification?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
-    )
-    const isUsingDefaultProjectAssistant = (() => {
-        if (project.id === defaultProjectId || !defaultProjectId) return false
-        if (!project?.assistantId) return true
-        const isLocalProjectAssistant = projectAssistants.some(a => a.uid === project.assistantId)
-        const isGlobalInProject =
-            project.globalAssistantIds?.includes(project.assistantId) &&
-            globalAssistants.some(a => a.uid === project.assistantId)
-        return !isLocalProjectAssistant && !isGlobalInProject
-    })()
-    const latestAssistantCommentProjectId =
-        globalProjectChatLastNotification?.projectId || globalLastAssistantCommentData?.projectId || null
-    const showCrossProjectLastCommentAboveHeader =
-        isUsingDefaultProjectAssistant &&
-        !!latestAssistantCommentProjectId &&
-        latestAssistantCommentProjectId !== project.id
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
+    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
+    const hasDifferentAssistantThanDefaultProject =
+        !!defaultProjectId &&
+        !!defaultProject &&
+        project.id !== defaultProjectId &&
+        !!defaultProjectAssistantId &&
+        !!selectedProjectAssistantId &&
+        selectedProjectAssistantId !== defaultProjectAssistantId
 
     const updateTasks = (tasksByDateAndStep, estimationValue, amountOfTasksByDate) => {
         setTasksByDateAndStep(tasksByDateAndStep)
@@ -75,33 +61,27 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
 
     return filteredTasksByDateAndStep.length > 0 || inSelectedProject ? (
         <View style={localStyles.container}>
-            {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
+            {!isAnonymous && inSelectedProject && hasDifferentAssistantThanDefaultProject && (
                 <View style={{ marginTop: 16 }}>
-                    <AssistantLine showLastComment={false} removeBottomSpace={true} />
-                    {showCrossProjectLastCommentAboveHeader && (
-                        <View style={localStyles.lastCommentContainerNoTopMargin}>
-                            <LastCommentArea
-                                withTopMargin={false}
-                                useCardBackground={true}
-                                useGlobalLatestComment={true}
-                            />
-                        </View>
-                    )}
+                    <AssistantLine
+                        showLastComment={true}
+                        startCollapsed={true}
+                        useGlobalLatestComment={true}
+                        projectOverride={defaultProject}
+                        assistantIdOverride={defaultProjectAssistantId}
+                    />
                 </View>
             )}
             <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
             {inSelectedProject && <UserTasksHeader />}
-            {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
-                <AssistantLine showLastComment={false} removeBottomSpace={true} />
-            )}
-            {!isAnonymous && inSelectedProject && !showCrossProjectLastCommentAboveHeader && (
+            {!isAnonymous && inSelectedProject && (
                 <View
                     style={[
                         localStyles.lastCommentContainer,
-                        !isUsingDefaultProjectAssistant && localStyles.lastCommentContainerNoTopMargin,
+                        !hasDifferentAssistantThanDefaultProject && localStyles.lastCommentContainerNoTopMargin,
                     ]}
                 >
-                    <LastCommentArea withTopMargin={false} useCardBackground={true} useGlobalLatestComment={true} />
+                    <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
                 </View>
             )}
             {filteredTasksByDateAndStep.map((item, index) => {

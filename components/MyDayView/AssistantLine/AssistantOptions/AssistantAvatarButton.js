@@ -2,20 +2,22 @@ import React from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 
 import {
-    setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
+    setTaskViewToggleIndex,
+    setTaskViewToggleSection,
+    storeCurrentUser,
     storeCurrentShortcutUser,
     switchProject,
     hideWebSideBar,
 } from '../../../../redux/actions'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import { TouchableOpacity } from 'react-native'
-import NavigationService from '../../../../utils/NavigationService'
-import { DV_TAB_PROJECT_ASSISTANTS } from '../../../../utils/TabNavigationConstants'
+import { DV_TAB_ROOT_TASKS } from '../../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../../redux/store'
-import URLsProjects, { URL_PROJECT_DETAILS_ASSISTANTS } from '../../../../URLSystem/Projects/URLsProjects'
+import { setAssistantLastVisitedBoardDate } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function AssistantAvatarButton({ assistant, projectIndex, size = 24 }) {
     const dispatch = useDispatch()
@@ -24,29 +26,35 @@ export default function AssistantAvatarButton({ assistant, projectIndex, size = 
     const { loggedUser, loggedUserProjects } = store.getState()
     const project = loggedUserProjects[projectIndex]
 
-    const navigateToProjectAssistants = () => {
+    const navigateToAssistantBoard = () => {
         if (showFloatPopup === 0) {
-            // Navigate to the Project Detailed View
-            NavigationService.navigate('ProjectDetailedView', {
-                projectIndex: projectIndex,
-            })
+            if (!project || !assistant) return
+
+            setAssistantLastVisitedBoardDate(
+                isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : project.id,
+                assistant,
+                project.id,
+                'lastVisitBoard'
+            )
 
             let dispatches = [
-                setSelectedNavItem(DV_TAB_PROJECT_ASSISTANTS),
+                setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
+                storeCurrentUser(assistant),
                 setSelectedTypeOfProject(ProjectHelper.getTypeOfProject(loggedUser, project.id)),
                 storeCurrentShortcutUser(null),
+                setTaskViewToggleIndex(0),
+                setTaskViewToggleSection('Open'),
                 switchProject(projectIndex),
             ]
 
             if (smallScreenNavigation) dispatches.push(hideWebSideBar())
 
             dispatch(dispatches)
-            URLsProjects.push(URL_PROJECT_DETAILS_ASSISTANTS, null, project.id)
         }
     }
 
     return (
-        <TouchableOpacity onPress={navigateToProjectAssistants}>
+        <TouchableOpacity onPress={navigateToAssistantBoard}>
             <AssistantAvatar
                 photoURL={assistant.photoURL300}
                 assistantId={assistant.uid}

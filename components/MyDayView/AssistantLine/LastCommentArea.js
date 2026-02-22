@@ -14,14 +14,18 @@ export default function LastCommentArea({
     useAssistantProjectContext = true,
     useGlobalLatestComment = false,
     compact = false,
+    projectOverride = null,
+    assistantIdOverride = null,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const selectedProjectFromStore = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const selectedProject = projectOverride || selectedProjectFromStore
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
+    const assistantId = assistantIdOverride || defaultAssistantId
     const { assistantProject, assistantProjectId } = getAssistantLineData(
         selectedProject,
-        defaultAssistantId,
+        assistantId,
         defaultProjectId
     )
     const project = useAssistantProjectContext ? assistantProject || selectedProject : selectedProject
@@ -49,7 +53,7 @@ export default function LastCommentArea({
         project,
         currentProjectChatLastNotification,
         currentLastAssistantCommentData,
-        defaultAssistantId,
+        assistantId,
         defaultProjectId
     )
 

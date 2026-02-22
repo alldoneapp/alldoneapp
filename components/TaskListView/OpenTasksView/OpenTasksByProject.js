@@ -19,11 +19,9 @@ import {
     setOpenMilestonesInProjectInTasks,
 } from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import LastCommentArea from '../../MyDayView/AssistantLine/LastCommentArea'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
 import UserTasksHeader from '../Header/UserTasksHeader'
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -57,33 +55,20 @@ export default function OpenTasksByProject({
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const hideProjectData = !inSelectedProject && (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
 
-    // Check if this project is using the default project's assistant
+    // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
-    const projectAssistants = useSelector(state => state.projectAssistants?.[projectId] || [])
-    const globalAssistants = useSelector(state => state.globalAssistants || [])
-    const globalLastAssistantCommentData = useSelector(
-        state => state.loggedUser?.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
-    )
-    const globalProjectChatLastNotification = useSelector(
-        state => state.projectChatLastNotification?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
-    )
-    const isUsingDefaultProjectAssistant = (() => {
-        if (projectId === defaultProjectId || !defaultProjectId) return false
-        if (!project?.assistantId) return true
-        // Check if the assistant is local to this project (project assistant or global assistant in project)
-        const isLocalProjectAssistant = projectAssistants.some(a => a.uid === project.assistantId)
-        const isGlobalInProject =
-            project.globalAssistantIds?.includes(project.assistantId) &&
-            globalAssistants.some(a => a.uid === project.assistantId)
-        return !isLocalProjectAssistant && !isGlobalInProject
-    })()
-    const latestAssistantCommentProjectId =
-        globalProjectChatLastNotification?.projectId || globalLastAssistantCommentData?.projectId || null
-    const showCrossProjectLastCommentAboveHeader =
-        isUsingDefaultProjectAssistant &&
-        !!latestAssistantCommentProjectId &&
-        latestAssistantCommentProjectId !== projectId
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
+    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
+    const hasDifferentAssistantThanDefaultProject =
+        !!defaultProjectId &&
+        !!defaultProject &&
+        projectId !== defaultProjectId &&
+        !!defaultProjectAssistantId &&
+        !!selectedProjectAssistantId &&
+        selectedProjectAssistantId !== defaultProjectAssistantId
 
     useEffect(() => {
         const watcherKey = v4()
@@ -133,16 +118,15 @@ export default function OpenTasksByProject({
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
                     <NeedShowMoreOpenTasksButton projectId={projectId} />
                     <NeedShowMoreEmptyGoalsButton projectId={projectId} />
-                    {!isAnonymous && inSelectedProject && isUsingDefaultProjectAssistant && (
+                    {!isAnonymous && inSelectedProject && hasDifferentAssistantThanDefaultProject && (
                         <View style={{ marginTop: 16 }}>
-                            <AssistantLine showLastComment={false} removeBottomSpace={true} />
-                            {showCrossProjectLastCommentAboveHeader && (
-                                <LastCommentArea
-                                    withTopMargin={false}
-                                    useCardBackground={true}
-                                    useGlobalLatestComment={true}
-                                />
-                            )}
+                            <AssistantLine
+                                showLastComment={true}
+                                startCollapsed={true}
+                                useGlobalLatestComment={true}
+                                projectOverride={defaultProject}
+                                assistantIdOverride={defaultProjectAssistantId}
+                            />
                         </View>
                     )}
                     <ProjectHeader
@@ -153,16 +137,9 @@ export default function OpenTasksByProject({
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                     />
                     {inSelectedProject && <UserTasksHeader />}
-                    {!isAnonymous && inSelectedProject && !isUsingDefaultProjectAssistant && (
-                        <AssistantLine showLastComment={false} removeBottomSpace={true} />
-                    )}
-                    {!isAnonymous && inSelectedProject && !showCrossProjectLastCommentAboveHeader && (
-                        <View style={{ marginTop: isUsingDefaultProjectAssistant ? 12 : 0 }}>
-                            <LastCommentArea
-                                withTopMargin={false}
-                                useCardBackground={true}
-                                useGlobalLatestComment={true}
-                            />
+                    {!isAnonymous && inSelectedProject && (
+                        <View style={{ marginTop: hasDifferentAssistantThanDefaultProject ? 12 : 0 }}>
+                            <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
                         </View>
                     )}
                     {filteredOpenTasksDates.map((dateFormated, index) => {

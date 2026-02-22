@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -13,19 +13,28 @@ export default function AssistantLine({
     showLastComment = true,
     removeBottomSpace = false,
     useAssistantProjectContext = true,
+    useGlobalLatestComment = false,
+    projectOverride = null,
+    assistantIdOverride = null,
+    startCollapsed = false,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const selectedProject = useSelector(state => state.loggedUserProjects?.[selectedProjectIndex])
+    const selectedProjectFromStore = useSelector(state => state.loggedUserProjects?.[selectedProjectIndex])
+    const selectedProject = projectOverride || selectedProjectFromStore
     const [amountOfButtonOptions, setAmountOfButtonOptions] = useState(0)
-    const [isCollapsed, setIsCollapsed] = useState(false)
+    const [isCollapsed, setIsCollapsed] = useState(startCollapsed)
+    const assistantId = assistantIdOverride || defaultAssistant?.uid
 
-    const { assistant } = getAssistantLineData(selectedProject, defaultAssistant?.uid, loggedUser?.defaultProjectId)
-    const lineAssistant = assistant || defaultAssistant
-    const assistantName = lineAssistant?.displayName || 'Assistant'
+    const { assistant: selectedLineAssistant } = getAssistantLineData(
+        selectedProject,
+        assistantId,
+        loggedUser?.defaultProjectId
+    )
+    const selectedAssistant = selectedLineAssistant || defaultAssistant
 
     const onLayout = data => {
         const amountOfButtonOptions = calculateAmountOfOptionButtons(
@@ -37,6 +46,10 @@ export default function AssistantLine({
     }
 
     const hasRequiredData = defaultAssistant && defaultAssistant.uid && loggedUser && loggedUser.defaultProjectId
+
+    useEffect(() => {
+        setIsCollapsed(startCollapsed)
+    }, [startCollapsed, selectedProject?.id, assistantId])
 
     if (!hasRequiredData) {
         return (
@@ -58,43 +71,74 @@ export default function AssistantLine({
             onLayout={onLayout}
         >
             {isCollapsed ? (
-                <TouchableOpacity style={localStyles.collapsedRow} onPress={() => setIsCollapsed(false)}>
-                    <View style={localStyles.collapsedLeft}>
-                        <AssistantAvatar
-                            photoURL={
-                                lineAssistant?.photoURL50 || lineAssistant?.photoURL300 || lineAssistant?.photoURL
-                            }
-                            assistantId={lineAssistant?.uid}
-                            size={24}
-                            imageStyle={localStyles.collapsedAvatar}
-                        />
-                        <Text numberOfLines={1} style={localStyles.collapsedAssistantName}>
-                            {assistantName}
-                        </Text>
-                    </View>
-                    {showLastComment && (
-                        <View style={localStyles.collapsedTagWrapper}>
-                            <LastCommentArea
-                                withTopMargin={false}
-                                useAssistantProjectContext={useAssistantProjectContext}
-                                compact={true}
-                            />
-                        </View>
-                    )}
-                    <Icon name={'chevron-down'} size={16} color={colors.Text03} style={localStyles.chevron} />
-                </TouchableOpacity>
+                <CollapsedAssistantRow
+                    assistant={selectedAssistant}
+                    showLastComment={showLastComment}
+                    useAssistantProjectContext={useAssistantProjectContext}
+                    useGlobalLatestComment={useGlobalLatestComment}
+                    onPress={() => setIsCollapsed(false)}
+                    projectOverride={selectedProject}
+                    assistantIdOverride={assistantId}
+                />
             ) : (
-                <>
+                <View>
                     <AssistantOptions
                         amountOfButtonOptions={amountOfButtonOptions}
                         onCollapse={() => setIsCollapsed(true)}
+                        projectOverride={selectedProject}
+                        assistantIdOverride={assistantId}
                     />
                     {showLastComment && (
-                        <LastCommentArea withTopMargin={true} useAssistantProjectContext={useAssistantProjectContext} />
+                        <LastCommentArea
+                            withTopMargin={true}
+                            useAssistantProjectContext={useAssistantProjectContext}
+                            useGlobalLatestComment={useGlobalLatestComment}
+                            projectOverride={selectedProject}
+                            assistantIdOverride={assistantId}
+                        />
                     )}
-                </>
+                </View>
             )}
         </View>
+    )
+}
+
+function CollapsedAssistantRow({
+    assistant,
+    showLastComment,
+    useAssistantProjectContext,
+    useGlobalLatestComment,
+    onPress,
+    projectOverride,
+    assistantIdOverride,
+}) {
+    return (
+        <TouchableOpacity style={localStyles.collapsedRow} onPress={onPress}>
+            <View style={localStyles.collapsedLeft}>
+                <AssistantAvatar
+                    photoURL={assistant?.photoURL50 || assistant?.photoURL300 || assistant?.photoURL}
+                    assistantId={assistant?.uid}
+                    size={24}
+                    imageStyle={localStyles.collapsedAvatar}
+                />
+                <Text numberOfLines={1} style={localStyles.collapsedAssistantName}>
+                    {assistant?.displayName || 'Assistant'}
+                </Text>
+            </View>
+            {showLastComment && (
+                <View style={localStyles.collapsedTagWrapper}>
+                    <LastCommentArea
+                        withTopMargin={false}
+                        useAssistantProjectContext={useAssistantProjectContext}
+                        useGlobalLatestComment={useGlobalLatestComment}
+                        compact={true}
+                        projectOverride={projectOverride}
+                        assistantIdOverride={assistantIdOverride}
+                    />
+                </View>
+            )}
+            <Icon name={'chevron-down'} size={16} color={colors.Text03} style={localStyles.chevron} />
+        </TouchableOpacity>
     )
 }
 

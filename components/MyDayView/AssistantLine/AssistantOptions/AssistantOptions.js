@@ -21,10 +21,16 @@ import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Spinner from '../../../UIComponents/Spinner'
 import Icon from '../../../Icon'
 
-export default function AssistantOptions({ amountOfButtonOptions, onCollapse }) {
+export default function AssistantOptions({
+    amountOfButtonOptions,
+    onCollapse,
+    projectOverride = null,
+    assistantIdOverride = null,
+}) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const selectedProjectFromStore = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
+    const selectedProject = projectOverride || selectedProjectFromStore
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const userId = useSelector(state => state.loggedUser.uid)
@@ -37,9 +43,11 @@ export default function AssistantOptions({ amountOfButtonOptions, onCollapse }) 
     const [inputHeight, setInputHeight] = useState(40)
     const isSendingRef = useRef(false)
 
+    const assistantId = assistantIdOverride || defaultAssistantId
+
     const { assistant, assistantProject, assistantProjectId } = getAssistantLineData(
         selectedProject,
-        defaultAssistantId,
+        assistantId,
         defaultProjectId
     )
 
@@ -138,19 +146,21 @@ export default function AssistantOptions({ amountOfButtonOptions, onCollapse }) 
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
     const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
+    const HeaderContainer = onCollapse ? TouchableOpacity : View
+    const headerContainerProps = onCollapse ? { onPress: onCollapse, activeOpacity: 0.8 } : {}
 
     return (
         <View style={localStyles.container}>
-            <View style={localStyles.headerRow}>
+            <HeaderContainer style={localStyles.headerRow} {...headerContainerProps}>
                 <Text style={localStyles.headerText} numberOfLines={1}>
                     {`${assistant.displayName}: ${translate('What can I do for you today?')}`}
                 </Text>
                 {!!onCollapse && (
-                    <TouchableOpacity style={localStyles.collapseButton} onPress={onCollapse}>
+                    <View style={localStyles.collapseButton}>
                         <Icon name={'chevron-up'} size={16} color={colors.Text03} />
-                    </TouchableOpacity>
+                    </View>
                 )}
-            </View>
+            </HeaderContainer>
             <View style={localStyles.firstRow}>
                 <View style={localStyles.avatarWrapper}>
                     <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
