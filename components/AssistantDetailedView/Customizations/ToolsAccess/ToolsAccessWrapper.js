@@ -9,7 +9,7 @@ import { execShortcutFn } from '../../../UIComponents/ShortcutCheatSheet/HelperF
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantToolsModal from '../../../UIComponents/FloatModals/AssistantToolsModal/AssistantToolsModal'
 import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
-import { TOOL_LABEL_BY_KEY, TOOL_OPTIONS } from './toolOptions'
+import { TOOL_OPTIONS } from './toolOptions'
 
 export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
     const dispatch = useDispatch()
@@ -34,11 +34,7 @@ export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
         updateAssistant(projectId, { ...assistant, allowedTools: tools }, assistant)
     }
 
-    const buttonLabel = !allowedTools.length
-        ? translate('No tools enabled')
-        : allowedTools.length === TOOL_OPTIONS.length
-        ? translate('All tools enabled')
-        : allowedTools.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
+    const buttonLabel = `${translate('Edit')} (${allowedTools.length}/${TOOL_OPTIONS.length})`
 
     return (
         <Popover
