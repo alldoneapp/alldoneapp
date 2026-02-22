@@ -26,6 +26,7 @@ export default function LastAssistantCommentWrapper({
     commentText,
     isNew,
     setAModalIsOpen,
+    compact = false,
 }) {
     const openModals = useSelector(state => state.openModals)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
@@ -126,6 +127,7 @@ export default function LastAssistantCommentWrapper({
                 commentText={parsedComment}
                 objectName={parsedObjectName}
                 projectId={projectId}
+                compact={compact}
             />
         </Popover>
     ) : (
@@ -135,6 +137,7 @@ export default function LastAssistantCommentWrapper({
             commentText={parsedComment}
             objectName={parsedObjectName}
             projectId={projectId}
+            compact={compact}
         />
     )
 }

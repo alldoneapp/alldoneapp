@@ -13,6 +13,7 @@ export default function LastCommentArea({
     useCardBackground = false,
     useAssistantProjectContext = true,
     useGlobalLatestComment = false,
+    compact = false,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -60,16 +61,18 @@ export default function LastCommentArea({
         <View
             style={[
                 localStyles.container,
-                withTopMargin && localStyles.containerWithTopMargin,
-                useCardBackground && localStyles.cardContainer,
+                compact && localStyles.compactContainer,
+                !compact && withTopMargin && localStyles.containerWithTopMargin,
+                !compact && useCardBackground && localStyles.cardContainer,
             ]}
         >
-            <Text style={localStyles.title}>{translate('Last comment')}</Text>
+            {!compact && <Text style={localStyles.title}>{translate('Last comment')}</Text>}
             <LastComment
                 project={commentProject}
                 setAModalIsOpen={setAModalIsOpen}
                 currentProjectChatLastNotification={currentProjectChatLastNotification}
                 currentLastAssistantCommentData={currentLastAssistantCommentData}
+                compact={compact}
             />
         </View>
     )
@@ -78,6 +81,11 @@ export default function LastCommentArea({
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
+    },
+    compactContainer: {
+        width: 'auto',
+        maxWidth: '100%',
+        alignItems: 'flex-end',
     },
     containerWithTopMargin: {
         marginTop: 24,

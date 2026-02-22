@@ -13,6 +13,7 @@ export default function LastUserOrAssistantCommentContainer({
     objectId,
     objectType,
     fromChatNotification,
+    compact = false,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const [commentText, setCommentText] = useState(null)
@@ -55,6 +56,7 @@ export default function LastUserOrAssistantCommentContainer({
             assistantId={assistantId}
             commentText={commentText}
             setAModalIsOpen={setAModalIsOpen}
+            compact={compact}
         />
     )
 }

@@ -8,6 +8,7 @@ export default function LastComment({
     setAModalIsOpen,
     currentProjectChatLastNotification,
     currentLastAssistantCommentData,
+    compact = false,
 }) {
     const hasNotification = !!currentProjectChatLastNotification
     const hasValidLastCommentData =
@@ -22,7 +23,7 @@ export default function LastComment({
         return null
     }
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, compact && localStyles.containerCompact]}>
             {currentProjectChatLastNotification ? (
                 <LastUserOrAssistantCommentContainer
                     project={project}
@@ -30,6 +31,7 @@ export default function LastComment({
                     objectType={currentProjectChatLastNotification.chatType}
                     setAModalIsOpen={setAModalIsOpen}
                     fromChatNotification={true}
+                    compact={compact}
                 />
             ) : (
                 <LastUserOrAssistantCommentContainer
@@ -37,6 +39,7 @@ export default function LastComment({
                     objectId={currentLastAssistantCommentData.objectId}
                     objectType={currentLastAssistantCommentData.objectType}
                     setAModalIsOpen={setAModalIsOpen}
+                    compact={compact}
                 />
             )}
         </View>
@@ -48,5 +51,10 @@ const localStyles = StyleSheet.create({
         alignContent: 'flex-start',
         flex: 1,
         marginLeft: 16,
+    },
+    containerCompact: {
+        marginLeft: 0,
+        width: 'auto',
+        maxWidth: '100%',
     },
 })

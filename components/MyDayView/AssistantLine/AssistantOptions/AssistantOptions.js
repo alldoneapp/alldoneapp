@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react'
-import { StyleSheet, View, TextInput, Text } from 'react-native'
+import { StyleSheet, View, TextInput, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 import Popover from 'react-tiny-popover'
@@ -19,8 +19,9 @@ import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Spinner from '../../../UIComponents/Spinner'
+import Icon from '../../../Icon'
 
-export default function AssistantOptions({ amountOfButtonOptions }) {
+export default function AssistantOptions({ amountOfButtonOptions, onCollapse }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
@@ -144,6 +145,11 @@ export default function AssistantOptions({ amountOfButtonOptions }) {
                 <Text style={localStyles.headerText} numberOfLines={1}>
                     {`${assistant.displayName}: ${translate('What can I do for you today?')}`}
                 </Text>
+                {!!onCollapse && (
+                    <TouchableOpacity style={localStyles.collapseButton} onPress={onCollapse}>
+                        <Icon name={'chevron-up'} size={16} color={colors.Text03} />
+                    </TouchableOpacity>
+                )}
             </View>
             <View style={localStyles.firstRow}>
                 <View style={localStyles.avatarWrapper}>
@@ -212,13 +218,23 @@ const localStyles = StyleSheet.create({
         width: '100%',
     },
     headerRow: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
         marginBottom: 16,
     },
     headerText: {
+        flex: 1,
         fontSize: 16,
         fontWeight: '600',
         color: colors.Text01,
         textAlign: 'center',
+        marginLeft: 22,
+    },
+    collapseButton: {
+        marginLeft: 8,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
     },
     firstRow: {
         flexDirection: 'row',

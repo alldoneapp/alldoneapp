@@ -23,7 +23,7 @@ import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
-export default function LastAssistantComment({ projectId, commentText, onPress, objectName, isNew }) {
+export default function LastAssistantComment({ projectId, commentText, onPress, objectName, isNew, compact = false }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
 
     const text = shrinkTagText(commentText.replace(/\s\s+/g, ' '), 500)
@@ -33,6 +33,18 @@ export default function LastAssistantComment({ projectId, commentText, onPress, 
     const getLinkCounter = () => {
         linkCounter++
         return linkCounter
+    }
+
+    if (compact) {
+        return (
+            <TouchableOpacity onPress={onPress} style={localStyles.compactContainer}>
+                <Icon name={'message-circle'} color={colors.Text03} size={14} />
+                <Text numberOfLines={1} style={localStyles.compactText}>
+                    {text}
+                </Text>
+                {isNew && <ReddBubble />}
+            </TouchableOpacity>
+        )
     }
 
     const parsedElements = parseFeedComment(text)
@@ -168,5 +180,24 @@ const localStyles = StyleSheet.create({
     icon: {
         marginTop: 4,
         marginRight: 4,
+    },
+    compactContainer: {
+        height: 24,
+        maxHeight: 24,
+        borderRadius: 12,
+        paddingLeft: 6,
+        paddingRight: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.Grey300,
+        overflow: 'hidden',
+        width: 'auto',
+        maxWidth: '100%',
+    },
+    compactText: {
+        ...styles.subtitle2,
+        color: colors.Text03,
+        marginLeft: 6,
+        flexShrink: 1,
     },
 })
