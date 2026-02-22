@@ -5,7 +5,7 @@ const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { getCachedEnvFunctions, getOpenAIClient } = require('./assistantHelper')
 
 const MAX_GENERATED_DESCRIPTION_LENGTH = 420
-const MAX_TASK_EXAMPLES = 10
+const MAX_TASK_EXAMPLES = 50
 
 function normalizeText(value, maxLength = 240) {
     return String(value || '')
@@ -274,9 +274,11 @@ async function generateDelegationDescription(inputs, languageCode = 'en') {
                     role: 'user',
                     content:
                         `Write one short description (max 320 chars) in ${languageLabel} to help another LLM decide when to delegate.\n` +
+                        'First describe the assistant in a general role-oriented way (for example: personal assistant, designer, analyst).\n' +
+                        'Then mention pre-configured tasks only as examples of what it can do, not as the full definition.\n' +
                         `Assistant name: ${assistantName}\n` +
                         `Assistant description: ${assistantDescription || 'N/A'}\n` +
-                        `Pre-configured tasks:\n${taskLines || '- none'}\n` +
+                        `Pre-configured tasks examples:\n${taskLines || '- none'}\n` +
                         'Style requirements: action-oriented, selection-focused, truthful, no hype, no emojis.',
                 },
             ],
