@@ -199,11 +199,22 @@ const localStyles = StyleSheet.create({
         width: '100%',
         justifyContent: 'center',
         alignItems: 'stretch',
-        paddingTop: 30,
-        paddingBottom: 30,
+        paddingTop: 24,
+        paddingBottom: 26,
     },
     controlsRow: {
         width: '100%',
+        backgroundColor: colors.UtilityBlue100,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: colors.UtilityBlue125,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        shadowColor: '#04142F',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        elevation: 2,
     },
     controlsRowWithRight: {
         flexDirection: 'row',
@@ -214,6 +225,17 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         alignItems: 'stretch',
         justifyContent: 'flex-start',
+        backgroundColor: colors.UtilityBlue100,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: colors.UtilityBlue125,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        shadowColor: '#04142F',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        elevation: 2,
     },
     tabsRow: {
         flexDirection: 'row',
@@ -227,6 +249,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-start',
         paddingHorizontal: 0,
+        paddingVertical: 0,
     },
     tabsContainerMobile: {
         paddingHorizontal: 0,
@@ -238,12 +261,12 @@ const localStyles = StyleSheet.create({
         opacity: 0.6,
     },
     tabButton: {
-        height: 38,
+        height: 36,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 12,
+        paddingHorizontal: 14,
         marginHorizontal: 2,
-        borderBottomWidth: 2,
+        borderBottomWidth: 3,
         borderBottomColor: 'transparent',
     },
     tabButtonCompactDesktop: {
@@ -251,8 +274,8 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 0,
     },
     tabButtonMobile: {
-        height: 40,
-        paddingHorizontal: 8,
+        height: 38,
+        paddingHorizontal: 10,
         marginHorizontal: 0,
     },
     tabButtonSelected: {
@@ -260,17 +283,17 @@ const localStyles = StyleSheet.create({
     },
     tabText: {
         ...styles.subtitle1,
-        color: '#6B778C',
+        color: colors.Text02,
     },
     tabTextMobile: {
         ...styles.subtitle1,
     },
     tabTextSelected: {
-        color: colors.Primary100,
+        color: colors.Text01,
         fontFamily: 'Roboto-Medium',
     },
     rightArea: {
-        marginLeft: 'auto',
+        marginLeft: 12,
         flexDirection: 'row',
         alignItems: 'center',
     },
@@ -289,7 +312,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     sectionToggleRowMobile: {
-        marginTop: 22,
+        marginTop: 14,
         alignSelf: 'center',
     },
     rightAccessoryRowMobile: {
