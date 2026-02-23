@@ -556,7 +556,7 @@ function buildPreConfiguredTasksContextMessage(tasks) {
 
     ;(Array.isArray(tasks) ? tasks : []).forEach(task => {
         const type = typeof task?.type === 'string' ? task.type.trim() : ''
-        if (type !== 'prompt' && type !== 'link') return
+        if (type !== 'prompt' && type !== 'link' && type !== 'iframe') return
 
         const name = normalizePreConfiguredTaskText(task?.name || task?.id || 'Unnamed task', 80)
         const id = normalizePreConfiguredTaskText(task?.id || '', 60)
@@ -570,7 +570,8 @@ function buildPreConfiguredTasksContextMessage(tasks) {
 
         const link = normalizePreConfiguredTaskText(task?.link || '', 220)
         if (!link) return
-        relevantTasks.push({ type, name, id, executionInstruction: `External link: ${link}` })
+        const linkLabel = type === 'iframe' ? 'Iframe link' : 'External link'
+        relevantTasks.push({ type, name, id, executionInstruction: `${linkLabel}: ${link}` })
     })
 
     if (relevantTasks.length === 0) {
@@ -583,7 +584,7 @@ function buildPreConfiguredTasksContextMessage(tasks) {
 
     const includedTasks = relevantTasks.slice(0, MAX_PRECONFIGURED_TASK_CONTEXT_ITEMS)
     const lines = [
-        'You have access to these pre-configured tasks (prompt and external link types):',
+        'You have access to these pre-configured tasks (prompt, external link, and iframe types):',
         ...includedTasks.map(
             (task, index) =>
                 `${index + 1}. [${task.type}] "${task.name}" (${task.id || 'no-id'}) -> ${task.executionInstruction}`
@@ -597,6 +598,9 @@ function buildPreConfiguredTasksContextMessage(tasks) {
 
     lines.push(
         'When the user asks to execute one of these tasks, follow its stored execution instruction exactly and do not claim completion unless execution actually happened.'
+    )
+    lines.push(
+        'If the user asks for the link to one of these tools (for example an iframe or external link tool), return the exact stored link from the task.'
     )
 
     return {
