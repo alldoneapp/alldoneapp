@@ -22,9 +22,19 @@ const toolSchemas = {
                         description: 'Optional: description for the task',
                     },
                     dueDate: {
-                        type: 'string',
+                        oneOf: [
+                            {
+                                type: 'number',
+                                description: 'Optional: Set the reminder date/time as Unix timestamp in milliseconds.',
+                            },
+                            {
+                                type: 'string',
+                                description:
+                                    'Optional: Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC.',
+                            },
+                        ],
                         description:
-                            'Optional: Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC. This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" or "create task at Y time" requests.',
+                            'Optional: Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" or "create task at Y time" requests.',
                     },
                     alertEnabled: {
                         type: 'boolean',
@@ -211,9 +221,19 @@ const toolSchemas = {
                         description: 'New description for the task',
                     },
                     dueDate: {
-                        type: 'string',
+                        oneOf: [
+                            {
+                                type: 'number',
+                                description: 'Set the reminder date/time as Unix timestamp in milliseconds.',
+                            },
+                            {
+                                type: 'string',
+                                description:
+                                    'Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC.',
+                            },
+                        ],
                         description:
-                            'Set the reminder date/time as ISO 8601 string (e.g., "2025-01-15T18:00:00" for 6pm on Jan 15). The time will be interpreted in the user\'s local timezone and stored as UTC. This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests.',
+                            'Set the reminder date/time directly (timestamp or ISO string). This is also used as the alert time when alertEnabled is true. Use this for "remind me at X" requests.',
                     },
                     alertEnabled: {
                         type: 'boolean',
