@@ -207,9 +207,12 @@ export default function RichCommentModal({
     }
 
     useEffect(() => {
-        if (waitingForBotAnswer && comments.length > 0 && getAssistant(comments[0].creatorId)) {
-            setWaitingForBotAnswer(false)
-        }
+        if (!waitingForBotAnswer || comments.length === 0) return
+        const topComment = comments[0]
+        if (!getAssistant(topComment?.creatorId)) return
+        const hasVisibleText = typeof topComment?.commentText === 'string' && topComment.commentText.trim().length > 0
+        const hasLoadingState = topComment?.isLoading === true
+        if (hasVisibleText || hasLoadingState) setWaitingForBotAnswer(false)
     }, [lastMessageid])
 
     useEffect(() => {
@@ -324,9 +327,14 @@ export default function RichCommentModal({
                             isAssistantEnabled={isThreadAssistantEnabled}
                             updateObjectState={updateObjectState}
                         />
-                        {waitingForBotAnswer && comments.length > 0 && comments[0].creatorId !== assistantId && (
-                            <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
-                        )}
+                        {waitingForBotAnswer &&
+                            (!comments.length ||
+                                comments[0].creatorId !== assistantId ||
+                                !(
+                                    (typeof comments[0].commentText === 'string' &&
+                                        comments[0].commentText.trim().length > 0) ||
+                                    comments[0].isLoading === true
+                                )) && <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />}
                         <div ref={commentListRef}>
                             {comments && comments.length > 0 && (
                                 <CommentsList projectId={projectId} comments={comments} />

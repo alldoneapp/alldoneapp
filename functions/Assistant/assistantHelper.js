@@ -326,6 +326,15 @@ const buildToolProgressStatusMessage = ({ toolName, toolArgs, toolCallIteration,
     ].join('\n')
 }
 
+const buildInitialAssistantRunStatusMessage = () => {
+    return [
+        '⏳ Starting your request...',
+        'Now: Preparing context and selecting the best next action.',
+        'Waiting: This can take longer for complex requests before tool execution starts.',
+        'Under the hood: Initial analysis',
+    ].join('\n')
+}
+
 const buildExternalIntegrationToolName = ({ projectId, assistantId, taskId, integrationId, toolKey, toolName }) => {
     const slug = normalizeToolNameToken(`${integrationId || ''}_${toolKey || toolName || 'tool'}`).slice(0, 22)
     const hash = crypto
@@ -4145,7 +4154,10 @@ async function storeChunks(
     try {
         // Step 1: Create initial comment
         const step1Start = Date.now()
-        const { commentId, comment } = formatMessage(objectType, '', assistantId)
+        const initialStatusMessage = buildInitialAssistantRunStatusMessage()
+        const { commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId)
+        comment.isLoading = true
+        comment.isThinking = false
 
         let promises = []
         promises.push(getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor))

@@ -61,9 +61,15 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
 
-    // Check if any recent message is from an assistant (for hiding placeholder synchronously)
+    // Keep placeholder visible until assistant message has visible content or an explicit loading state.
     const hasRecentAssistantMessage =
-        messages.length > 0 && messages.slice(-3).some(msg => getAssistant(msg?.creatorId))
+        messages.length > 0 &&
+        messages.slice(-3).some(msg => {
+            if (!getAssistant(msg?.creatorId)) return false
+            const hasVisibleText = typeof msg?.commentText === 'string' && msg.commentText.trim().length > 0
+            const hasLoadingState = msg?.isLoading === true
+            return hasVisibleText || hasLoadingState
+        })
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -147,12 +153,13 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
     useEffect(() => {
         if (!waitingForBotAnswer || messages.length === 0) return
 
-        // Check if any recent assistant message exists (check last few messages for race conditions)
-        // Hide placeholder as soon as any assistant message is found
-        // The MessageItem component handles the loading state with its own spinner
+        // Hide placeholder only after assistant message is visible/loading.
         for (let i = messages.length - 1; i >= Math.max(0, messages.length - 3); i--) {
             const message = messages[i]
-            if (getAssistant(message?.creatorId)) {
+            if (!getAssistant(message?.creatorId)) continue
+            const hasVisibleText = typeof message?.commentText === 'string' && message.commentText.trim().length > 0
+            const hasLoadingState = message?.isLoading === true
+            if (hasVisibleText || hasLoadingState) {
                 setWaitingForBotAnswer(false)
                 return
             }
