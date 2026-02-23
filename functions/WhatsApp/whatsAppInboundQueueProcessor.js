@@ -139,14 +139,15 @@ async function claimNextBatchForUser(userId, ownerId) {
     const now = Date.now()
     return await db.runTransaction(async transaction => {
         const claimed = []
+        const candidateRefs = candidates.map(candidate => candidate.ref)
+        const freshDocs = candidateRefs.length > 0 ? await transaction.getAll(...candidateRefs) : []
 
-        for (const candidate of candidates) {
-            const freshDoc = await transaction.get(candidate.ref)
+        for (const freshDoc of freshDocs) {
             if (!freshDoc.exists) continue
             const freshData = freshDoc.data() || {}
             if (freshData.status !== QUEUE_STATUS_PENDING) continue
 
-            transaction.update(candidate.ref, {
+            transaction.update(freshDoc.ref, {
                 status: QUEUE_STATUS_PROCESSING,
                 processorId: ownerId,
                 processingStartedAt: now,
@@ -156,7 +157,7 @@ async function claimNextBatchForUser(userId, ownerId) {
 
             claimed.push({
                 id: freshDoc.id,
-                ref: candidate.ref,
+                ref: freshDoc.ref,
                 ...freshData,
             })
         }
