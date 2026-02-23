@@ -2475,7 +2475,7 @@ async function executeDelegatedAssistantRequest({
     messages.push([
         'system',
         `You are handling a delegated request from assistant "${callerAssistantId}" in project "${callerProjectId}". ` +
-            'Complete the task using your available tools and return a concise result for the calling assistant.',
+            'Complete the task and return a concise result for the calling assistant. Use your available tools when needed.',
     ])
     messages.push(['user', parseTextForUseLiKePrompt(message)])
 
@@ -2540,14 +2540,11 @@ async function executeDelegatedAssistantRequest({
     let status = 'success'
     let warning = null
 
-    if (executedToolCallsCount === 0 && !targetHasEnabledTools) {
-        success = false
-        status = 'target_has_no_tools'
-        warning = 'Target assistant has no enabled tools and cannot execute action-oriented requests.'
-    } else if (executedToolCallsCount === 0 && requiresToolExecution) {
-        success = false
+    // Delegated runs are allowed to answer directly without tool calls.
+    // Keep this as a warning only for observability on action-oriented requests.
+    if (executedToolCallsCount === 0 && requiresToolExecution) {
         status = 'no_tool_executed'
-        warning = 'Delegated assistant did not execute any tool calls for an action-oriented request.'
+        warning = 'Delegated assistant returned a direct answer without executing tool calls.'
     }
 
     console.log('🔁 DELEGATION: execution outcome', {
