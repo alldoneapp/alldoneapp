@@ -30,6 +30,7 @@ const Delta = ReactQuill.Quill.import('delta')
 
 export default function ChatInput({
     chat,
+    parentObject,
     editing,
     initialText,
     projectId,
@@ -63,7 +64,14 @@ export default function ChatInput({
 
     const { id: objectId, type: chatType } = chat
 
-    const isAssistantActive = chat && chat.isAssistantEnabled === true
+    const hasExplicitChatAssistantState = typeof chat?.isAssistantEnabled === 'boolean'
+    const hasParentAssistantState = typeof parentObject?.isAssistantEnabled === 'boolean'
+    const isAssistantActive = hasExplicitChatAssistantState
+        ? chat.isAssistantEnabled === true
+        : hasParentAssistantState
+        ? parentObject.isAssistantEnabled === true
+        : false
+    const explicitAssistantEnabled = hasExplicitChatAssistantState || hasParentAssistantState ? isAssistantActive : null
     const disabledEdition = editing && loggedUserId !== creatorId
 
     const updateEditor = editor => {
@@ -94,7 +102,7 @@ export default function ChatInput({
                     messageId,
                     initialText,
                     false, // skipAssistantTrigger
-                    isAssistantActive // explicitAssistantEnabled
+                    explicitAssistantEnabled
                 )
             })
             setAmountOfNewCommentsToHighligth(0)
@@ -130,7 +138,7 @@ export default function ChatInput({
                         null,
                         null,
                         false, // skipAssistantTrigger
-                        isAssistantActive // explicitAssistantEnabled
+                        explicitAssistantEnabled
                     )
                 })
                 setAmountOfNewCommentsToHighligth(0)

@@ -262,6 +262,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                 <ChatInput
                     projectId={projectId}
                     chat={chat}
+                    parentObject={parentObject}
                     chatTitle={chatTitle}
                     members={members}
                     setWaitingForBotAnswer={setWaitingForBotAnswer}

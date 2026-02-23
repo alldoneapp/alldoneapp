@@ -49,6 +49,22 @@ export default function BotOptionsModal({
 
     const assistant = getAssistantInProjectObject(projectId, assistantId)
 
+    const setAssistantEnabledForObject = isEnabled => {
+        setObjectAssistantEnabled(projectId, objectId, objectType, isEnabled)
+        if (parentObject) {
+            const updatedObject = { ...parentObject, isAssistantEnabled: isEnabled }
+            if (objectType === 'tasks') {
+                dispatch(setTaskInDetailView(updatedObject))
+            } else if (objectType === 'notes') {
+                dispatch(setSelectedNote(updatedObject))
+            }
+            if (updateObjectState) {
+                updateObjectState(updatedObject)
+            }
+        }
+        dispatch(setAssistantEnabled(isEnabled))
+    }
+
     const updateAssistant = selectedAssistantId => {
         closeModal()
         setAssistantId?.(selectedAssistantId)
@@ -90,19 +106,7 @@ export default function BotOptionsModal({
 
     const toggleAssistantEnabled = isEnabled => {
         closeModal()
-        setObjectAssistantEnabled(projectId, objectId, objectType, isEnabled)
-        if (parentObject) {
-            const updatedObject = { ...parentObject, isAssistantEnabled: isEnabled }
-            if (objectType === 'tasks') {
-                dispatch(setTaskInDetailView(updatedObject))
-            } else if (objectType === 'notes') {
-                dispatch(setSelectedNote(updatedObject))
-            }
-            if (updateObjectState) {
-                updateObjectState(updatedObject)
-            }
-        }
-        dispatch(setAssistantEnabled(isEnabled))
+        setAssistantEnabledForObject(isEnabled)
         if (onSelectBotOption) onSelectBotOption()
     }
 
@@ -135,6 +139,9 @@ export default function BotOptionsModal({
                     task={selectedTask}
                     assistant={assistant}
                     processPromp={prompt => {
+                        if (inChatTab) {
+                            setAssistantEnabledForObject(true)
+                        }
                         onSelectBotOption(prompt, selectedTask.name)
                         if (!inMyDay) dispatch(setAssistantEnabled(true))
                     }}
