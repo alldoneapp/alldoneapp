@@ -14,6 +14,7 @@ const MAX_MERGED_MESSAGES = 5
 const MAX_LOOP_ITERATIONS = 20
 
 async function processWhatsAppInboundQueueItem(event) {
+    const processorStart = Date.now()
     const userId = event?.params?.userId
     if (!userId) {
         console.warn('WhatsApp Queue: Missing userId in trigger params')
@@ -21,7 +22,10 @@ async function processWhatsAppInboundQueueItem(event) {
     }
 
     const ownerId = uuidv4()
+    const markStage = createStageTimer('WhatsApp Queue [TIMING]', { userId, ownerId })
+    const lockAcquireStart = Date.now()
     const acquired = await tryAcquireUserQueueLock(userId, ownerId)
+    markStage('tryAcquireUserQueueLock', lockAcquireStart, { acquired })
     if (!acquired) {
         console.log('WhatsApp Queue: Lock already held, skipping duplicate trigger', { userId })
         return
@@ -29,38 +33,69 @@ async function processWhatsAppInboundQueueItem(event) {
 
     try {
         for (let i = 0; i < MAX_LOOP_ITERATIONS; i++) {
+            const refreshStart = Date.now()
             await refreshUserQueueLock(userId, ownerId)
+            markStage('refreshUserQueueLock', refreshStart, { iteration: i + 1 })
+
+            const claimStart = Date.now()
             const batch = await claimNextBatchForUser(userId, ownerId)
+            markStage('claimNextBatchForUser', claimStart, {
+                iteration: i + 1,
+                batchSize: batch.length,
+            })
             if (batch.length === 0) break
+
+            const processBatchStart = Date.now()
             await processBatchForUser(userId, batch)
+            markStage('processBatchForUser', processBatchStart, {
+                iteration: i + 1,
+                batchSize: batch.length,
+            })
         }
     } finally {
+        const releaseStart = Date.now()
         await releaseUserQueueLock(userId, ownerId)
+        markStage('releaseUserQueueLock', releaseStart)
+        markStage('processorComplete', processorStart, { totalDurationMs: Date.now() - processorStart })
     }
 }
 
 async function processBatchForUser(userId, batch) {
+    const batchStart = Date.now()
     const sortedBatch = [...batch].sort((a, b) => (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0))
     const first = sortedBatch[0]
     const fromNumber = first.fromNumber || ''
     const projectId = first.projectId
     const assistantId = first.assistantId
+    const messageSids = sortedBatch.map(item => item.messageSid || item.id).filter(Boolean)
+    const markBatchStage = createStageTimer('WhatsApp Queue Batch [TIMING]', {
+        userId,
+        projectId,
+        assistantId,
+        batchSize: sortedBatch.length,
+        messageSids,
+    })
 
     try {
+        const topicStart = Date.now()
         const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId)
+        markBatchStage('getOrCreateWhatsAppDailyTopic', topicStart, { chatId })
 
+        const storeUserMessagesStart = Date.now()
         for (const item of sortedBatch) {
             const textToStore = item.isVoice ? item.messageText : item.storedMessageText || item.messageText || ''
             await storeUserMessageInTopic(projectId, chatId, userId, textToStore, !!item.isVoice, {
                 imageCount: Number(item.processedImageCount) || 0,
             })
         }
+        markBatchStage('storeUserMessagesInTopic', storeUserMessagesStart)
 
         const mergedMessageText = sortedBatch
             .map(item => String(item.messageText || '').trim())
             .filter(Boolean)
             .join('\n\n')
 
+        const aiStart = Date.now()
         const aiResponse = await processWhatsAppAssistantMessage(
             userId,
             projectId,
@@ -70,14 +105,22 @@ async function processBatchForUser(userId, batch) {
             null,
             { skipCurrentMessageAppend: true }
         )
+        markBatchStage('processWhatsAppAssistantMessage', aiStart, {
+            aiResponseLength: (aiResponse || '').length,
+        })
 
         const service = new TwilioWhatsAppService()
+        const sendStart = Date.now()
         await service.sendWhatsAppMessage(
             fromNumber,
             aiResponse || 'Sorry, I was unable to generate a response. Please try again.'
         )
+        markBatchStage('sendWhatsAppMessage', sendStart, { hasFromNumber: !!fromNumber })
 
+        const deleteStart = Date.now()
         await deleteQueueItems(sortedBatch)
+        markBatchStage('deleteQueueItems', deleteStart)
+        markBatchStage('batchComplete', batchStart, { totalDurationMs: Date.now() - batchStart })
         console.log('WhatsApp Queue: Batch processed successfully', {
             userId,
             batchSize: sortedBatch.length,
@@ -281,6 +324,17 @@ async function fetchOldestPendingDocs(collectionRef, limit) {
 
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function createStageTimer(prefix, baseMeta = {}) {
+    return (stage, stageStartMs, meta = {}) => {
+        const durationMs = Date.now() - stageStartMs
+        console.log(`${prefix}: ${stage}`, {
+            ...baseMeta,
+            ...meta,
+            durationMs,
+        })
+    }
 }
 
 module.exports = {

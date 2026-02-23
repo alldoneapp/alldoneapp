@@ -41,12 +41,24 @@ async function processWhatsAppAssistantMessage(
     userMessageContent,
     options = {}
 ) {
+    const requestStart = Date.now()
+    const markStage = createStageTimer('WhatsApp Assistant [TIMING]', {
+        userId,
+        projectId,
+        chatId,
+        assistantId,
+    })
     const skipCurrentMessageAppend = options?.skipCurrentMessageAppend === true
     // Fetch user data and assistant config in parallel
+    const loadRuntimeStart = Date.now()
     const [user, assistant] = await Promise.all([
         getUserData(userId),
         getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
     ])
+    markStage('loadUserAndAssistant', loadRuntimeStart, {
+        hasUser: !!user,
+        resolvedAssistantId: assistant?.uid || assistantId || null,
+    })
 
     if (!user || user.gold <= 0) {
         return 'Sorry, you have run out of credits. Get more Gold with Premium: https://my.alldone.app/settings/premium'
@@ -72,7 +84,9 @@ async function processWhatsAppAssistantMessage(
         user.timezone ?? user.timezoneOffset ?? user.timezoneMinutes ?? user.preferredTimezone ?? null
 
     // Fetch conversation history from the daily topic
+    const historyStart = Date.now()
     const history = await getConversationHistory(projectId, chatId, 10)
+    markStage('getConversationHistory', historyStart, { historyCount: history.length })
 
     // Build messages array
     const messages = []
@@ -110,9 +124,12 @@ async function processWhatsAppAssistantMessage(
     }
 
     // Call the AI
+    const streamInitStart = Date.now()
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools, toolRuntimeContext)
+    markStage('interactWithChatStream', streamInitStart)
 
     // Collect the full response, handling tool calls
+    const collectStart = Date.now()
     const responseText = await collectStreamWithToolCalls(
         stream,
         messages,
@@ -124,17 +141,22 @@ async function processWhatsAppAssistantMessage(
         userId,
         toolRuntimeContext
     )
+    markStage('collectStreamWithToolCalls', collectStart, { responseLength: responseText.length })
 
     // Store AI response in topic and update lastAssistantCommentData for AssistantLine
+    const storeAssistantStart = Date.now()
     await storeAssistantMessageInTopic(projectId, chatId, assistant.uid || assistantId, responseText, userId)
+    markStage('storeAssistantMessageInTopic', storeAssistantStart)
 
     // Deduct gold
     try {
+        const reduceGoldStart = Date.now()
         const { Tiktoken } = require('@dqbd/tiktoken/lite')
         const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
         const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
         await reduceGoldWhenChatWithAI(userId, user.gold, model, responseText, messages, encoder)
         encoder.free()
+        markStage('reduceGoldWhenChatWithAI', reduceGoldStart)
     } catch (error) {
         console.error('WhatsApp: Error deducting gold:', error.message)
     }
@@ -143,9 +165,21 @@ async function processWhatsAppAssistantMessage(
     if (responseText.length > MAX_WHATSAPP_MESSAGE_LENGTH) {
         const baseUrl = getBaseUrl()
         const topicLink = `${baseUrl}/projects/${projectId}/chats/${chatId}/chat`
-        return responseText.substring(0, MAX_WHATSAPP_MESSAGE_LENGTH) + `...\n\nRead full message: ${topicLink}`
+        const truncated =
+            responseText.substring(0, MAX_WHATSAPP_MESSAGE_LENGTH) + `...\n\nRead full message: ${topicLink}`
+        markStage('responseComplete', requestStart, {
+            totalDurationMs: Date.now() - requestStart,
+            truncated: true,
+            finalLength: truncated.length,
+        })
+        return truncated
     }
 
+    markStage('responseComplete', requestStart, {
+        totalDurationMs: Date.now() - requestStart,
+        truncated: false,
+        finalLength: responseText.length,
+    })
     return responseText
 }
 
@@ -404,4 +438,15 @@ function normalizeWhatsAppToolArgs(toolName, toolArgs, fallbackProjectId) {
 
 module.exports = {
     processWhatsAppAssistantMessage,
+}
+
+function createStageTimer(prefix, baseMeta = {}) {
+    return (stage, stageStartMs, meta = {}) => {
+        const durationMs = Date.now() - stageStartMs
+        console.log(`${prefix}: ${stage}`, {
+            ...baseMeta,
+            ...meta,
+            durationMs,
+        })
+    }
 }

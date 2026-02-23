@@ -49,6 +49,10 @@ async function handleIncomingWhatsAppMessage(req, res) {
 
         // Parse Twilio webhook body
         const { From: fromNumber, Body: body, NumMedia: numMediaStr, MessageSid: messageSid } = req.body
+        const incomingMessageSid = messageSid || uuidv4()
+        const markStage = createStageTimer('WhatsApp Incoming [TIMING]', {
+            messageSid: incomingMessageSid,
+        })
 
         const numMedia = parseInt(numMediaStr || '0', 10)
         const mediaItems = extractMediaItems(req.body, numMedia)
@@ -68,7 +72,9 @@ async function handleIncomingWhatsAppMessage(req, res) {
         const cleanPhone = normalizePhoneNumber(fromNumber)
 
         // Look up user by phone number
+        const lookupStart = Date.now()
         const userId = await findUserByPhone(cleanPhone)
+        markStage('findUserByPhone', lookupStart, { cleanPhone })
         if (!userId) {
             console.warn('WhatsApp Incoming: No user found for phone:', cleanPhone)
             // Send a friendly error message back
@@ -81,7 +87,9 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         // Check rate limit
+        const rateLimitStart = Date.now()
         const rateLimited = await checkRateLimit(userId)
+        markStage('checkRateLimit', rateLimitStart, { userId })
         if (rateLimited) {
             console.warn('WhatsApp Incoming: Rate limited user:', userId)
             await service.sendWhatsAppMessage(
@@ -102,11 +110,17 @@ async function handleIncomingWhatsAppMessage(req, res) {
             // Voice message - transcribe
             console.log('WhatsApp Incoming: Processing voice message', { mediaContentType0: audioMedia.contentType })
             try {
+                const voiceTranscriptionStart = Date.now()
                 const { text, duration } = await transcribeWhatsAppVoiceMessage(
                     audioMedia.url,
                     envFunctions.TWILIO_ACCOUNT_SID,
                     envFunctions.TWILIO_AUTH_TOKEN
                 )
+                markStage('transcribeWhatsAppVoiceMessage', voiceTranscriptionStart, {
+                    userId,
+                    durationSeconds: duration,
+                    textLength: (text || '').length,
+                })
                 messageText = text
                 isVoice = true
 
@@ -116,12 +130,14 @@ async function handleIncomingWhatsAppMessage(req, res) {
                 console.log('WhatsApp Incoming: Deducting gold for voice', { duration, cost: voiceCost })
 
                 // Deduct gold
+                const voiceGoldStart = Date.now()
                 await admin
                     .firestore()
                     .doc(`users/${userId}`)
                     .update({
                         gold: admin.firestore.FieldValue.increment(-voiceCost),
                     })
+                markStage('deductVoiceGold', voiceGoldStart, { userId, voiceCost })
             } catch (error) {
                 console.error('WhatsApp Incoming: Voice transcription failed:', error.message)
                 await service.sendWhatsAppMessage(
@@ -135,12 +151,18 @@ async function handleIncomingWhatsAppMessage(req, res) {
             storedMessageText = messageText
 
             if (imageMedia.length > 0) {
+                const imagesStart = Date.now()
                 const processedImages = await processWhatsAppImages(
                     imageMedia.slice(0, MAX_WHATSAPP_IMAGES),
                     userId,
                     envFunctions.TWILIO_ACCOUNT_SID,
                     envFunctions.TWILIO_AUTH_TOKEN
                 )
+                markStage('processWhatsAppImages', imagesStart, {
+                    userId,
+                    requestedImages: imageMedia.length,
+                    processedImages: processedImages.length,
+                })
 
                 if (processedImages.length > 0) {
                     processedImageCount = processedImages.length
@@ -180,7 +202,9 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         // Get user data for project and assistant info
+        const userDataStart = Date.now()
         const user = await getUserData(userId)
+        markStage('getUserData', userDataStart, { userId })
         const projectId = user?.defaultProjectId
 
         if (!projectId) {
@@ -193,10 +217,12 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         // Get the user's default assistant
+        const assistantStart = Date.now()
         const assistantId = await getDefaultAssistantId(user, projectId)
+        markStage('getDefaultAssistantId', assistantStart, { userId, projectId })
 
         const queuePayload = {
-            messageSid: messageSid || uuidv4(),
+            messageSid: incomingMessageSid,
             fromNumber,
             userId,
             projectId,
@@ -209,7 +235,13 @@ async function handleIncomingWhatsAppMessage(req, res) {
             createdAt: Date.now(),
         }
 
+        const enqueueStart = Date.now()
         const enqueueResult = await enqueueIncomingWhatsAppMessage(queuePayload)
+        markStage('enqueueIncomingWhatsAppMessage', enqueueStart, {
+            userId,
+            queuePath: enqueueResult.queuePath,
+            duplicate: enqueueResult.duplicate,
+        })
         if (enqueueResult.duplicate) {
             console.log('WhatsApp Incoming: Duplicate MessageSid detected, skipping enqueue', {
                 messageSid: queuePayload.messageSid,
@@ -219,9 +251,11 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         // Update last WhatsApp message timestamp
+        const updateUserStart = Date.now()
         await admin.firestore().doc(`users/${userId}`).update({
             lastWhatsAppMessageTimestamp: Date.now(),
         })
+        markStage('updateUserLastWhatsAppTimestamp', updateUserStart, { userId })
 
         console.log('WhatsApp Incoming: Enqueued for async processing', {
             userId,
@@ -233,6 +267,7 @@ async function handleIncomingWhatsAppMessage(req, res) {
         })
 
         const duration = Date.now() - startTime
+        markStage('webhookAckComplete', startTime, { userId, totalDurationMs: duration })
         console.log('WhatsApp Incoming: ACK complete', { userId, duration: `${duration}ms` })
 
         return res.status(200).send('OK')
@@ -255,6 +290,17 @@ async function handleIncomingWhatsAppMessage(req, res) {
         }
 
         return res.status(200).send('OK') // Always return 200 to Twilio to avoid retries
+    }
+}
+
+function createStageTimer(prefix, baseMeta = {}) {
+    return (stage, stageStartMs, meta = {}) => {
+        const durationMs = Date.now() - stageStartMs
+        console.log(`${prefix}: ${stage}`, {
+            ...baseMeta,
+            ...meta,
+            durationMs,
+        })
     }
 }
 
