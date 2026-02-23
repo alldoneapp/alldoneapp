@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -30,6 +30,7 @@ export default function CommentWrapperTag({
     const isBotWarningModalOpen = useSelector(state => state.openModals[BOT_WARNING_MODAL_ID])
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
+    const showModalRef = useRef(false)
 
     const openModal = () => {
         setShowModal(true)
@@ -48,6 +49,16 @@ export default function CommentWrapperTag({
             dispatch(hideFloatPopup())
         }
     }
+
+    useEffect(() => {
+        showModalRef.current = showModal
+    }, [showModal])
+
+    useEffect(() => {
+        return () => {
+            if (showModalRef.current) dispatch(hideFloatPopup())
+        }
+    }, [])
 
     const addComment = async (comment, mentions, privacy, hasKarma, explicitAssistantEnabled) => {
         if (

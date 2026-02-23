@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet, View, Image, TouchableOpacity } from 'react-native'
@@ -13,6 +13,7 @@ export default function AvatarWrapper({ disabled, projectId, assistant }) {
     const dispatch = useDispatch()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
+    const isOpenRef = useRef(false)
 
     const { photoURL50 } = assistant
 
@@ -25,6 +26,16 @@ export default function AvatarWrapper({ disabled, projectId, assistant }) {
         setIsOpen(false)
         dispatch(hideFloatPopup())
     }
+
+    useEffect(() => {
+        isOpenRef.current = isOpen
+    }, [isOpen])
+
+    useEffect(() => {
+        return () => {
+            if (isOpenRef.current) dispatch(hideFloatPopup())
+        }
+    }, [])
 
     const savePicture = pictureFile => {
         if (pictureFile) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
@@ -16,6 +16,7 @@ export default function AddPreConfigTaskWrapper({ disabled, projectId, assistant
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
+    const isOpenRef = useRef(false)
 
     const openModal = () => {
         setIsOpen(true)
@@ -26,6 +27,16 @@ export default function AddPreConfigTaskWrapper({ disabled, projectId, assistant
         setIsOpen(false)
         dispatch(hideFloatPopup())
     }
+
+    useEffect(() => {
+        isOpenRef.current = isOpen
+    }, [isOpen])
+
+    useEffect(() => {
+        return () => {
+            if (isOpenRef.current) dispatch(hideFloatPopup())
+        }
+    }, [])
 
     return (
         <Popover

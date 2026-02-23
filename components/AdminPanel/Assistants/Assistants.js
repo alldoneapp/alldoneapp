@@ -10,7 +10,7 @@ import AssistantsList from './AssistantsList'
 import AssistantsFilter from './AssistantsFilter'
 import { GLOBAL_PROJECT_ID } from './assistantsHelper'
 import NavigationService from '../../../utils/NavigationService'
-import { setSelectedNavItem } from '../../../redux/actions'
+import { resetFloatPopup, setSelectedNavItem } from '../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../utils/TabNavigationConstants'
 
 export default function Assistants({}) {
@@ -47,15 +47,13 @@ export default function Assistants({}) {
     }
 
     const navigateToDv = assistant => {
-        const { showFloatPopup } = store.getState()
-        if (showFloatPopup === 0) {
-            NavigationService.navigate('AssistantDetailedView', {
-                assistantId: assistant.uid,
-                assistant,
-                projectId: GLOBAL_PROJECT_ID,
-            })
-            dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_CUSTOMIZATIONS))
-        }
+        dispatch(resetFloatPopup())
+        NavigationService.navigate('AssistantDetailedView', {
+            assistantId: assistant.uid,
+            assistant,
+            projectId: GLOBAL_PROJECT_ID,
+        })
+        dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_CUSTOMIZATIONS))
     }
 
     useEffect(() => {
