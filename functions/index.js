@@ -73,6 +73,14 @@ async function assertAssistantProjectAccess(userId, projectId, assistantId) {
     const assistantDoc = await admin.firestore().doc(`assistants/globalProject/items/${assistantId}`).get()
     if (!assistantDoc.exists) throw new HttpsError('not-found', 'Assistant not found')
 
+    const administratorRoleDoc = await admin
+        .firestore()
+        .doc('roles/administrator')
+        .get()
+        .catch(() => null)
+    const isAdministrator = administratorRoleDoc?.exists && administratorRoleDoc.data()?.userId === userId
+    if (isAdministrator) return
+
     let hasAccessToGlobalAssistant = false
     for (let i = 0; i < accessibleProjectIds.length; i++) {
         const projectDoc = await admin.firestore().doc(`projects/${accessibleProjectIds[i]}`).get()

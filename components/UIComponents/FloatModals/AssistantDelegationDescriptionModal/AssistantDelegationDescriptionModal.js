@@ -20,7 +20,7 @@ export default function AssistantDelegationDescriptionModal({
     onUpdated,
 }) {
     const [descriptionText, setDescriptionText] = useState(
-        status?.effectiveDescription || status?.delegationToolDescriptionManual || ''
+        status?.effectiveDescription || status?.delegationToolDescriptionManual || assistant?.description || ''
     )
     const [isGenerating, setIsGenerating] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
@@ -39,7 +39,12 @@ export default function AssistantDelegationDescriptionModal({
             setErrorText('')
             setIsSaving(true)
             await updateAssistantDelegationDescriptionManual(projectId, assistant, descriptionText)
-            await onUpdated?.()
+            try {
+                await onUpdated?.()
+            } catch (refreshError) {
+                console.error('Error refreshing delegation description after save:', refreshError)
+            }
+            closeModal?.()
         } catch (error) {
             console.error('Error saving delegation description:', error)
             setErrorText(error?.message || translate('Error saving delegation description'))
@@ -127,14 +132,18 @@ export default function AssistantDelegationDescriptionModal({
                     type="ghost"
                     title={translate('Generate')}
                     onPress={generate}
-                    disabled={disabled || processing}
+                    disabled={disabled || isSaving}
+                    processing={isGenerating}
+                    processingTitle={translate('Loading')}
                     buttonStyle={localStyles.actionButton}
                 />
                 <Button
                     type="primary"
                     title={translate('Save')}
                     onPress={saveDescription}
-                    disabled={disabled || processing}
+                    disabled={disabled || isGenerating}
+                    processing={isSaving}
+                    processingTitle={translate('Saving')}
                     buttonStyle={localStyles.actionButton}
                 />
             </View>
