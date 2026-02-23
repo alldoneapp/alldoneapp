@@ -27,11 +27,14 @@ export function useUpdateAvailable(assistant) {
         return { isAvailable: false, globalAssistant: null, wasDeleted: true }
     }
 
-    // Check if the template was updated after the copy was made
-    const isAvailable = globalAssistant.lastEditionDate > assistant.copiedFromTemplateAssistantDate
+    const localCopiedDate =
+        typeof assistant.copiedFromTemplateAssistantDate === 'number' ? assistant.copiedFromTemplateAssistantDate : 0
+
+    // Single source of truth: template lastEditionDate.
+    const isAvailable = globalAssistant.lastEditionDate > localCopiedDate
     console.log('useUpdateAvailable - isAvailable:', isAvailable, {
         globalLastEditionDate: globalAssistant.lastEditionDate,
-        localCopiedDate: assistant.copiedFromTemplateAssistantDate,
+        localCopiedDate,
     })
 
     return { isAvailable, globalAssistant }

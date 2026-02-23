@@ -4,9 +4,11 @@ import { StyleSheet, View } from 'react-native'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
 import {
+    getAssistantData,
     updateAssistantFromTemplate,
     syncPreConfigTasksFromTemplate,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { useUpdateAvailable } from './useUpdateAvailable'
 
 export default function UpdateFromTemplate({ projectId, assistant, disabled }) {
@@ -15,11 +17,15 @@ export default function UpdateFromTemplate({ projectId, assistant, disabled }) {
     const handleUpdate = async () => {
         if (!globalAssistant) return
 
+        // Always fetch the latest template assistant before applying updates.
+        const latestGlobalAssistant =
+            (await getAssistantData(GLOBAL_PROJECT_ID, assistant.copiedFromTemplateAssistantId)) || globalAssistant
+
         // Update assistant properties from template
-        await updateAssistantFromTemplate(projectId, assistant, globalAssistant)
+        await updateAssistantFromTemplate(projectId, assistant, latestGlobalAssistant)
 
         // Sync pre-configured tasks from template
-        await syncPreConfigTasksFromTemplate(globalAssistant.uid, projectId, assistant.uid)
+        await syncPreConfigTasksFromTemplate(latestGlobalAssistant.uid, projectId, assistant.uid)
     }
 
     // Only show button when update is available
