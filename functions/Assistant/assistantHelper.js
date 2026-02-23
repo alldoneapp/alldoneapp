@@ -106,6 +106,9 @@ const MAX_DELEGATION_CAPABILITY_EXAMPLES = 5
 const preConfiguredTasksContextCache = new Map()
 const PRECONFIGURED_TASKS_CONTEXT_CACHE_TTL = 5 * 60 * 1000
 const MAX_PRECONFIGURED_TASK_CONTEXT_ITEMS = 20
+const dynamicToolSchemasCache = new Map()
+const DYNAMIC_TOOL_SCHEMAS_CACHE_TTL = 5 * 60 * 1000
+const DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES = 200
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
@@ -936,6 +939,99 @@ async function getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext 
     return targetsWithCapabilities.map(buildTalkToAssistantToolSchema)
 }
 
+function buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext = null) {
+    const normalizedAllowedTools = Array.isArray(allowedTools)
+        ? [...allowedTools]
+              .map(tool => String(tool || '').trim())
+              .filter(Boolean)
+              .sort()
+        : []
+    return JSON.stringify({
+        projectId: String(toolRuntimeContext?.projectId || ''),
+        assistantId: String(toolRuntimeContext?.assistantId || ''),
+        requestUserId: String(toolRuntimeContext?.requestUserId || ''),
+        allowedTools: normalizedAllowedTools,
+    })
+}
+
+function pruneDynamicToolSchemasCacheIfNeeded() {
+    while (dynamicToolSchemasCache.size > DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES) {
+        const oldestKey = dynamicToolSchemasCache.keys().next().value
+        if (!oldestKey) break
+        dynamicToolSchemasCache.delete(oldestKey)
+    }
+}
+
+async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext = null) {
+    const key = buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext)
+    const now = Date.now()
+    const cached = dynamicToolSchemasCache.get(key)
+
+    if (cached && cached.data && now - cached.timestamp < DYNAMIC_TOOL_SCHEMAS_CACHE_TTL) {
+        console.log('🔧 TOOL SCHEMAS CACHE: HIT', {
+            keyLength: key.length,
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+            delegationToolSchemasCount: cached.data.delegationToolSchemas.length,
+            externalToolSchemasCount: cached.data.externalToolSchemas.length,
+        })
+        return cached.data
+    }
+
+    if (cached && cached.inFlightPromise) {
+        console.log('🔧 TOOL SCHEMAS CACHE: WAITING_FOR_INFLIGHT_BUILD', {
+            keyLength: key.length,
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+        })
+        return cached.inFlightPromise
+    }
+
+    const buildStart = Date.now()
+    const inFlightPromise = (async () => {
+        const [delegationToolSchemas, externalToolSchemas] = await Promise.all([
+            getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext),
+            getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext),
+        ])
+
+        const data = { delegationToolSchemas, externalToolSchemas }
+        dynamicToolSchemasCache.set(key, {
+            timestamp: Date.now(),
+            data,
+            inFlightPromise: null,
+        })
+        pruneDynamicToolSchemasCacheIfNeeded()
+
+        console.log('🔧 TOOL SCHEMAS CACHE: MISS_BUILT', {
+            keyLength: key.length,
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+            buildDurationMs: Date.now() - buildStart,
+            delegationToolSchemasCount: delegationToolSchemas.length,
+            externalToolSchemasCount: externalToolSchemas.length,
+            cacheSize: dynamicToolSchemasCache.size,
+        })
+
+        return data
+    })()
+
+    dynamicToolSchemasCache.set(key, {
+        timestamp: now,
+        data: null,
+        inFlightPromise,
+    })
+
+    try {
+        return await inFlightPromise
+    } catch (error) {
+        dynamicToolSchemasCache.delete(key)
+        throw error
+    }
+}
+
 async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = null) {
     if (!isTalkToAssistantToolName(toolName)) return null
 
@@ -1384,8 +1480,17 @@ async function interactWithChatStream(
                 toolName => toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
             )
             const staticToolSchemas = getToolSchemas(staticAllowedTools)
-            const delegationToolSchemas = await getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext)
-            const externalToolSchemas = await getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext)
+            const dynamicToolSchemasStart = Date.now()
+            const { delegationToolSchemas, externalToolSchemas } = await getDynamicToolSchemasWithCache(
+                allowedTools,
+                toolRuntimeContext
+            )
+            console.log('🔧 TOOL SCHEMAS: Dynamic schema retrieval complete', {
+                retrievalDurationMs: Date.now() - dynamicToolSchemasStart,
+                projectId: toolRuntimeContext?.projectId || null,
+                assistantId: toolRuntimeContext?.assistantId || null,
+                requestUserId: toolRuntimeContext?.requestUserId || null,
+            })
             const toolSchemas = [...staticToolSchemas, ...delegationToolSchemas, ...externalToolSchemas]
 
             console.log('🔧 TOOL SCHEMAS: Assembled for request', {
