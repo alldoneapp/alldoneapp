@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import styles from '../../../styles/global'
@@ -8,6 +9,7 @@ import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
 import {
     generateAssistantDelegationDescription,
+    getAssistantDelegationDescriptionStatus,
     updateAssistantDelegationDescriptionManual,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 
@@ -19,6 +21,7 @@ export default function AssistantDelegationDescriptionModal({
     closeModal,
     onUpdated,
 }) {
+    const appLanguage = useSelector(state => state.loggedUser?.language) || 'en'
     const [descriptionText, setDescriptionText] = useState(
         status?.effectiveDescription || status?.delegationToolDescriptionManual || assistant?.description || ''
     )
@@ -57,9 +60,15 @@ export default function AssistantDelegationDescriptionModal({
         try {
             setErrorText('')
             setIsSaving(true)
-            setDescriptionText('')
             await updateAssistantDelegationDescriptionManual(projectId, assistant, '')
             await onUpdated?.()
+            const refreshedStatus = await getAssistantDelegationDescriptionStatus(projectId, assistant.uid)
+            setDescriptionText(
+                refreshedStatus?.effectiveDescription ||
+                    refreshedStatus?.delegationToolDescriptionManual ||
+                    assistant?.description ||
+                    ''
+            )
         } catch (error) {
             console.error('Error resetting delegation description:', error)
             setErrorText(error?.message || translate('Error saving delegation description'))
@@ -72,11 +81,7 @@ export default function AssistantDelegationDescriptionModal({
         try {
             setErrorText('')
             setIsGenerating(true)
-            const result = await generateAssistantDelegationDescription(
-                projectId,
-                assistant.uid,
-                typeof window !== 'undefined' ? window.navigator.language : 'en'
-            )
+            const result = await generateAssistantDelegationDescription(projectId, assistant.uid, appLanguage)
             if (result?.effectiveDescription) {
                 setDescriptionText(result.effectiveDescription)
             } else if (result?.delegationToolDescriptionManual) {
