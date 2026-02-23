@@ -51,24 +51,34 @@ function getTaskExecutionDescriptor(task) {
 
 async function getAssistantPreConfigTaskDocs(projectId, assistantId) {
     const db = admin.firestore()
-    const queryPromises = [
-        db
-            .collection(`assistantTasks/${projectId}/${assistantId}`)
-            .get()
-            .catch(() => null),
-        db
-            .collection(`assistantTasks/${projectId}/preConfigTasks`)
-            .where('assistantId', '==', assistantId)
-            .get()
-            .catch(() => null),
-    ]
+    const queryPromises = []
+
+    if (projectId === GLOBAL_PROJECT_ID) {
+        // Global assistants are stored in the canonical preConfigTasks collection.
+        // Avoid legacy assistant-id collections here so deleted stale docs cannot leak into prompts.
+        queryPromises.push(
+            db
+                .collection(`assistantTasks/${projectId}/preConfigTasks`)
+                .where('assistantId', '==', assistantId)
+                .get()
+                .catch(() => null)
+        )
+    } else {
+        queryPromises.push(
+            db
+                .collection(`assistantTasks/${projectId}/${assistantId}`)
+                .get()
+                .catch(() => null),
+            db
+                .collection(`assistantTasks/${projectId}/preConfigTasks`)
+                .where('assistantId', '==', assistantId)
+                .get()
+                .catch(() => null)
+        )
+    }
 
     if (projectId !== GLOBAL_PROJECT_ID) {
         queryPromises.push(
-            db
-                .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/${assistantId}`)
-                .get()
-                .catch(() => null),
             db
                 .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`)
                 .where('assistantId', '==', assistantId)

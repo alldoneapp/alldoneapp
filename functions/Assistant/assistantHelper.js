@@ -109,6 +109,8 @@ const MAX_PRECONFIGURED_TASK_CONTEXT_ITEMS = 20
 const dynamicToolSchemasCache = new Map()
 const DYNAMIC_TOOL_SCHEMAS_CACHE_TTL = 5 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES = 200
+const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL = 30 * 60 * 1000
+const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION = 'runtimeCaches/dynamicToolSchemas/items'
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
@@ -420,25 +422,35 @@ function resolveToolExecution(externalIntegration, tool, task) {
 
 async function getAssistantPreConfigTaskDocs(projectId, assistantId) {
     const db = admin.firestore()
-    const queryPromises = [
-        db
-            .collection(`assistantTasks/${projectId}/${assistantId}`)
-            .get()
-            .catch(() => null),
-        db
-            .collection(`assistantTasks/${projectId}/preConfigTasks`)
-            .where('assistantId', '==', assistantId)
-            .get()
-            .catch(() => null),
-    ]
+    const queryPromises = []
+
+    if (projectId === GLOBAL_PROJECT_ID) {
+        // Global assistants are stored in the canonical preConfigTasks collection.
+        // Avoid legacy assistant-id collections here so deleted stale docs cannot leak into prompts.
+        queryPromises.push(
+            db
+                .collection(`assistantTasks/${projectId}/preConfigTasks`)
+                .where('assistantId', '==', assistantId)
+                .get()
+                .catch(() => null)
+        )
+    } else {
+        queryPromises.push(
+            db
+                .collection(`assistantTasks/${projectId}/${assistantId}`)
+                .get()
+                .catch(() => null),
+            db
+                .collection(`assistantTasks/${projectId}/preConfigTasks`)
+                .where('assistantId', '==', assistantId)
+                .get()
+                .catch(() => null)
+        )
+    }
 
     // Global assistants can have their pre-config tasks stored under globalProject.
     if (projectId !== GLOBAL_PROJECT_ID) {
         queryPromises.push(
-            db
-                .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/${assistantId}`)
-                .get()
-                .catch(() => null),
             db
                 .collection(`assistantTasks/${GLOBAL_PROJECT_ID}/preConfigTasks`)
                 .where('assistantId', '==', assistantId)
@@ -963,6 +975,51 @@ function buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext = null
     })
 }
 
+function buildDynamicToolSchemasPersistedCacheDocId(key) {
+    return crypto.createHash('sha256').update(key).digest('hex').slice(0, 40)
+}
+
+function normalizeDynamicToolSchemasCacheData(data) {
+    if (!data || !Array.isArray(data.delegationToolSchemas) || !Array.isArray(data.externalToolSchemas)) {
+        return null
+    }
+
+    return {
+        delegationToolSchemas: data.delegationToolSchemas,
+        externalToolSchemas: data.externalToolSchemas,
+    }
+}
+
+async function getDynamicToolSchemasFromPersistedCache(key) {
+    const docId = buildDynamicToolSchemasPersistedCacheDocId(key)
+    const docRef = admin.firestore().doc(`${DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION}/${docId}`)
+    const snapshot = await docRef.get()
+
+    if (!snapshot.exists) return null
+
+    const payload = snapshot.data() || {}
+    if (payload.key !== key) return null
+    const timestamp = Number(payload.timestamp || 0)
+    if (!timestamp || Date.now() - timestamp >= DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL) return null
+
+    return normalizeDynamicToolSchemasCacheData(payload.data)
+}
+
+async function writeDynamicToolSchemasToPersistedCache(key, data) {
+    const normalizedData = normalizeDynamicToolSchemasCacheData(data)
+    if (!normalizedData) return
+
+    const serializableData = JSON.parse(JSON.stringify(normalizedData))
+    const docId = buildDynamicToolSchemasPersistedCacheDocId(key)
+    const docRef = admin.firestore().doc(`${DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION}/${docId}`)
+
+    await docRef.set({
+        key,
+        timestamp: Date.now(),
+        data: serializableData,
+    })
+}
+
 function pruneDynamicToolSchemasCacheIfNeeded() {
     while (dynamicToolSchemasCache.size > DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES) {
         const oldestKey = dynamicToolSchemasCache.keys().next().value
@@ -998,6 +1055,34 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
         return cached.inFlightPromise
     }
 
+    try {
+        const persisted = await getDynamicToolSchemasFromPersistedCache(key)
+        if (persisted) {
+            dynamicToolSchemasCache.set(key, {
+                timestamp: now,
+                data: persisted,
+                inFlightPromise: null,
+            })
+            pruneDynamicToolSchemasCacheIfNeeded()
+            console.log('🔧 TOOL SCHEMAS CACHE: HIT_PERSISTED', {
+                keyLength: key.length,
+                projectId: toolRuntimeContext?.projectId || null,
+                assistantId: toolRuntimeContext?.assistantId || null,
+                requestUserId: toolRuntimeContext?.requestUserId || null,
+                delegationToolSchemasCount: persisted.delegationToolSchemas.length,
+                externalToolSchemasCount: persisted.externalToolSchemas.length,
+            })
+            return persisted
+        }
+    } catch (error) {
+        console.warn('🔧 TOOL SCHEMAS CACHE: PERSISTED_READ_FAILED', {
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+            error: error.message,
+        })
+    }
+
     const buildStart = Date.now()
     const inFlightPromise = (async () => {
         const [delegationToolSchemas, externalToolSchemas] = await Promise.all([
@@ -1006,6 +1091,16 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
         ])
 
         const data = { delegationToolSchemas, externalToolSchemas }
+        try {
+            await writeDynamicToolSchemasToPersistedCache(key, data)
+        } catch (error) {
+            console.warn('🔧 TOOL SCHEMAS CACHE: PERSISTED_WRITE_FAILED', {
+                projectId: toolRuntimeContext?.projectId || null,
+                assistantId: toolRuntimeContext?.assistantId || null,
+                requestUserId: toolRuntimeContext?.requestUserId || null,
+                error: error.message,
+            })
+        }
         dynamicToolSchemasCache.set(key, {
             timestamp: Date.now(),
             data,

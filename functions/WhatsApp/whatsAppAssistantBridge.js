@@ -53,7 +53,7 @@ async function processWhatsAppAssistantMessage(
     const loadRuntimeStart = Date.now()
     const [user, assistant] = await Promise.all([
         getUserData(userId),
-        getAssistantForChat(projectId, assistantId, userId, { forceRefresh: true }),
+        getAssistantForChat(projectId, assistantId, userId),
     ])
     markStage('loadUserAndAssistant', loadRuntimeStart, {
         hasUser: !!user,
