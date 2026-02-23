@@ -74,6 +74,7 @@ const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 10
+const TOOL_PROGRESS_UPDATE_INTERVAL_MS = 7000
 
 // Service instance caches for reuse across tool executions (performance optimization)
 // Similar pattern to MCP server for consistency
@@ -277,6 +278,50 @@ const isTalkToAssistantToolName = toolName =>
 
 const isExternalIntegrationToolName = toolName =>
     typeof toolName === 'string' && toolName.startsWith(EXTERNAL_TOOL_PREFIX)
+
+const trimTextForStatus = (value, maxLength = 100) => {
+    const normalized = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+    if (!normalized) return ''
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized
+}
+
+const buildToolProgressStatusMessage = ({ toolName, toolArgs, toolCallIteration, elapsedMs }) => {
+    const elapsedSeconds = Math.max(0, Math.floor((elapsedMs || 0) / 1000))
+    const stepLabel = `${toolCallIteration}/${MAX_NATIVE_TOOL_CALL_ITERATIONS}`
+    const updateSeconds = Math.floor(TOOL_PROGRESS_UPDATE_INTERVAL_MS / 1000)
+
+    if (isTalkToAssistantToolName(toolName)) {
+        const delegatedTaskPreview = trimTextForStatus(toolArgs?.message, 110)
+        return [
+            '⏳ Delegating to a specialist assistant...',
+            'Now: Sharing your request and context with another assistant.',
+            'Waiting: The delegated assistant may run its own tools before replying.',
+            `Under the hood: ${toolName} (step ${stepLabel})`,
+            delegatedTaskPreview ? `Delegated task: "${delegatedTaskPreview}"` : null,
+            `Elapsed: ${elapsedSeconds}s (updates every ${updateSeconds}s)`,
+        ]
+            .filter(Boolean)
+            .join('\n')
+    }
+
+    if (isExternalIntegrationToolName(toolName)) {
+        return [
+            '⏳ Running an external tool...',
+            'Now: Sending a secure request to an external integration.',
+            'Waiting: Network and external processing can take longer than normal chat.',
+            `Under the hood: ${toolName} (step ${stepLabel})`,
+            `Elapsed: ${elapsedSeconds}s (updates every ${updateSeconds}s)`,
+        ].join('\n')
+    }
+
+    return [
+        `⏳ Executing ${toolName}...`,
+        'Now: Running the requested tool with your current chat context.',
+        'Waiting: Tool execution may require additional reads/writes before response generation.',
+        `Under the hood: ${toolName} (step ${stepLabel})`,
+        `Elapsed: ${elapsedSeconds}s (updates every ${updateSeconds}s)`,
+    ].join('\n')
+}
 
 const buildExternalIntegrationToolName = ({ projectId, assistantId, taskId, integrationId, toolKey, toolName }) => {
     const slug = normalizeToolNameToken(`${integrationId || ''}_${toolKey || toolName || 'tool'}`).slice(0, 22)
@@ -4215,9 +4260,43 @@ async function storeChunks(
 
                     // Show loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
-                    const loadingMessage = `⏳ Executing ${toolName}...`
-                    commentText += `\n\n${loadingMessage}`
+                    const toolExecutionStartedAt = Date.now()
+                    let toolStatusMessage = buildToolProgressStatusMessage({
+                        toolName,
+                        toolArgs,
+                        toolCallIteration,
+                        elapsedMs: 0,
+                    })
+                    commentText += `\n\n${toolStatusMessage}`
                     await commentRef.update({ commentText, isLoading: true })
+
+                    let stopToolProgressUpdates = false
+                    const updateToolProgressStatus = async () => {
+                        if (stopToolProgressUpdates) return
+
+                        const nextStatusMessage = buildToolProgressStatusMessage({
+                            toolName,
+                            toolArgs,
+                            toolCallIteration,
+                            elapsedMs: Date.now() - toolExecutionStartedAt,
+                        })
+                        if (nextStatusMessage === toolStatusMessage || stopToolProgressUpdates) return
+
+                        commentText = commentText.replace(toolStatusMessage, nextStatusMessage)
+                        toolStatusMessage = nextStatusMessage
+                        if (stopToolProgressUpdates) return
+
+                        await commentRef.update({ commentText, isLoading: true })
+                    }
+
+                    const toolProgressInterval = setInterval(() => {
+                        updateToolProgressStatus().catch(error => {
+                            console.warn('🔧 NATIVE TOOL CALL: Failed updating tool progress status', {
+                                toolName,
+                                error: error.message,
+                            })
+                        })
+                    }, TOOL_PROGRESS_UPDATE_INTERVAL_MS)
 
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
@@ -4248,6 +4327,8 @@ async function storeChunks(
                             })
                         }
                     } catch (error) {
+                        stopToolProgressUpdates = true
+                        clearInterval(toolProgressInterval)
                         console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
                             toolName,
                             error: error.message,
@@ -4255,17 +4336,19 @@ async function storeChunks(
                         })
                         await flushPendingUpdate() // Flush any pending updates first
                         const errorMsg = `Error executing ${toolName}: ${error.message}`
-                        commentText = commentText.replace(loadingMessage, errorMsg)
+                        commentText = commentText.replace(toolStatusMessage, errorMsg)
                         await commentRef.update({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
+                    stopToolProgressUpdates = true
+                    clearInterval(toolProgressInterval)
 
                     // Build new conversation history with tool result
                     // Need to add: assistant's message with tool call, then tool result message
 
                     // Collect all assistant content before tool call
-                    const assistantMessageContent = commentText.replace(loadingMessage, '').trim()
+                    const assistantMessageContent = commentText.replace(toolStatusMessage, '').trim()
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
                             assistantMessageContentLength: assistantMessageContent.length,
@@ -4347,7 +4430,7 @@ async function storeChunks(
 
                     // Remove loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
-                    commentText = commentText.replace(loadingMessage, '')
+                    commentText = commentText.replace(toolStatusMessage, '')
                     await commentRef.update({ commentText, isLoading: false })
 
                     // Process the new stream - replace the current stream
