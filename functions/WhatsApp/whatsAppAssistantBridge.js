@@ -123,6 +123,20 @@ async function processWhatsAppAssistantMessage(
         messages.push(['user', userMessageContent || messageText])
     }
 
+    const lastUserEntry = [...messages].reverse().find(entry => entry[0] === 'user')
+    const lastUserContent = lastUserEntry ? lastUserEntry[1] : null
+    const imagePartsCount = Array.isArray(lastUserContent)
+        ? lastUserContent.filter(part => part?.type === 'image_url').length
+        : 0
+    console.log('WhatsApp Assistant: Final user prompt payload', {
+        userId,
+        projectId,
+        chatId,
+        hasArrayContent: Array.isArray(lastUserContent),
+        imagePartsCount,
+        textLength: getMessageTextForTokenCounting(lastUserContent || '').length,
+    })
+
     // Call the AI
     const streamInitStart = Date.now()
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools, toolRuntimeContext)

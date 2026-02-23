@@ -3,6 +3,8 @@ const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
+const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+$/
 
 /**
  * Get or create the daily WhatsApp topic for a user.
@@ -254,15 +256,72 @@ async function getConversationHistory(projectId, chatId, limit = 10) {
         .get()
 
     const messages = []
+    let multimodalUserMessages = 0
     snapshot.docs.reverse().forEach(doc => {
         const data = doc.data()
         if (data.commentText) {
             const role = data.fromAssistant ? 'assistant' : 'user'
+            if (role === 'user') {
+                const imageUrls = extractImageUrlsFromCommentText(data.commentText)
+                if (imageUrls.length > 0) {
+                    multimodalUserMessages++
+                    const cleanedText = stripImageTokens(data.commentText)
+                    messages.push([role, buildMultimodalUserContent(cleanedText, imageUrls)])
+                    return
+                }
+            }
             messages.push([role, data.commentText])
         }
     })
 
+    if (multimodalUserMessages > 0) {
+        console.log('WhatsApp DailyTopic: Built multimodal history entries', {
+            projectId,
+            chatId,
+            messagesReturned: messages.length,
+            multimodalUserMessages,
+        })
+    }
+
     return messages
+}
+
+function extractImageUrlsFromCommentText(commentText) {
+    if (!commentText || typeof commentText !== 'string') return []
+    const words = commentText.split(/\s+/)
+    const urls = []
+    for (const word of words) {
+        if (!word || !word.includes(IMAGE_TRIGGER) || !REGEX_IMAGE_TOKEN.test(word)) continue
+        const parts = word.split(IMAGE_TRIGGER)
+        const uri = parts[1]
+        const resizedUri = parts[2]
+        const imageUrl = uri || resizedUri
+        if (imageUrl) urls.push(imageUrl)
+    }
+    return [...new Set(urls)]
+}
+
+function stripImageTokens(commentText) {
+    if (!commentText || typeof commentText !== 'string') return ''
+    return commentText
+        .split(/\s+/)
+        .filter(word => !word || !word.includes(IMAGE_TRIGGER) || !REGEX_IMAGE_TOKEN.test(word))
+        .join(' ')
+        .trim()
+}
+
+function buildMultimodalUserContent(text, imageUrls = []) {
+    if (!Array.isArray(imageUrls) || imageUrls.length === 0) return text || ''
+    const normalizedText = (text || '').trim() || `Please analyze the attached image${imageUrls.length > 1 ? 's' : ''}.`
+    const content = [{ type: 'text', text: normalizedText }]
+    imageUrls.forEach(url => {
+        if (!url) return
+        content.push({
+            type: 'image_url',
+            image_url: { url },
+        })
+    })
+    return content
 }
 
 function getFirstName(displayName) {
