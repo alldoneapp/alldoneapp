@@ -2247,6 +2247,41 @@ async function executeDelegatedAssistantRequest({
     const targetHasEnabledTools = targetAllowedTools.length > 0
     const requiresToolExecution = messageLikelyRequiresToolExecution(message)
 
+    // Charge the delegated run separately so delegation costs are fully accounted for.
+    if (requestUserId) {
+        try {
+            const billingUserDoc = await db.collection('users').doc(requestUserId).get()
+            const billingUserGold = billingUserDoc.exists ? billingUserDoc.data()?.gold || 0 : 0
+
+            await reduceGoldWhenChatWithAI(requestUserId, billingUserGold, targetModel, assistantResponse, messages)
+
+            console.log('🔁 DELEGATION: billed delegated assistant run', {
+                requestUserId,
+                targetProjectId: target.projectId,
+                targetAssistantId: target.assistantId,
+                targetModel,
+                executedToolCallsCount,
+                assistantResponseLength: assistantResponse.length,
+            })
+        } catch (billingError) {
+            console.error('🔁 DELEGATION: failed to bill delegated assistant run', {
+                requestUserId,
+                targetProjectId: target.projectId,
+                targetAssistantId: target.assistantId,
+                targetModel,
+                error: billingError.message,
+            })
+        }
+    } else {
+        console.warn('🔁 DELEGATION: skipped billing delegated assistant run because requestUserId is missing', {
+            callerProjectId,
+            callerAssistantId,
+            targetProjectId: target.projectId,
+            targetAssistantId: target.assistantId,
+            targetModel,
+        })
+    }
+
     let success = true
     let status = 'success'
     let warning = null
