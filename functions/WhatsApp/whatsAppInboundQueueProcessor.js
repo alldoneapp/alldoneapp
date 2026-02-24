@@ -84,8 +84,13 @@ async function processBatchForUser(userId, batch) {
         const storeUserMessagesStart = Date.now()
         for (const item of sortedBatch) {
             const textToStore = item.isVoice ? item.messageText : item.storedMessageText || item.messageText || ''
+            const processedMedia = Array.isArray(item.processedMedia) ? item.processedMedia : []
             await storeUserMessageInTopic(projectId, chatId, userId, textToStore, !!item.isVoice, {
                 imageCount: Number(item.processedImageCount) || 0,
+                mediaCount: processedMedia.length,
+                mediaKinds: [...new Set(processedMedia.map(media => media.kind).filter(Boolean))],
+                fileUnderstandingSummary: buildFileUnderstandingSummary(processedMedia),
+                processedMedia,
             })
         }
         markBatchStage('storeUserMessagesInTopic', storeUserMessagesStart)
@@ -109,12 +114,17 @@ async function processBatchForUser(userId, batch) {
             aiResponseLength: (aiResponse || '').length,
         })
 
+        const mediaOutcomeNotice = buildMediaOutcomeNotice(sortedBatch)
+        const finalResponse = [
+            aiResponse || 'Sorry, I was unable to generate a response. Please try again.',
+            mediaOutcomeNotice,
+        ]
+            .filter(Boolean)
+            .join('\n\n')
+
         const service = new TwilioWhatsAppService()
         const sendStart = Date.now()
-        await service.sendWhatsAppMessage(
-            fromNumber,
-            aiResponse || 'Sorry, I was unable to generate a response. Please try again.'
-        )
+        await service.sendWhatsAppMessage(fromNumber, finalResponse)
         markBatchStage('sendWhatsAppMessage', sendStart, { hasFromNumber: !!fromNumber })
 
         const deleteStart = Date.now()
@@ -324,6 +334,49 @@ async function fetchOldestPendingDocs(collectionRef, limit) {
 
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function buildFileUnderstandingSummary(processedMedia) {
+    if (!Array.isArray(processedMedia) || processedMedia.length === 0) return ''
+
+    const total = processedMedia.length
+    const extracted = processedMedia.filter(media => !!media.extractedText).length
+    const unsupported = processedMedia.filter(media => media.extractionStatus === 'unsupported').length
+    const failed = processedMedia.filter(
+        media =>
+            media.extractionStatus === 'error' ||
+            media.extractionStatus === 'timeout' ||
+            media.extractionStatus === 'parser_unavailable'
+    ).length
+
+    return `stored=${total}, extracted=${extracted}, unsupported=${unsupported}, failed=${failed}`
+}
+
+function buildMediaOutcomeNotice(sortedBatch) {
+    if (!Array.isArray(sortedBatch) || sortedBatch.length === 0) return ''
+
+    const mediaItems = sortedBatch.flatMap(item => (Array.isArray(item.processedMedia) ? item.processedMedia : []))
+    if (mediaItems.length === 0) return ''
+
+    const total = mediaItems.length
+    const extracted = mediaItems.filter(media => !!media.extractedText).length
+    const unsupported = mediaItems.filter(media => media.extractionStatus === 'unsupported').length
+    const failed = mediaItems.filter(
+        media =>
+            media.extractionStatus === 'error' ||
+            media.extractionStatus === 'timeout' ||
+            media.extractionStatus === 'parser_unavailable'
+    ).length
+
+    const parts = [`I stored ${total} attached file${total === 1 ? '' : 's'} in the daily WhatsApp topic.`]
+    if (unsupported > 0 || failed > 0) {
+        parts.push(
+            `I could only partially read them (${extracted} parsed, ${unsupported} unsupported, ${failed} failed).`
+        )
+    } else if (extracted > 0) {
+        parts.push(`I read ${extracted} file${extracted === 1 ? '' : 's'} for context.`)
+    }
+    return parts.join(' ')
 }
 
 function createStageTimer(prefix, baseMeta = {}) {

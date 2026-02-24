@@ -119,6 +119,30 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
         comment.imageCount = options.imageCount
     }
 
+    if (options.mediaCount > 0) {
+        comment.mediaCount = options.mediaCount
+    }
+
+    if (Array.isArray(options.mediaKinds) && options.mediaKinds.length > 0) {
+        comment.mediaKinds = options.mediaKinds
+    }
+
+    if (options.fileUnderstandingSummary) {
+        comment.fileUnderstandingSummary = options.fileUnderstandingSummary
+    }
+
+    if (Array.isArray(options.processedMedia) && options.processedMedia.length > 0) {
+        comment.processedMedia = options.processedMedia.map(media => ({
+            kind: media.kind || 'file',
+            contentType: media.contentType || '',
+            fileName: media.fileName || '',
+            storageUrl: media.storageUrl || '',
+            extractedText: String(media.extractedText || '').substring(0, 8000),
+            extractionStatus: media.extractionStatus || '',
+            sizeBytes: Number(media.sizeBytes) || 0,
+        }))
+    }
+
     const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
 
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
@@ -263,12 +287,16 @@ async function getConversationHistory(projectId, chatId, limit = 10) {
             const role = data.fromAssistant ? 'assistant' : 'user'
             if (role === 'user') {
                 const imageUrls = extractImageUrlsFromCommentText(data.commentText)
+                const fileContext = buildFileContextForAssistant(data.processedMedia)
+                const textWithFileContext = appendFileContext(data.commentText, fileContext)
                 if (imageUrls.length > 0) {
                     multimodalUserMessages++
-                    const cleanedText = stripImageTokens(data.commentText)
+                    const cleanedText = stripImageTokens(textWithFileContext)
                     messages.push([role, buildMultimodalUserContent(cleanedText, imageUrls)])
                     return
                 }
+                messages.push([role, textWithFileContext])
+                return
             }
             messages.push([role, data.commentText])
         }
@@ -322,6 +350,29 @@ function buildMultimodalUserContent(text, imageUrls = []) {
         })
     })
     return content
+}
+
+function appendFileContext(commentText, fileContext) {
+    const baseText = String(commentText || '').trim()
+    const extraText = String(fileContext || '').trim()
+    if (!extraText) return baseText
+    if (!baseText) return extraText
+    return `${baseText}\n\n${extraText}`
+}
+
+function buildFileContextForAssistant(processedMedia) {
+    if (!Array.isArray(processedMedia) || processedMedia.length === 0) return ''
+
+    const parts = []
+    processedMedia.forEach(media => {
+        const fileName = media.fileName || 'attachment'
+        const contentType = media.contentType || 'unknown'
+        const extractedText = String(media.extractedText || '').trim()
+        if (!extractedText) return
+        parts.push(`[FILE: ${fileName}, type=${contentType}]\n${extractedText}`)
+    })
+
+    return parts.join('\n\n')
 }
 
 function getFirstName(displayName) {
