@@ -15,6 +15,7 @@ import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import BotOptionsModal from '../ChatsView/ChatDV/EditorView/BotOption/BotOptionsModal'
 import RunOutOfGoldAssistantModal from '../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
+import { setObjectAssistantEnabled } from '../../utils/assistantHelper'
 
 export default function DvBotButton({
     style,
@@ -41,7 +42,12 @@ export default function DvBotButton({
         dispatch(setSelectedNavItem(navItem))
     }
 
-    const onSelectBotOption = optionText => {
+    const onSelectBotOption = async optionText => {
+        await setObjectAssistantEnabled(projectId, objectId, objectType, true)
+        if (parentObject && updateObjectState) {
+            updateObjectState({ ...parentObject, isAssistantEnabled: true })
+        }
+
         navigateToChat()
         setTimeout(() => {
             dispatch(setAssistantEnabled(true))
