@@ -729,18 +729,20 @@ async function downloadAndStoreTwilioMedia(mediaUrl, contentType, userId, accoun
     const filePath = `notesAttachments/${datePath}/${randomHash}/${fileName}`
     const bucket = admin.storage().bucket()
     const file = bucket.file(filePath)
+    const downloadToken = uuidv4()
 
     await file.save(buffer, {
         metadata: {
             contentType: contentType || 'application/octet-stream',
             cacheControl: 'public,max-age=31536000',
+            metadata: {
+                firebaseStorageDownloadTokens: downloadToken,
+            },
         },
     })
 
-    const [storageUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: '03-01-2491',
-    })
+    const encodedPath = encodeURIComponent(filePath)
+    const storageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`
 
     return {
         buffer,
