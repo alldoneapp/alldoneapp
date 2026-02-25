@@ -9,6 +9,7 @@ const {
     addGlobalAssistantToAllProject,
 } = require('../Firestore/assistantsFirestore')
 const { updateRecord, ASSISTANTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearchHelper')
+const { bumpProjectToolSchemasCacheVersion } = require('../Assistant/toolSchemaCacheVersion')
 
 const tryUpdateAssitantInGuides = async (oldAssistant, newAssistant, projectId) => {
     delete oldAssistant.lastEditorId
@@ -72,6 +73,7 @@ const onUpdateAssistant = async (projectId, assistantId, change) => {
     } else {
         promises.push(tryUpdateAssitantInGuides({ ...oldAssistant }, { ...newAssistant }, projectId))
     }
+    promises.push(bumpProjectToolSchemasCacheVersion(projectId, 'assistant_updated'))
     await Promise.all(promises)
 }
 

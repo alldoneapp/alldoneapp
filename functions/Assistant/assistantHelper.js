@@ -39,6 +39,7 @@ const { getChat } = require('../Chats/chatsFirestoreCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
+const { getToolSchemasCacheContextVersion } = require('./toolSchemaCacheVersion')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -109,7 +110,7 @@ const MAX_PRECONFIGURED_TASK_CONTEXT_ITEMS = 20
 const dynamicToolSchemasCache = new Map()
 const DYNAMIC_TOOL_SCHEMAS_CACHE_TTL = 5 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES = 200
-const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL = 30 * 60 * 1000
+const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL = 30 * 24 * 60 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION = 'runtimeCaches/dynamicToolSchemas/items'
 
 function getOpenAIClient(apiKey) {
@@ -964,7 +965,7 @@ async function getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext 
     return targetsWithCapabilities.map(buildTalkToAssistantToolSchema)
 }
 
-function buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext = null) {
+function buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext = null, contextVersion = 'p0:g0:x0') {
     const normalizedAllowedTools = Array.isArray(allowedTools)
         ? [...allowedTools]
               .map(tool => String(tool || '').trim())
@@ -976,11 +977,20 @@ function buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext = null
         assistantId: String(toolRuntimeContext?.assistantId || ''),
         requestUserId: String(toolRuntimeContext?.requestUserId || ''),
         allowedTools: normalizedAllowedTools,
+        contextVersion: String(contextVersion || 'p0:g0:x0'),
     })
 }
 
 function buildDynamicToolSchemasPersistedCacheDocId(key) {
     return crypto.createHash('sha256').update(key).digest('hex').slice(0, 40)
+}
+
+function emitToolSchemasCacheMetric(eventName, contextVersion, details = {}) {
+    console.log('📈 METRIC TOOL_SCHEMAS_CACHE', {
+        eventName,
+        contextVersion: String(contextVersion || 'p0:g0:x0'),
+        ...details,
+    })
 }
 
 function normalizeDynamicToolSchemasCacheData(data) {
@@ -1033,13 +1043,20 @@ function pruneDynamicToolSchemasCacheIfNeeded() {
 }
 
 async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext = null) {
-    const key = buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext)
+    const contextVersion = await getToolSchemasCacheContextVersion(toolRuntimeContext)
+    const key = buildDynamicToolSchemasCacheKey(allowedTools, toolRuntimeContext, contextVersion)
     const now = Date.now()
     const cached = dynamicToolSchemasCache.get(key)
 
     if (cached && cached.data && now - cached.timestamp < DYNAMIC_TOOL_SCHEMAS_CACHE_TTL) {
+        emitToolSchemasCacheMetric('HIT_MEMORY', contextVersion, {
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+        })
         console.log('🔧 TOOL SCHEMAS CACHE: HIT', {
             keyLength: key.length,
+            contextVersion,
             projectId: toolRuntimeContext?.projectId || null,
             assistantId: toolRuntimeContext?.assistantId || null,
             requestUserId: toolRuntimeContext?.requestUserId || null,
@@ -1050,8 +1067,14 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
     }
 
     if (cached && cached.inFlightPromise) {
+        emitToolSchemasCacheMetric('HIT_INFLIGHT', contextVersion, {
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+        })
         console.log('🔧 TOOL SCHEMAS CACHE: WAITING_FOR_INFLIGHT_BUILD', {
             keyLength: key.length,
+            contextVersion,
             projectId: toolRuntimeContext?.projectId || null,
             assistantId: toolRuntimeContext?.assistantId || null,
             requestUserId: toolRuntimeContext?.requestUserId || null,
@@ -1062,6 +1085,11 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
     try {
         const persisted = await getDynamicToolSchemasFromPersistedCache(key)
         if (persisted) {
+            emitToolSchemasCacheMetric('HIT_PERSISTED', contextVersion, {
+                projectId: toolRuntimeContext?.projectId || null,
+                assistantId: toolRuntimeContext?.assistantId || null,
+                requestUserId: toolRuntimeContext?.requestUserId || null,
+            })
             dynamicToolSchemasCache.set(key, {
                 timestamp: now,
                 data: persisted,
@@ -1070,6 +1098,7 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
             pruneDynamicToolSchemasCacheIfNeeded()
             console.log('🔧 TOOL SCHEMAS CACHE: HIT_PERSISTED', {
                 keyLength: key.length,
+                contextVersion,
                 projectId: toolRuntimeContext?.projectId || null,
                 assistantId: toolRuntimeContext?.assistantId || null,
                 requestUserId: toolRuntimeContext?.requestUserId || null,
@@ -1080,6 +1109,7 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
         }
     } catch (error) {
         console.warn('🔧 TOOL SCHEMAS CACHE: PERSISTED_READ_FAILED', {
+            contextVersion,
             projectId: toolRuntimeContext?.projectId || null,
             assistantId: toolRuntimeContext?.assistantId || null,
             requestUserId: toolRuntimeContext?.requestUserId || null,
@@ -1088,6 +1118,11 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
     }
 
     const buildStart = Date.now()
+    emitToolSchemasCacheMetric('MISS_BUILD_START', contextVersion, {
+        projectId: toolRuntimeContext?.projectId || null,
+        assistantId: toolRuntimeContext?.assistantId || null,
+        requestUserId: toolRuntimeContext?.requestUserId || null,
+    })
     const inFlightPromise = (async () => {
         const [delegationToolSchemas, externalToolSchemas] = await Promise.all([
             getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext),
@@ -1099,6 +1134,7 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
             await writeDynamicToolSchemasToPersistedCache(key, data)
         } catch (error) {
             console.warn('🔧 TOOL SCHEMAS CACHE: PERSISTED_WRITE_FAILED', {
+                contextVersion,
                 projectId: toolRuntimeContext?.projectId || null,
                 assistantId: toolRuntimeContext?.assistantId || null,
                 requestUserId: toolRuntimeContext?.requestUserId || null,
@@ -1112,8 +1148,17 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
         })
         pruneDynamicToolSchemasCacheIfNeeded()
 
+        emitToolSchemasCacheMetric('MISS_BUILT', contextVersion, {
+            projectId: toolRuntimeContext?.projectId || null,
+            assistantId: toolRuntimeContext?.assistantId || null,
+            requestUserId: toolRuntimeContext?.requestUserId || null,
+            buildDurationMs: Date.now() - buildStart,
+            delegationToolSchemasCount: delegationToolSchemas.length,
+            externalToolSchemasCount: externalToolSchemas.length,
+        })
         console.log('🔧 TOOL SCHEMAS CACHE: MISS_BUILT', {
             keyLength: key.length,
+            contextVersion,
             projectId: toolRuntimeContext?.projectId || null,
             assistantId: toolRuntimeContext?.assistantId || null,
             requestUserId: toolRuntimeContext?.requestUserId || null,

@@ -7,6 +7,7 @@ const { deleteRecord, ASSISTANTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearc
 const { removeObjectFromBacklinks } = require('../Backlinks/backlinksHelper')
 const { deleteNote } = require('../Notes/notesFirestoreCloud')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
+const { bumpProjectToolSchemasCacheVersion } = require('../Assistant/toolSchemaCacheVersion')
 
 const deleteAssistantInGuidesWhenDeleteAssisntantInTemplate = async (projectId, assistantId) => {
     let promises = []
@@ -35,6 +36,7 @@ const onDeleteAssistant = async (projectId, assistant) => {
         promises.push(deleteAssistantInGuidesWhenDeleteAssisntantInTemplate(projectId, assistant.uid))
         promises.push(deleteTasksFromAssignee(projectId, assistant.uid, admin))
     }
+    promises.push(bumpProjectToolSchemasCacheVersion(projectId, 'assistant_deleted'))
     await Promise.all(promises)
 }
 

@@ -4,6 +4,7 @@ const moment = require('moment')
 const { getProject, getTemplateGuideIds } = require('../Firestore/generalFirestoreCloud')
 const { uploadNewAssistant, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { createRecord, ASSISTANTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearchHelper')
+const { bumpProjectToolSchemasCacheVersion } = require('../Assistant/toolSchemaCacheVersion')
 
 const processNewAssistantInTemplate = async (projectId, assistant) => {
     if (projectId !== GLOBAL_PROJECT_ID) {
@@ -41,6 +42,7 @@ const onCreateAssistant = async (projectId, assistant) => {
     promises.push(
         createRecord(projectId, assistant.uid, assistant, ASSISTANTS_OBJECTS_TYPE, admin.firestore(), false, null)
     )
+    promises.push(bumpProjectToolSchemasCacheVersion(projectId, 'assistant_created'))
     await Promise.all(promises)
 }
 
