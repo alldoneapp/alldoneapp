@@ -1103,7 +1103,7 @@ class SearchService {
             case ENTITY_TYPES.CONTACTS:
                 return [...common, 'displayName', 'email', 'cleanDescription', 'role', 'company']
             case ENTITY_TYPES.CHATS:
-                return [...common, 'cleanName', 'type', 'lastEditionDate']
+                return [...common, 'cleanName', 'cleanLastComment', 'type', 'lastEditionDate']
             case ENTITY_TYPES.ASSISTANTS:
                 return [...common, 'displayName', 'cleanDescription', 'isAssistant']
             default:
@@ -1128,7 +1128,7 @@ class SearchService {
             case ENTITY_TYPES.ASSISTANTS:
                 return ['displayName', 'cleanDescription', 'role', 'company']
             case ENTITY_TYPES.CHATS:
-                return ['cleanName']
+                return ['cleanName', 'cleanLastComment']
             default:
                 return []
         }
@@ -1159,7 +1159,7 @@ class SearchService {
                 content = hit.cleanDescription || hit.displayName || ''
                 break
             case ENTITY_TYPES.CHATS:
-                content = hit.cleanName || ''
+                content = hit.cleanLastComment || hit.cleanName || ''
                 break
             default:
                 content = hit.name || hit.title || hit.displayName || ''

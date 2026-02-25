@@ -521,7 +521,7 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
     } else if (objectsType === CHATS_OBJECTS_TYPE) {
         await algoliaIndex.setSettings(
             {
-                searchableAttributes: ['cleanName'],
+                searchableAttributes: ['cleanName', 'cleanLastComment'],
                 typoTolerance: false,
                 ignorePlurals: false,
                 customRanking: ['desc(lastEditionDate)'],
