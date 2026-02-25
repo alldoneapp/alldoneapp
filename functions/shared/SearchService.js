@@ -64,6 +64,7 @@ const ENTITY_TYPES = {
 
 const DEFAULT_SEARCH_LIMIT = 50
 const MAX_SEARCH_LIMIT = 1000
+const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
 class SearchService {
     constructor(options = {}) {
@@ -1016,7 +1017,6 @@ class SearchService {
      */
     buildAlgoliaFilters(userProjects, projectId, parsedQuery, entityType, userId, status) {
         const filters = []
-        const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
         // Project access filter
         if (projectId) {
