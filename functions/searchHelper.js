@@ -34,6 +34,8 @@ const CONTACTS_OBJECTS_TYPE = 'contacts'
 const ASSISTANTS_OBJECTS_TYPE = 'assistants'
 const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
+const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
+const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
 
 const AMOUNT_OF_SEARCH_BY_PROJECT = 100
 
@@ -154,7 +156,32 @@ const getNoteContent = async (projectId, noteId) => {
     return finalContent
 }
 
-const processObject = async (projectId, objectId, objectsType, baseObject, usersMap, canBeInactive) => {
+const getChatCommentsForSearch = async (projectId, chatId, chatType, db) => {
+    try {
+        const commentsDocs = await db
+            .collection(`chatComments/${projectId}/${chatType || 'topics'}/${chatId}/comments`)
+            .orderBy('created', 'desc')
+            .limit(CHAT_COMMENTS_TO_INDEX_LIMIT)
+            .get()
+
+        if (!commentsDocs || commentsDocs.empty) return ''
+
+        const cleanedComments = []
+        commentsDocs.forEach(doc => {
+            const commentText = doc.data()?.commentText
+            if (typeof commentText === 'string' && commentText.trim().length > 0) {
+                cleanedComments.push(parseTextForSearch(commentText, true))
+            }
+        })
+
+        return cleanedComments.join(' ').substring(0, CHAT_COMMENTS_TEXT_MAX_LENGTH)
+    } catch (error) {
+        console.log(`Error getting chat comments for search (${projectId}/${chatId}):`, error.message)
+        return ''
+    }
+}
+
+const processObject = async (projectId, objectId, objectsType, baseObject, usersMap, canBeInactive, db = null) => {
     const algoliaObjectId = objectId + projectId
     let object = null
 
@@ -180,7 +207,13 @@ const processObject = async (projectId, objectId, objectsType, baseObject, users
     } else if (objectsType === USERS_OBJECTS_TYPE) {
         object = mapUserData(objectId, baseObject)
     } else if (objectsType === CHATS_OBJECTS_TYPE) {
-        object = mapChatData(objectId, algoliaObjectId, baseObject, projectId)
+        const cleanComments = await getChatCommentsForSearch(
+            projectId,
+            objectId,
+            baseObject?.type,
+            db || admin.firestore()
+        )
+        object = mapChatData(objectId, algoliaObjectId, baseObject, projectId, { cleanComments })
     }
 
     let isLocked = false
@@ -206,7 +239,7 @@ const addNotesToList = async (projectId, usersMap, objectsList, db) => {
 
     const promises = docs.docs.map(async doc => {
         const baseObject = doc.data()
-        const object = await processObject(projectId, doc.id, NOTES_OBJECTS_TYPE, baseObject, usersMap, false)
+        const object = await processObject(projectId, doc.id, NOTES_OBJECTS_TYPE, baseObject, usersMap, false, db)
         if (object) objectsList.push(object)
     })
 
@@ -218,15 +251,16 @@ const addChatsToList = async (projectId, usersMap, objectsList, activeFullSearch
     const mainRef = db.collection(`chatObjects/${projectId}/chats`).where('type', '==', 'topics')
     const docs = await (activeFullSearch ? mainRef.get() : mainRef.where('lastEditionDate', '>', lastEditionDate).get())
 
-    const tryAddChat = doc => {
+    const tryAddChat = async doc => {
         const baseObject = doc.data()
-        const object = processObject(projectId, doc.id, CHATS_OBJECTS_TYPE, baseObject, usersMap, true)
+        const object = await processObject(projectId, doc.id, CHATS_OBJECTS_TYPE, baseObject, usersMap, true, db)
         if (object) objectsList.push(object)
     }
-
+    const promises = []
     docs.forEach(doc => {
-        tryAddChat(doc)
+        promises.push(tryAddChat(doc))
     })
+    await Promise.all(promises)
 }
 
 const addAssistantsToList = async (projectId, usersMap, objectsList, db) => {
@@ -521,7 +555,7 @@ const configAlgoliaIndex = async (algoliaIndex, objectsType) => {
     } else if (objectsType === CHATS_OBJECTS_TYPE) {
         await algoliaIndex.setSettings(
             {
-                searchableAttributes: ['cleanName', 'cleanLastComment'],
+                searchableAttributes: ['cleanName', 'cleanLastComment', 'cleanComments'],
                 typoTolerance: false,
                 ignorePlurals: false,
                 customRanking: ['desc(lastEditionDate)'],

@@ -180,6 +180,7 @@ const mapNoteData = (noteId, algoliaObjectId, note, projectId) => {
 const mapChatData = (chatId, algoliaObjectId, chat, projectId, customData) => {
     const title = chat.title ? chat.title : chat.name ? chat.name : ''
     const lastComment = chat?.commentsData?.lastComment ? chat.commentsData.lastComment : ''
+    const cleanComments = customData?.cleanComments || ''
     const chatObj = {
         objectID: algoliaObjectId,
         projectId: projectId,
@@ -187,6 +188,7 @@ const mapChatData = (chatId, algoliaObjectId, chat, projectId, customData) => {
         name: title,
         cleanName: parseTextForSearch(title, true),
         cleanLastComment: parseTextForSearch(lastComment, true),
+        cleanComments,
         lastEditionDate: chat.lastEditionDate ? chat.lastEditionDate : Date.now(),
         isPublicFor: chat.isPublicFor ? chat.isPublicFor : [FEED_PUBLIC_FOR_ALL],
         ...customData,

@@ -35,6 +35,8 @@ const CONTACTS_OBJECTS_TYPE = 'contacts'
 const ASSISTANTS_OBJECTS_TYPE = 'assistants'
 const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
+const CHAT_COMMENTS_TO_INDEX_LIMIT = 80
+const CHAT_COMMENTS_TEXT_MAX_LENGTH = 12000
 
 const getAlgoliaIndex = indexPrefix => {
     return getAlgoliaClient().initIndex(indexPrefix)
@@ -90,7 +92,32 @@ const getPrefix = objectsType => {
     }
 }
 
-const mapObject = (projectId, objectId, algoliaObjectId, object, objectsType, canBeInactive) => {
+const getCleanChatComments = async (db, projectId, chatId, chatType = 'topics') => {
+    try {
+        const commentsDocs = await db
+            .collection(`chatComments/${projectId}/${chatType}/${chatId}/comments`)
+            .orderBy('created', 'desc')
+            .limit(CHAT_COMMENTS_TO_INDEX_LIMIT)
+            .get()
+
+        if (!commentsDocs || commentsDocs.empty) return ''
+
+        const cleanedComments = []
+        commentsDocs.forEach(doc => {
+            const commentText = doc.data()?.commentText
+            if (typeof commentText === 'string' && commentText.trim().length > 0) {
+                cleanedComments.push(parseTextForSearch(commentText, true))
+            }
+        })
+
+        return cleanedComments.join(' ').substring(0, CHAT_COMMENTS_TEXT_MAX_LENGTH)
+    } catch (error) {
+        console.log(`Failed to load chat comments for Algolia indexing (${projectId}/${chatId}):`, error.message)
+        return ''
+    }
+}
+
+const mapObject = async (projectId, objectId, algoliaObjectId, object, objectsType, canBeInactive, db) => {
     let cleanObject
     if (objectsType === TASKS_OBJECTS_TYPE) {
         cleanObject = mapTaskData(objectId, algoliaObjectId, object, projectId)
@@ -103,7 +130,8 @@ const mapObject = (projectId, objectId, algoliaObjectId, object, objectsType, ca
     } else if (objectsType === ASSISTANTS_OBJECTS_TYPE) {
         cleanObject = mapAssistantData(algoliaObjectId, object, objectId, projectId)
     } else if (objectsType === CHATS_OBJECTS_TYPE) {
-        cleanObject = mapChatData(objectId, algoliaObjectId, object, projectId)
+        const cleanComments = await getCleanChatComments(db, projectId, objectId, object?.type || 'topics')
+        cleanObject = mapChatData(objectId, algoliaObjectId, object, projectId, { cleanComments })
     }
     return cleanObject
 }
@@ -120,7 +148,7 @@ const createRecord = async (projectId, objectId, item, objectsType, db, canBeIna
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
 
-    let object = mapObject(projectId, objectId, algoliaObjectId, item, objectsType, canBeInactive)
+    let object = await mapObject(projectId, objectId, algoliaObjectId, item, objectsType, canBeInactive, db)
 
     // If this is a note, get its content from storage
     if (objectsType === NOTES_OBJECTS_TYPE) {
@@ -219,8 +247,8 @@ const updateRecord = async (projectId, objectId, oldItem, newItem, objectsType, 
     const algoliaObjectId = objectId + projectId
     const indexPrefix = getPrefix(objectsType)
 
-    const objectBefore = mapObject(projectId, objectId, algoliaObjectId, oldItem, objectsType, canBeInactive)
-    let objectAfter = mapObject(projectId, objectId, algoliaObjectId, newItem, objectsType, canBeInactive)
+    const objectBefore = await mapObject(projectId, objectId, algoliaObjectId, oldItem, objectsType, canBeInactive, db)
+    let objectAfter = await mapObject(projectId, objectId, algoliaObjectId, newItem, objectsType, canBeInactive, db)
 
     // If this is a note, get its content from storage
     if (objectsType === NOTES_OBJECTS_TYPE) {
