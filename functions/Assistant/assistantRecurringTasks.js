@@ -339,6 +339,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
             usersFollowing: [task.creatorUserId || task.userId], // Only include the creator/user
             quickDateId: '',
             assistantId: assistantId,
+            isAssistantEnabled: true,
             stickyData: { days: 0, stickyEndDate: 0 },
             taskId: taskId, // Add reference to the task
         }
@@ -465,6 +466,11 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                         projectId,
                         success: result.success,
                     })
+
+                    // Keep behavior aligned with manual pre-config task execution threads.
+                    await admin.firestore().doc(`items/${projectId}/tasks/${uniqueId}`).update({
+                        isAssistantEnabled: true,
+                    })
                 } catch (taskError) {
                     console.error('Error creating task via TaskService:', {
                         error: taskError,
@@ -478,6 +484,10 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                 // --- End Feed Entry ---
             } else {
                 console.log('Regular task already exists with ID:', { uniqueId, projectId })
+
+                await admin.firestore().doc(`items/${projectId}/tasks/${uniqueId}`).update({
+                    isAssistantEnabled: true,
+                })
             }
         } catch (error) {
             console.error('Error creating regular task with same ID as ChatObject:', {

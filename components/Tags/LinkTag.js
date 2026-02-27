@@ -75,6 +75,7 @@ import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTex
 import { getPreConfigTask, getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
 import { setPreConfigTaskModalData, setIframeModalData } from '../../redux/actions'
 import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
+import { getShortExternalUrlText } from './linkTextUtils'
 
 export const MIN_WIDTH_LINK_TAG = 100
 
@@ -798,22 +799,6 @@ export default function LinkTag({
         return { ...customStyle, ...baseStyle, ...overwriteStyle }
     }
 
-    const finalCleanup = text => {
-        let firstSlash = text.indexOf('/')
-
-        if (firstSlash > -1) {
-            return text.substr(0, firstSlash)
-        } else {
-            return text
-        }
-    }
-
-    const getShortExternalUrl = title => {
-        let shortExternalUrl = finalCleanup(title)
-        shortExternalUrl = title.length >= textLimit ? shortExternalUrl + '...' : shortExternalUrl
-        return shortExternalUrl
-    }
-
     const getShrinkTagText = (title, textLimit) => {
         const tagText = handleNestedLinks(title)
         return shrinkTagText(tagText, textLimit)
@@ -901,7 +886,7 @@ export default function LinkTag({
                         {expandTitle
                             ? handleNestedLinks(title)
                             : tagIcon === 'link'
-                            ? getShortExternalUrl(title)
+                            ? getShortExternalUrlText(title || '', textLimit)
                             : getShrinkTagText(title, textLimit)}
                     </Text>
                 </View>

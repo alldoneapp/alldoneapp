@@ -1101,6 +1101,9 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
             const templateOrder = index
 
             if (localTask) {
+                const shouldPreserveLocalRecurringTime =
+                    localTask.recurrence && localTask.recurrence !== RECURRENCE_NEVER
+
                 // Update existing task - preserve local-only fields (lastExecuted, activatedInProjectId, etc.)
                 const updatePayload = {
                     ...templatePayload,
@@ -1110,6 +1113,20 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
                     // Update sync timestamp
                     copiedFromTemplateTaskDate: syncTimestamp,
                 }
+
+                // Preserve project-level recurring schedule time customizations.
+                if (shouldPreserveLocalRecurringTime) {
+                    if (localTask.startDate !== undefined && localTask.startDate !== null) {
+                        updatePayload.startDate = localTask.startDate
+                    }
+                    if (localTask.startTime !== undefined && localTask.startTime !== null) {
+                        updatePayload.startTime = localTask.startTime
+                    }
+                    if (localTask.userTimezone !== undefined && localTask.userTimezone !== null) {
+                        updatePayload.userTimezone = localTask.userTimezone
+                    }
+                }
+
                 batch.update(getAssistantTaskDocRef(localProjectId, localAssistantId, localTask.id), updatePayload)
             } else {
                 // Create new local task
