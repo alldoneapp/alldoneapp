@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../../../styles/global'
@@ -12,8 +12,11 @@ import GmailLabelingSettings from './GmailLabelingSettings'
 
 export default function ConnectGmailModal({ projectId, authStatus, closePopover, setAuthStatus }) {
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const { width: windowWidth } = useWindowDimensions()
 
     const isConnectedAndSignedIn = isConnected && authStatus?.hasCredentials
+    const containerWidth = Math.min(Math.max(windowWidth - (smallScreenNavigation ? 24 : 64), 320), 760)
 
     useEffect(() => {
         storeModal(CONNECT_GMAIL_MODAL_ID)
@@ -21,7 +24,7 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
     }, [])
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, { width: containerWidth }]}>
             <ModalHeader
                 closeModal={closePopover}
                 title={'Google Gmail'}
@@ -45,7 +48,6 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
-        width: 640,
         shadowColor: 'rgba(78, 93, 120, 0.56)',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 1,

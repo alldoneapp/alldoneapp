@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native'
 
 import Button from '../../../../UIControls/Button'
 import Switch from '../../../../UIControls/Switch'
 import styles, { colors } from '../../../../styles/global'
+import { translate } from '../../../../../i18n/TranslationService'
 import {
     getGmailLabelingConfig,
     runGmailLabelingSync,
@@ -85,17 +86,24 @@ function SyncSummary({ state, result }) {
 
     return (
         <View style={localStyles.summaryCard}>
-            <Text style={localStyles.sectionTitle}>Sync status</Text>
-            <Text style={localStyles.summaryText}>Scanned: {lastProcessedCount}</Text>
-            <Text style={localStyles.summaryText}>Labeled: {lastLabeledCount}</Text>
-            <Text style={localStyles.summaryText}>Archived: {lastArchivedCount}</Text>
-            {state?.status ? <Text style={localStyles.summaryText}>State: {state.status}</Text> : null}
+            <Text style={localStyles.sectionTitle}>{translate('Gmail sync status')}</Text>
+            <Text style={localStyles.summaryText}>
+                {translate('Gmail sync scanned', { count: lastProcessedCount })}
+            </Text>
+            <Text style={localStyles.summaryText}>{translate('Gmail sync labeled', { count: lastLabeledCount })}</Text>
+            <Text style={localStyles.summaryText}>
+                {translate('Gmail sync archived', { count: lastArchivedCount })}
+            </Text>
+            {state?.status ? (
+                <Text style={localStyles.summaryText}>{translate('Gmail sync state', { state: state.status })}</Text>
+            ) : null}
             {lastError ? <Text style={localStyles.errorText}>{lastError}</Text> : null}
         </View>
     )
 }
 
 export default function GmailLabelingSettings({ projectId, isConnected, authStatus }) {
+    const { height: windowHeight } = useWindowDimensions()
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
     const [syncState, setSyncState] = useState(null)
     const [syncResult, setSyncResult] = useState(null)
@@ -108,6 +116,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
     const connectedEmail = authStatus?.email || config.gmailEmail || ''
     const needsReconnect = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope === false
     const canManage = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope !== false
+    const scrollMaxHeight = Math.max(Math.min(windowHeight - 260, 560), 260)
 
     useEffect(() => {
         let isMounted = true
@@ -125,7 +134,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 setSyncState(result?.state || null)
             } catch (loadError) {
                 if (!isMounted) return
-                setError(loadError.message || 'Failed to load Gmail labeling settings.')
+                setError(loadError.message || translate('Failed to load Gmail labeling settings.'))
             } finally {
                 if (isMounted) setLoading(false)
             }
@@ -184,9 +193,9 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         try {
             const result = await saveGmailLabelingConfig(projectId, sanitizeConfigForSave(config))
             setConfig(normalizeConfig(projectId, result?.config || sanitizeConfigForSave(config), connectedEmail))
-            setSuccessMessage('Gmail labeling settings saved.')
+            setSuccessMessage(translate('Gmail labeling settings saved.'))
         } catch (saveError) {
-            setError(saveError.message || 'Failed to save Gmail labeling settings.')
+            setError(saveError.message || translate('Failed to save Gmail labeling settings.'))
         } finally {
             setSaving(false)
         }
@@ -208,9 +217,9 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 lastLabeledCount: result?.labeled || 0,
                 lastArchivedCount: result?.archived || 0,
             }))
-            setSuccessMessage('Gmail labeling sync completed.')
+            setSuccessMessage(translate('Gmail labeling sync completed.'))
         } catch (syncError) {
-            setError(syncError.message || 'Failed to run Gmail labeling sync.')
+            setError(syncError.message || translate('Failed to run Gmail labeling sync.'))
         } finally {
             setSyncing(false)
         }
@@ -219,7 +228,9 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
     if (!isConnected) {
         return (
             <View style={localStyles.section}>
-                <Text style={localStyles.helperText}>Connect Gmail to configure prompt-based labeling.</Text>
+                <Text style={localStyles.helperText}>
+                    {translate('Connect Gmail to configure prompt-based labeling.')}
+                </Text>
             </View>
         )
     }
@@ -227,10 +238,11 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
     if (needsReconnect) {
         return (
             <View style={localStyles.warningCard}>
-                <Text style={localStyles.warningTitle}>Reconnect required</Text>
+                <Text style={localStyles.warningTitle}>{translate('Reconnect required')}</Text>
                 <Text style={localStyles.helperText}>
-                    This Gmail connection is missing modify permissions. Reconnect Gmail to enable label application and
-                    auto-archive.
+                    {translate(
+                        'This Gmail connection is missing modify permissions. Reconnect Gmail to enable label application and auto-archive.'
+                    )}
                 </Text>
             </View>
         )
@@ -241,25 +253,33 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
     }
 
     return (
-        <ScrollView style={localStyles.scroll} contentContainerStyle={localStyles.scrollContent}>
+        <ScrollView
+            style={[localStyles.scroll, { maxHeight: scrollMaxHeight }]}
+            contentContainerStyle={localStyles.scrollContent}
+        >
             <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>Gmail labeling</Text>
+                <Text style={localStyles.sectionTitle}>{translate('Gmail labeling')}</Text>
                 <Text style={localStyles.helperText}>
-                    Incoming inbox emails are classified by the prompt below. Matching labels can optionally
-                    auto-archive by removing the Inbox label.
+                    {translate(
+                        'Incoming inbox emails are classified by the prompt below. Matching labels can optionally auto-archive by removing the Inbox label.'
+                    )}
                 </Text>
                 {connectedEmail ? (
-                    <Text style={localStyles.summaryText}>Connected account: {connectedEmail}</Text>
+                    <Text style={localStyles.summaryText}>
+                        {translate('Connected Gmail account', { email: connectedEmail })}
+                    </Text>
                 ) : null}
             </View>
 
-            {loading ? <Text style={localStyles.helperText}>Loading settings…</Text> : null}
+            {loading ? (
+                <Text style={localStyles.helperText}>{translate('Loading Gmail labeling settings...')}</Text>
+            ) : null}
             {error ? <Text style={localStyles.errorText}>{error}</Text> : null}
             {successMessage ? <Text style={localStyles.successText}>{successMessage}</Text> : null}
 
             <View style={localStyles.section}>
                 <View style={localStyles.switchRow}>
-                    <Text style={localStyles.inputLabel}>Enable Gmail labeling</Text>
+                    <Text style={localStyles.inputLabel}>{translate('Enable Gmail labeling')}</Text>
                     <Switch
                         active={config.enabled}
                         activeSwitch={() => updateConfig({ enabled: true })}
@@ -269,7 +289,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 </View>
 
                 <View style={localStyles.switchRow}>
-                    <Text style={localStyles.inputLabel}>Process unread only</Text>
+                    <Text style={localStyles.inputLabel}>{translate('Process unread only')}</Text>
                     <Switch
                         active={config.processUnreadOnly}
                         activeSwitch={() => updateConfig({ processUnreadOnly: true })}
@@ -279,7 +299,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 </View>
 
                 <View style={localStyles.switchRow}>
-                    <Text style={localStyles.inputLabel}>Only inbox messages</Text>
+                    <Text style={localStyles.inputLabel}>{translate('Only inbox messages')}</Text>
                     <Switch
                         active={config.onlyInbox}
                         activeSwitch={() => updateConfig({ onlyInbox: true })}
@@ -290,37 +310,31 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
             </View>
 
             <View style={localStyles.section}>
-                <Text style={localStyles.inputLabel}>Prompt</Text>
+                <Text style={localStyles.inputLabel}>{translate('Prompt')}</Text>
                 <TextInput
                     multiline
                     value={config.prompt}
                     onChangeText={prompt => updateConfig({ prompt })}
                     editable={canManage}
                     style={[localStyles.input, localStyles.textArea]}
-                    placeholder="Classify incoming Gmail messages into the configured labels."
+                    placeholder={translate('Classify incoming Gmail messages into the configured labels.')}
                     placeholderTextColor={colors.Text03}
                 />
             </View>
 
             <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>Rules</Text>
+                <Text style={localStyles.sectionTitle}>{translate('Rules')}</Text>
                 {config.labelDefinitions.map((label, index) => (
                     <View key={label.id || `${label.key}-${index}`} style={localStyles.labelCard}>
-                        <Text style={localStyles.inputLabel}>Rule {index + 1}</Text>
-                        <TextInput
-                            value={label.key}
-                            onChangeText={key => updateLabel(index, { key })}
-                            editable={canManage}
-                            style={localStyles.input}
-                            placeholder="Internal key"
-                            placeholderTextColor={colors.Text03}
-                        />
+                        <Text style={localStyles.inputLabel}>
+                            {translate('Gmail rule number', { number: index + 1 })}
+                        </Text>
                         <TextInput
                             value={label.gmailLabelName}
                             onChangeText={gmailLabelName => updateLabel(index, { gmailLabelName })}
                             editable={canManage}
                             style={localStyles.input}
-                            placeholder="Gmail label name"
+                            placeholder={translate('Gmail label name')}
                             placeholderTextColor={colors.Text03}
                         />
                         <TextInput
@@ -328,11 +342,11 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                             onChangeText={description => updateLabel(index, { description })}
                             editable={canManage}
                             style={[localStyles.input, localStyles.descriptionInput]}
-                            placeholder="Describe when this label should be used"
+                            placeholder={translate('Describe when this label should be used')}
                             placeholderTextColor={colors.Text03}
                         />
                         <View style={localStyles.switchRow}>
-                            <Text style={localStyles.inputLabel}>Auto-archive when matched</Text>
+                            <Text style={localStyles.inputLabel}>{translate('Auto-archive when matched')}</Text>
                             <Switch
                                 active={!!label.autoArchive}
                                 activeSwitch={() => updateLabel(index, { autoArchive: true })}
@@ -341,7 +355,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                             />
                         </View>
                         <Button
-                            title="Remove rule"
+                            title={translate('Remove rule')}
                             type="ghost"
                             onPress={() => removeLabel(index)}
                             disabled={!canManage || config.labelDefinitions.length <= 1}
@@ -351,7 +365,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                     </View>
                 ))}
                 <Button
-                    title="Add rule"
+                    title={translate('Add rule')}
                     type="ghost"
                     onPress={addLabel}
                     disabled={!canManage}
@@ -360,24 +374,24 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
             </View>
 
             <View style={localStyles.section}>
-                <Text style={localStyles.inputLabel}>Max messages per run</Text>
+                <Text style={localStyles.inputLabel}>{translate('Max messages per run')}</Text>
                 <TextInput
                     value={config.maxMessagesPerRun}
                     onChangeText={maxMessagesPerRun => updateConfig({ maxMessagesPerRun })}
                     editable={canManage}
                     style={localStyles.input}
                     keyboardType="numeric"
-                    placeholder="20"
+                    placeholder={translate('Gmail max messages placeholder')}
                     placeholderTextColor={colors.Text03}
                 />
-                <Text style={localStyles.inputLabel}>Confidence threshold</Text>
+                <Text style={localStyles.inputLabel}>{translate('Confidence threshold')}</Text>
                 <TextInput
                     value={config.confidenceThreshold}
                     onChangeText={confidenceThreshold => updateConfig({ confidenceThreshold })}
                     editable={canManage}
                     style={localStyles.input}
                     keyboardType="numeric"
-                    placeholder="0.7"
+                    placeholder={translate('Gmail confidence threshold placeholder')}
                     placeholderTextColor={colors.Text03}
                 />
             </View>
@@ -386,20 +400,20 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
 
             <View style={localStyles.buttonRow}>
                 <Button
-                    title="Save settings"
+                    title={translate('Save Gmail labeling settings')}
                     onPress={onSave}
                     disabled={!canManage || saving}
                     processing={saving}
-                    processingTitle="Saving"
+                    processingTitle={translate('Saving')}
                     buttonStyle={{ marginRight: 12 }}
                 />
                 <Button
-                    title="Run sync now"
+                    title={translate('Run Gmail sync now')}
                     type="ghost"
                     onPress={onRunSync}
                     disabled={!canManage || syncing}
                     processing={syncing}
-                    processingTitle="Syncing"
+                    processingTitle={translate('Syncing')}
                 />
             </View>
         </ScrollView>
@@ -408,7 +422,6 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
 
 const localStyles = StyleSheet.create({
     scroll: {
-        maxHeight: 520,
         marginTop: 16,
     },
     scrollContent: {

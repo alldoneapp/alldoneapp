@@ -93,10 +93,45 @@ function normalizeLabelDefinition(label = {}) {
     }
 }
 
+function slugifyLabelKey(value = '') {
+    return String(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+}
+
+function ensureLabelKeys(labelDefinitions = []) {
+    const usedKeys = new Set()
+
+    return labelDefinitions.map((label, index) => {
+        const normalizedLabel = normalizeLabelDefinition(label)
+        const baseKey =
+            normalizedLabel.key ||
+            slugifyLabelKey(normalizedLabel.gmailLabelName) ||
+            slugifyLabelKey(normalizedLabel.description) ||
+            `label_${index + 1}`
+
+        let nextKey = baseKey
+        let suffix = 2
+
+        while (usedKeys.has(nextKey)) {
+            nextKey = `${baseKey}_${suffix}`
+            suffix += 1
+        }
+
+        usedKeys.add(nextKey)
+
+        return {
+            ...normalizedLabel,
+            key: nextKey,
+        }
+    })
+}
+
 function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
     const defaultConfig = getDefaultGmailLabelingConfig(projectId, gmailEmail)
     const normalizedLabels = Array.isArray(input.labelDefinitions)
-        ? input.labelDefinitions.map(normalizeLabelDefinition).filter(label => label.key || label.gmailLabelName)
+        ? ensureLabelKeys(input.labelDefinitions).filter(label => label.key || label.gmailLabelName)
         : defaultConfig.labelDefinitions
 
     return {
@@ -227,6 +262,8 @@ module.exports = {
     getGmailLabelingStateRef,
     getStarterLabelDefinitions,
     normalizeConfigInput,
+    ensureLabelKeys,
     normalizeLabelDefinition,
+    slugifyLabelKey,
     validateGmailLabelingConfig,
 }
