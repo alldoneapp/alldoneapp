@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native'
+import { Dimensions, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import Button from '../../../../UIControls/Button'
 import Switch from '../../../../UIControls/Switch'
@@ -103,7 +103,7 @@ function SyncSummary({ state, result }) {
 }
 
 export default function GmailLabelingSettings({ projectId, isConnected, authStatus }) {
-    const { height: windowHeight } = useWindowDimensions()
+    const { height: windowHeight } = Dimensions.get('window')
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
     const [syncState, setSyncState] = useState(null)
     const [syncResult, setSyncResult] = useState(null)

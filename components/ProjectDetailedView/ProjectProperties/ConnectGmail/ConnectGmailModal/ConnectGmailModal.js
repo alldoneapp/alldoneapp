@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { StyleSheet, View, useWindowDimensions } from 'react-native'
+import { Dimensions, StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../../../styles/global'
@@ -13,7 +13,7 @@ import GmailLabelingSettings from './GmailLabelingSettings'
 export default function ConnectGmailModal({ projectId, authStatus, closePopover, setAuthStatus }) {
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const { width: windowWidth } = useWindowDimensions()
+    const { width: windowWidth } = Dimensions.get('window')
 
     const isConnectedAndSignedIn = isConnected && authStatus?.hasCredentials
     const containerWidth = Math.min(Math.max(windowWidth - (smallScreenNavigation ? 24 : 64), 320), 760)
