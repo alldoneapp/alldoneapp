@@ -6,6 +6,7 @@ const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require('fir
 
 const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
+const { PLAN_STATUS_PREMIUM } = require('./Payment/premiumHelper')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -69,6 +70,12 @@ async function assertProjectAccess(userId, projectId) {
     }
 
     return userDoc.data() || {}
+}
+
+function assertPremiumFeatureAccess(userData, featureName = 'This feature') {
+    if (userData?.premium?.status !== PLAN_STATUS_PREMIUM) {
+        throw new HttpsError('permission-denied', `${featureName} is available for premium users only`)
+    }
 }
 
 async function assertAssistantProjectAccess(userId, projectId, assistantId) {
@@ -2890,6 +2897,7 @@ exports.upsertGmailLabelingConfigSecondGen = onCall(
 
         try {
             const userData = await assertProjectAccess(auth.uid, projectId)
+            assertPremiumFeatureAccess(userData, 'Gmail labeling')
             const gmailEmail = userData.apisConnected?.[projectId]?.gmailEmail || userData.email || ''
             const { upsertGmailLabelingConfig } = require('./Gmail/serverSideGmailLabelingSync')
             const savedConfig = await upsertGmailLabelingConfig(auth.uid, projectId, config || {}, gmailEmail)
@@ -2921,6 +2929,7 @@ exports.getGmailLabelingConfigSecondGen = onCall(
 
         try {
             const userData = await assertProjectAccess(auth.uid, projectId)
+            assertPremiumFeatureAccess(userData, 'Gmail labeling')
             const gmailEmail = userData.apisConnected?.[projectId]?.gmailEmail || userData.email || ''
             const { getGmailLabelingConfigWithState } = require('./Gmail/serverSideGmailLabelingSync')
             return await getGmailLabelingConfigWithState(auth.uid, projectId, gmailEmail)
@@ -2947,7 +2956,8 @@ exports.runGmailLabelingSyncSecondGen = onCall(
         if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
 
         try {
-            await assertProjectAccess(auth.uid, projectId)
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            assertPremiumFeatureAccess(userData, 'Gmail labeling')
             const { syncGmailLabeling } = require('./Gmail/serverSideGmailLabelingSync')
             return await syncGmailLabeling(auth.uid, projectId, { forceBootstrap: !!forceBootstrap })
         } catch (error) {

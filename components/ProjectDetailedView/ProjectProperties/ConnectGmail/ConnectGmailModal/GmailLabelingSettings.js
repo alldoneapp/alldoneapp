@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react'
 import { Dimensions, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import Button from '../../../../UIControls/Button'
 import Switch from '../../../../UIControls/Switch'
 import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
+import { PLAN_STATUS_PREMIUM } from '../../../../Premium/PremiumHelper'
 import {
     getGmailLabelingConfig,
     runGmailLabelingSync,
     saveGmailLabelingConfig,
 } from '../../../../../utils/backends/Gmail/gmailLabelingFirestore'
+
+const MAX_LOOKBACK_DAYS = 30
+const MAX_MESSAGES_PER_RUN = 100
 
 function createEmptyLabel(index = 0) {
     return {
@@ -37,6 +42,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         model: config.model || 'MODEL_GPT5_2',
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
+        lookbackDays: Number.isFinite(config.lookbackDays) ? String(config.lookbackDays) : '7',
         maxMessagesPerRun: Number.isFinite(config.maxMessagesPerRun) ? String(config.maxMessagesPerRun) : '20',
         confidenceThreshold: Number.isFinite(config.confidenceThreshold) ? String(config.confidenceThreshold) : '0.7',
         labelDefinitions,
@@ -44,6 +50,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
 }
 
 function sanitizeConfigForSave(config) {
+    const parsedLookbackDays = parseInt(config.lookbackDays, 10)
     const parsedMaxMessages = parseInt(config.maxMessagesPerRun, 10)
     const parsedConfidenceThreshold = parseFloat(config.confidenceThreshold)
 
@@ -54,7 +61,12 @@ function sanitizeConfigForSave(config) {
         model: config.model || 'MODEL_GPT5_2',
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
-        maxMessagesPerRun: Number.isFinite(parsedMaxMessages) ? parsedMaxMessages : 20,
+        lookbackDays: Number.isFinite(parsedLookbackDays)
+            ? Math.min(Math.max(parsedLookbackDays, 1), MAX_LOOKBACK_DAYS)
+            : 7,
+        maxMessagesPerRun: Number.isFinite(parsedMaxMessages)
+            ? Math.min(Math.max(parsedMaxMessages, 1), MAX_MESSAGES_PER_RUN)
+            : 20,
         confidenceThreshold: Number.isFinite(parsedConfidenceThreshold) ? parsedConfidenceThreshold : 0.7,
         labelDefinitions: (config.labelDefinitions || []).map(({ id, ...label }) => ({
             ...label,
@@ -83,6 +95,7 @@ function SyncSummary({ state, result }) {
             : typeof state?.lastProcessedCount === 'number'
             ? state.lastProcessedCount
             : 0
+    const goldSpent = typeof result?.goldSpent === 'number' ? result.goldSpent : 0
 
     return (
         <View style={localStyles.summaryCard}>
@@ -94,6 +107,9 @@ function SyncSummary({ state, result }) {
             <Text style={localStyles.summaryText}>
                 {translate('Gmail sync archived', { count: lastArchivedCount })}
             </Text>
+            {goldSpent > 0 ? (
+                <Text style={localStyles.summaryText}>{translate('Gmail sync gold spent', { count: goldSpent })}</Text>
+            ) : null}
             {state?.status ? (
                 <Text style={localStyles.summaryText}>{translate('Gmail sync state', { state: state.status })}</Text>
             ) : null}
@@ -104,6 +120,7 @@ function SyncSummary({ state, result }) {
 
 export default function GmailLabelingSettings({ projectId, isConnected, authStatus }) {
     const { height: windowHeight } = Dimensions.get('window')
+    const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
     const [syncState, setSyncState] = useState(null)
     const [syncResult, setSyncResult] = useState(null)
@@ -112,17 +129,22 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
     const [syncing, setSyncing] = useState(false)
     const [error, setError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
+    const [savedConfigSnapshot, setSavedConfigSnapshot] = useState(null)
 
     const connectedEmail = authStatus?.email || config.gmailEmail || ''
+    const isPremiumUser = premiumStatus === PLAN_STATUS_PREMIUM
     const needsReconnect = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope === false
-    const canManage = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope !== false
+    const canManage = isPremiumUser && isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope !== false
     const scrollMaxHeight = Math.max(Math.min(windowHeight - 260, 560), 260)
+    const currentConfigSnapshot = sanitizeConfigForSave(config)
+    const hasUnsavedChanges =
+        !!savedConfigSnapshot && JSON.stringify(currentConfigSnapshot) !== JSON.stringify(savedConfigSnapshot)
 
     useEffect(() => {
         let isMounted = true
 
         const loadConfig = async () => {
-            if (!isConnected || !authStatus?.hasCredentials) return
+            if (!isPremiumUser || !isConnected || !authStatus?.hasCredentials) return
 
             setLoading(true)
             setError('')
@@ -130,8 +152,10 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 const result = await getGmailLabelingConfig(projectId)
                 if (!isMounted) return
 
-                setConfig(normalizeConfig(projectId, result?.config || {}, connectedEmail))
+                const normalizedConfig = normalizeConfig(projectId, result?.config || {}, connectedEmail)
+                setConfig(normalizedConfig)
                 setSyncState(result?.state || null)
+                setSavedConfigSnapshot(sanitizeConfigForSave(normalizedConfig))
             } catch (loadError) {
                 if (!isMounted) return
                 setError(loadError.message || translate('Failed to load Gmail labeling settings'))
@@ -145,7 +169,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         return () => {
             isMounted = false
         }
-    }, [projectId, isConnected, authStatus?.hasCredentials, authStatus?.hasModifyScope, connectedEmail])
+    }, [projectId, isPremiumUser, isConnected, authStatus?.hasCredentials, authStatus?.hasModifyScope, connectedEmail])
 
     const updateConfig = patch => {
         setConfig(currentConfig => ({
@@ -192,7 +216,13 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
 
         try {
             const result = await saveGmailLabelingConfig(projectId, sanitizeConfigForSave(config))
-            setConfig(normalizeConfig(projectId, result?.config || sanitizeConfigForSave(config), connectedEmail))
+            const normalizedConfig = normalizeConfig(
+                projectId,
+                result?.config || sanitizeConfigForSave(config),
+                connectedEmail
+            )
+            setConfig(normalizedConfig)
+            setSavedConfigSnapshot(sanitizeConfigForSave(normalizedConfig))
             setSuccessMessage(translate('Gmail labeling settings saved'))
         } catch (saveError) {
             setError(saveError.message || translate('Failed to save Gmail labeling settings'))
@@ -225,6 +255,15 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         }
     }
 
+    if (!isPremiumUser) {
+        return (
+            <View style={localStyles.warningCard}>
+                <Text style={localStyles.warningTitle}>{translate('Premium required')}</Text>
+                <Text style={localStyles.helperText}>{translate('GmailLabelingPremiumOnlyDescription')}</Text>
+            </View>
+        )
+    }
+
     if (!isConnected) {
         return (
             <View style={localStyles.section}>
@@ -239,11 +278,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         return (
             <View style={localStyles.warningCard}>
                 <Text style={localStyles.warningTitle}>{translate('Reconnect required')}</Text>
-                <Text style={localStyles.helperText}>
-                    {translate(
-                        'This Gmail connection is missing modify permissions. Reconnect Gmail to enable label application and auto-archive'
-                    )}
-                </Text>
+                <Text style={localStyles.helperText}>{translate('GmailLabelingReconnectDescription')}</Text>
             </View>
         )
     }
@@ -259,11 +294,8 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         >
             <View style={localStyles.section}>
                 <Text style={localStyles.sectionTitle}>{translate('Gmail labeling')}</Text>
-                <Text style={localStyles.helperText}>
-                    {translate(
-                        'Incoming inbox emails are classified by the prompt below. Matching labels can optionally auto-archive by removing the Inbox label'
-                    )}
-                </Text>
+                <Text style={localStyles.helperText}>{translate('GmailLabelingDescription')}</Text>
+                <Text style={localStyles.helperText}>{translate('GmailLabelingGoldCostDescription')}</Text>
                 {connectedEmail ? (
                     <Text style={localStyles.summaryText}>
                         {translate('Connected Gmail account', { email: connectedEmail })}
@@ -384,6 +416,18 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                     placeholder={translate('Gmail max messages placeholder')}
                     placeholderTextColor={colors.Text03}
                 />
+                <Text style={localStyles.helperText}>{translate('GmailMaxMessagesDescription')}</Text>
+                <Text style={localStyles.inputLabel}>{translate('Gmail lookback days')}</Text>
+                <TextInput
+                    value={config.lookbackDays}
+                    onChangeText={lookbackDays => updateConfig({ lookbackDays })}
+                    editable={canManage}
+                    style={localStyles.input}
+                    keyboardType="numeric"
+                    placeholder={translate('Gmail lookback days placeholder')}
+                    placeholderTextColor={colors.Text03}
+                />
+                <Text style={localStyles.helperText}>{translate('GmailLookbackDaysDescription')}</Text>
                 <Text style={localStyles.inputLabel}>{translate('Confidence threshold')}</Text>
                 <TextInput
                     value={config.confidenceThreshold}
@@ -398,6 +442,13 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
 
             <SyncSummary state={syncState} result={syncResult} />
 
+            {hasUnsavedChanges ? (
+                <View style={localStyles.warningCard}>
+                    <Text style={localStyles.warningTitle}>{translate('Unsaved changes')}</Text>
+                    <Text style={localStyles.helperText}>{translate('GmailLabelingUnsavedChangesDescription')}</Text>
+                </View>
+            ) : null}
+
             <View style={localStyles.buttonRow}>
                 <Button
                     title={translate('Save Gmail labeling settings')}
@@ -411,7 +462,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                     title={translate('Run Gmail sync now')}
                     type="ghost"
                     onPress={onRunSync}
-                    disabled={!canManage || syncing}
+                    disabled={!canManage || syncing || hasUnsavedChanges}
                     processing={syncing}
                     processingTitle={translate('Syncing')}
                 />

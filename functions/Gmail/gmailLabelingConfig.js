@@ -5,6 +5,8 @@ const admin = require('firebase-admin')
 const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_2'
 const DEFAULT_MAX_MESSAGES_PER_RUN = 20
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.7
+const DEFAULT_LOOKBACK_DAYS = 7
+const MAX_LOOKBACK_DAYS = 30
 const GMAIL_LABELING_CONFIG_TYPE = 'gmailLabelingConfig'
 const GMAIL_LABELING_STATE_TYPE = 'gmailLabelingState'
 const GMAIL_LABELING_LOCK_TIMEOUT_MS = 10 * 60 * 1000
@@ -78,6 +80,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         model: DEFAULT_GMAIL_LABELING_MODEL,
         processUnreadOnly: true,
         onlyInbox: true,
+        lookbackDays: DEFAULT_LOOKBACK_DAYS,
         maxMessagesPerRun: DEFAULT_MAX_MESSAGES_PER_RUN,
         confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
         labelDefinitions: getStarterLabelDefinitions(),
@@ -148,6 +151,9 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
         processUnreadOnly:
             typeof input.processUnreadOnly === 'boolean' ? input.processUnreadOnly : defaultConfig.processUnreadOnly,
         onlyInbox: typeof input.onlyInbox === 'boolean' ? input.onlyInbox : defaultConfig.onlyInbox,
+        lookbackDays: Number.isFinite(input.lookbackDays)
+            ? Math.min(Math.max(Math.trunc(input.lookbackDays), 1), MAX_LOOKBACK_DAYS)
+            : defaultConfig.lookbackDays,
         maxMessagesPerRun: Number.isFinite(input.maxMessagesPerRun)
             ? Math.min(Math.max(Math.trunc(input.maxMessagesPerRun), 1), 100)
             : defaultConfig.maxMessagesPerRun,
@@ -250,10 +256,12 @@ function buildDefaultState(projectId, gmailEmail = '') {
 module.exports = {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
+    DEFAULT_LOOKBACK_DAYS,
     DEFAULT_MAX_MESSAGES_PER_RUN,
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
     GMAIL_LABELING_STATE_TYPE,
+    MAX_LOOKBACK_DAYS,
     SYSTEM_GMAIL_LABELS,
     buildConfigWriteData,
     buildDefaultState,

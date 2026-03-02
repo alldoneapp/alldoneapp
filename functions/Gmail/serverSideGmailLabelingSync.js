@@ -3,6 +3,8 @@
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { deductGold } = require('../Gold/goldHelper')
+const { adGoldToUser } = require('../Users/usersFirestore')
 const {
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
@@ -15,10 +17,10 @@ const {
 const { normalizeGmailMessage } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 
-const INITIAL_SYNC_LOOKBACK_QUERY = 'newer_than:7d'
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
 const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
+const GMAIL_LABELING_GOLD_COST_PER_EMAIL = 1
 
 class GmailSyncLockedError extends Error {
     constructor(message) {
@@ -61,7 +63,7 @@ async function getGmailClient(userId, projectId) {
 }
 
 function buildBootstrapQuery(config) {
-    const queryParts = [INITIAL_SYNC_LOOKBACK_QUERY]
+    const queryParts = [`newer_than:${config.lookbackDays || 7}d`]
     if (config.onlyInbox) queryParts.push('in:inbox')
     if (config.processUnreadOnly) queryParts.push('is:unread')
     return queryParts.join(' ')
@@ -416,7 +418,51 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         autoArchive: !!selectedDefinition.autoArchive,
     })
 
-    const modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, selectedDefinition.autoArchive)
+    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+    if (!goldResult?.success) {
+        logSync('Skipping Gmail labeling because user has insufficient gold', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            requiredGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            currentGold: goldResult?.currentGold ?? null,
+        })
+
+        await writeAuditRecord(userId, projectId, normalizedMessage, {
+            selectedLabelKey: selectedDefinition.key,
+            selectedGmailLabelName: selectedDefinition.gmailLabelName,
+            autoArchive: !!selectedDefinition.autoArchive,
+            confidence: classifierResult.confidence,
+            reasoning: classifierResult.reasoning,
+            applied: false,
+            archived: false,
+            skippedReason: 'insufficient_gold',
+            promptVersion,
+        })
+
+        return {
+            labeled: 0,
+            archived: 0,
+            skipped: 1,
+            goldSpent: 0,
+            insufficientGold: true,
+        }
+    }
+
+    let modifyResult
+    try {
+        modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, selectedDefinition.autoArchive)
+    } catch (error) {
+        await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+        console.warn('[gmailLabeling] Refunded gold after Gmail label apply failure', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            refundedGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            error: error.message,
+        })
+        throw error
+    }
 
     await writeAuditRecord(userId, projectId, normalizedMessage, {
         selectedLabelKey: selectedDefinition.key,
@@ -434,6 +480,8 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         labeled: 1,
         archived: modifyResult.archived ? 1 : 0,
         skipped: 0,
+        goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+        insufficientGold: false,
     }
 }
 
@@ -455,9 +503,18 @@ async function getConnectedGmailEmail(userId, projectId) {
     }
 }
 
+function assertPremiumAccess(userData) {
+    if (userData?.premium?.status !== 'premium') {
+        const error = new Error('Gmail labeling is available for premium users only.')
+        error.code = 'premium-required'
+        throw error
+    }
+}
+
 async function syncGmailLabeling(userId, projectId, options = {}) {
-    const { gmailEmail } = await getConnectedGmailEmail(userId, projectId)
+    const { gmailEmail, userData } = await getConnectedGmailEmail(userId, projectId)
     const logContext = createSyncLogContext(userId, projectId, gmailEmail)
+    assertPremiumAccess(userData)
     const { config, exists } = await loadConfig(userId, projectId, gmailEmail)
 
     logSync('Starting Gmail labeling sync', {
@@ -468,6 +525,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         processUnreadOnly: config?.processUnreadOnly,
         onlyInbox: config?.onlyInbox,
         maxMessagesPerRun: config?.maxMessagesPerRun,
+        lookbackDays: config?.lookbackDays,
     })
 
     if (!exists || !config.enabled) {
@@ -567,6 +625,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             candidateMessageCount: candidateMessages.length,
             processUnreadOnly: config.processUnreadOnly,
             onlyInbox: config.onlyInbox,
+            lookbackDays: config.lookbackDays,
             maxMessagesPerRun: config.maxMessagesPerRun,
         })
 
@@ -588,6 +647,8 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         let labeled = 0
         let archived = 0
         let skipped = candidateMessages.length - messagesToProcess.length
+        let goldSpent = 0
+        let syncLastError = null
 
         for (const rawMessage of messagesToProcess) {
             try {
@@ -608,13 +669,25 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 labeled += result.labeled
                 archived += result.archived
                 skipped += result.skipped
+                goldSpent += result.goldSpent || 0
                 logSync('Finished processing Gmail message', {
                     ...logContext,
                     messageId: rawMessage.id,
                     labeled: result.labeled,
                     archived: result.archived,
                     skipped: result.skipped,
+                    goldSpent: result.goldSpent || 0,
+                    insufficientGold: !!result.insufficientGold,
                 })
+                if (result.insufficientGold) {
+                    syncLastError = 'Insufficient Gold to label additional emails.'
+                    logSync('Stopping Gmail labeling sync after insufficient gold', {
+                        ...logContext,
+                        messageId: rawMessage.id,
+                        goldSpent,
+                    })
+                    break
+                }
             } catch (error) {
                 console.error('[gmailLabeling] Failed processing Gmail message', {
                     ...logContext,
@@ -654,7 +727,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 lastHistoryId: resolvedHistoryId,
                 lastSuccessfulSyncAt: now,
                 lastSyncAt: now,
-                lastError: null,
+                lastError: syncLastError,
                 lastProcessedCount: candidateMessages.length,
                 lastLabeledCount: labeled,
                 lastArchivedCount: archived,
@@ -673,7 +746,9 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             labeled,
             archived,
             skipped,
+            goldSpent,
             resolvedHistoryId,
+            lastError: syncLastError,
         })
 
         return {
@@ -683,8 +758,9 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             labeled,
             archived,
             skipped,
+            goldSpent,
             lastHistoryId: resolvedHistoryId,
-            lastError: null,
+            lastError: syncLastError,
             gmailEmail,
             userId,
             projectId,
@@ -736,6 +812,20 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
             const result = await syncGmailLabeling(userId, data.projectId)
             results.push(result)
         } catch (error) {
+            if (error?.code === 'premium-required') {
+                console.log('[gmailLabeling] Scheduled sync skipped because premium is required', {
+                    userId,
+                    projectId: data.projectId,
+                })
+                results.push({
+                    success: false,
+                    skippedReason: 'premium_required',
+                    userId,
+                    projectId: data.projectId,
+                })
+                continue
+            }
+
             if (error instanceof GmailSyncLockedError) {
                 results.push({
                     success: false,
