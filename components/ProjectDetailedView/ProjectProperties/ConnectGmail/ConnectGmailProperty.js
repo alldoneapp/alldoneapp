@@ -64,10 +64,9 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
             }
             onClickOutside={closeModal}
             isOpen={isOpen}
-            position={['right', 'bottom', 'left', 'top']}
+            position={['bottom']}
             padding={4}
-            align={'end'}
-            contentLocation={false ? null : undefined}
+            contentLocation={null}
         >
             <ConnectGmailButton
                 projectId={projectId}
