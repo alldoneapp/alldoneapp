@@ -134,7 +134,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 setSyncState(result?.state || null)
             } catch (loadError) {
                 if (!isMounted) return
-                setError(loadError.message || translate('Failed to load Gmail labeling settings.'))
+                setError(loadError.message || translate('Failed to load Gmail labeling settings'))
             } finally {
                 if (isMounted) setLoading(false)
             }
@@ -193,9 +193,9 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         try {
             const result = await saveGmailLabelingConfig(projectId, sanitizeConfigForSave(config))
             setConfig(normalizeConfig(projectId, result?.config || sanitizeConfigForSave(config), connectedEmail))
-            setSuccessMessage(translate('Gmail labeling settings saved.'))
+            setSuccessMessage(translate('Gmail labeling settings saved'))
         } catch (saveError) {
-            setError(saveError.message || translate('Failed to save Gmail labeling settings.'))
+            setError(saveError.message || translate('Failed to save Gmail labeling settings'))
         } finally {
             setSaving(false)
         }
@@ -217,9 +217,9 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 lastLabeledCount: result?.labeled || 0,
                 lastArchivedCount: result?.archived || 0,
             }))
-            setSuccessMessage(translate('Gmail labeling sync completed.'))
+            setSuccessMessage(translate('Gmail labeling sync completed'))
         } catch (syncError) {
-            setError(syncError.message || translate('Failed to run Gmail labeling sync.'))
+            setError(syncError.message || translate('Failed to run Gmail labeling sync'))
         } finally {
             setSyncing(false)
         }
@@ -229,7 +229,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         return (
             <View style={localStyles.section}>
                 <Text style={localStyles.helperText}>
-                    {translate('Connect Gmail to configure prompt-based labeling.')}
+                    {translate('Connect Gmail to configure prompt-based labeling')}
                 </Text>
             </View>
         )
@@ -241,7 +241,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 <Text style={localStyles.warningTitle}>{translate('Reconnect required')}</Text>
                 <Text style={localStyles.helperText}>
                     {translate(
-                        'This Gmail connection is missing modify permissions. Reconnect Gmail to enable label application and auto-archive.'
+                        'This Gmail connection is missing modify permissions. Reconnect Gmail to enable label application and auto-archive'
                     )}
                 </Text>
             </View>
@@ -261,7 +261,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                 <Text style={localStyles.sectionTitle}>{translate('Gmail labeling')}</Text>
                 <Text style={localStyles.helperText}>
                     {translate(
-                        'Incoming inbox emails are classified by the prompt below. Matching labels can optionally auto-archive by removing the Inbox label.'
+                        'Incoming inbox emails are classified by the prompt below. Matching labels can optionally auto-archive by removing the Inbox label'
                     )}
                 </Text>
                 {connectedEmail ? (
@@ -272,7 +272,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
             </View>
 
             {loading ? (
-                <Text style={localStyles.helperText}>{translate('Loading Gmail labeling settings...')}</Text>
+                <Text style={localStyles.helperText}>{translate('Loading Gmail labeling settings')}</Text>
             ) : null}
             {error ? <Text style={localStyles.errorText}>{error}</Text> : null}
             {successMessage ? <Text style={localStyles.successText}>{successMessage}</Text> : null}
@@ -317,7 +317,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                     onChangeText={prompt => updateConfig({ prompt })}
                     editable={canManage}
                     style={[localStyles.input, localStyles.textArea]}
-                    placeholder={translate('Classify incoming Gmail messages into the configured labels.')}
+                    placeholder={translate('Classify incoming Gmail messages into the configured labels')}
                     placeholderTextColor={colors.Text03}
                 />
             </View>

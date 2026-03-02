@@ -242,6 +242,8 @@ function buildDefaultState(projectId, gmailEmail = '') {
         lastProcessedCount: 0,
         lastLabeledCount: 0,
         lastArchivedCount: 0,
+        lastProcessUnreadOnly: null,
+        lastOnlyInbox: null,
     }
 }
 

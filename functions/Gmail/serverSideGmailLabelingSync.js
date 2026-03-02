@@ -40,6 +40,19 @@ function chunkArray(items, chunkSize) {
     return chunks
 }
 
+function createSyncLogContext(userId, projectId, gmailEmail = '') {
+    return {
+        runId: `${projectId}-${Date.now()}`,
+        userId,
+        projectId,
+        gmailEmail,
+    }
+}
+
+function logSync(message, context = {}) {
+    console.log('[gmailLabeling]', message, context)
+}
+
 async function getGmailClient(userId, projectId) {
     const accessToken = await getAccessToken(userId, projectId, 'gmail')
     const oauth2Client = getOAuth2Client()
@@ -148,13 +161,17 @@ async function getCurrentProfileHistoryId(gmail) {
 }
 
 async function listBootstrapMessageIds(gmail, config) {
+    const query = buildBootstrapQuery(config)
     const response = await gmail.users.messages.list({
         userId: 'me',
         maxResults: config.maxMessagesPerRun * MAX_MESSAGES_FETCH_MULTIPLIER,
-        q: buildBootstrapQuery(config),
+        q: query,
     })
 
-    return (response?.data?.messages || []).map(message => message.id).filter(Boolean)
+    return {
+        query,
+        messageIds: (response?.data?.messages || []).map(message => message.id).filter(Boolean),
+    }
 }
 
 async function listIncrementalMessageIds(gmail, state, config) {
@@ -229,6 +246,16 @@ function filterCandidateMessages(messages, config) {
         if (config.processUnreadOnly && !labelIds.includes('UNREAD')) return false
         return true
     })
+}
+
+function shouldBootstrapForScopeExpansion(state, config) {
+    const unreadScopeUnknown =
+        state.lastHistoryId && typeof state.lastProcessUnreadOnly !== 'boolean' && config.processUnreadOnly === false
+    const inboxScopeUnknown =
+        state.lastHistoryId && typeof state.lastOnlyInbox !== 'boolean' && config.onlyInbox === false
+    const unreadExpanded = state.lastProcessUnreadOnly === true && config.processUnreadOnly === false
+    const inboxExpanded = state.lastOnlyInbox === true && config.onlyInbox === false
+    return unreadExpanded || inboxExpanded || unreadScopeUnknown || inboxScopeUnknown
 }
 
 async function getExistingAuditIds(userId, projectId, messageIds) {
@@ -330,6 +357,17 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
     const classifierResult = await classifyGmailMessage({ config, message: normalizedMessage })
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
 
+    logSync('Classified Gmail message', {
+        userId,
+        projectId,
+        messageId: normalizedMessage.messageId,
+        threadId: normalizedMessage.threadId,
+        matched: classifierResult.matched,
+        labelKey: classifierResult.labelKey || null,
+        confidence: classifierResult.confidence,
+        reasoning: classifierResult.reasoning,
+    })
+
     if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             selectedLabelKey: null,
@@ -366,6 +404,17 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
     const labelId = selectedDefinition.gmailLabelName.startsWith(ALDDONE_MANAGED_LABEL_PREFIX)
         ? await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
         : await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
+
+    logSync('Applying Gmail label to message', {
+        userId,
+        projectId,
+        messageId: normalizedMessage.messageId,
+        threadId: normalizedMessage.threadId,
+        selectedLabelKey: selectedDefinition.key,
+        selectedGmailLabelName: selectedDefinition.gmailLabelName,
+        labelId,
+        autoArchive: !!selectedDefinition.autoArchive,
+    })
 
     const modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, selectedDefinition.autoArchive)
 
@@ -408,9 +457,24 @@ async function getConnectedGmailEmail(userId, projectId) {
 
 async function syncGmailLabeling(userId, projectId, options = {}) {
     const { gmailEmail } = await getConnectedGmailEmail(userId, projectId)
+    const logContext = createSyncLogContext(userId, projectId, gmailEmail)
     const { config, exists } = await loadConfig(userId, projectId, gmailEmail)
 
+    logSync('Starting Gmail labeling sync', {
+        ...logContext,
+        options,
+        configExists: exists,
+        configEnabled: config?.enabled,
+        processUnreadOnly: config?.processUnreadOnly,
+        onlyInbox: config?.onlyInbox,
+        maxMessagesPerRun: config?.maxMessagesPerRun,
+    })
+
     if (!exists || !config.enabled) {
+        logSync('Skipping Gmail labeling sync because config is missing or disabled', {
+            ...logContext,
+            skippedReason: exists ? 'disabled' : 'missing_config',
+        })
         return {
             success: true,
             scanned: 0,
@@ -431,13 +495,32 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         const { state } = await loadState(userId, projectId, gmailEmail)
         const labelMap = await loadExistingLabelMap(gmail)
         const syncStartHistoryId = await getCurrentProfileHistoryId(gmail)
+        const bootstrapForScopeExpansion = shouldBootstrapForScopeExpansion(state, config)
+
+        logSync('Loaded Gmail labeling sync state', {
+            ...logContext,
+            lastHistoryId: state.lastHistoryId || null,
+            lastProcessUnreadOnly:
+                typeof state.lastProcessUnreadOnly === 'boolean' ? state.lastProcessUnreadOnly : null,
+            lastOnlyInbox: typeof state.lastOnlyInbox === 'boolean' ? state.lastOnlyInbox : null,
+            syncStartHistoryId: syncStartHistoryId || null,
+            bootstrapForScopeExpansion,
+            forceBootstrap: !!options.forceBootstrap,
+        })
 
         let messageIds = []
         let resetHistory = false
+        let syncMode = 'incremental'
+        let bootstrapQuery = null
 
-        if (state.lastHistoryId && !options.forceBootstrap) {
+        if (state.lastHistoryId && !options.forceBootstrap && !bootstrapForScopeExpansion) {
             try {
                 messageIds = await listIncrementalMessageIds(gmail, state, config)
+                logSync('Fetched incremental Gmail message ids', {
+                    ...logContext,
+                    lastHistoryId: state.lastHistoryId,
+                    incrementalCount: messageIds.length,
+                })
             } catch (error) {
                 const staleHistory =
                     error?.code === 404 ||
@@ -445,15 +528,48 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     error?.message?.toLowerCase?.().includes('historyid')
                 if (!staleHistory) throw error
                 resetHistory = true
+                logSync('Resetting Gmail history cursor after stale historyId', {
+                    ...logContext,
+                    lastHistoryId: state.lastHistoryId,
+                    error: error.message,
+                })
             }
         }
 
-        if (!state.lastHistoryId || options.forceBootstrap || resetHistory) {
-            messageIds = await listBootstrapMessageIds(gmail, config)
+        if (!state.lastHistoryId || options.forceBootstrap || resetHistory || bootstrapForScopeExpansion) {
+            const bootstrapResult = await listBootstrapMessageIds(gmail, config)
+            messageIds = bootstrapResult.messageIds
+            bootstrapQuery = bootstrapResult.query
+            syncMode = bootstrapForScopeExpansion ? 'bootstrap_scope_expansion' : 'bootstrap'
+            logSync('Fetched bootstrap Gmail message ids', {
+                ...logContext,
+                syncMode,
+                bootstrapQuery,
+                bootstrapCount: messageIds.length,
+                hadLastHistoryId: !!state.lastHistoryId,
+                resetHistory,
+            })
         }
 
         const fetchedMessages = await fetchMessagesByIds(gmail, messageIds)
+        logSync('Fetched Gmail messages by id', {
+            ...logContext,
+            syncMode,
+            requestedMessageCount: messageIds.length,
+            fetchedMessageCount: fetchedMessages.length,
+        })
+
         const candidateMessages = filterCandidateMessages(fetchedMessages, config).slice(0, config.maxMessagesPerRun)
+        logSync('Filtered Gmail candidate messages', {
+            ...logContext,
+            syncMode,
+            fetchedMessageCount: fetchedMessages.length,
+            candidateMessageCount: candidateMessages.length,
+            processUnreadOnly: config.processUnreadOnly,
+            onlyInbox: config.onlyInbox,
+            maxMessagesPerRun: config.maxMessagesPerRun,
+        })
+
         const processedMessageIds = await getExistingAuditIds(
             userId,
             projectId,
@@ -461,12 +577,26 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         )
         const messagesToProcess = candidateMessages.filter(message => !processedMessageIds.has(message.id))
 
+        logSync('Prepared Gmail messages for processing', {
+            ...logContext,
+            syncMode,
+            candidateMessageCount: candidateMessages.length,
+            alreadyProcessedCount: processedMessageIds.size,
+            messageCountToProcess: messagesToProcess.length,
+        })
+
         let labeled = 0
         let archived = 0
         let skipped = candidateMessages.length - messagesToProcess.length
 
         for (const rawMessage of messagesToProcess) {
             try {
+                logSync('Processing Gmail message', {
+                    ...logContext,
+                    messageId: rawMessage.id,
+                    threadId: rawMessage.threadId,
+                    labelIds: rawMessage.labelIds || [],
+                })
                 const result = await processSingleMessage({
                     gmail,
                     labelMap,
@@ -478,8 +608,16 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 labeled += result.labeled
                 archived += result.archived
                 skipped += result.skipped
+                logSync('Finished processing Gmail message', {
+                    ...logContext,
+                    messageId: rawMessage.id,
+                    labeled: result.labeled,
+                    archived: result.archived,
+                    skipped: result.skipped,
+                })
             } catch (error) {
                 console.error('[gmailLabeling] Failed processing Gmail message', {
+                    ...logContext,
                     projectId,
                     userId,
                     messageId: rawMessage.id,
@@ -504,6 +642,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
 
         const latestHistoryId = await getCurrentProfileHistoryId(gmail)
         const now = admin.firestore.Timestamp.now()
+        const resolvedHistoryId = syncStartHistoryId || latestHistoryId || state.lastHistoryId || null
 
         await finalizeSyncState(
             userId,
@@ -512,16 +651,30 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 type: 'gmailLabelingState',
                 projectId,
                 gmailEmail,
-                lastHistoryId: syncStartHistoryId || latestHistoryId || state.lastHistoryId || null,
+                lastHistoryId: resolvedHistoryId,
                 lastSuccessfulSyncAt: now,
                 lastSyncAt: now,
                 lastError: null,
                 lastProcessedCount: candidateMessages.length,
                 lastLabeledCount: labeled,
                 lastArchivedCount: archived,
+                lastProcessUnreadOnly: config.processUnreadOnly,
+                lastOnlyInbox: config.onlyInbox,
             },
             'idle'
         )
+
+        logSync('Completed Gmail labeling sync', {
+            ...logContext,
+            syncMode,
+            bootstrapQuery,
+            scanned: candidateMessages.length,
+            classified: messagesToProcess.length,
+            labeled,
+            archived,
+            skipped,
+            resolvedHistoryId,
+        })
 
         return {
             success: true,
@@ -530,11 +683,12 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             labeled,
             archived,
             skipped,
-            lastHistoryId: syncStartHistoryId || latestHistoryId || state.lastHistoryId || null,
+            lastHistoryId: resolvedHistoryId,
             lastError: null,
             gmailEmail,
             userId,
             projectId,
+            syncMode,
         }
     } catch (error) {
         const now = admin.firestore.Timestamp.now()
@@ -547,9 +701,16 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 gmailEmail,
                 lastSyncAt: now,
                 lastError: error.message,
+                lastProcessUnreadOnly: config.processUnreadOnly,
+                lastOnlyInbox: config.onlyInbox,
             },
             'error'
         )
+        console.error('[gmailLabeling] Gmail labeling sync failed', {
+            ...logContext,
+            error: error.message,
+            stack: error.stack,
+        })
         throw error
     }
 }
