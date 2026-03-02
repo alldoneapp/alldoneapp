@@ -10,11 +10,10 @@ const {
 } = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
+const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('./whatsAppToolErrorUtils')
 
 const MAX_TOOL_ITERATIONS = 10
 const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
-const TASK_CREATION_FAILURE_MESSAGE = 'I could not create that task because of a technical issue. Please try again.'
-const GENERIC_TOOL_FAILURE_MESSAGE = 'I could not complete that action because of a technical issue. Please try again.'
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
 
@@ -304,7 +303,7 @@ async function collectStreamWithToolCalls(
                 } catch (error) {
                     console.error('WhatsApp: Tool execution failed:', error.message)
                     responseText += `\n\nError executing ${toolName}: ${error.message}`
-                    return toolName === 'create_task' ? TASK_CREATION_FAILURE_MESSAGE : GENERIC_TOOL_FAILURE_MESSAGE
+                    return getUserFacingToolErrorMessage(toolName, error)
                 }
 
                 // Build updated conversation with tool result
