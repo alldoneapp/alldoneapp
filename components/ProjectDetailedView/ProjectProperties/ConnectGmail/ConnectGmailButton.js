@@ -7,7 +7,7 @@ import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function ConnectGmailButton({ projectId, disabled, isSignedIn, onPress }) {
+export default function ConnectGmailButton({ projectId, disabled, isSignedIn, needsReconnect, onPress }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
 
@@ -21,11 +21,13 @@ export default function ConnectGmailButton({ projectId, disabled, isSignedIn, on
                 <Button
                     icon={isConnected && isSignedIn ? null : 'link'}
                     customIcon={
-                        isConnected && isSignedIn ? (
+                        isConnected && isSignedIn && !needsReconnect ? (
                             <Image source={{ uri: photoURL }} style={localStyles.avatar} />
                         ) : null
                     }
-                    title={translate(isConnected && isSignedIn ? 'Connected' : 'Connect')}
+                    title={
+                        needsReconnect ? 'Reconnect' : translate(isConnected && isSignedIn ? 'Connected' : 'Connect')
+                    }
                     type={'ghost'}
                     onPress={onPress}
                     disabled={disabled}

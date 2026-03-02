@@ -39,7 +39,7 @@ import {
     createGenericTaskWhenMention,
     setTaskAssistant,
     updateTaskLastCommentData,
-    resetTaskLastCommentData,
+    rebuildTaskLastCommentData,
 } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
 import {
@@ -471,8 +471,6 @@ export async function createObjectMessage(
         const chatIsAlreadyCreated = !!chat
         const commentId = editingCommentId || getId()
 
-        updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType)
-
         // Debug logging for webhook task detection
         console.log('🔍 WEBHOOK DEBUG: Checking if webhook task:', {
             objectType,
@@ -544,7 +542,7 @@ export async function createObjectMessage(
         )
 
         if (chatIsAlreadyCreated) {
-            updateChatWhenAddComment(projectId, creatorId, comment, commentType, objectId)
+            promises.push(updateChatWhenAddComment(projectId, creatorId, comment, commentType, objectId))
         } else {
             promises.push(
                 createChat(
@@ -592,83 +590,95 @@ export async function createObjectMessage(
 
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
-        await Promise.all(promises).then(() => {
-            const isThreadAssistantEnabled =
-                explicitAssistantEnabled !== null
-                    ? explicitAssistantEnabled
-                    : object
-                    ? object.isAssistantEnabled === true
-                    : assistantEnabled
-
-            // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
-            console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
-                editingCommentId,
-                isThreadAssistantEnabled,
-                isWebhookTask,
-                skipAssistantTrigger,
+        try {
+            await Promise.all(promises)
+            await updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType)
+        } catch (error) {
+            console.error('[TaskComments] Failed to persist comment before updating preview metadata', {
+                projectId,
+                objectId,
                 objectType,
-                hasTaskMetadata: !!object?.taskMetadata,
+                editingCommentId: !!editingCommentId,
+                error: error.message,
             })
-            if (!editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
-                const clientSubmissionTime = Date.now()
-                const clientSubmissionTimestamp = new Date().toISOString()
-                console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
-                    timestamp: clientSubmissionTimestamp,
-                    submissionTime: clientSubmissionTime,
-                    submissionTimeISO: clientSubmissionTimestamp,
+            throw error
+        }
+
+        const isThreadAssistantEnabled =
+            explicitAssistantEnabled !== null
+                ? explicitAssistantEnabled
+                : object
+                ? object.isAssistantEnabled === true
+                : assistantEnabled
+
+        // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
+        console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
+            editingCommentId,
+            isThreadAssistantEnabled,
+            isWebhookTask,
+            skipAssistantTrigger,
+            objectType,
+            hasTaskMetadata: !!object?.taskMetadata,
+        })
+        if (!editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
+            const clientSubmissionTime = Date.now()
+            const clientSubmissionTimestamp = new Date().toISOString()
+            console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
+                timestamp: clientSubmissionTimestamp,
+                submissionTime: clientSubmissionTime,
+                submissionTimeISO: clientSubmissionTimestamp,
+                userId: creatorId,
+                messageId: commentId,
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+            })
+            const functionCallStartTime = Date.now()
+            runHttpsCallableFunction(
+                'askToBotSecondGen',
+                {
                     userId: creatorId,
                     messageId: commentId,
                     projectId,
                     objectType,
                     objectId,
+                    userIdsToNotify: [...userIdsToNotify, creatorId],
+                    isPublicFor,
+                    language: window.navigator.language,
                     assistantId,
+                    followerIds,
+                },
+                {
+                    timeout: 540000, // 9 minutes to match backend timeout
+                }
+            )
+                .then(result => {
+                    const clientCallCompleteTime = Date.now()
+                    const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
+                    const networkLatency = functionCallStartTime - clientSubmissionTime
+                    console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
+                        timestamp: new Date().toISOString(),
+                        submissionTime: clientSubmissionTime,
+                        submissionTimeISO: clientSubmissionTimestamp,
+                        completionTime: clientCallCompleteTime,
+                        completionTimeISO: new Date().toISOString(),
+                        timeSinceSubmission: `${totalClientToServerTime}ms`,
+                        networkLatency: `${networkLatency}ms`,
+                        backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
+                        result,
+                    })
                 })
-                const functionCallStartTime = Date.now()
-                runHttpsCallableFunction(
-                    'askToBotSecondGen',
-                    {
-                        userId: creatorId,
-                        messageId: commentId,
-                        projectId,
-                        objectType,
-                        objectId,
-                        userIdsToNotify: [...userIdsToNotify, creatorId],
-                        isPublicFor,
-                        language: window.navigator.language,
-                        assistantId,
-                        followerIds,
-                    },
-                    {
-                        timeout: 540000, // 9 minutes to match backend timeout
-                    }
-                )
-                    .then(result => {
-                        const clientCallCompleteTime = Date.now()
-                        const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
-                        const networkLatency = functionCallStartTime - clientSubmissionTime
-                        console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
-                            timestamp: new Date().toISOString(),
-                            submissionTime: clientSubmissionTime,
-                            submissionTimeISO: clientSubmissionTimestamp,
-                            completionTime: clientCallCompleteTime,
-                            completionTimeISO: new Date().toISOString(),
-                            timeSinceSubmission: `${totalClientToServerTime}ms`,
-                            networkLatency: `${networkLatency}ms`,
-                            backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
-                            result,
-                        })
+                .catch(error => {
+                    console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
+                        error: error.message,
+                        timestamp: new Date().toISOString(),
+                        submissionTime: clientSubmissionTime,
+                        submissionTimeISO: clientSubmissionTimestamp,
+                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                     })
-                    .catch(error => {
-                        console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
-                            error: error.message,
-                            timestamp: new Date().toISOString(),
-                            submissionTime: clientSubmissionTime,
-                            submissionTimeISO: clientSubmissionTimestamp,
-                            timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                        })
-                    })
-            }
-        })
+                })
+        }
     }
 }
 
@@ -756,13 +766,12 @@ const getLastComment = async (projectId, objectType, objectId) => {
 
 const updateLastCommentData = async (projectId, editingCommentId, objectId, objectType, comment, commentType) => {
     if (editingCommentId) {
-        getLastComment(projectId, objectType, objectId).then(lastComment => {
-            if (lastComment && lastComment.id === editingCommentId) {
-                updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, comment, commentType)
-            }
-        })
+        const lastComment = await getLastComment(projectId, objectType, objectId)
+        if (lastComment && lastComment.id === editingCommentId) {
+            await updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, comment, commentType)
+        }
     } else {
-        updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, comment, commentType)
+        await updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, comment, commentType)
     }
 }
 
@@ -801,7 +810,7 @@ export const repairChatMetadata = async (projectId, objectId, type) => {
     } else if (type === 'skills') {
         await resetSkillLastCommentData(projectId, objectId)
     } else if (type === 'tasks') {
-        await resetTaskLastCommentData(projectId, objectId)
+        await rebuildTaskLastCommentData(projectId, objectId)
     } else if (type === 'goals') {
         await resetGoalLastCommentData(projectId, objectId)
     } else if (type === 'notes') {

@@ -8,11 +8,12 @@ import { translate } from '../../../../../i18n/TranslationService'
 import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
 import ActionButton from './ActionButton'
 import ConnectedUserData from './ConnectedUserData'
+import GmailLabelingSettings from './GmailLabelingSettings'
 
-export default function ConnectGmailModal({ projectId, isSignedIn, closePopover, setIsSignedIn }) {
+export default function ConnectGmailModal({ projectId, authStatus, closePopover, setAuthStatus }) {
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
 
-    const isConnectedAndSignedIn = isConnected && isSignedIn
+    const isConnectedAndSignedIn = isConnected && authStatus?.hasCredentials
 
     useEffect(() => {
         storeModal(CONNECT_GMAIL_MODAL_ID)
@@ -26,14 +27,15 @@ export default function ConnectGmailModal({ projectId, isSignedIn, closePopover,
                 title={'Google Gmail'}
                 description={translate('Google gmail description')}
             />
-            {isConnectedAndSignedIn && <ConnectedUserData isConnected={isConnected} />}
+            {isConnectedAndSignedIn && <ConnectedUserData isConnected={isConnected} email={authStatus?.email} />}
             <ActionButton
                 projectId={projectId}
                 isConnected={isConnected}
-                isSignedIn={isSignedIn}
+                authStatus={authStatus}
                 closePopover={closePopover}
-                setIsSignedIn={setIsSignedIn}
+                setAuthStatus={setAuthStatus}
             />
+            <GmailLabelingSettings projectId={projectId} isConnected={isConnected} authStatus={authStatus} />
         </View>
     )
 }
@@ -43,7 +45,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
-        width: 432,
+        width: 640,
         shadowColor: 'rgba(78, 93, 120, 0.56)',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 1,

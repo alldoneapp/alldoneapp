@@ -9,24 +9,35 @@ import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../../apis/g
 
 export default function ConnectGmailProperty({ projectId, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
-    const [isSignedIn, setIsSignedIn] = useState(false)
+    const [authStatus, setAuthStatus] = useState({ hasCredentials: false, email: null, hasModifyScope: true })
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
+    const isSignedIn = authStatus.hasCredentials
 
     // Check for server-side auth on mount and when connection status changes
     useEffect(() => {
         const checkServerAuth = async () => {
             try {
-                const authStatus = await hasServerSideAuth(projectId, 'gmail')
-                if (authStatus.hasCredentials && isConnected) {
+                const nextAuthStatus = await hasServerSideAuth(projectId, 'gmail')
+                if (nextAuthStatus.hasCredentials && isConnected) {
                     // Load the server-side token into GoogleApi
                     await setServerTokenInGoogleApi(GoogleApi, projectId, 'gmail')
-                    setIsSignedIn(true)
+                    setAuthStatus(nextAuthStatus)
                 } else {
-                    setIsSignedIn(false)
+                    setAuthStatus({
+                        hasCredentials: false,
+                        email: null,
+                        scopes: [],
+                        hasModifyScope: false,
+                    })
                 }
             } catch (error) {
                 console.error('[ConnectGmail] Error checking server auth:', error)
-                setIsSignedIn(false)
+                setAuthStatus({
+                    hasCredentials: false,
+                    email: null,
+                    scopes: [],
+                    hasModifyScope: false,
+                })
             }
         }
 
@@ -46,9 +57,9 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
             content={
                 <ConnectGmailModal
                     projectId={projectId}
-                    isSignedIn={isSignedIn}
+                    authStatus={authStatus}
                     closePopover={closeModal}
-                    setIsSignedIn={setIsSignedIn}
+                    setAuthStatus={setAuthStatus}
                 />
             }
             onClickOutside={closeModal}
@@ -58,7 +69,13 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
             align={'end'}
             contentLocation={false ? null : undefined}
         >
-            <ConnectGmailButton projectId={projectId} disabled={disabled} isSignedIn={isSignedIn} onPress={openModal} />
+            <ConnectGmailButton
+                projectId={projectId}
+                disabled={disabled}
+                isSignedIn={isSignedIn}
+                onPress={openModal}
+                needsReconnect={isConnected && isSignedIn && authStatus.hasModifyScope === false}
+            />
         </Popover>
     )
 }

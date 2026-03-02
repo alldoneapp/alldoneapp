@@ -57,6 +57,20 @@ function getAccessibleProjectIdsFromUserData(userData = {}) {
     return Array.from(allIds)
 }
 
+async function assertProjectAccess(userId, projectId) {
+    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+    if (!userDoc.exists) {
+        throw new HttpsError('permission-denied', 'User not found')
+    }
+
+    const accessibleProjectIds = getAccessibleProjectIdsFromUserData(userDoc.data() || {})
+    if (!accessibleProjectIds.includes(projectId)) {
+        throw new HttpsError('permission-denied', 'No access to project')
+    }
+
+    return userDoc.data() || {}
+}
+
 async function assertAssistantProjectAccess(userId, projectId, assistantId) {
     const userDoc = await admin.firestore().doc(`users/${userId}`).get()
     if (!userDoc.exists) throw new HttpsError('permission-denied', 'User not found')
@@ -2577,6 +2591,19 @@ exports.checkRecurringAssistantTasks = onSchedule(
     }
 )
 
+exports.pollGmailLabelingSecondGen = onSchedule(
+    {
+        schedule: '*/5 * * * *',
+        timeoutSeconds: 900,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { processEnabledGmailLabelingConfigs } = require('./Gmail/serverSideGmailLabelingSync')
+        return await processEnabledGmailLabelingConfigs()
+    }
+)
+
 // MCP OAUTH CALLBACK
 exports.mcpOAuthCallback = onRequest(
     {
@@ -2834,16 +2861,102 @@ exports.googleOAuthCheckCredentials = onCall(
             throw new HttpsError('permission-denied', 'User must be authenticated')
         }
 
-        const { hasValidCredentials } = require('./GoogleOAuth/googleOAuthHandler')
+        const { getCredentialStatus } = require('./GoogleOAuth/googleOAuthHandler')
         const { projectId, service } = data
         const userId = auth.uid
 
         try {
-            const hasCredentials = await hasValidCredentials(userId, projectId, service)
-            return { hasCredentials }
+            return await getCredentialStatus(userId, projectId, service)
         } catch (error) {
             console.error('Error checking credentials:', error)
             throw new HttpsError('internal', `Failed to check credentials: ${error.message}`)
+        }
+    }
+)
+
+exports.upsertGmailLabelingConfigSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId, config } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const gmailEmail = userData.apisConnected?.[projectId]?.gmailEmail || userData.email || ''
+            const { upsertGmailLabelingConfig } = require('./Gmail/serverSideGmailLabelingSync')
+            const savedConfig = await upsertGmailLabelingConfig(auth.uid, projectId, config || {}, gmailEmail)
+            return { config: savedConfig }
+        } catch (error) {
+            console.error('Error saving Gmail labeling config:', error)
+            if (error instanceof HttpsError) throw error
+            if (error?.validationErrors) {
+                throw new HttpsError('invalid-argument', error.validationErrors.join(' '))
+            }
+            throw new HttpsError('internal', error.message || 'Failed to save Gmail labeling config')
+        }
+    }
+)
+
+exports.getGmailLabelingConfigSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const gmailEmail = userData.apisConnected?.[projectId]?.gmailEmail || userData.email || ''
+            const { getGmailLabelingConfigWithState } = require('./Gmail/serverSideGmailLabelingSync')
+            return await getGmailLabelingConfigWithState(auth.uid, projectId, gmailEmail)
+        } catch (error) {
+            console.error('Error loading Gmail labeling config:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to load Gmail labeling config')
+        }
+    }
+)
+
+exports.runGmailLabelingSyncSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId, forceBootstrap } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            await assertProjectAccess(auth.uid, projectId)
+            const { syncGmailLabeling } = require('./Gmail/serverSideGmailLabelingSync')
+            return await syncGmailLabeling(auth.uid, projectId, { forceBootstrap: !!forceBootstrap })
+        } catch (error) {
+            console.error('Error running Gmail labeling sync:', error)
+            if (error instanceof HttpsError) throw error
+            if (error?.name === 'GmailSyncLockedError') {
+                throw new HttpsError('aborted', error.message)
+            }
+            throw new HttpsError('internal', error.message || 'Failed to run Gmail labeling sync')
         }
     }
 )

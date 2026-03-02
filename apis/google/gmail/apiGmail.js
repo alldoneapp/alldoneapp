@@ -6,7 +6,7 @@ const scriptSrcGoogle = 'https://accounts.google.com/gsi/client'
 
 const config = {
     client_id,
-    scope: 'https://www.googleapis.com/auth/gmail.labels',
+    scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels',
 }
 
 class ApiGmail {

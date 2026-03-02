@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { StyleSheet, View, Dimensions } from 'react-native'
+import { StyleSheet, View, Dimensions, Text } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
-import { colors } from '../../../styles/global'
+import styles, { colors } from '../../../styles/global'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import EditForm from './EditForm'
 import { applyPopoverWidthV2, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
@@ -27,11 +27,8 @@ import BotMessagePlaceholder from './BotMessagePlaceholder'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { getDvChatTabLink } from '../../../../utils/LinkingHelper'
-import {
-    markChatMessagesAsRead,
-    repairChatMetadata,
-    getParentObjectData,
-} from '../../../../utils/backends/Chats/chatsComments'
+import { markChatMessagesAsRead, getParentObjectData } from '../../../../utils/backends/Chats/chatsComments'
+import { translate } from '../../../../i18n/TranslationService'
 
 export default function RichCommentModal({
     projectId,
@@ -107,10 +104,20 @@ export default function RichCommentModal({
     }
 
     useEffect(() => {
-        if (messages.loaded && messages.length === 0) {
-            repairChatMetadata(projectId, objectId, objectType)
+        if (messages.loaded && comments.length === 0) {
+            getParentObjectData(projectId, objectId, objectType).then(data => {
+                const commentsData = data?.object?.commentsData || null
+                console.warn('[TaskComments] Comment popup loaded with no visible comments', {
+                    projectId,
+                    objectId,
+                    objectType,
+                    hasChatNotifications: chatNotificationsAmount > 0,
+                    hasPreviewMetadata: !!commentsData,
+                    previewCommentsAmount: commentsData?.amount || 0,
+                })
+            })
         }
-    }, [messages, messages.loaded])
+    }, [messages.loaded, comments.length, projectId, objectId, objectType, chatNotificationsAmount])
 
     useEffect(() => {
         setAssistantId(externalAssistantId)
@@ -339,6 +346,14 @@ export default function RichCommentModal({
                             {comments && comments.length > 0 && (
                                 <CommentsList projectId={projectId} comments={comments} />
                             )}
+                            {messages.loaded && comments.length === 0 && (
+                                <View style={localStyles.emptyState}>
+                                    <Text style={localStyles.emptyStateTitle}>{translate('No comments yet')}</Text>
+                                    <Text style={localStyles.emptyStateText}>
+                                        {translate('There are no visible comments to show right now.')}
+                                    </Text>
+                                </View>
+                            )}
                         </div>
                         <ShowMoreButton
                             expand={processShowMore}
@@ -375,5 +390,20 @@ const localStyles = StyleSheet.create({
     innerContainer: {
         paddingHorizontal: 8,
         paddingVertical: 8,
+    },
+    emptyState: {
+        borderRadius: 8,
+        backgroundColor: colors.Secondary300,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+    },
+    emptyStateTitle: {
+        ...styles.subtitle1,
+        color: colors.Text01,
+        marginBottom: 4,
+    },
+    emptyStateText: {
+        ...styles.caption1,
+        color: colors.Text02,
     },
 })

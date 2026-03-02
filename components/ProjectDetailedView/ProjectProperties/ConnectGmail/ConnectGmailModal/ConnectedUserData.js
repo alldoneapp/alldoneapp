@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 
-export default function ConnectedUserData({ isConnected }) {
+export default function ConnectedUserData({ isConnected, email: connectedEmail }) {
     const email = useSelector(state => state.loggedUser.email)
     const displayName = useSelector(state => state.loggedUser.displayName)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -17,7 +17,7 @@ export default function ConnectedUserData({ isConnected }) {
                 <Text style={localStyles.username}>{displayName}</Text>
                 <Text style={localStyles.info}>
                     {translate(`${isConnected ? 'Connected' : 'Connect'} to Email`, {
-                        email,
+                        email: connectedEmail || email,
                     })}
                 </Text>
             </View>

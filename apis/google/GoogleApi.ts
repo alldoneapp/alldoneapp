@@ -82,7 +82,11 @@ class GoogleApi {
         if (!token) return false
 
         // Check if the token has the required scope
-        return token.scope && token.scope.includes(gmailScope)
+        return (
+            token.scope &&
+            token.scope.includes('https://www.googleapis.com/auth/gmail.modify') &&
+            token.scope.includes('https://www.googleapis.com/auth/gmail.labels')
+        )
     }
 
     /**

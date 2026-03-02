@@ -1429,6 +1429,80 @@ export const updateTaskLastCommentData = async (projectId, taskId, lastComment, 
         })
 }
 
+export const rebuildTaskLastCommentData = async (projectId, taskId) => {
+    const commentsRef = getDb().collection(`chatComments/${projectId}/tasks/${taskId}/comments`)
+    const [taskDoc, commentsSnapshot] = await Promise.all([
+        getDb().doc(`items/${projectId}/tasks/${taskId}`).get(),
+        commentsRef.get(),
+    ])
+
+    if (!taskDoc.exists) return
+
+    const comments = commentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    const validComments = comments
+        .filter(comment => typeof comment.commentText === 'string' && comment.commentText.trim().length > 0)
+        .sort((a, b) => {
+            const aCreated = typeof a.created === 'number' ? a.created : 0
+            const bCreated = typeof b.created === 'number' ? b.created : 0
+            if (aCreated !== bCreated) return bCreated - aCreated
+
+            return String(b.id || '').localeCompare(String(a.id || ''))
+        })
+
+    if (comments.length > 0 && validComments.length === 0) {
+        console.warn('[TaskComments] rebuildTaskLastCommentData found task comments without visible text', {
+            projectId,
+            taskId,
+            commentsAmount: comments.length,
+        })
+    }
+
+    if (comments.length === 0) {
+        const currentCommentsData = taskDoc.data()?.commentsData
+        if (currentCommentsData) {
+            console.warn(
+                '[TaskComments] rebuildTaskLastCommentData clearing stale task commentsData because no comments exist',
+                {
+                    projectId,
+                    taskId,
+                    currentAmount: currentCommentsData.amount || 0,
+                }
+            )
+            await taskDoc.ref.update({ commentsData: null })
+        }
+        return null
+    }
+
+    const latestComment = validComments[0]
+    const commentsData =
+        latestComment && latestComment.commentText
+            ? {
+                  lastComment: shrinkTagText(
+                      cleanTextMetaData(removeFormatTagsFromText(latestComment.commentText), true).trim() || 'Comment',
+                      LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
+                  ),
+                  lastCommentType: latestComment.commentType || null,
+                  lastCommentOwnerId: latestComment.creatorId || '',
+                  amount: comments.length,
+              }
+            : null
+
+    const currentCommentsData = taskDoc.data()?.commentsData || null
+    if (currentCommentsData === null && commentsData !== null) {
+        console.warn(
+            '[TaskComments] rebuildTaskLastCommentData restoring missing task commentsData from stored comments',
+            {
+                projectId,
+                taskId,
+                commentsAmount: comments.length,
+            }
+        )
+    }
+
+    await taskDoc.ref.update({ commentsData })
+    return commentsData
+}
+
 export const resetTaskLastCommentData = async (projectId, taskId) => {
     const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
     const doc = await ref.get()

@@ -68,7 +68,7 @@ const CALENDAR_SCOPES = [
 
 // Scopes required for Gmail
 const GMAIL_SCOPES = [
-    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/gmail.labels',
     'https://www.googleapis.com/auth/userinfo.email',
 ]
@@ -216,6 +216,7 @@ async function handleOAuthCallback(code, state) {
         updateData[`apisConnected.${projectId}.calendarEmail`] = userInfo.email
     } else if (service === 'gmail') {
         updateData[`apisConnected.${projectId}.gmail`] = true
+        updateData[`apisConnected.${projectId}.gmailEmail`] = userInfo.email
     }
 
     await userRef.update(updateData)
@@ -402,6 +403,7 @@ async function revokeAccess(userId, projectId, service) {
             updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
         } else if (service === 'gmail') {
             updateData[`apisConnected.${projectId}.gmail`] = false
+            updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
         }
         if (Object.keys(updateData).length > 0) {
             await userRef.update(updateData)
@@ -439,6 +441,7 @@ async function revokeAccess(userId, projectId, service) {
         updateData[`apisConnected.${projectId}.calendar`] = false
         updateData[`apisConnected.${projectId}.gmail`] = false
         updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
     } else {
         // Service specific
         if (service === 'calendar') {
@@ -446,6 +449,7 @@ async function revokeAccess(userId, projectId, service) {
             updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
         } else if (service === 'gmail') {
             updateData[`apisConnected.${projectId}.gmail`] = false
+            updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
         }
     }
 
@@ -496,11 +500,59 @@ async function hasValidCredentials(userId, projectId, service) {
     return false
 }
 
+async function getCredentialStatus(userId, projectId, service) {
+    let tokenDoc = null
+
+    if (projectId && service) {
+        tokenDoc = await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}_${service}`)
+            .get()
+    }
+
+    if ((!tokenDoc || !tokenDoc.exists) && projectId) {
+        tokenDoc = await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`googleAuth_${projectId}`)
+            .get()
+    }
+
+    if (!tokenDoc || !tokenDoc.exists) {
+        tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
+    }
+
+    if (!tokenDoc || !tokenDoc.exists) {
+        return {
+            hasCredentials: false,
+            email: null,
+            scopes: [],
+            hasModifyScope: false,
+        }
+    }
+
+    const tokenData = tokenDoc.data() || {}
+    const scopes = Array.isArray(tokenData.scopes) ? tokenData.scopes : []
+
+    return {
+        hasCredentials: true,
+        email: tokenData.email || null,
+        scopes,
+        hasModifyScope: scopes.includes('https://www.googleapis.com/auth/gmail.modify'),
+    }
+}
+
 module.exports = {
     initiateOAuth,
     handleOAuthCallback,
     getAccessToken,
     revokeAccess,
     hasValidCredentials,
+    getCredentialStatus,
     getOAuth2Client,
 }

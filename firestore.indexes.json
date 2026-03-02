@@ -126,6 +126,21 @@
             ]
         },
         {
+            "__comment__": "Gmail labeling configs - enabled private configs",
+            "collectionGroup": "private",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "type",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "enabled",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "MCP - Recent auth codes",
             "collectionGroup": "authCodes",
             "queryScope": "COLLECTION",

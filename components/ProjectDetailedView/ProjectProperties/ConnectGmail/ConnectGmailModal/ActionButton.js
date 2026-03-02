@@ -10,12 +10,13 @@ import store from '../../../../../redux/store'
 import { showConfirmPopup } from '../../../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../../../UIComponents/ConfirmPopup'
 import {
+    hasServerSideAuth,
     startServerSideAuth,
     revokeServerSideAuth,
     setServerTokenInGoogleApi,
 } from '../../../../../apis/google/GoogleOAuthServerSide'
 
-export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
+export default function ActionButton({ projectId, isConnected, authStatus, closePopover, setAuthStatus }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const userEmail = useSelector(state => state.loggedUser.email)
     const storedTimezone = useSelector(state => state.loggedUser.timezone)
@@ -23,7 +24,8 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const timezone = storedTimezone || parseInt(moment().format('Z'))
     const [isLoading, setIsLoading] = useState(false)
 
-    const isConnectedAndSignedIn = isConnected && isSignedIn
+    const isSignedIn = !!authStatus?.hasCredentials
+    const isConnectedAndSignedIn = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope !== false
 
     const loadGmailData = async () => {
         try {
@@ -53,7 +55,11 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
         setIsLoading(true)
         try {
             if (isSignedIn && isConnected) {
-                await disconnect()
+                if (isConnectedAndSignedIn) {
+                    await disconnect()
+                } else {
+                    await connectServerSide()
+                }
             } else {
                 await connectServerSide()
             }
@@ -72,9 +78,10 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             // OAuth callback will have updated apisConnected in Firestore
             // Load Gmail data
             await loadGmailData()
+            const nextAuthStatus = await hasServerSideAuth(projectId, 'gmail')
 
             closePopover()
-            setIsSignedIn(true)
+            setAuthStatus(nextAuthStatus)
         } catch (error) {
             console.error('[ConnectGmail] Error connecting Gmail:', error)
             store.dispatch(
@@ -97,7 +104,7 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
             await revokeServerSideAuth(projectId, 'gmail')
 
             closePopover()
-            setIsSignedIn(false)
+            setAuthStatus({ hasCredentials: false, email: null, scopes: [], hasModifyScope: false })
         } catch (error) {
             console.error('[ConnectGmail] Error disconnecting Gmail:', error)
         }
@@ -105,7 +112,9 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
 
     return (
         <Button
-            title={translate(isConnectedAndSignedIn ? 'Disconnect' : 'Connect')}
+            title={translate(
+                isConnectedAndSignedIn ? 'Disconnect' : authStatus?.hasCredentials ? 'Reconnect' : 'Connect'
+            )}
             icon={isConnectedAndSignedIn ? 'unlink' : 'link'}
             buttonStyle={{ alignSelf: 'center' }}
             onPress={onPress}

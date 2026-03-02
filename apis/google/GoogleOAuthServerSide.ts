@@ -15,7 +15,9 @@ import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 
 export interface ServerSideAuthStatus {
     hasCredentials: boolean
-    email?: string
+    email?: string | null
+    scopes?: string[]
+    hasModifyScope?: boolean
 }
 
 export interface OAuthInitiateResult {
@@ -146,7 +148,12 @@ export async function startServerSideAuth(
 export async function hasServerSideAuth(projectId?: string, service?: GoogleService): Promise<ServerSideAuthStatus> {
     try {
         const result = await runHttpsCallableFunction('googleOAuthCheckCredentials', { projectId, service })
-        return { hasCredentials: result.hasCredentials }
+        return {
+            hasCredentials: result.hasCredentials,
+            email: result.email || null,
+            scopes: result.scopes || [],
+            hasModifyScope: result.hasModifyScope,
+        }
     } catch (error) {
         console.error('Error checking credentials:', error)
         return { hasCredentials: false }
@@ -211,11 +218,11 @@ export async function setServerTokenInGoogleApi(
                     'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
             } else if (service === 'gmail') {
                 scopes =
-                    'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/userinfo.email'
+                    'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/userinfo.email'
             } else {
                 // Fallback to all scopes
                 scopes =
-                    'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.labels'
+                    'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels'
             }
 
             googleApi.gapi.client.setToken({
