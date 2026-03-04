@@ -393,17 +393,19 @@ const localStyles = StyleSheet.create({
     },
     emptyState: {
         borderRadius: 8,
-        backgroundColor: colors.Secondary300,
+        backgroundColor: colors.Secondary250,
         paddingHorizontal: 12,
         paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: colors.Primary350,
     },
     emptyStateTitle: {
         ...styles.subtitle1,
-        color: colors.Text01,
+        color: colors.White,
         marginBottom: 4,
     },
     emptyStateText: {
         ...styles.caption1,
-        color: colors.Text02,
+        color: colors.Text04,
     },
 })
