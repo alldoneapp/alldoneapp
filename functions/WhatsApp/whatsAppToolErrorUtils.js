@@ -1,5 +1,5 @@
-const TASK_CREATION_FAILURE_MESSAGE = 'I could not create that task because of a technical issue. Please try again.'
-const GENERIC_TOOL_FAILURE_MESSAGE = 'I could not complete that action because of a technical issue. Please try again.'
+const TASK_CREATION_FAILURE_MESSAGE = `I wasn't able to create that task just now. Please try again in a moment.`
+const GENERIC_TOOL_FAILURE_MESSAGE = `I wasn't able to complete that just now. Please try again in a moment.`
 
 function getUserFacingToolErrorMessage(toolName, error) {
     const errorMessage = typeof error?.message === 'string' ? error.message.trim() : ''
