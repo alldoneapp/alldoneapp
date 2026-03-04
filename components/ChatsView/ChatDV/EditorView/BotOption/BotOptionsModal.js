@@ -104,6 +104,14 @@ export default function BotOptionsModal({
         onSelectBotOption()
     }
 
+    const enableAssistantForObject = () => {
+        if (inChatTab) {
+            setAssistantEnabledForObject(true)
+        } else if (!inMyDay) {
+            dispatch(setAssistantEnabled(true))
+        }
+    }
+
     const toggleAssistantEnabled = isEnabled => {
         closeModal()
         setAssistantEnabledForObject(isEnabled)
@@ -181,6 +189,7 @@ export default function BotOptionsModal({
                         assistantId={assistant.uid}
                         projectId={projectId}
                         onSelectBotOption={onSelectBotOption}
+                        enableAssistantForObject={enableAssistantForObject}
                         inMyDay={inMyDay}
                     />
                     {!inMyDay && (

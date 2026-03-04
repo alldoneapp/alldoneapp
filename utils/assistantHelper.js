@@ -288,14 +288,13 @@ const createTopicForPreConfigTask = async (
                 STAYWARD_COMMENT,
                 loggedUser.uid // parentObjectCreatorId
             )
-
-            // Explicitly enable the assistant on this thread now
-            await getDb().doc(`chatObjects/${projectId}/chats/${taskId}`).update({ isAssistantEnabled: true })
-
             console.log('Chat object created successfully for task:', taskId)
         } else {
             console.log('Chat already exists for task:', taskId)
         }
+
+        // Explicitly enable the assistant on this thread now, including reruns on existing task chats.
+        await getDb().doc(`chatObjects/${projectId}/chats/${taskId}`).update({ isAssistantEnabled: true })
 
         // Create user message with the prompt in the frontend so it appears immediately
         // Pass skipAssistantTrigger=true to avoid double triggering (we trigger it explicitly below)
@@ -421,6 +420,7 @@ export const generateTaskFromPreConfig = async (
     generatedTask.assigneeType = TASK_ASSIGNEE_ASSISTANT_TYPE
     generatedTask.assistantId = assistantId
     generatedTask.isPublicFor = [FEED_PUBLIC_FOR_ALL]
+    generatedTask.isAssistantEnabled = true
 
     // Add AI settings to the task if provided
     if (resolvedAiSettings) {
@@ -445,10 +445,13 @@ export const generateTaskFromPreConfig = async (
     })
 
     uploadNewTask(projectId, generatedTask, null, true, false, false, false).then(task => {
+        store.dispatch(setAssistantEnabled(true))
+
         // Ensure task has isPublicFor set
         const taskWithPublicFor = {
             ...task,
             isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
+            isAssistantEnabled: true,
         }
 
         console.log('Creating topic for task:', {

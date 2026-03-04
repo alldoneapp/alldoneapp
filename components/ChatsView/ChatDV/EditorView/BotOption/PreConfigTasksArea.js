@@ -15,6 +15,7 @@ export default function PreConfigTasksArea({
     assistantId,
     projectId,
     onSelectBotOption,
+    enableAssistantForObject,
     inMyDay,
 }) {
     const dispatch = useDispatch()
@@ -40,6 +41,7 @@ export default function PreConfigTasksArea({
                         task={task}
                         selectTask={selectTask}
                         onSelectBotOption={onSelectBotOption}
+                        enableAssistantForObject={enableAssistantForObject}
                         closeModal={closeModal}
                         inMyDay={inMyDay}
                         projectId={projectId}

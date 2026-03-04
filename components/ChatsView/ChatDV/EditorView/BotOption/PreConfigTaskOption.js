@@ -18,6 +18,7 @@ export default function PreConfigTaskOption({
     closeModal,
     selectTask,
     onSelectBotOption,
+    enableAssistantForObject,
     inMyDay,
     projectId,
     assistantId,
@@ -74,13 +75,14 @@ export default function PreConfigTaskOption({
                 selectTask(task)
             } else {
                 closeModal()
+                enableAssistantForObject?.()
                 const aiSettings = {
                     model: aiModel,
                     temperature: aiTemperature,
                     systemMessage: aiSystemMessage,
                 }
                 onSelectBotOption(prompt, name, aiSettings)
-                if (!inMyDay) dispatch(setAssistantEnabled(true))
+                if (!enableAssistantForObject && !inMyDay) dispatch(setAssistantEnabled(true))
             }
         } else if (type === TASK_TYPE_WEBHOOK) {
             closeModal()
