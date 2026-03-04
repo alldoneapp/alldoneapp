@@ -10,7 +10,6 @@ import de from './translations/de.json'
 i18n.fallbacks = true
 i18n.translations = { en, es, de }
 i18n.defaultLocale = 'en'
-// i18n.locale = getDeviceLanguage()
 
 export function getDeviceLanguage() {
     switch (true) {
@@ -25,6 +24,8 @@ export function getDeviceLanguage() {
     }
 }
 
+i18n.locale = getDeviceLanguage()
+
 export function getUserLanguageIndexForSendinBlue() {
     const options = { de: '1', en: '2', es: '3', fr: '4' }
     if (Localization.locale.includes('de')) return options['de']
@@ -34,7 +35,32 @@ export function getUserLanguageIndexForSendinBlue() {
     return options['en']
 }
 
+const getNormalizedLanguage = language => String(language || '').split(/[-_]/)[0]
+
+const getTranslationOptions = language => {
+    const normalizedLanguage = getNormalizedLanguage(language)
+    return [
+        normalizedLanguage,
+        getNormalizedLanguage(i18n.defaultLocale),
+        getNormalizedLanguage(getDeviceLanguage()),
+    ].filter(Boolean)
+}
+
+const getExactTranslation = textKey => {
+    const languages = getTranslationOptions(i18n.locale)
+
+    for (const language of languages) {
+        const translation = i18n.translations?.[language]?.[textKey]
+        if (translation !== undefined) return translation
+    }
+
+    return null
+}
+
 export const translate = (textKey = '', interpolations = {}) => {
+    const exactTranslation = getExactTranslation(textKey)
+    if (exactTranslation !== null) return i18n.interpolate(exactTranslation, interpolations)
+
     return i18n.t(textKey, interpolations)
 }
 
