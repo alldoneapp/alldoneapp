@@ -1220,7 +1220,12 @@ export async function setTaskName(projectId, taskId, name, task, oldName) {
     updateTaskData(projectId, taskId, { name: cleanedName, extendedName: name.trim() }, batch)
 
     if (task.noteId) {
-        await updateNoteTitleWithoutFeed(projectId, task.noteId, name, batch)
+        await updateNoteTitleWithoutFeed(
+            projectId,
+            task.noteId,
+            TasksHelper.getNoteTitleForTask({ ...task, name: cleanedName, extendedName: name.trim() }),
+            batch
+        )
     }
     await updateChatTitleWithoutFeeds(projectId, taskId, name, batch)
 

@@ -6885,6 +6885,8 @@ export async function createNoteInObject(
 ) {
     const { loggedUser } = store.getState()
     const noteId = getId()
+    const task = objectType === 'tasks' ? await getTaskData(projectId, objectId) : null
+    const noteTitle = task ? TasksHelper.getNoteTitleForTask(task) : objectName
     const followersIds = await getObjectFollowersIds(projectId, objectType, objectId)
     const followers = objectPrivacy.includes(FEED_PUBLIC_FOR_ALL)
         ? [...followersIds, loggedUser.uid]
@@ -6893,8 +6895,8 @@ export async function createNoteInObject(
     const noteData = {
         ...TasksHelper.getNewDefaultNote(),
         id: noteId,
-        title: objectName,
-        extendedTitle: objectName,
+        title: noteTitle,
+        extendedTitle: noteTitle,
         parentObject: { id: objectId, type: objectType },
         isPrivate: !objectPrivacy.includes(FEED_PUBLIC_FOR_ALL),
         isPublicFor: objectPrivacy,

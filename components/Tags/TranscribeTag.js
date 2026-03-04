@@ -31,11 +31,13 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
         } else {
             // Create new note and open it immediately
             const newNote = TasksHelper.getNewDefaultNote()
+            const noteTitle = TasksHelper.getNoteTitleForTask(task)
             const generatedId = getId()
             newNote.id = generatedId
             newNote.parentObject = { type: 'tasks', id: task.id }
             newNote.linkedParentTasksIds = [task.id]
-            newNote.title = task.name
+            newNote.title = noteTitle
+            newNote.extendedTitle = noteTitle
 
             // Open the new tab immediately
             const url = getNoteUrl(generatedId)

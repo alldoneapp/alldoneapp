@@ -439,6 +439,22 @@ class TasksHelper {
         }
     }
 
+    static getNoteTitleForTask = task => {
+        const taskName = `${task?.extendedName || task?.name || ''}`.trim()
+        if (!task?.calendarData?.start) return taskName
+
+        const { start } = task.calendarData
+        const startValue = start.dateTime || start.date
+        const startMoment = startValue ? moment(startValue) : null
+
+        if (!startMoment || !startMoment.isValid()) return taskName
+
+        const dateText = startMoment.format('DD.MM.YYYY')
+        const timeText = start.dateTime ? startMoment.format('HH:mm') : 'All day'
+
+        return `${dateText} ${timeText} ${taskName}`.trim()
+    }
+
     /**
      * Perf: Should be migrated??? (using inReview)
      * @param steps

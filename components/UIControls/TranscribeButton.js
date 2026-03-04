@@ -46,11 +46,13 @@ export default function TranscribeButton({ task, projectId, disabled, style, sho
             // Create new note and open it immediately
             console.log('[TranscribeButton] Creating new note...')
             const newNote = TasksHelper.getNewDefaultNote()
+            const noteTitle = TasksHelper.getNoteTitleForTask(task)
             const generatedId = getId()
             newNote.id = generatedId
             newNote.parentObject = { type: 'tasks', id: task.id }
             newNote.linkedParentTasksIds = [task.id]
-            newNote.title = task.name
+            newNote.title = noteTitle
+            newNote.extendedTitle = noteTitle
 
             // Open new tab immediately (before async operations to avoid popup blocker)
             const url = getNoteUrl(generatedId)

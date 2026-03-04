@@ -453,7 +453,7 @@ export default function EditTask({
         if (updatedTask.extendedName !== task.extendedName) {
             updateChatTitleWithoutFeeds(projectId, updatedTask.id, updatedTask.extendedName)
             if (updatedTask.noteId) {
-                updateNoteTitleWithoutFeed(projectId, updatedTask.noteId, updatedTask.extendedName)
+                updateNoteTitleWithoutFeed(projectId, updatedTask.noteId, TasksHelper.getNoteTitleForTask(updatedTask))
             }
         }
 

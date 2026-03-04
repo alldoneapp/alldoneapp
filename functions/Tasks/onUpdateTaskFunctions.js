@@ -114,6 +114,37 @@ const checkIfNeedToResetActiveTaskDateWhenIfEstimationChanges = async (taskId, o
     }
 }
 
+const getTaskNoteTitle = task => {
+    const taskName = `${task?.extendedName || task?.name || ''}`.trim()
+    if (!task?.calendarData?.start) return taskName
+
+    const { start } = task.calendarData
+    const startValue = start.dateTime || start.date
+    const startMoment = startValue ? moment(startValue) : null
+
+    if (!startMoment || !startMoment.isValid()) return taskName
+
+    const dateText = startMoment.format('DD.MM.YYYY')
+    const timeText = start.dateTime ? startMoment.format('HH:mm') : 'All day'
+
+    return `${dateText} ${timeText} ${taskName}`.trim()
+}
+
+const syncLinkedNoteTitle = async (projectId, oldTask, newTask) => {
+    if (!newTask.noteId) return
+
+    const oldTitle = getTaskNoteTitle(oldTask)
+    const newTitle = getTaskNoteTitle(newTask)
+    if (oldTitle === newTitle) return
+
+    await admin.firestore().doc(`noteItems/${projectId}/notes/${newTask.noteId}`).update({
+        title: newTitle.toLowerCase(),
+        extendedTitle: newTitle,
+        lastEditionDate: Date.now(),
+        lastEditorId: newTask.lastEditorId,
+    })
+}
+
 const onUpdateTask = async (taskId, projectId, change) => {
     const promises = []
 
@@ -154,6 +185,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
     if (newTask.userId !== oldTask.userId || (newTask.isSubtask && !oldTask.isSubtask)) {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
+    promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
 
     // Handle recurring task creation when task is completed
     // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
