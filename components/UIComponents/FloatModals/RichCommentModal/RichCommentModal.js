@@ -348,7 +348,7 @@ export default function RichCommentModal({
                             )}
                             {messages.loaded && comments.length === 0 && (
                                 <View style={localStyles.emptyState}>
-                                    <Text style={[localStyles.emptyStateTitle, { color: colors.White }]}>
+                                    <Text style={[localStyles.emptyStateTitle, { color: '#FFFFFF' }]}>
                                         {translate('No comments yet')}
                                     </Text>
                                     <Text style={[localStyles.emptyStateText, { color: colors.UtilityBlue125 }]}>
@@ -403,7 +403,7 @@ const localStyles = StyleSheet.create({
     },
     emptyStateTitle: {
         ...styles.subtitle1,
-        color: colors.White,
+        color: '#FFFFFF',
         marginBottom: 4,
     },
     emptyStateText: {
