@@ -348,8 +348,10 @@ export default function RichCommentModal({
                             )}
                             {messages.loaded && comments.length === 0 && (
                                 <View style={localStyles.emptyState}>
-                                    <Text style={localStyles.emptyStateTitle}>{translate('No comments yet')}</Text>
-                                    <Text style={localStyles.emptyStateText}>
+                                    <Text style={[localStyles.emptyStateTitle, { color: colors.White }]}>
+                                        {translate('No comments yet')}
+                                    </Text>
+                                    <Text style={[localStyles.emptyStateText, { color: colors.UtilityBlue125 }]}>
                                         {translate('There are no visible comments to show right now.')}
                                     </Text>
                                 </View>
