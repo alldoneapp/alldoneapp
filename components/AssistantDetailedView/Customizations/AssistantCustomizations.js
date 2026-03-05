@@ -13,6 +13,7 @@ import ModelProperty from './Model/ModelProperty'
 import TemperatureProperty from './Temperature/TemperatureProperty'
 import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
 import DelegationDescriptionProperty from './DelegationDescription/DelegationDescriptionProperty'
+import DelegationTargetsAccessProperty from './DelegationTargetsAccess/DelegationTargetsAccessProperty'
 import AddPreConfigTask from './PreConfigTasks/AddPreConfigTask'
 import PreConfigTaskList from './PreConfigTasks/PreConfigTaskList'
 import DeleteAssistant from './DeleteAssistant'
@@ -59,6 +60,9 @@ export default function AssistantCustomizations({
     // This allows deletion of project assistants even when they're set as default (assistant.isDefault)
     const isAssistantInDefaultProject =
         !isGlobalAsisstant && projectDetailedId === defaultProjectId && assistant.isDefault
+
+    const hasTalkToAssistantTool =
+        Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes('talk_to_assistant')
 
     const updateIsFromTemplate = templateProject => {
         setIsFromTemplateProject(templateProject ? templateProject.globalAssistantIds.includes(assistant.uid) : false)
@@ -140,6 +144,13 @@ export default function AssistantCustomizations({
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <TemperatureProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    {hasTalkToAssistantTool && (
+                        <DelegationTargetsAccessProperty
+                            disabled={!canEditAssitant}
+                            projectId={projectId}
+                            assistant={assistant}
+                        />
+                    )}
                     <DelegationDescriptionProperty
                         disabled={!canEditAssitant}
                         projectId={projectId}

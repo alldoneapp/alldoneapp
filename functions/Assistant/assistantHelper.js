@@ -69,6 +69,7 @@ const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
+const ALLOWED_DELEGATION_TARGET_KEYS_FIELD = 'allowedDelegationTargetKeys'
 const EXTERNAL_TOOLS_KEY = 'external_tools'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
@@ -796,6 +797,24 @@ const getAccessibleProjectIdsFromUserData = userData => {
     return allIds
 }
 
+const buildDelegationTargetKey = (projectId, assistantId) =>
+    `${String(projectId || '').trim()}:${String(assistantId || '').trim()}`
+
+const normalizeDelegationTargetKey = rawKey => String(rawKey || '').trim()
+
+function filterDelegationTargetsByCallerSelection(targets, callerAssistantData) {
+    const rawSelection = callerAssistantData?.[ALLOWED_DELEGATION_TARGET_KEYS_FIELD]
+    if (!Array.isArray(rawSelection)) return targets
+
+    const allowedKeys = new Set(rawSelection.map(normalizeDelegationTargetKey).filter(Boolean))
+    if (allowedKeys.size === 0) return []
+
+    return targets.filter(target => {
+        const fullTargetKey = buildDelegationTargetKey(target.projectId, target.assistantId)
+        return allowedKeys.has(fullTargetKey) || allowedKeys.has(target.assistantId)
+    })
+}
+
 async function getReachableDelegationTargets({
     projectId,
     assistantId,
@@ -845,6 +864,11 @@ async function getReachableDelegationTargets({
 
     const callerExistsInCurrentProject = callerAssistantDoc.exists
     const callerExistsInGlobal = callerGlobalAssistantDoc.exists
+    const callerAssistantData = callerExistsInCurrentProject
+        ? callerAssistantDoc.data() || {}
+        : callerExistsInGlobal
+        ? callerGlobalAssistantDoc.data() || {}
+        : null
     const callerExistsInProjectContext = callerExistsInCurrentProject || callerExistsInGlobal
     if (!callerExistsInProjectContext && !isPrivilegedDefaultProjectAssistant) {
         console.log('🔁 DELEGATION: caller assistant not eligible for delegation scope', {
@@ -899,7 +923,8 @@ async function getReachableDelegationTargets({
         })
     }
 
-    return targets.slice(0, maxTargets)
+    const filteredTargets = filterDelegationTargetsByCallerSelection(targets, callerAssistantData)
+    return filteredTargets.slice(0, maxTargets)
 }
 
 const buildTalkToAssistantToolSchema = target => ({

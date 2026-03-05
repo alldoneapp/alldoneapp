@@ -369,6 +369,28 @@ export function updateAssistantDelegationDescriptionManual(projectId, assistant,
     updateAssistantData(projectId, assistant.uid, { delegationToolDescriptionManual }, null)
 }
 
+export function updateAssistantDelegationTargets(projectId, assistant, selectedTargetKeys = [], useDefaultAll = false) {
+    if (useDefaultAll) {
+        updateAssistantData(
+            projectId,
+            assistant.uid,
+            { allowedDelegationTargetKeys: firebase.firestore.FieldValue.delete() },
+            null
+        )
+        return
+    }
+
+    const normalizedTargetKeys = Array.from(
+        new Set(
+            (Array.isArray(selectedTargetKeys) ? selectedTargetKeys : [])
+                .map(key => String(key || '').trim())
+                .filter(Boolean)
+        )
+    )
+
+    updateAssistantData(projectId, assistant.uid, { allowedDelegationTargetKeys: normalizedTargetKeys }, null)
+}
+
 export async function getAssistantDelegationDescriptionStatus(projectId, assistantId) {
     return await runHttpsCallableFunction('getAssistantDelegationDescriptionStatusSecondGen', {
         projectId,
