@@ -57,9 +57,24 @@ export default function AssistantDelegationTargetsModal({ assistant, availableTa
 
         return availableTargets
             .filter(target => selectedTargets.has(target.targetKey))
-            .map(target => target.displayName)
+            .map(target => `${target.displayName} (${target.projectName})`)
             .join(', ')
     }, [availableTargets, selectedTargets])
+
+    const targetsGroupedByProject = useMemo(() => {
+        const grouped = new Map()
+        availableTargets.forEach(target => {
+            const projectKey = target.projectId || target.projectName || 'project'
+            if (!grouped.has(projectKey)) {
+                grouped.set(projectKey, {
+                    projectName: target.projectName || projectKey,
+                    targets: [],
+                })
+            }
+            grouped.get(projectKey).targets.push(target)
+        })
+        return Array.from(grouped.values())
+    }, [availableTargets])
 
     return (
         <View style={localStyles.wrapper}>
@@ -73,24 +88,30 @@ export default function AssistantDelegationTargetsModal({ assistant, availableTa
                     <Text style={localStyles.summary} numberOfLines={2}>
                         {selectionSummary}
                     </Text>
-                    {availableTargets.map(target => {
-                        const checked = selectedTargets.has(target.targetKey)
-                        return (
-                            <TouchableOpacity
-                                key={target.targetKey}
-                                style={localStyles.option}
-                                onPress={() => toggleTarget(target.targetKey)}
-                            >
-                                <CheckBox checked={checked} />
-                                <View style={localStyles.optionTextContainer}>
-                                    <Text style={localStyles.optionLabel}>{target.displayName}</Text>
-                                    <Text style={localStyles.optionDescription} numberOfLines={2}>
-                                        {target.description || translate('No delegation description configured')}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        )
-                    })}
+                    {targetsGroupedByProject.map(projectGroup => (
+                        <View key={projectGroup.projectName} style={localStyles.projectGroup}>
+                            <Text style={localStyles.projectTitle}>{projectGroup.projectName}</Text>
+                            {projectGroup.targets.map(target => {
+                                const checked = selectedTargets.has(target.targetKey)
+                                return (
+                                    <TouchableOpacity
+                                        key={target.targetKey}
+                                        style={localStyles.option}
+                                        onPress={() => toggleTarget(target.targetKey)}
+                                    >
+                                        <CheckBox checked={checked} />
+                                        <View style={localStyles.optionTextContainer}>
+                                            <Text style={localStyles.optionLabel}>{target.displayName}</Text>
+                                            <Text style={localStyles.optionDescription}>
+                                                {target.description ||
+                                                    translate('No delegation description configured')}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                )
+                            })}
+                        </View>
+                    ))}
                 </CustomScrollView>
                 <View style={localStyles.actions}>
                     <Button
@@ -135,6 +156,14 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-start',
         paddingVertical: 8,
+    },
+    projectGroup: {
+        marginBottom: 6,
+    },
+    projectTitle: {
+        color: colors.Text04,
+        fontWeight: '600',
+        marginTop: 6,
     },
     optionTextContainer: {
         marginLeft: 12,
