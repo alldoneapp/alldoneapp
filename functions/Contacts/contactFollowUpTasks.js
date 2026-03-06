@@ -131,9 +131,10 @@ async function deleteManagedTask(projectId, task) {
 }
 
 async function createManagedFollowUpUpdateFeed(projectId, projectData, taskId, task) {
+    const feedCreatorId = task.lastEditorId || task.userId || ''
     const feedCreator = {
-        uid: `system-contact-follow-up-${task.autoFollowUpContactId || taskId}`,
-        displayName: 'System',
+        uid: feedCreatorId,
+        displayName: '',
         photoURL: '',
     }
 
