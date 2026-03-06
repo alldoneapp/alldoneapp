@@ -125,7 +125,13 @@ function SyncSummary({ state, result }) {
     )
 }
 
-export default function GmailLabelingSettings({ projectId, isConnected, authStatus }) {
+export default function GmailLabelingSettings({
+    projectId,
+    isConnected,
+    authStatus,
+    onUnsavedChangesChange,
+    onRegisterCloseHandlers,
+}) {
     const { height: windowHeight } = Dimensions.get('window')
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
@@ -146,6 +152,10 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
     const currentConfigSnapshot = sanitizeConfigForSave(config)
     const hasUnsavedChanges =
         !!savedConfigSnapshot && JSON.stringify(currentConfigSnapshot) !== JSON.stringify(savedConfigSnapshot)
+
+    useEffect(() => {
+        if (typeof onUnsavedChangesChange === 'function') onUnsavedChangesChange(hasUnsavedChanges)
+    }, [hasUnsavedChanges, onUnsavedChangesChange])
 
     useEffect(() => {
         let isMounted = true
@@ -216,7 +226,7 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
         }))
     }
 
-    const onSave = async () => {
+    const saveSettings = async () => {
         setSaving(true)
         setError('')
         setSuccessMessage('')
@@ -231,11 +241,25 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
             setConfig(normalizedConfig)
             setSavedConfigSnapshot(sanitizeConfigForSave(normalizedConfig))
             setSuccessMessage(translate('Gmail labeling settings saved'))
+            return true
         } catch (saveError) {
             setError(saveError.message || translate('Failed to save Gmail labeling settings'))
+            return false
         } finally {
             setSaving(false)
         }
+    }
+
+    useEffect(() => {
+        if (typeof onRegisterCloseHandlers !== 'function') return
+
+        onRegisterCloseHandlers({
+            saveAndClose: async () => await saveSettings(),
+        })
+    }, [config, connectedEmail, onRegisterCloseHandlers])
+
+    const onSave = async () => {
+        await saveSettings()
     }
 
     const onRunSync = async () => {
