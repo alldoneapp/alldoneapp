@@ -14,6 +14,13 @@ const deletePictures = async (projectId, contactId) => {
 const onDeleteContact = async (projectId, contact) => {
     const { uid: contactId, noteId } = contact
 
+    console.log('[ContactFollowUp][Trigger:onDelete]', {
+        projectId,
+        contactId,
+        noteId: noteId || null,
+        contactStatusId: contact?.contactStatusId || null,
+    })
+
     const promises = []
     promises.push(deleteChat(admin, projectId, contactId))
     if (noteId) promises.push(deleteNote(projectId, noteId, '', admin))

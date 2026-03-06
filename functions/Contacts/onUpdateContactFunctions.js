@@ -11,6 +11,17 @@ const onUpdateContact = async (projectId, contactId, change) => {
     const oldContact = change.before.data()
     const newContact = change.after.data()
 
+    console.log('[ContactFollowUp][Trigger:onUpdate]', {
+        projectId,
+        contactId,
+        oldStatusId: oldContact?.contactStatusId || null,
+        newStatusId: newContact?.contactStatusId || null,
+        oldLastEditionDate: oldContact?.lastEditionDate || null,
+        newLastEditionDate: newContact?.lastEditionDate || null,
+        oldRecorderUserId: oldContact?.recorderUserId || null,
+        newRecorderUserId: newContact?.recorderUserId || null,
+    })
+
     await Promise.all([
         proccessAlgoliaRecord(projectId, contactId, oldContact, newContact),
         syncContactFollowUpTask(projectId, { ...newContact, uid: contactId }),

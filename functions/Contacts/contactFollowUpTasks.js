@@ -114,8 +114,20 @@ function buildManagedFollowUpTask(projectId, contact, statusId, followUpDays) {
 }
 
 async function deleteManagedTask(projectId, task) {
+    console.log('[ContactFollowUp][DeleteTask:start]', {
+        projectId,
+        taskId: task?.id,
+        contactId: task?.autoFollowUpContactId || null,
+        statusId: task?.autoFollowUpStatusId || null,
+        done: task?.done || false,
+        inDone: task?.inDone || false,
+    })
     await onDeleteTask(projectId, task)
     await deleteTask(projectId, task.id, admin)
+    console.log('[ContactFollowUp][DeleteTask:done]', {
+        projectId,
+        taskId: task?.id,
+    })
 }
 
 async function createManagedFollowUpUpdateFeed(projectId, projectData, taskId, task) {
@@ -131,52 +143,156 @@ async function createManagedFollowUpUpdateFeed(projectId, projectData, taskId, t
     batch.feedObjects = {
         [taskId]: generateTaskObjectModel(Date.now(), task, taskId),
     }
-    await createTaskUpdatedFeed(projectId, task, taskId, batch, feedCreator, true, {
-        entryText: 'scheduled contact follow-up',
+    console.log('[ContactFollowUp][Feed:start]', {
+        projectId,
+        taskId,
+        contactId: task?.autoFollowUpContactId || null,
+        creatorId: feedCreator.uid,
+        taskName: task?.extendedName || task?.name || '',
     })
-    await batch.commit()
+    try {
+        await createTaskUpdatedFeed(projectId, task, taskId, batch, feedCreator, true, {
+            entryText: 'scheduled contact follow-up',
+        })
+        await batch.commit()
+        console.log('[ContactFollowUp][Feed:done]', {
+            projectId,
+            taskId,
+            contactId: task?.autoFollowUpContactId || null,
+        })
+    } catch (error) {
+        console.error('[ContactFollowUp][Feed:error]', {
+            projectId,
+            taskId,
+            contactId: task?.autoFollowUpContactId || null,
+            errorMessage: error?.message || String(error),
+            stack: error?.stack || null,
+        })
+        throw error
+    }
 }
 
 async function deleteOpenManagedFollowUpTasks(projectId, contactId) {
     const tasks = await getManagedFollowUpTasks(projectId, contactId)
     const openTasks = tasks.filter(isOpenTask)
+    console.log('[ContactFollowUp][DeleteOpenTasks]', {
+        projectId,
+        contactId,
+        totalManagedTasks: tasks.length,
+        openManagedTasks: openTasks.map(task => task.id),
+    })
     await Promise.all(openTasks.map(task => deleteManagedTask(projectId, task)))
 }
 
 async function syncContactFollowUpTask(projectId, contact) {
-    const projectData = await getProjectData(projectId)
-    const status = await getContactStatus(projectId, contact.contactStatusId, projectData)
-    const followUpDays = normalizeFollowUpDays(status?.followUpDays)
+    console.log('[ContactFollowUp][Sync:start]', {
+        projectId,
+        contactId: contact?.uid,
+        contactStatusId: contact?.contactStatusId || null,
+        lastEditionDate: contact?.lastEditionDate || null,
+        recorderUserId: contact?.recorderUserId || null,
+        isPrivate: contact?.isPrivate || false,
+    })
 
-    const tasks = await getManagedFollowUpTasks(projectId, contact.uid)
-    const openTasks = tasks.filter(isOpenTask)
-    const primaryTask = getPrimaryOpenManagedTask(openTasks)
-    const duplicateOpenTasks = primaryTask ? openTasks.filter(task => task.id !== primaryTask.id) : openTasks
+    try {
+        const projectData = await getProjectData(projectId)
+        const status = await getContactStatus(projectId, contact.contactStatusId, projectData)
+        const followUpDays = normalizeFollowUpDays(status?.followUpDays)
 
-    if (duplicateOpenTasks.length > 0) {
-        await Promise.all(duplicateOpenTasks.map(task => deleteManagedTask(projectId, task)))
-    }
+        const tasks = await getManagedFollowUpTasks(projectId, contact.uid)
+        const openTasks = tasks.filter(isOpenTask)
+        const primaryTask = getPrimaryOpenManagedTask(openTasks)
+        const duplicateOpenTasks = primaryTask ? openTasks.filter(task => task.id !== primaryTask.id) : openTasks
 
-    if (!followUpDays || !contact.recorderUserId) {
-        if (primaryTask) await deleteManagedTask(projectId, primaryTask)
-        return
-    }
-
-    const updateData = getManagedTaskUpdate(contact, status.id, followUpDays)
-
-    if (primaryTask) {
-        await admin.firestore().doc(`items/${projectId}/tasks/${primaryTask.id}`).update(updateData)
-        await createManagedFollowUpUpdateFeed(projectId, projectData, primaryTask.id, {
-            ...primaryTask,
-            ...updateData,
-            id: primaryTask.id,
+        console.log('[ContactFollowUp][Sync:state]', {
+            projectId,
+            contactId: contact?.uid,
+            statusId: status?.id || null,
+            rawFollowUpDays: status?.followUpDays ?? null,
+            normalizedFollowUpDays: followUpDays,
+            totalManagedTasks: tasks.length,
+            openManagedTaskIds: openTasks.map(task => task.id),
+            primaryTaskId: primaryTask?.id || null,
+            duplicateTaskIds: duplicateOpenTasks.map(task => task.id),
         })
-        return
-    }
 
-    const newTask = buildManagedFollowUpTask(projectId, contact, status.id, followUpDays)
-    await uploadTask(admin, projectId, newTask)
-    await createManagedFollowUpUpdateFeed(projectId, projectData, newTask.id, newTask)
+        if (duplicateOpenTasks.length > 0) {
+            console.log('[ContactFollowUp][Sync:dedupe]', {
+                projectId,
+                contactId: contact?.uid,
+                duplicateTaskIds: duplicateOpenTasks.map(task => task.id),
+            })
+            await Promise.all(duplicateOpenTasks.map(task => deleteManagedTask(projectId, task)))
+        }
+
+        if (!followUpDays || !contact.recorderUserId) {
+            console.log('[ContactFollowUp][Sync:disable]', {
+                projectId,
+                contactId: contact?.uid,
+                reason: !followUpDays ? 'missing_follow_up_days' : 'missing_recorder_user_id',
+                primaryTaskId: primaryTask?.id || null,
+            })
+            if (primaryTask) await deleteManagedTask(projectId, primaryTask)
+            return
+        }
+
+        const updateData = getManagedTaskUpdate(contact, status.id, followUpDays)
+
+        console.log('[ContactFollowUp][Sync:computed]', {
+            projectId,
+            contactId: contact?.uid,
+            statusId: status.id,
+            dueDate: updateData.dueDate,
+            taskName: updateData.extendedName,
+            assigneeId: updateData.userId,
+        })
+
+        if (primaryTask) {
+            console.log('[ContactFollowUp][Sync:updateTask]', {
+                projectId,
+                contactId: contact?.uid,
+                taskId: primaryTask.id,
+            })
+            await admin.firestore().doc(`items/${projectId}/tasks/${primaryTask.id}`).update(updateData)
+            await createManagedFollowUpUpdateFeed(projectId, projectData, primaryTask.id, {
+                ...primaryTask,
+                ...updateData,
+                id: primaryTask.id,
+            })
+            console.log('[ContactFollowUp][Sync:updateTask:done]', {
+                projectId,
+                contactId: contact?.uid,
+                taskId: primaryTask.id,
+            })
+            return
+        }
+
+        const newTask = buildManagedFollowUpTask(projectId, contact, status.id, followUpDays)
+        console.log('[ContactFollowUp][Sync:createTask]', {
+            projectId,
+            contactId: contact?.uid,
+            taskId: newTask.id,
+            taskName: newTask.extendedName,
+            dueDate: newTask.dueDate,
+            assigneeId: newTask.userId,
+        })
+        await uploadTask(admin, projectId, newTask)
+        await createManagedFollowUpUpdateFeed(projectId, projectData, newTask.id, newTask)
+        console.log('[ContactFollowUp][Sync:createTask:done]', {
+            projectId,
+            contactId: contact?.uid,
+            taskId: newTask.id,
+        })
+    } catch (error) {
+        console.error('[ContactFollowUp][Sync:error]', {
+            projectId,
+            contactId: contact?.uid,
+            contactStatusId: contact?.contactStatusId || null,
+            errorMessage: error?.message || String(error),
+            stack: error?.stack || null,
+        })
+        throw error
+    }
 }
 
 module.exports = {

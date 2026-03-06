@@ -8,6 +8,13 @@ const proccessAlgoliaRecord = async (projectId, contact) => {
 }
 
 const onCreateContact = async (projectId, contact) => {
+    console.log('[ContactFollowUp][Trigger:onCreate]', {
+        projectId,
+        contactId: contact?.uid,
+        contactStatusId: contact?.contactStatusId || null,
+        lastEditionDate: contact?.lastEditionDate || null,
+        recorderUserId: contact?.recorderUserId || null,
+    })
     await Promise.all([proccessAlgoliaRecord(projectId, contact), syncContactFollowUpTask(projectId, contact)])
 }
 
