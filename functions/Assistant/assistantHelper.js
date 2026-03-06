@@ -1535,9 +1535,15 @@ const calculateGoldToReduce = (userGold, totalTokens, model) => {
         model,
         tokensPerGold: getTokensPerGold(model),
     })
-    const goldCost = Math.round(totalTokens / getTokensPerGold(model))
+    const goldCost = calculateGoldCostFromTokens(totalTokens, model)
     const goldToReduce = userGold - goldCost > 0 ? goldCost : userGold
     return goldToReduce
+}
+
+const calculateGoldCostFromTokens = (totalTokens, model) => {
+    const tokensPerGold = getTokensPerGold(model)
+    if (!tokensPerGold || !Number.isFinite(totalTokens)) return 0
+    return Math.round(totalTokens / tokensPerGold)
 }
 
 async function interactWithChatStream(
@@ -5966,6 +5972,7 @@ module.exports = {
     generateSearchSummary,
     getCommonData, // Export for parallel fetching to reduce time-to-first-token
     normalizeModelKey, // Export for model normalization and backward compatibility
+    calculateGoldCostFromTokens,
     executeToolNatively, // Export for WhatsApp assistant bridge
     isToolAllowedForExecution,
     // Optimized functions with caching

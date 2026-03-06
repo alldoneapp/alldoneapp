@@ -39,6 +39,7 @@ function coerceClassifierResult(result, validLabelKeys = [], confidenceThreshold
     const confidence = Number.isFinite(result?.confidence) ? Number(result.confidence) : 0
     const reasoning = typeof result?.reasoning === 'string' ? result.reasoning.trim() : ''
     const matched = !!result?.matched && !!labelKey && validLabelKeys.includes(labelKey)
+    const usage = result?.usage || null
 
     if (!matched || confidence < confidenceThreshold) {
         return {
@@ -46,6 +47,7 @@ function coerceClassifierResult(result, validLabelKeys = [], confidenceThreshold
             labelKey: null,
             confidence,
             reasoning: reasoning || 'No configured label clearly matched.',
+            usage,
         }
     }
 
@@ -54,6 +56,7 @@ function coerceClassifierResult(result, validLabelKeys = [], confidenceThreshold
         labelKey,
         confidence,
         reasoning,
+        usage,
     }
 }
 
@@ -100,7 +103,24 @@ async function classifyGmailMessage({ config, message }) {
 
     const content = completion?.choices?.[0]?.message?.content || ''
     const parsed = extractJsonFromText(content)
-    return coerceClassifierResult(parsed, validLabelKeys, confidenceThreshold)
+    return coerceClassifierResult(
+        {
+            ...parsed,
+            usage: completion?.usage
+                ? {
+                      totalTokens: Number.isFinite(completion.usage.total_tokens) ? completion.usage.total_tokens : 0,
+                      promptTokens: Number.isFinite(completion.usage.prompt_tokens)
+                          ? completion.usage.prompt_tokens
+                          : 0,
+                      completionTokens: Number.isFinite(completion.usage.completion_tokens)
+                          ? completion.usage.completion_tokens
+                          : 0,
+                  }
+                : null,
+        },
+        validLabelKeys,
+        confidenceThreshold
+    )
 }
 
 module.exports = {

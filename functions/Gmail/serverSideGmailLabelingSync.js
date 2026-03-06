@@ -3,6 +3,7 @@
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
 const { deductGold } = require('../Gold/goldHelper')
 const { adGoldToUser } = require('../Users/usersFirestore')
 const {
@@ -356,8 +357,53 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
 
 async function processSingleMessage({ gmail, labelMap, config, userId, projectId, rawMessage }) {
     const normalizedMessage = normalizeGmailMessage(rawMessage)
-    const classifierResult = await classifyGmailMessage({ config, message: normalizedMessage })
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
+
+    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+    if (!goldResult?.success) {
+        logSync('Skipping Gmail labeling because user has insufficient gold', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            requiredGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            currentGold: goldResult?.currentGold ?? null,
+        })
+
+        await writeAuditRecord(userId, projectId, normalizedMessage, {
+            selectedLabelKey: null,
+            selectedGmailLabelName: null,
+            autoArchive: false,
+            confidence: null,
+            reasoning: 'Skipped before classification because the user has insufficient gold.',
+            applied: false,
+            archived: false,
+            skippedReason: 'insufficient_gold',
+            promptVersion,
+        })
+
+        return {
+            labeled: 0,
+            archived: 0,
+            skipped: 1,
+            goldSpent: 0,
+            insufficientGold: true,
+        }
+    }
+
+    let classifierResult
+    try {
+        classifierResult = await classifyGmailMessage({ config, message: normalizedMessage })
+    } catch (error) {
+        await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+        console.warn('[gmailLabeling] Refunded gold after Gmail classification failure', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            refundedGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            error: error.message,
+        })
+        throw error
+    }
 
     logSync('Classified Gmail message', {
         userId,
@@ -368,7 +414,13 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         labelKey: classifierResult.labelKey || null,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
+        tokenUsage: classifierResult.usage || null,
     })
+
+    const tokenUsage = classifierResult?.usage || null
+    const estimatedNormalGoldCost = tokenUsage?.totalTokens
+        ? calculateGoldCostFromTokens(tokenUsage.totalTokens, config.model)
+        : 0
 
     if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
@@ -383,7 +435,14 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
             promptVersion,
         })
 
-        return { labeled: 0, archived: 0, skipped: 1 }
+        return {
+            labeled: 0,
+            archived: 0,
+            skipped: 1,
+            goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            estimatedNormalGoldCost,
+            insufficientGold: false,
+        }
     }
 
     const selectedDefinition = config.labelDefinitions.find(label => label.key === classifierResult.labelKey)
@@ -400,7 +459,14 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
             promptVersion,
         })
 
-        return { labeled: 0, archived: 0, skipped: 1 }
+        return {
+            labeled: 0,
+            archived: 0,
+            skipped: 1,
+            goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            estimatedNormalGoldCost,
+            insufficientGold: false,
+        }
     }
 
     const labelId = selectedDefinition.gmailLabelName.startsWith(ALDDONE_MANAGED_LABEL_PREFIX)
@@ -417,37 +483,6 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         labelId,
         autoArchive: !!selectedDefinition.autoArchive,
     })
-
-    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
-    if (!goldResult?.success) {
-        logSync('Skipping Gmail labeling because user has insufficient gold', {
-            userId,
-            projectId,
-            messageId: normalizedMessage.messageId,
-            requiredGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
-            currentGold: goldResult?.currentGold ?? null,
-        })
-
-        await writeAuditRecord(userId, projectId, normalizedMessage, {
-            selectedLabelKey: selectedDefinition.key,
-            selectedGmailLabelName: selectedDefinition.gmailLabelName,
-            autoArchive: !!selectedDefinition.autoArchive,
-            confidence: classifierResult.confidence,
-            reasoning: classifierResult.reasoning,
-            applied: false,
-            archived: false,
-            skippedReason: 'insufficient_gold',
-            promptVersion,
-        })
-
-        return {
-            labeled: 0,
-            archived: 0,
-            skipped: 1,
-            goldSpent: 0,
-            insufficientGold: true,
-        }
-    }
 
     let modifyResult
     try {
@@ -481,6 +516,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         archived: modifyResult.archived ? 1 : 0,
         skipped: 0,
         goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+        estimatedNormalGoldCost,
         insufficientGold: false,
     }
 }
@@ -648,6 +684,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         let archived = 0
         let skipped = candidateMessages.length - messagesToProcess.length
         let goldSpent = 0
+        let estimatedNormalGoldSpent = 0
         let syncLastError = null
 
         for (const rawMessage of messagesToProcess) {
@@ -670,6 +707,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 archived += result.archived
                 skipped += result.skipped
                 goldSpent += result.goldSpent || 0
+                estimatedNormalGoldSpent += result.estimatedNormalGoldCost || 0
                 logSync('Finished processing Gmail message', {
                     ...logContext,
                     messageId: rawMessage.id,
@@ -677,6 +715,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     archived: result.archived,
                     skipped: result.skipped,
                     goldSpent: result.goldSpent || 0,
+                    estimatedNormalGoldCost: result.estimatedNormalGoldCost || 0,
                     insufficientGold: !!result.insufficientGold,
                 })
                 if (result.insufficientGold) {
@@ -759,6 +798,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             archived,
             skipped,
             goldSpent,
+            estimatedNormalGoldSpent,
             lastHistoryId: resolvedHistoryId,
             lastError: syncLastError,
             gmailEmail,

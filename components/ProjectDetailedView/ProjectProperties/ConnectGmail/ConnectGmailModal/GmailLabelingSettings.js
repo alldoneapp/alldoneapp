@@ -39,7 +39,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         projectId,
         gmailEmail: config.gmailEmail || gmailEmail || '',
         prompt: config.prompt || '',
-        model: config.model || 'MODEL_GPT5_2',
+        model: config.model || 'MODEL_GPT5_4',
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
         lookbackDays: Number.isFinite(config.lookbackDays) ? String(config.lookbackDays) : '7',
@@ -58,7 +58,7 @@ function sanitizeConfigForSave(config) {
         enabled: !!config.enabled,
         gmailEmail: config.gmailEmail || '',
         prompt: config.prompt || '',
-        model: config.model || 'MODEL_GPT5_2',
+        model: config.model || 'MODEL_GPT5_4',
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
         lookbackDays: Number.isFinite(parsedLookbackDays)
@@ -96,6 +96,8 @@ function SyncSummary({ state, result }) {
             ? state.lastProcessedCount
             : 0
     const goldSpent = typeof result?.goldSpent === 'number' ? result.goldSpent : 0
+    const estimatedNormalGoldSpent =
+        typeof result?.estimatedNormalGoldSpent === 'number' ? result.estimatedNormalGoldSpent : 0
 
     return (
         <View style={localStyles.summaryCard}>
@@ -109,6 +111,11 @@ function SyncSummary({ state, result }) {
             </Text>
             {goldSpent > 0 ? (
                 <Text style={localStyles.summaryText}>{translate('Gmail sync gold spent', { count: goldSpent })}</Text>
+            ) : null}
+            {estimatedNormalGoldSpent > 0 ? (
+                <Text style={localStyles.summaryText}>
+                    {`Normal token-based gold cost: ${estimatedNormalGoldSpent}`}
+                </Text>
             ) : null}
             {state?.status ? (
                 <Text style={localStyles.summaryText}>{translate('Gmail sync state', { state: state.status })}</Text>
@@ -372,6 +379,8 @@ export default function GmailLabelingSettings({ projectId, isConnected, authStat
                         <TextInput
                             value={label.description}
                             onChangeText={description => updateLabel(index, { description })}
+                            multiline
+                            numberOfLines={4}
                             editable={canManage}
                             style={[localStyles.input, localStyles.descriptionInput]}
                             placeholder={translate('Describe when this label should be used')}
@@ -516,7 +525,8 @@ const localStyles = StyleSheet.create({
         textAlignVertical: 'top',
     },
     descriptionInput: {
-        minHeight: 72,
+        minHeight: 104,
+        paddingTop: 12,
         textAlignVertical: 'top',
     },
     switchRow: {
