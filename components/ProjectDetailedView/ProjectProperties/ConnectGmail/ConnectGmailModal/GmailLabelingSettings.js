@@ -111,6 +111,13 @@ function formatSyncDateTime(value) {
     }).format(date)
 }
 
+function stopEnterPropagation(event) {
+    const key = event?.nativeEvent?.key || event?.key
+    if (key === 'Enter') {
+        event?.stopPropagation?.()
+    }
+}
+
 function SyncSummary({ state, result }) {
     const lastError = result?.lastError || state?.lastError
     const syncDateLabel = formatSyncDateTime(result?.lastSyncAt || state?.lastSyncAt || state?.lastSuccessfulSyncAt)
@@ -435,6 +442,7 @@ export default function GmailLabelingSettings({
                         <TextInput
                             multiline
                             blurOnSubmit={false}
+                            onKeyPress={stopEnterPropagation}
                             value={config.prompt}
                             onChangeText={prompt => updateConfig({ prompt })}
                             editable={canManage}
@@ -466,6 +474,7 @@ export default function GmailLabelingSettings({
                                     blurOnSubmit={false}
                                     scrollEnabled
                                     numberOfLines={5}
+                                    onKeyPress={stopEnterPropagation}
                                     editable={canManage}
                                     style={[localStyles.input, localStyles.descriptionInput]}
                                     placeholder={translate('Describe when this label should be used')}
