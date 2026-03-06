@@ -1,14 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import {
-    ActivityIndicator,
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import CustomTextInput3 from '../../../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -261,7 +252,6 @@ export default function GmailLabelingSettings({
     onUnsavedChangesChange,
     onRegisterCloseHandlers,
 }) {
-    const { height: windowHeight } = Dimensions.get('window')
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
     const [syncState, setSyncState] = useState(null)
@@ -279,7 +269,6 @@ export default function GmailLabelingSettings({
     const isPremiumUser = premiumStatus === PLAN_STATUS_PREMIUM
     const needsReconnect = isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope === false
     const canManage = isPremiumUser && isConnected && authStatus?.hasCredentials && authStatus?.hasModifyScope !== false
-    const scrollMaxHeight = Math.max(Math.min(windowHeight - 260, 560), 260)
     const currentConfigSnapshot = sanitizeConfigForSave(config)
     const hasUnsavedChanges =
         !!savedConfigSnapshot && JSON.stringify(currentConfigSnapshot) !== JSON.stringify(savedConfigSnapshot)
@@ -461,10 +450,7 @@ export default function GmailLabelingSettings({
     const showInitialLoadingState = !initialLoadComplete && !error
 
     return (
-        <ScrollView
-            style={[localStyles.scroll, { maxHeight: scrollMaxHeight }]}
-            contentContainerStyle={localStyles.scrollContent}
-        >
+        <View style={localStyles.container}>
             <View style={localStyles.section}>
                 <View style={localStyles.headerRow}>
                     <Text style={localStyles.sectionTitle}>{translate('Gmail labeling')}</Text>
@@ -542,7 +528,6 @@ export default function GmailLabelingSettings({
                                     externalTextStyle={localStyles.multilineInputText}
                                     keepBreakLines={true}
                                     key={'gmail-system-prompt'}
-                                    disableContainerScroll={true}
                                 />
                             </View>
 
@@ -569,7 +554,6 @@ export default function GmailLabelingSettings({
                                     keepBreakLines={true}
                                     onKeyPress={stopEnterPropagation}
                                     key={`gmail-prompt-${projectId}-${connectedEmail || 'default'}`}
-                                    disableContainerScroll={true}
                                 />
                             </View>
 
@@ -607,7 +591,6 @@ export default function GmailLabelingSettings({
                                             keepBreakLines={true}
                                             onKeyPress={stopEnterPropagation}
                                             key={`gmail-rule-${label.id || index}-${label.gmailLabelName || 'rule'}`}
-                                            disableContainerScroll={true}
                                         />
                                         <View style={localStyles.switchRow}>
                                             <Text style={localStyles.inputLabel}>
@@ -712,16 +695,13 @@ export default function GmailLabelingSettings({
                     </View>
                 </>
             ) : null}
-        </ScrollView>
+        </View>
     )
 }
 
 const localStyles = StyleSheet.create({
-    scroll: {
+    container: {
         marginTop: 16,
-    },
-    scrollContent: {
-        paddingBottom: 8,
     },
     section: {
         marginBottom: 16,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Dimensions, StyleSheet, Text, View } from 'react-native'
+import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../../UIControls/Button'
@@ -15,7 +15,7 @@ import GmailLabelingSettings from './GmailLabelingSettings'
 export default function ConnectGmailModal({ projectId, authStatus, closePopover, setAuthStatus }) {
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const { width: windowWidth } = Dimensions.get('window')
+    const { width: windowWidth, height: windowHeight } = Dimensions.get('window')
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
     const [closingAfterSave, setClosingAfterSave] = useState(false)
@@ -23,6 +23,7 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
 
     const isConnectedAndSignedIn = isConnected && authStatus?.hasCredentials
     const containerWidth = Math.min(Math.max(windowWidth - (smallScreenNavigation ? 24 : 64), 320), 760)
+    const scrollMaxHeight = Math.max(Math.min(windowHeight - 160, 760), 320)
 
     useEffect(() => {
         storeModal(CONNECT_GMAIL_MODAL_ID)
@@ -55,37 +56,49 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
     }
 
     return (
-        <View style={[localStyles.container, { width: containerWidth }]}>
-            <ModalHeader
-                closeModal={onRequestClose}
-                title={'Google Gmail'}
-                description={translate('Google gmail description')}
-                hideCloseButton={showCloseConfirmation}
-            />
+        <View style={[localStyles.container, { width: containerWidth, maxHeight: scrollMaxHeight }]}>
             {showCloseConfirmation ? (
-                <View style={localStyles.confirmationCard}>
-                    <Text style={localStyles.confirmationTitle}>{translate('Unsaved changes')}</Text>
-                    <Text style={localStyles.confirmationText}>
-                        {translate('You have unsaved Gmail labeling changes. Save before closing or discard them.')}
-                    </Text>
-                    <View style={localStyles.confirmationButtonRow}>
-                        <Button
-                            title={translate('Save and close')}
-                            onPress={onSaveAndClose}
-                            processing={closingAfterSave}
-                            processingTitle={translate('Saving')}
-                            buttonStyle={{ marginRight: 12 }}
-                        />
-                        <Button
-                            title={translate('Discard + close')}
-                            type="ghost"
-                            onPress={onDiscardAndClose}
-                            disabled={closingAfterSave}
-                        />
-                    </View>
-                </View>
-            ) : (
                 <>
+                    <ModalHeader
+                        closeModal={onRequestClose}
+                        title={'Google Gmail'}
+                        description={translate('Google gmail description')}
+                        hideCloseButton={showCloseConfirmation}
+                    />
+                    <View style={localStyles.confirmationCard}>
+                        <Text style={localStyles.confirmationTitle}>{translate('Unsaved changes')}</Text>
+                        <Text style={localStyles.confirmationText}>
+                            {translate('You have unsaved Gmail labeling changes. Save before closing or discard them.')}
+                        </Text>
+                        <View style={localStyles.confirmationButtonRow}>
+                            <Button
+                                title={translate('Save and close')}
+                                onPress={onSaveAndClose}
+                                processing={closingAfterSave}
+                                processingTitle={translate('Saving')}
+                                buttonStyle={{ marginRight: 12 }}
+                            />
+                            <Button
+                                title={translate('Discard + close')}
+                                type="ghost"
+                                onPress={onDiscardAndClose}
+                                disabled={closingAfterSave}
+                            />
+                        </View>
+                    </View>
+                </>
+            ) : (
+                <ScrollView
+                    style={localStyles.scroll}
+                    contentContainerStyle={localStyles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
+                    <ModalHeader
+                        closeModal={onRequestClose}
+                        title={'Google Gmail'}
+                        description={translate('Google gmail description')}
+                        hideCloseButton={showCloseConfirmation}
+                    />
                     {isConnectedAndSignedIn && (
                         <ConnectedUserData isConnected={isConnected} email={authStatus?.email} />
                     )}
@@ -105,7 +118,7 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
                             closeHandlersRef.current = handlers || {}
                         }}
                     />
-                </>
+                </ScrollView>
             )}
         </View>
     )
@@ -121,6 +134,12 @@ const localStyles = StyleSheet.create({
         shadowOpacity: 1,
         shadowRadius: 16,
         elevation: 3,
+    },
+    scroll: {
+        flexGrow: 0,
+    },
+    scrollContent: {
+        paddingBottom: 8,
     },
     confirmationCard: {
         paddingTop: 4,
