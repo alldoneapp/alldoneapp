@@ -386,6 +386,35 @@ const toolSchemas = {
         },
     },
 
+    search_gmail: {
+        type: 'function',
+        function: {
+            name: 'search_gmail',
+            description:
+                "Search the user's connected Gmail accounts for relevant emails and return matching messages with participants, dates, snippets, and email body text. Use this for questions about past email conversations, what was discussed with a person, or to find specific emails.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description:
+                            'The Gmail search query or search phrase. Use specific names, topics, or sender/email terms that help find the relevant emails.',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of matching emails to return. Default is 10, maximum is 20.',
+                    },
+                    includeBodies: {
+                        type: 'boolean',
+                        description: 'Optional: whether to include email body text in the results. Defaults to true.',
+                    },
+                },
+                required: ['query'],
+            },
+        },
+    },
+
     get_note: {
         type: 'function',
         function: {

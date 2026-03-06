@@ -7,6 +7,7 @@ export const TOOL_OPTIONS = [
     { key: 'get_focus_task', labelKey: 'Get focus task' },
     { key: 'get_user_projects', labelKey: 'Get user projects' },
     { key: 'search', labelKey: 'Search content' },
+    { key: 'search_gmail', labelKey: 'Search Gmail emails' },
     { key: 'get_note', labelKey: 'Get note content' },
     { key: 'web_search', labelKey: 'Search the internet' },
     { key: 'external_tools', labelKey: 'Use external app tools' },

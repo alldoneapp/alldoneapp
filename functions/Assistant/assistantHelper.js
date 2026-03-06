@@ -4292,6 +4292,64 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
         }
 
+        case 'search_gmail': {
+            console.log('📧 SEARCH_GMAIL TOOL: Starting Gmail search', {
+                query: toolArgs.query,
+                limit: toolArgs.limit,
+                includeBodies: toolArgs.includeBodies,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    query: typeof toolArgs.query === 'string' ? toolArgs.query : '',
+                    searchedAccounts: [],
+                    accountsWithErrors: [],
+                    partialFailure: false,
+                    results: [],
+                    message: 'Gmail search requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { searchGmailForAssistantRequest } = require('../Gmail/assistantGmailSearch')
+                const result = await searchGmailForAssistantRequest({
+                    userId: targetUserId,
+                    query: toolArgs.query,
+                    limit: toolArgs.limit,
+                    includeBodies: toolArgs.includeBodies,
+                })
+
+                console.log('📧 SEARCH_GMAIL TOOL: Search completed', {
+                    success: result.success,
+                    query: toolArgs.query,
+                    searchedAccounts: result.searchedAccounts?.length || 0,
+                    accountsWithErrors: result.accountsWithErrors?.length || 0,
+                    resultCount: result.results?.length || 0,
+                    partialFailure: !!result.partialFailure,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📧 SEARCH_GMAIL TOOL: Search failed', {
+                    error: error.message,
+                    query: toolArgs.query,
+                    requestUserId: targetUserId,
+                })
+                return {
+                    success: false,
+                    query: typeof toolArgs.query === 'string' ? toolArgs.query : '',
+                    searchedAccounts: [],
+                    accountsWithErrors: [],
+                    partialFailure: false,
+                    results: [],
+                    message: `Gmail search failed: ${error.message}`,
+                }
+            }
+        }
+
         default:
             throw new Error(`Unknown tool: ${toolName}`)
     }
@@ -5452,6 +5510,12 @@ async function addBaseInstructions(
                 `However, do NOT call any tools for casual conversation like greetings ("hello", "hi", "hey", "how are you"), thank-yous, or small talk. ` +
                 `Only use tools when the user clearly intends an action (e.g. "create a task called X", "add X to my tasks", "search for Y", "remind me to Z"). ` +
                 `When in doubt whether the user wants an action or is just chatting, respond with text only.`,
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('search_gmail')) {
+        messages.push([
+            'system',
+            'When the user asks about email history, what they discussed with someone in email, or to find emails by person or topic, use the search_gmail tool instead of guessing.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
