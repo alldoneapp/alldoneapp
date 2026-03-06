@@ -799,6 +799,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             skipped,
             goldSpent,
             estimatedNormalGoldSpent,
+            lastSyncAt: now,
             lastHistoryId: resolvedHistoryId,
             lastError: syncLastError,
             gmailEmail,

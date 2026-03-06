@@ -75,8 +75,46 @@ function sanitizeConfigForSave(config) {
     }
 }
 
+function normalizeSyncDate(value) {
+    if (!value) return null
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+    if (typeof value?.toDate === 'function') {
+        const date = value.toDate()
+        return Number.isNaN(date?.getTime?.()) ? null : date
+    }
+    if (typeof value?.seconds === 'number') {
+        const date = new Date(value.seconds * 1000)
+        return Number.isNaN(date.getTime()) ? null : date
+    }
+    if (typeof value === 'number') {
+        const date = new Date(value)
+        return Number.isNaN(date.getTime()) ? null : date
+    }
+    if (typeof value === 'string') {
+        const date = new Date(value)
+        return Number.isNaN(date.getTime()) ? null : date
+    }
+    return null
+}
+
+function formatSyncDateTime(value) {
+    const date = normalizeSyncDate(value)
+    if (!date) return ''
+
+    return new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    }).format(date)
+}
+
 function SyncSummary({ state, result }) {
     const lastError = result?.lastError || state?.lastError
+    const syncDateLabel = formatSyncDateTime(result?.lastSyncAt || state?.lastSyncAt || state?.lastSuccessfulSyncAt)
+    const lastClassifiedCount = typeof result?.classified === 'number' ? result.classified : null
     const lastLabeledCount =
         typeof result?.labeled === 'number'
             ? result.labeled
@@ -98,24 +136,29 @@ function SyncSummary({ state, result }) {
     const goldSpent = typeof result?.goldSpent === 'number' ? result.goldSpent : 0
     const estimatedNormalGoldSpent =
         typeof result?.estimatedNormalGoldSpent === 'number' ? result.estimatedNormalGoldSpent : 0
+    const hasManualSyncResult = !!result
 
     return (
         <View style={localStyles.summaryCard}>
             <Text style={localStyles.sectionTitle}>{translate('Gmail sync status')}</Text>
+            {syncDateLabel ? <Text style={localStyles.summaryText}>{`From: ${syncDateLabel}`}</Text> : null}
             <Text style={localStyles.summaryText}>
                 {translate('Gmail sync scanned', { count: lastProcessedCount })}
             </Text>
+            {lastClassifiedCount !== null ? (
+                <Text style={localStyles.summaryText}>{`Checked: ${lastClassifiedCount}`}</Text>
+            ) : null}
             <Text style={localStyles.summaryText}>{translate('Gmail sync labeled', { count: lastLabeledCount })}</Text>
             <Text style={localStyles.summaryText}>
                 {translate('Gmail sync archived', { count: lastArchivedCount })}
             </Text>
-            {goldSpent > 0 ? (
+            {hasManualSyncResult ? (
                 <Text style={localStyles.summaryText}>{translate('Gmail sync gold spent', { count: goldSpent })}</Text>
             ) : null}
-            {estimatedNormalGoldSpent > 0 ? (
-                <Text style={localStyles.summaryText}>
-                    {`Normal token-based gold cost: ${estimatedNormalGoldSpent}`}
-                </Text>
+            {hasManualSyncResult ? (
+                <Text
+                    style={localStyles.summaryText}
+                >{`Normal token-based gold cost: ${estimatedNormalGoldSpent}`}</Text>
             ) : null}
             {state?.status ? (
                 <Text style={localStyles.summaryText}>{translate('Gmail sync state', { state: state.status })}</Text>
