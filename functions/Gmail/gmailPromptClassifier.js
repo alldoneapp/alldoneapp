@@ -9,6 +9,7 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT4') return 'gpt-4'
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
+    if (normalizedKey === 'MODEL_GPT5_4') return 'gpt-5.4'
     return 'gpt-5.2'
 }
 

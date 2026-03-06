@@ -11,13 +11,19 @@ const MODEL_OPTIONS = [
     { label: 'GPT-4', value: 'MODEL_GPT4' },
     { label: 'GPT-4o', value: 'MODEL_GPT4O' },
     { label: 'GPT-5.1', value: 'MODEL_GPT5_1' },
-    { label: 'GPT-5.2', value: 'MODEL_GPT5_2' },
+    { label: 'GPT-5.4', value: 'MODEL_GPT5_4' },
     { label: 'Sonar', value: 'MODEL_SONAR' },
     { label: 'Sonar Pro', value: 'MODEL_SONAR_PRO' },
     { label: 'Sonar Reasoning', value: 'MODEL_SONAR_REASONING' },
     { label: 'Sonar Reasoning Pro', value: 'MODEL_SONAR_REASONING_PRO' },
     { label: 'Sonar Deep Research', value: 'MODEL_SONAR_DEEP_RESEARCH' },
 ]
+
+const getModelOptions = selectedModel => {
+    if (selectedModel !== 'MODEL_GPT5_2') return MODEL_OPTIONS
+
+    return [...MODEL_OPTIONS, { label: 'GPT-5.2', value: 'MODEL_GPT5_2' }]
+}
 
 const TEMPERATURE_OPTIONS = [
     { label: translate('Very Low'), value: 'TEMPERATURE_VERY_LOW' },
@@ -38,11 +44,13 @@ export default function AISettingsArea({
     isMiddleScreen,
     smallScreenNavigation,
 }) {
+    const modelOptions = getModelOptions(aiModel)
+
     console.log('AISettingsArea render:', {
         aiModel,
         aiTemperature,
         aiSystemMessage,
-        modelOptions: MODEL_OPTIONS.map(opt => opt.value),
+        modelOptions: modelOptions.map(opt => opt.value),
         tempOptions: TEMPERATURE_OPTIONS.map(opt => opt.value),
     })
 
@@ -61,7 +69,7 @@ export default function AISettingsArea({
             <Text style={localStyles.header}>{translate('AI Settings')}</Text>
 
             <DropDown
-                items={MODEL_OPTIONS}
+                items={modelOptions}
                 value={aiModel}
                 setValue={handleModelChange}
                 placeholder={translate('Choose AI model')}

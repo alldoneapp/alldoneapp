@@ -26,13 +26,14 @@ function getOpenAIModelFromAssistantModel(modelKey) {
     if (modelKey === 'MODEL_GPT4') return 'gpt-4'
     if (modelKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (modelKey === 'MODEL_GPT5_1' || modelKey === 'MODEL_GPT5') return 'gpt-5.1'
+    if (modelKey === 'MODEL_GPT5_4') return 'gpt-5.4'
     if (modelKey === 'MODEL_GPT5_2') return 'gpt-5.2'
     if (modelKey === 'MODEL_SONAR') return 'sonar'
     if (modelKey === 'MODEL_SONAR_PRO') return 'sonar-pro'
     if (modelKey === 'MODEL_SONAR_REASONING') return 'sonar-reasoning'
     if (modelKey === 'MODEL_SONAR_REASONING_PRO') return 'sonar-reasoning-pro'
     if (modelKey === 'MODEL_SONAR_DEEP_RESEARCH') return 'sonar-deep-research'
-    return 'gpt-5.2'
+    return 'gpt-5.4'
 }
 
 function getTaskExecutionDescriptor(task) {

@@ -13,6 +13,7 @@ import {
     MODEL_GPT4,
     MODEL_GPT4O,
     MODEL_GPT5_1,
+    MODEL_GPT5_4,
     MODEL_GPT5_2,
     MODEL_SONAR,
     MODEL_SONAR_PRO,
@@ -21,12 +22,12 @@ import {
     MODEL_SONAR_DEEP_RESEARCH,
 } from '../../../AdminPanel/Assistants/assistantsHelper'
 
-const options = [
+const baseOptions = [
     { text: 'GPT 3_5', model: MODEL_GPT3_5, shortcutKey: '1' },
     { text: 'GPT 4', model: MODEL_GPT4, shortcutKey: '2' },
     { text: 'GPT 4o', model: MODEL_GPT4O, shortcutKey: '3' },
     { text: 'GPT 5_1', model: MODEL_GPT5_1, shortcutKey: '4' },
-    { text: 'GPT 5_2', model: MODEL_GPT5_2, shortcutKey: '5' },
+    { text: 'GPT 5_4', model: MODEL_GPT5_4, shortcutKey: '5' },
     { text: 'Sonar', model: MODEL_SONAR, shortcutKey: '6' },
     { text: 'Sonar Pro', model: MODEL_SONAR_PRO, shortcutKey: '7' },
     { text: 'Sonar Reasoning', model: MODEL_SONAR_REASONING, shortcutKey: '8' },
@@ -34,8 +35,15 @@ const options = [
     { text: 'Sonar Deep Research', model: MODEL_SONAR_DEEP_RESEARCH, shortcutKey: '0' },
 ]
 
+const getOptions = selectedModel => {
+    if (selectedModel !== MODEL_GPT5_2) return baseOptions
+
+    return [...baseOptions, { text: 'GPT 5_2', model: MODEL_GPT5_2, shortcutKey: '' }]
+}
+
 export default function AssistantModelModal({ closeModal, model, updateModel }) {
     const [width, height] = useWindowSize()
+    const options = getOptions(model)
 
     const selectModel = model => {
         updateModel(model)
