@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+    ActivityIndicator,
+    Dimensions,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native'
 import { useSelector } from 'react-redux'
 
 import CustomTextInput3 from '../../../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -177,6 +186,72 @@ function SyncSummary({ state, result }) {
     )
 }
 
+function formatClassificationLabel(entry = {}) {
+    if (entry.selectedGmailLabelName) return entry.selectedGmailLabelName
+    if (entry.skippedReason === 'no_match') return 'No match'
+    if (entry.skippedReason === 'missing_label_definition') return 'Missing label definition'
+    if (entry.skippedReason === 'insufficient_gold') return 'Skipped: insufficient gold'
+    if (entry.skippedReason === 'processing_error') return 'Processing error'
+    return 'Skipped'
+}
+
+function formatReasoning(entry = {}) {
+    const reasoning = typeof entry.reasoning === 'string' ? entry.reasoning.trim() : ''
+    return reasoning || 'No reasoning available.'
+}
+
+function SyncAuditSection({ entries }) {
+    const [expandedIds, setExpandedIds] = useState({})
+
+    if (!Array.isArray(entries) || entries.length === 0) return null
+
+    const toggleExpanded = id => {
+        setExpandedIds(currentState => ({
+            ...currentState,
+            [id]: !currentState[id],
+        }))
+    }
+
+    return (
+        <View style={localStyles.auditSection}>
+            <Text style={localStyles.sectionTitle}>Last sync details</Text>
+            {entries.map((entry, index) => {
+                const rowId = entry.id || entry.gmailMessageId || `audit-${index}`
+                const isExpanded = !!expandedIds[rowId]
+                const classificationLabel = formatClassificationLabel(entry)
+                return (
+                    <View key={rowId} style={localStyles.auditCard}>
+                        <TouchableOpacity onPress={() => toggleExpanded(rowId)} activeOpacity={0.8}>
+                            <Text style={localStyles.auditSubject}>{entry.subject || '(No subject)'}</Text>
+                            <Text style={localStyles.auditMeta}>{entry.from || 'Unknown sender'}</Text>
+                            <Text
+                                style={localStyles.auditClassification}
+                            >{`Classification: ${classificationLabel}`}</Text>
+                            <Text style={localStyles.auditToggle}>{isExpanded ? 'Hide details' : 'Show details'}</Text>
+                        </TouchableOpacity>
+                        {isExpanded ? (
+                            <View style={localStyles.auditDetails}>
+                                <Text style={localStyles.auditDetailText}>{`Why: ${formatReasoning(entry)}`}</Text>
+                                {entry.snippet ? (
+                                    <Text style={localStyles.auditDetailText}>{`Snippet: ${entry.snippet}`}</Text>
+                                ) : null}
+                                {typeof entry.confidence === 'number' ? (
+                                    <Text style={localStyles.auditDetailText}>{`Confidence: ${entry.confidence}`}</Text>
+                                ) : null}
+                                {entry.processedAt ? (
+                                    <Text style={localStyles.auditDetailText}>
+                                        {`Processed: ${formatSyncDateTime(entry.processedAt)}`}
+                                    </Text>
+                                ) : null}
+                            </View>
+                        ) : null}
+                    </View>
+                )
+            })}
+        </View>
+    )
+}
+
 export default function GmailLabelingSettings({
     projectId,
     isConnected,
@@ -196,6 +271,7 @@ export default function GmailLabelingSettings({
     const [successMessage, setSuccessMessage] = useState('')
     const [savedConfigSnapshot, setSavedConfigSnapshot] = useState(null)
     const [initialLoadComplete, setInitialLoadComplete] = useState(false)
+    const [recentAuditEntries, setRecentAuditEntries] = useState([])
 
     const connectedEmail = authStatus?.email || config.gmailEmail || ''
     const isPremiumUser = premiumStatus === PLAN_STATUS_PREMIUM
@@ -229,6 +305,7 @@ export default function GmailLabelingSettings({
                 const normalizedConfig = normalizeConfig(projectId, result?.config || {}, connectedEmail)
                 setConfig(normalizedConfig)
                 setSyncState(result?.state || null)
+                setRecentAuditEntries(Array.isArray(result?.recentAuditEntries) ? result.recentAuditEntries : [])
                 setSavedConfigSnapshot(sanitizeConfigForSave(normalizedConfig))
             } catch (loadError) {
                 if (!isMounted) return
@@ -330,6 +407,7 @@ export default function GmailLabelingSettings({
         try {
             const result = await runGmailLabelingSync(projectId)
             setSyncResult(result)
+            setRecentAuditEntries(Array.isArray(result?.recentAuditEntries) ? result.recentAuditEntries : [])
             setSyncState(currentState => ({
                 ...(currentState || {}),
                 status: 'idle',
@@ -562,6 +640,7 @@ export default function GmailLabelingSettings({
                     </View>
 
                     <SyncSummary state={syncState} result={syncResult} />
+                    <SyncAuditSection entries={recentAuditEntries} />
 
                     {hasUnsavedChanges ? (
                         <View style={localStyles.warningCard}>
@@ -710,6 +789,48 @@ const localStyles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.03)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
+    },
+    auditSection: {
+        marginBottom: 16,
+    },
+    auditCard: {
+        marginBottom: 10,
+        padding: 12,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    auditSubject: {
+        ...styles.subtitle2,
+        color: '#ffffff',
+        marginBottom: 4,
+    },
+    auditMeta: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginBottom: 4,
+    },
+    auditClassification: {
+        ...styles.body2,
+        color: '#ffffff',
+    },
+    auditToggle: {
+        ...styles.caption1,
+        color: colors.Primary300,
+        marginTop: 6,
+    },
+    auditDetails: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.08)',
+    },
+    auditDetailText: {
+        ...styles.body2,
+        color: colors.Text03,
+        marginBottom: 6,
+        lineHeight: 20,
     },
     errorText: {
         ...styles.body2,

@@ -110,9 +110,11 @@ async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '
         loadConfig(userId, projectId, gmailEmail),
         loadState(userId, projectId, gmailEmail),
     ])
+    const recentAuditEntries = await loadLastSyncAuditEntries(userId, projectId, state)
     return {
         config: exists ? config : getDefaultGmailLabelingConfig(projectId, gmailEmail),
         state,
+        recentAuditEntries,
     }
 }
 
@@ -338,6 +340,18 @@ async function writeAuditRecord(userId, projectId, normalizedMessage, auditData)
         )
 }
 
+async function loadLastSyncAuditEntries(userId, projectId, state, limit = 50) {
+    const lastRunId = typeof state?.lastRunId === 'string' ? state.lastRunId.trim() : ''
+    if (!lastRunId) return []
+
+    const snapshot = await getMessagesAuditCollectionRef(userId, projectId)
+        .orderBy('processedAt', 'desc')
+        .limit(limit)
+        .get()
+
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(item => item.syncRunId === lastRunId)
+}
+
 async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive) {
     const removeLabelIds = autoArchive && normalizedMessage.labelIds.includes('INBOX') ? ['INBOX'] : []
     await gmail.users.messages.modify({
@@ -355,7 +369,7 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
     }
 }
 
-async function processSingleMessage({ gmail, labelMap, config, userId, projectId, rawMessage }) {
+async function processSingleMessage({ gmail, labelMap, config, userId, projectId, rawMessage, syncRunId }) {
     const normalizedMessage = normalizeGmailMessage(rawMessage)
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
 
@@ -370,6 +384,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         })
 
         await writeAuditRecord(userId, projectId, normalizedMessage, {
+            syncRunId,
             selectedLabelKey: null,
             selectedGmailLabelName: null,
             autoArchive: false,
@@ -424,6 +439,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
 
     if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
+            syncRunId,
             selectedLabelKey: null,
             selectedGmailLabelName: null,
             autoArchive: false,
@@ -448,6 +464,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
     const selectedDefinition = config.labelDefinitions.find(label => label.key === classifierResult.labelKey)
     if (!selectedDefinition) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
+            syncRunId,
             selectedLabelKey: classifierResult.labelKey,
             selectedGmailLabelName: null,
             autoArchive: false,
@@ -500,6 +517,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
     }
 
     await writeAuditRecord(userId, projectId, normalizedMessage, {
+        syncRunId,
         selectedLabelKey: selectedDefinition.key,
         selectedGmailLabelName: selectedDefinition.gmailLabelName,
         autoArchive: !!selectedDefinition.autoArchive,
@@ -702,6 +720,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     userId,
                     projectId,
                     rawMessage,
+                    syncRunId: logContext.runId,
                 })
                 labeled += result.labeled
                 archived += result.archived
@@ -738,6 +757,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
 
                 const normalizedMessage = normalizeGmailMessage(rawMessage)
                 await writeAuditRecord(userId, projectId, normalizedMessage, {
+                    syncRunId: logContext.runId,
                     selectedLabelKey: null,
                     selectedGmailLabelName: null,
                     autoArchive: false,
@@ -766,6 +786,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 lastHistoryId: resolvedHistoryId,
                 lastSuccessfulSyncAt: now,
                 lastSyncAt: now,
+                lastRunId: logContext.runId,
                 lastError: syncLastError,
                 lastProcessedCount: candidateMessages.length,
                 lastLabeledCount: labeled,
@@ -800,6 +821,8 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             goldSpent,
             estimatedNormalGoldSpent,
             lastSyncAt: now,
+            lastRunId: logContext.runId,
+            recentAuditEntries: await loadLastSyncAuditEntries(userId, projectId, { lastRunId: logContext.runId }),
             lastHistoryId: resolvedHistoryId,
             lastError: syncLastError,
             gmailEmail,

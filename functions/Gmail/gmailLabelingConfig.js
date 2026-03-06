@@ -244,6 +244,7 @@ function buildDefaultState(projectId, gmailEmail = '') {
         lastHistoryId: null,
         lastSyncAt: null,
         lastSuccessfulSyncAt: null,
+        lastRunId: null,
         lastError: null,
         lastProcessedCount: 0,
         lastLabeledCount: 0,
