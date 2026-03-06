@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Dimensions, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../../UIControls/Button'
@@ -143,6 +143,7 @@ export default function GmailLabelingSettings({
     const [error, setError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
     const [savedConfigSnapshot, setSavedConfigSnapshot] = useState(null)
+    const [initialLoadComplete, setInitialLoadComplete] = useState(false)
 
     const connectedEmail = authStatus?.email || config.gmailEmail || ''
     const isPremiumUser = premiumStatus === PLAN_STATUS_PREMIUM
@@ -161,8 +162,12 @@ export default function GmailLabelingSettings({
         let isMounted = true
 
         const loadConfig = async () => {
-            if (!isPremiumUser || !isConnected || !authStatus?.hasCredentials) return
+            if (!isPremiumUser || !isConnected || !authStatus?.hasCredentials) {
+                setInitialLoadComplete(true)
+                return
+            }
 
+            setInitialLoadComplete(false)
             setLoading(true)
             setError('')
             try {
@@ -177,7 +182,10 @@ export default function GmailLabelingSettings({
                 if (!isMounted) return
                 setError(loadError.message || translate('Failed to load Gmail labeling settings'))
             } finally {
-                if (isMounted) setLoading(false)
+                if (isMounted) {
+                    setLoading(false)
+                    setInitialLoadComplete(true)
+                }
             }
         }
 
@@ -318,6 +326,8 @@ export default function GmailLabelingSettings({
         return null
     }
 
+    const showInitialLoadingState = !initialLoadComplete && !error
+
     return (
         <ScrollView
             style={[localStyles.scroll, { maxHeight: scrollMaxHeight }]}
@@ -334,172 +344,188 @@ export default function GmailLabelingSettings({
                 ) : null}
             </View>
 
-            {loading ? (
-                <Text style={localStyles.helperText}>{translate('Loading Gmail labeling settings')}</Text>
+            {showInitialLoadingState ? (
+                <View style={localStyles.loadingCard}>
+                    <ActivityIndicator color={colors.Primary300} size="small" />
+                    <Text style={localStyles.loadingText}>{translate('Loading Gmail labeling settings')}</Text>
+                </View>
             ) : null}
             {error ? <Text style={localStyles.errorText}>{error}</Text> : null}
             {successMessage ? <Text style={localStyles.successText}>{successMessage}</Text> : null}
 
-            <View style={localStyles.section}>
-                <View style={localStyles.switchRow}>
-                    <Text style={localStyles.inputLabel}>{translate('Enable Gmail labeling')}</Text>
-                    <Switch
-                        active={config.enabled}
-                        activeSwitch={() => updateConfig({ enabled: true })}
-                        deactiveSwitch={() => updateConfig({ enabled: false })}
-                        disabled={!canManage}
-                    />
-                </View>
-
-                <View style={localStyles.switchRow}>
-                    <Text style={localStyles.inputLabel}>{translate('Process unread only')}</Text>
-                    <Switch
-                        active={config.processUnreadOnly}
-                        activeSwitch={() => updateConfig({ processUnreadOnly: true })}
-                        deactiveSwitch={() => updateConfig({ processUnreadOnly: false })}
-                        disabled={!canManage}
-                    />
-                </View>
-
-                <View style={localStyles.switchRow}>
-                    <Text style={localStyles.inputLabel}>{translate('Only inbox messages')}</Text>
-                    <Switch
-                        active={config.onlyInbox}
-                        activeSwitch={() => updateConfig({ onlyInbox: true })}
-                        deactiveSwitch={() => updateConfig({ onlyInbox: false })}
-                        disabled={!canManage}
-                    />
-                </View>
-            </View>
-
-            <View style={localStyles.section}>
-                <Text style={localStyles.inputLabel}>{translate('Prompt')}</Text>
-                <TextInput
-                    multiline
-                    value={config.prompt}
-                    onChangeText={prompt => updateConfig({ prompt })}
-                    editable={canManage}
-                    style={[localStyles.input, localStyles.textArea]}
-                    placeholder={translate('Classify incoming Gmail messages into the configured labels')}
-                    placeholderTextColor={colors.Text03}
-                />
-            </View>
-
-            <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>{translate('Rules')}</Text>
-                {config.labelDefinitions.map((label, index) => (
-                    <View key={label.id || `${label.key}-${index}`} style={localStyles.labelCard}>
-                        <Text style={localStyles.inputLabel}>
-                            {translate('Gmail rule number', { number: index + 1 })}
-                        </Text>
-                        <TextInput
-                            value={label.gmailLabelName}
-                            onChangeText={gmailLabelName => updateLabel(index, { gmailLabelName })}
-                            editable={canManage}
-                            style={localStyles.input}
-                            placeholder={translate('Gmail label name')}
-                            placeholderTextColor={colors.Text03}
-                        />
-                        <TextInput
-                            value={label.description}
-                            onChangeText={description => updateLabel(index, { description })}
-                            multiline
-                            numberOfLines={4}
-                            editable={canManage}
-                            style={[localStyles.input, localStyles.descriptionInput]}
-                            placeholder={translate('Describe when this label should be used')}
-                            placeholderTextColor={colors.Text03}
-                        />
+            {!showInitialLoadingState ? (
+                <>
+                    <View style={localStyles.section}>
                         <View style={localStyles.switchRow}>
-                            <Text style={localStyles.inputLabel}>{translate('Auto-archive when matched')}</Text>
+                            <Text style={localStyles.inputLabel}>{translate('Enable Gmail labeling')}</Text>
                             <Switch
-                                active={!!label.autoArchive}
-                                activeSwitch={() => updateLabel(index, { autoArchive: true })}
-                                deactiveSwitch={() => updateLabel(index, { autoArchive: false })}
+                                active={config.enabled}
+                                activeSwitch={() => updateConfig({ enabled: true })}
+                                deactiveSwitch={() => updateConfig({ enabled: false })}
                                 disabled={!canManage}
                             />
                         </View>
-                        <Button
-                            title={translate('Remove rule')}
-                            type="ghost"
-                            onPress={() => removeLabel(index)}
-                            disabled={!canManage || config.labelDefinitions.length <= 1}
-                            titleStyle={{ color: colors.UtilityRed200 }}
-                            buttonStyle={{ alignSelf: 'flex-start', borderColor: colors.UtilityRed200, borderWidth: 1 }}
+
+                        <View style={localStyles.switchRow}>
+                            <Text style={localStyles.inputLabel}>{translate('Process unread only')}</Text>
+                            <Switch
+                                active={config.processUnreadOnly}
+                                activeSwitch={() => updateConfig({ processUnreadOnly: true })}
+                                deactiveSwitch={() => updateConfig({ processUnreadOnly: false })}
+                                disabled={!canManage}
+                            />
+                        </View>
+
+                        <View style={localStyles.switchRow}>
+                            <Text style={localStyles.inputLabel}>{translate('Only inbox messages')}</Text>
+                            <Switch
+                                active={config.onlyInbox}
+                                activeSwitch={() => updateConfig({ onlyInbox: true })}
+                                deactiveSwitch={() => updateConfig({ onlyInbox: false })}
+                                disabled={!canManage}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={localStyles.section}>
+                        <Text style={localStyles.inputLabel}>{translate('Prompt')}</Text>
+                        <TextInput
+                            multiline
+                            blurOnSubmit={false}
+                            value={config.prompt}
+                            onChangeText={prompt => updateConfig({ prompt })}
+                            editable={canManage}
+                            style={[localStyles.input, localStyles.textArea]}
+                            placeholder={translate('Classify incoming Gmail messages into the configured labels')}
+                            placeholderTextColor={colors.Text03}
                         />
                     </View>
-                ))}
-                <Button
-                    title={translate('Add rule')}
-                    type="ghost"
-                    onPress={addLabel}
-                    disabled={!canManage}
-                    buttonStyle={{ alignSelf: 'flex-start' }}
-                />
-            </View>
 
-            <View style={localStyles.section}>
-                <Text style={localStyles.inputLabel}>{translate('Max messages per run')}</Text>
-                <TextInput
-                    value={config.maxMessagesPerRun}
-                    onChangeText={maxMessagesPerRun => updateConfig({ maxMessagesPerRun })}
-                    editable={canManage}
-                    style={localStyles.input}
-                    keyboardType="numeric"
-                    placeholder={translate('Gmail max messages placeholder')}
-                    placeholderTextColor={colors.Text03}
-                />
-                <Text style={localStyles.helperText}>{translate('GmailMaxMessagesDescription')}</Text>
-                <Text style={localStyles.inputLabel}>{translate('Gmail lookback days')}</Text>
-                <TextInput
-                    value={config.lookbackDays}
-                    onChangeText={lookbackDays => updateConfig({ lookbackDays })}
-                    editable={canManage}
-                    style={localStyles.input}
-                    keyboardType="numeric"
-                    placeholder={translate('Gmail lookback days placeholder')}
-                    placeholderTextColor={colors.Text03}
-                />
-                <Text style={localStyles.helperText}>{translate('GmailLookbackDaysDescription')}</Text>
-                <Text style={localStyles.inputLabel}>{translate('Confidence threshold')}</Text>
-                <TextInput
-                    value={config.confidenceThreshold}
-                    onChangeText={confidenceThreshold => updateConfig({ confidenceThreshold })}
-                    editable={canManage}
-                    style={localStyles.input}
-                    keyboardType="numeric"
-                    placeholder={translate('Gmail confidence threshold placeholder')}
-                    placeholderTextColor={colors.Text03}
-                />
-            </View>
+                    <View style={localStyles.section}>
+                        <Text style={localStyles.sectionTitle}>{translate('Rules')}</Text>
+                        {config.labelDefinitions.map((label, index) => (
+                            <View key={label.id || `${label.key}-${index}`} style={localStyles.labelCard}>
+                                <Text style={localStyles.inputLabel}>
+                                    {translate('Gmail rule number', { number: index + 1 })}
+                                </Text>
+                                <TextInput
+                                    value={label.gmailLabelName}
+                                    onChangeText={gmailLabelName => updateLabel(index, { gmailLabelName })}
+                                    editable={canManage}
+                                    style={localStyles.input}
+                                    placeholder={translate('Gmail label name')}
+                                    placeholderTextColor={colors.Text03}
+                                />
+                                <TextInput
+                                    value={label.description}
+                                    onChangeText={description => updateLabel(index, { description })}
+                                    multiline
+                                    blurOnSubmit={false}
+                                    scrollEnabled
+                                    numberOfLines={5}
+                                    editable={canManage}
+                                    style={[localStyles.input, localStyles.descriptionInput]}
+                                    placeholder={translate('Describe when this label should be used')}
+                                    placeholderTextColor={colors.Text03}
+                                />
+                                <View style={localStyles.switchRow}>
+                                    <Text style={localStyles.inputLabel}>{translate('Auto-archive when matched')}</Text>
+                                    <Switch
+                                        active={!!label.autoArchive}
+                                        activeSwitch={() => updateLabel(index, { autoArchive: true })}
+                                        deactiveSwitch={() => updateLabel(index, { autoArchive: false })}
+                                        disabled={!canManage}
+                                    />
+                                </View>
+                                <Button
+                                    title={translate('Remove rule')}
+                                    type="ghost"
+                                    onPress={() => removeLabel(index)}
+                                    disabled={!canManage || config.labelDefinitions.length <= 1}
+                                    titleStyle={{ color: colors.UtilityRed200 }}
+                                    buttonStyle={{
+                                        alignSelf: 'flex-start',
+                                        borderColor: colors.UtilityRed200,
+                                        borderWidth: 1,
+                                    }}
+                                />
+                            </View>
+                        ))}
+                        <Button
+                            title={translate('Add rule')}
+                            type="ghost"
+                            onPress={addLabel}
+                            disabled={!canManage}
+                            buttonStyle={{ alignSelf: 'flex-start' }}
+                        />
+                    </View>
 
-            <SyncSummary state={syncState} result={syncResult} />
+                    <View style={localStyles.section}>
+                        <Text style={localStyles.inputLabel}>{translate('Max messages per run')}</Text>
+                        <TextInput
+                            value={config.maxMessagesPerRun}
+                            onChangeText={maxMessagesPerRun => updateConfig({ maxMessagesPerRun })}
+                            editable={canManage}
+                            style={localStyles.input}
+                            keyboardType="numeric"
+                            placeholder={translate('Gmail max messages placeholder')}
+                            placeholderTextColor={colors.Text03}
+                        />
+                        <Text style={localStyles.helperText}>{translate('GmailMaxMessagesDescription')}</Text>
+                        <Text style={localStyles.inputLabel}>{translate('Gmail lookback days')}</Text>
+                        <TextInput
+                            value={config.lookbackDays}
+                            onChangeText={lookbackDays => updateConfig({ lookbackDays })}
+                            editable={canManage}
+                            style={localStyles.input}
+                            keyboardType="numeric"
+                            placeholder={translate('Gmail lookback days placeholder')}
+                            placeholderTextColor={colors.Text03}
+                        />
+                        <Text style={localStyles.helperText}>{translate('GmailLookbackDaysDescription')}</Text>
+                        <Text style={localStyles.inputLabel}>{translate('Confidence threshold')}</Text>
+                        <TextInput
+                            value={config.confidenceThreshold}
+                            onChangeText={confidenceThreshold => updateConfig({ confidenceThreshold })}
+                            editable={canManage}
+                            style={localStyles.input}
+                            keyboardType="numeric"
+                            placeholder={translate('Gmail confidence threshold placeholder')}
+                            placeholderTextColor={colors.Text03}
+                        />
+                    </View>
 
-            {hasUnsavedChanges ? (
-                <View style={localStyles.warningCard}>
-                    <Text style={localStyles.warningTitle}>{translate('Unsaved changes')}</Text>
-                    <Text style={localStyles.helperText}>{translate('GmailLabelingUnsavedChangesDescription')}</Text>
-                </View>
+                    <SyncSummary state={syncState} result={syncResult} />
+
+                    {hasUnsavedChanges ? (
+                        <View style={localStyles.warningCard}>
+                            <Text style={localStyles.warningTitle}>{translate('Unsaved changes')}</Text>
+                            <Text style={localStyles.helperText}>
+                                {translate('GmailLabelingUnsavedChangesDescription')}
+                            </Text>
+                        </View>
+                    ) : null}
+
+                    <View style={localStyles.buttonRow}>
+                        <Button
+                            title={translate('Save Gmail labeling settings')}
+                            onPress={onSave}
+                            disabled={!canManage || saving}
+                            processing={saving}
+                            processingTitle={translate('Saving')}
+                            buttonStyle={{ marginRight: 12 }}
+                        />
+                        <Button
+                            title={translate('Run Gmail sync now')}
+                            type="ghost"
+                            onPress={onRunSync}
+                            disabled={!canManage || syncing || hasUnsavedChanges}
+                            processing={syncing}
+                            processingTitle={translate('Syncing')}
+                        />
+                    </View>
+                </>
             ) : null}
-
-            <View style={localStyles.buttonRow}>
-                <Button
-                    title={translate('Save Gmail labeling settings')}
-                    onPress={onSave}
-                    disabled={!canManage || saving}
-                    processing={saving}
-                    processingTitle={translate('Saving')}
-                    buttonStyle={{ marginRight: 12 }}
-                />
-                <Button
-                    title={translate('Run Gmail sync now')}
-                    type="ghost"
-                    onPress={onRunSync}
-                    disabled={!canManage || syncing || hasUnsavedChanges}
-                    processing={syncing}
-                    processingTitle={translate('Syncing')}
-                />
-            </View>
         </ScrollView>
     )
 }
@@ -528,6 +554,24 @@ const localStyles = StyleSheet.create({
         ...styles.body2,
         color: '#ffffff',
         marginTop: 4,
+    },
+    loadingCard: {
+        minHeight: 140,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 24,
+        marginBottom: 16,
+    },
+    loadingText: {
+        ...styles.body2,
+        color: colors.Text03,
+        marginTop: 12,
+        textAlign: 'center',
     },
     inputLabel: {
         ...styles.caption1,
