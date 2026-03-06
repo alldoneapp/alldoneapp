@@ -27,6 +27,7 @@ class EditContactStatus extends Component {
             mounted: false,
             name: this.props.status ? this.props.status.name : '',
             color: this.props.status ? this.props.status.color : PROJECT_COLOR_BLUE,
+            followUpDays: this.props.status?.followUpDays ? `${this.props.status.followUpDays}` : '',
             smallScreen: storeState.smallScreen,
             isMiddleScreen: storeState.isMiddleScreen,
             showFloatPopup: storeState.showFloatPopup,
@@ -64,9 +65,13 @@ class EditContactStatus extends Component {
 
     enterKeyAction = () => {
         const { onCancelAction, formType, status } = this.props
-        const { name, color, showFloatPopup } = this.state
+        const { name, color, followUpDays, showFloatPopup } = this.state
         const validNew = formType === 'new' && name.length > 0
-        const validEdit = formType === 'edit' && (name !== status.name || color !== status.color)
+        const validEdit =
+            formType === 'edit' &&
+            (name !== status.name ||
+                color !== status.color ||
+                followUpDays !== (status?.followUpDays ? `${status.followUpDays}` : ''))
 
         if (showFloatPopup <= 0 && (validNew || validEdit)) {
             this.saveStatus()
@@ -86,18 +91,28 @@ class EditContactStatus extends Component {
         this.setState({ name: text })
     }
 
+    onChangeFollowUpDays = text => {
+        this.setState({ followUpDays: text.replace(/[^0-9]/g, '') })
+    }
+
+    getParsedFollowUpDays = () => {
+        const parsedValue = parseInt(this.state.followUpDays, 10)
+        return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null
+    }
+
     saveStatus = () => {
         const { projectId, status, onCancelAction, formType } = this.props
         const { name, color } = this.state
+        const followUpDays = this.getParsedFollowUpDays()
 
         if (formType === 'new' && name.length > 0) {
-            addContactStatus(projectId, name, color)
+            addContactStatus(projectId, name, color, followUpDays)
             onCancelAction()
         } else if (formType === 'edit') {
             if (name.length === 0) {
                 this.deleteStatus()
             } else {
-                updateContactStatus(projectId, status.id, name, color)
+                updateContactStatus(projectId, status.id, name, color, followUpDays)
                 onCancelAction()
             }
         }
@@ -129,10 +144,14 @@ class EditContactStatus extends Component {
 
     render() {
         const { status, onCancelAction, formType, style } = this.props
-        const { mounted, name, color, smallScreen, isMiddleScreen, colorPickerOpen } = this.state
+        const { mounted, name, color, followUpDays, smallScreen, isMiddleScreen, colorPickerOpen } = this.state
         const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
         const disabled1 = formType === 'new' && name.length === 0
-        const disabled2 = formType === 'edit' && name === status.name && color === status.color
+        const disabled2 =
+            formType === 'edit' &&
+            name === status.name &&
+            color === status.color &&
+            followUpDays === (status?.followUpDays ? `${status.followUpDays}` : '')
 
         return (
             <View
@@ -169,6 +188,22 @@ class EditContactStatus extends Component {
                         disabledTags={true}
                         selection={mounted ? undefined : { start: name.length, end: name.length }}
                         forceTriggerEnterActionForBreakLines={this.enterKeyAction}
+                    />
+                </View>
+                <View style={localStyles.followUpContainer}>
+                    <CustomTextInput3
+                        initialTextExtended={followUpDays}
+                        returnKeyType={'done'}
+                        placeholder={translate('Follow-up after (days)')}
+                        containerStyle={[
+                            localStyles.followUpInput,
+                            isMiddleScreen ? localStyles.followUpInputUnderBreakpoint : undefined,
+                        ]}
+                        multiline={false}
+                        onChangeText={this.onChangeFollowUpDays}
+                        placeholderTextColor={colors.Text03}
+                        disabledTags={true}
+                        keyboardType={'numeric'}
                     />
                 </View>
                 <View style={localStyles.buttonContainer}>
@@ -302,6 +337,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
+    followUpContainer: {
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+    },
     icon: {
         position: 'absolute',
         padding: 0,
@@ -330,6 +369,15 @@ const localStyles = StyleSheet.create({
     },
     inputEditUnderBreakpoint: {
         paddingLeft: 5,
+    },
+    followUpInput: {
+        ...styles.body2,
+        minHeight: 40,
+        paddingLeft: 0,
+        paddingRight: 0,
+    },
+    followUpInputUnderBreakpoint: {
+        paddingRight: 0,
     },
     colorDotContainer: {
         width: 24,

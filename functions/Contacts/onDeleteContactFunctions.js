@@ -4,6 +4,7 @@ const { deleteRecord, CONTACTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearchH
 const { removeObjectFromBacklinks } = require('../Backlinks/backlinksHelper')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
 const { deleteNote } = require('../Notes/notesFirestoreCloud')
+const { deleteOpenManagedFollowUpTasks } = require('./contactFollowUpTasks')
 
 const deletePictures = async (projectId, contactId) => {
     const bucket = admin.storage().bucket()
@@ -19,6 +20,7 @@ const onDeleteContact = async (projectId, contact) => {
     promises.push(deletePictures(projectId, contactId))
     promises.push(removeObjectFromBacklinks(projectId, 'linkedParentContactsIds', contactId, admin))
     promises.push(deleteRecord(contactId, projectId, CONTACTS_OBJECTS_TYPE))
+    promises.push(deleteOpenManagedFollowUpTasks(projectId, contactId))
     await Promise.all(promises)
 }
 

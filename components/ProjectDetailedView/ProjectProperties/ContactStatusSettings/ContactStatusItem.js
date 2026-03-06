@@ -10,6 +10,11 @@ const ContactStatusItem = ({ status, dragHandleProps, isDragging }) => {
 
             <View style={localStyles.nameContainer}>
                 <Text style={[styles.body1, { color: colors.Text01 }]}>{status.name}</Text>
+                {status.followUpDays ? (
+                    <Text style={[styles.caption2, { color: colors.Text03, marginTop: 2 }]}>
+                        {`${status.followUpDays}d follow-up`}
+                    </Text>
+                ) : null}
             </View>
 
             <div {...dragHandleProps} style={{ display: 'flex', alignItems: 'center', cursor: 'grab', padding: 8 }}>

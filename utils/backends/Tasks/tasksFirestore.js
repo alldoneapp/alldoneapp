@@ -367,6 +367,10 @@ export async function uploadNewTask(
         taskCopy.aiSystemMessage = taskCopy.aiSystemMessage || null
         // Webhook task metadata (for external webhook integrations)
         taskCopy.taskMetadata = taskCopy.taskMetadata || null
+        taskCopy.autoFollowUpManaged = taskCopy.autoFollowUpManaged === true
+        taskCopy.autoFollowUpType = taskCopy.autoFollowUpType || null
+        taskCopy.autoFollowUpContactId = taskCopy.autoFollowUpContactId || null
+        taskCopy.autoFollowUpStatusId = taskCopy.autoFollowUpStatusId || null
 
         // Debug log for webhook tasks
         if (taskCopy.taskMetadata) {

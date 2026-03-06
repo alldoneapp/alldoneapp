@@ -3420,6 +3420,10 @@ export function mapTaskData(taskId, task) {
         aiSystemMessage: task.aiSystemMessage || null,
         // Webhook task metadata
         taskMetadata: task.taskMetadata || null,
+        autoFollowUpManaged: task.autoFollowUpManaged === true,
+        autoFollowUpType: task.autoFollowUpType || null,
+        autoFollowUpContactId: task.autoFollowUpContactId || null,
+        autoFollowUpStatusId: task.autoFollowUpStatusId || null,
     }
 
     // Only include humanReadableId if it has a value

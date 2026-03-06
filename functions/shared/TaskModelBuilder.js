@@ -66,6 +66,10 @@ function buildTaskObject({
     suggestedBy = null,
     autoEstimation = null,
     humanReadableId = null,
+    autoFollowUpManaged = false,
+    autoFollowUpType = null,
+    autoFollowUpContactId = null,
+    autoFollowUpStatusId = null,
 }) {
     // Validation
     if (!name || !name.trim()) {
@@ -191,6 +195,10 @@ function buildTaskObject({
 
         // Human readable ID (if generated)
         humanReadableId: humanReadableId,
+        autoFollowUpManaged: autoFollowUpManaged,
+        autoFollowUpType: autoFollowUpType,
+        autoFollowUpContactId: autoFollowUpContactId,
+        autoFollowUpStatusId: autoFollowUpStatusId,
     }
 
     return task

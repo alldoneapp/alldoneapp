@@ -46,6 +46,7 @@ function mapContactData(contactId, contact) {
         assistantId: contact.assistantId ? contact.assistantId : '',
         commentsData: contact.commentsData ? contact.commentsData : '',
         openTasksAmount: contact.openTasksAmount ? contact.openTasksAmount : 0,
+        contactStatusId: contact.contactStatusId ? contact.contactStatusId : null,
     }
 }
 
@@ -200,6 +201,10 @@ function mapTaskData(taskId, task) {
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,
+        autoFollowUpManaged: task.autoFollowUpManaged === true,
+        autoFollowUpType: task.autoFollowUpType || null,
+        autoFollowUpContactId: task.autoFollowUpContactId || null,
+        autoFollowUpStatusId: task.autoFollowUpStatusId || null,
     }
 }
 

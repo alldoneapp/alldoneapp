@@ -397,6 +397,10 @@ class TasksHelper {
             commentsData: null,
             autoEstimation: null,
             completedTime: null,
+            autoFollowUpManaged: false,
+            autoFollowUpType: null,
+            autoFollowUpContactId: null,
+            autoFollowUpStatusId: null,
             // shared: SHARE_ALL_SEE_MEMBER_EDIT,
         }
     }

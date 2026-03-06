@@ -2,7 +2,7 @@ import { firebase } from '@firebase/app'
 
 import { generateSortIndex, getDb, getId } from '../firestore'
 
-export function addContactStatus(projectId, name, color) {
+export function addContactStatus(projectId, name, color, followUpDays = null) {
     const statusId = getId()
     const sortIndex = generateSortIndex()
 
@@ -14,18 +14,20 @@ export function addContactStatus(projectId, name, color) {
                 name,
                 color,
                 sortIndex,
+                followUpDays,
             },
         })
 
     return statusId
 }
 
-export function updateContactStatus(projectId, statusId, name, color) {
+export function updateContactStatus(projectId, statusId, name, color, followUpDays = null) {
     getDb()
         .doc(`projects/${projectId}`)
         .update({
             [`contactStatuses.${statusId}.name`]: name,
             [`contactStatuses.${statusId}.color`]: color,
+            [`contactStatuses.${statusId}.followUpDays`]: followUpDays,
         })
 }
 
