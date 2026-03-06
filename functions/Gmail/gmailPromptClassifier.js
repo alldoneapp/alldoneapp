@@ -3,6 +3,9 @@
 const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
 const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('./gmailLabelingConfig')
 
+const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
+    'You classify incoming emails into exactly one configured label or no match. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
+
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
     if (normalizedKey === 'MODEL_GPT3_5') return 'gpt-3.5-turbo'
@@ -87,8 +90,7 @@ async function classifyGmailMessage({ config, message }) {
         messages: [
             {
                 role: 'system',
-                content:
-                    'You classify incoming emails into exactly one configured label or no match. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.',
+                content: GMAIL_CLASSIFIER_SYSTEM_PROMPT,
             },
             {
                 role: 'user',
@@ -125,4 +127,5 @@ async function classifyGmailMessage({ config, message }) {
 
 module.exports = {
     classifyGmailMessage,
+    GMAIL_CLASSIFIER_SYSTEM_PROMPT,
 }

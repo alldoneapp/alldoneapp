@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Dimensions } from 'react-native'
+import { Dimensions, View } from 'react-native'
 import ReactQuill from 'react-quill'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
@@ -127,6 +127,7 @@ function CustomTextInput3(
         setAssistantId,
         autoFocus,
         onMentionSelected,
+        disableContainerScroll = false,
     },
     ref
 ) {
@@ -1115,17 +1116,17 @@ function CustomTextInput3(
         },
     }))
 
-    return (
-        <CustomScrollView
-            style={[
-                containerStyle,
-                {
-                    height: fixedHeight ? fixedHeight : '100%',
-                    maxHeight: maxHeight ? maxHeight : 'auto',
-                    overflow: 'hidden',
-                },
-            ]}
-        >
+    const containerStyles = [
+        containerStyle,
+        {
+            height: fixedHeight ? fixedHeight : '100%',
+            maxHeight: maxHeight ? maxHeight : 'auto',
+            overflow: 'hidden',
+        },
+    ]
+
+    const editorContent = (
+        <>
             <ReactQuill
                 ref={el => {
                     reactQuillRef.current = el
@@ -1170,8 +1171,14 @@ function CustomTextInput3(
                     insertNormalMention={insertNormalMention}
                 />
             )}
-        </CustomScrollView>
+        </>
     )
+
+    if (disableContainerScroll) {
+        return <View style={{ width: '100%' }}>{editorContent}</View>
+    }
+
+    return <CustomScrollView style={containerStyles}>{editorContent}</CustomScrollView>
 }
 
 export default forwardRef(CustomTextInput3)

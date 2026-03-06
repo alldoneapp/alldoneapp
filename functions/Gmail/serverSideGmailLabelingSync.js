@@ -110,7 +110,7 @@ async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '
         loadConfig(userId, projectId, gmailEmail),
         loadState(userId, projectId, gmailEmail),
     ])
-    const recentAuditEntries = await loadLastSyncAuditEntries(userId, projectId, state)
+    const recentAuditEntries = await loadRecentAuditEntries(userId, projectId)
     return {
         config: exists ? config : getDefaultGmailLabelingConfig(projectId, gmailEmail),
         state,
@@ -340,16 +340,13 @@ async function writeAuditRecord(userId, projectId, normalizedMessage, auditData)
         )
 }
 
-async function loadLastSyncAuditEntries(userId, projectId, state, limit = 50) {
-    const lastRunId = typeof state?.lastRunId === 'string' ? state.lastRunId.trim() : ''
-    if (!lastRunId) return []
-
+async function loadRecentAuditEntries(userId, projectId, limit = 20) {
     const snapshot = await getMessagesAuditCollectionRef(userId, projectId)
         .orderBy('processedAt', 'desc')
         .limit(limit)
         .get()
 
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(item => item.syncRunId === lastRunId)
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
 
 async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive) {
@@ -822,7 +819,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             estimatedNormalGoldSpent,
             lastSyncAt: now,
             lastRunId: logContext.runId,
-            recentAuditEntries: await loadLastSyncAuditEntries(userId, projectId, { lastRunId: logContext.runId }),
+            recentAuditEntries: await loadRecentAuditEntries(userId, projectId),
             lastHistoryId: resolvedHistoryId,
             lastError: syncLastError,
             gmailEmail,
