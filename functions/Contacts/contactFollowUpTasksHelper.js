@@ -15,6 +15,12 @@ function getFollowUpTaskTitle(contact) {
     return `Follow up with ${displayName || 'this contact'}`
 }
 
+function getContactMentionText(contact, mentionSpaceCode) {
+    const displayName = contact?.displayName?.trim()
+    if (!displayName || !contact?.uid) return ''
+    return `@${displayName.replace(/ /g, mentionSpaceCode)}#${contact.uid}`
+}
+
 function isManagedContactStatusFollowUpTask(task) {
     return (
         task?.autoFollowUpManaged === true &&
@@ -44,6 +50,7 @@ module.exports = {
     AUTO_FOLLOW_UP_TYPE,
     DAY_IN_MS,
     calculateFollowUpDueDate,
+    getContactMentionText,
     getFollowUpTaskTitle,
     getPrimaryOpenManagedTask,
     isManagedContactStatusFollowUpTask,

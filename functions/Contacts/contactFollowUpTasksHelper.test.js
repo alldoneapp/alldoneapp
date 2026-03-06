@@ -1,6 +1,7 @@
 const {
     AUTO_FOLLOW_UP_TYPE,
     calculateFollowUpDueDate,
+    getContactMentionText,
     getFollowUpTaskTitle,
     getPrimaryOpenManagedTask,
     isManagedContactStatusFollowUpTask,
@@ -31,6 +32,13 @@ describe('contactFollowUpTasksHelper', () => {
     it('builds a readable follow-up title', () => {
         expect(getFollowUpTaskTitle({ displayName: 'Karsten Wysk' })).toBe('Follow up with Karsten Wysk')
         expect(getFollowUpTaskTitle({ displayName: '' })).toBe('Follow up with this contact')
+    })
+
+    it('builds a contact mention tag using the app mention format', () => {
+        expect(getContactMentionText({ uid: 'c1', displayName: 'Karsten Wysk' }, 'M2mVOSjAVPPKweL')).toBe(
+            '@KarstenM2mVOSjAVPPKweLWysk#c1'
+        )
+        expect(getContactMentionText({ uid: '', displayName: 'Karsten Wysk' }, 'M2mVOSjAVPPKweL')).toBe('')
     })
 
     it('identifies managed contact-status follow-up tasks', () => {
