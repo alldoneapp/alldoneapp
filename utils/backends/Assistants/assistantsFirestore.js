@@ -1038,6 +1038,7 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
         instructions: globalAssistant.instructions,
         model: globalAssistant.model,
         temperature: globalAssistant.temperature,
+        allowedTools: Array.isArray(globalAssistant.allowedTools) ? globalAssistant.allowedTools : [],
         delegationToolDescriptionManual: globalAssistant.delegationToolDescriptionManual || '',
         delegationToolDescriptionGenerated: globalAssistant.delegationToolDescriptionGenerated || '',
         delegationToolDescriptionGeneratedAt: globalAssistant.delegationToolDescriptionGeneratedAt || null,

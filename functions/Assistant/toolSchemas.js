@@ -391,7 +391,7 @@ const toolSchemas = {
         function: {
             name: 'search_gmail',
             description:
-                "Search the user's connected Gmail accounts for relevant emails and return matching messages with participants, dates, snippets, and email body text. Use this for questions about past email conversations, what was discussed with a person, or to find specific emails.",
+                "Search the user's connected Gmail accounts for relevant emails and return matching messages with participants, dates, snippets, body text, Gmail labels, and special flags such as unread, inbox, important, sent, draft, starred, spam, and trash. Use this for questions about past email conversations, what was discussed with a person, or to find specific emails.",
             parameters: {
                 type: 'object',
                 properties: {

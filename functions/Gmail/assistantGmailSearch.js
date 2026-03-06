@@ -9,6 +9,16 @@ const { normalizeGmailMessage } = require('./gmailMessageParser')
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
 const MAX_BODY_LENGTH = 4000
+const SPECIAL_FLAG_LABELS = {
+    isUnread: 'UNREAD',
+    isInbox: 'INBOX',
+    isImportant: 'IMPORTANT',
+    isSent: 'SENT',
+    isDraft: 'DRAFT',
+    isStarred: 'STARRED',
+    isSpam: 'SPAM',
+    isTrash: 'TRASH',
+}
 
 function getActiveProjectIds(userData = {}) {
     const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
@@ -37,6 +47,26 @@ async function getGmailClient(userId, projectId) {
     const oauth2Client = getOAuth2Client()
     oauth2Client.setCredentials({ access_token: accessToken })
     return google.gmail({ version: 'v1', auth: oauth2Client })
+}
+
+async function loadLabelNameMap(gmail) {
+    const response = await gmail.users.labels.list({ userId: 'me' })
+    const labels = Array.isArray(response?.data?.labels) ? response.data.labels : []
+    const labelNameMap = new Map()
+
+    labels.forEach(label => {
+        if (label?.id && label?.name) labelNameMap.set(label.id, label.name)
+    })
+
+    return labelNameMap
+}
+
+function buildSpecialFlags(labelIds = []) {
+    const labelSet = new Set(Array.isArray(labelIds) ? labelIds : [])
+    return Object.keys(SPECIAL_FLAG_LABELS).reduce((acc, key) => {
+        acc[key] = labelSet.has(SPECIAL_FLAG_LABELS[key])
+        return acc
+    }, {})
 }
 
 async function getConnectedGmailAccounts(userId) {
@@ -69,6 +99,7 @@ async function getConnectedGmailAccounts(userId) {
 
 async function searchConnectedAccount({ userId, account, query, limit, includeBodies }) {
     const gmail = await getGmailClient(userId, account.projectId)
+    const labelNameMap = await loadLabelNameMap(gmail)
     const response = await gmail.users.messages.list({
         userId: 'me',
         q: query,
@@ -101,6 +132,8 @@ async function searchConnectedAccount({ userId, account, query, limit, includeBo
             const rawMessage = entry.value
             const normalizedMessage = normalizeGmailMessage(rawMessage, includeBodies ? MAX_BODY_LENGTH : 0)
             const internalDate = normalizedMessage.internalDate || 0
+            const labelIds = Array.isArray(normalizedMessage.labelIds) ? normalizedMessage.labelIds : []
+            const labelNames = labelIds.map(labelId => labelNameMap.get(labelId) || labelId)
             return {
                 projectId: account.projectId,
                 gmailEmail: account.gmailEmail,
@@ -113,6 +146,9 @@ async function searchConnectedAccount({ userId, account, query, limit, includeBo
                 date: internalDate ? new Date(internalDate).toISOString() : normalizedMessage.date || '',
                 snippet: normalizedMessage.snippet || '',
                 body: includeBodies ? normalizedMessage.bodyText || '' : '',
+                labelIds,
+                labelNames,
+                ...buildSpecialFlags(labelIds),
                 internalDate,
             }
         })

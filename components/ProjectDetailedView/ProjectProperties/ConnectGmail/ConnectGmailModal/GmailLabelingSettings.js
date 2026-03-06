@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
+import CustomTextInput3 from '../../../../Feeds/CommentsTextInput/CustomTextInput3'
 import Button from '../../../../UIControls/Button'
 import Switch from '../../../../UIControls/Switch'
 import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 import { PLAN_STATUS_PREMIUM } from '../../../../Premium/PremiumHelper'
+import { NEW_TOPIC_MODAL_THEME } from '../../../../Feeds/CommentsTextInput/textInputHelper'
 import {
     getGmailLabelingConfig,
     runGmailLabelingSync,
@@ -439,16 +441,21 @@ export default function GmailLabelingSettings({
 
                     <View style={localStyles.section}>
                         <Text style={localStyles.inputLabel}>{translate('Prompt')}</Text>
-                        <TextInput
-                            multiline
-                            blurOnSubmit={false}
-                            onKeyPress={stopEnterPropagation}
-                            value={config.prompt}
-                            onChangeText={prompt => updateConfig({ prompt })}
-                            editable={canManage}
-                            style={[localStyles.input, localStyles.textArea]}
+                        <CustomTextInput3
+                            containerStyle={[localStyles.input, localStyles.textArea, localStyles.multilineInput]}
+                            initialTextExtended={config.prompt}
                             placeholder={translate('Classify incoming Gmail messages into the configured labels')}
                             placeholderTextColor={colors.Text03}
+                            multiline={true}
+                            onChangeText={prompt => updateConfig({ prompt })}
+                            styleTheme={NEW_TOPIC_MODAL_THEME}
+                            disabledTabKey={true}
+                            disabledTags={true}
+                            disabledEdition={!canManage}
+                            externalTextStyle={localStyles.multilineInputText}
+                            keepBreakLines={true}
+                            onKeyPress={stopEnterPropagation}
+                            key={`gmail-prompt-${projectId}-${connectedEmail || 'default'}`}
                         />
                     </View>
 
@@ -467,18 +474,25 @@ export default function GmailLabelingSettings({
                                     placeholder={translate('Gmail label name')}
                                     placeholderTextColor={colors.Text03}
                                 />
-                                <TextInput
-                                    value={label.description}
-                                    onChangeText={description => updateLabel(index, { description })}
-                                    multiline
-                                    blurOnSubmit={false}
-                                    scrollEnabled
-                                    numberOfLines={5}
-                                    onKeyPress={stopEnterPropagation}
-                                    editable={canManage}
-                                    style={[localStyles.input, localStyles.descriptionInput]}
+                                <CustomTextInput3
+                                    containerStyle={[
+                                        localStyles.input,
+                                        localStyles.descriptionInput,
+                                        localStyles.multilineInput,
+                                    ]}
+                                    initialTextExtended={label.description}
                                     placeholder={translate('Describe when this label should be used')}
                                     placeholderTextColor={colors.Text03}
+                                    multiline={true}
+                                    onChangeText={description => updateLabel(index, { description })}
+                                    styleTheme={NEW_TOPIC_MODAL_THEME}
+                                    disabledTabKey={true}
+                                    disabledTags={true}
+                                    disabledEdition={!canManage}
+                                    externalTextStyle={localStyles.multilineInputText}
+                                    keepBreakLines={true}
+                                    onKeyPress={stopEnterPropagation}
+                                    key={`gmail-rule-${label.id || index}-${label.gmailLabelName || 'rule'}`}
                                 />
                                 <View style={localStyles.switchRow}>
                                     <Text style={localStyles.inputLabel}>{translate('Auto-archive when matched')}</Text>
@@ -648,6 +662,14 @@ const localStyles = StyleSheet.create({
         minHeight: 104,
         paddingTop: 12,
         textAlignVertical: 'top',
+    },
+    multilineInput: {
+        paddingVertical: 3,
+        paddingHorizontal: 16,
+    },
+    multilineInputText: {
+        ...styles.body2,
+        color: '#ffffff',
     },
     switchRow: {
         flexDirection: 'row',
