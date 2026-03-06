@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
+const { generateTaskObjectModel } = require('../Feeds/tasksFeedsHelper')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 const { createTaskObject } = require('../shared/TaskModelBuilder')
 const { deleteTask, uploadTask } = require('../Tasks/tasksFirestoreCloud')
@@ -127,6 +128,9 @@ async function createManagedFollowUpUpdateFeed(projectId, projectData, taskId, t
     loadFeedsGlobalState(admin, admin, feedCreator, { id: projectId, userIds: projectData?.userIds || [] }, null, null)
 
     const batch = new BatchWrapper(admin.firestore())
+    batch.feedObjects = {
+        [taskId]: generateTaskObjectModel(Date.now(), task, taskId),
+    }
     await createTaskUpdatedFeed(projectId, task, taskId, batch, feedCreator, true, {
         entryText: 'scheduled contact follow-up',
     })
