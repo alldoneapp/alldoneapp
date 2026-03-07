@@ -396,7 +396,7 @@ export default function GmailLabelingSettings({
         setSuccessMessage('')
 
         try {
-            const result = await runGmailLabelingSync(projectId)
+            const result = await runGmailLabelingSync(projectId, true)
             setSyncResult(result)
             setRecentAuditEntries(Array.isArray(result?.recentAuditEntries) ? result.recentAuditEntries : [])
             setSyncState(currentState => ({

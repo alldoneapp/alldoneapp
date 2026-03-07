@@ -680,12 +680,16 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             maxMessagesPerRun: config.maxMessagesPerRun,
         })
 
-        const processedMessageIds = await getExistingAuditIds(
-            userId,
-            projectId,
-            candidateMessages.map(message => message.id)
-        )
-        const messagesToProcess = candidateMessages.filter(message => !processedMessageIds.has(message.id))
+        const processedMessageIds = options.forceBootstrap
+            ? new Set()
+            : await getExistingAuditIds(
+                  userId,
+                  projectId,
+                  candidateMessages.map(message => message.id)
+              )
+        const messagesToProcess = options.forceBootstrap
+            ? candidateMessages
+            : candidateMessages.filter(message => !processedMessageIds.has(message.id))
 
         logSync('Prepared Gmail messages for processing', {
             ...logContext,
