@@ -275,15 +275,38 @@ async function getExistingAuditIds(userId, projectId, messageIds) {
     return existingIds
 }
 
+function normalizeLabelName(labelName = '') {
+    return String(labelName || '').trim()
+}
+
+function findExistingLabelId(labelMap, labelName) {
+    const normalizedLabelName = normalizeLabelName(labelName)
+    if (!normalizedLabelName) return null
+
+    if (labelMap.has(normalizedLabelName)) return labelMap.get(normalizedLabelName)
+
+    const normalizedLookup = normalizedLabelName.toLowerCase()
+    for (const [existingLabelName, existingLabelId] of labelMap.entries()) {
+        if (normalizeLabelName(existingLabelName).toLowerCase() === normalizedLookup) {
+            labelMap.set(normalizedLabelName, existingLabelId)
+            return existingLabelId
+        }
+    }
+
+    return null
+}
+
 async function createOrGetGmailLabelId(gmail, labelMap, labelName) {
-    if (labelMap.has(labelName)) return labelMap.get(labelName)
+    const normalizedLabelName = normalizeLabelName(labelName)
+    const existingLabelId = findExistingLabelId(labelMap, normalizedLabelName)
+    if (existingLabelId) return existingLabelId
 
     let createdLabel
     try {
         createdLabel = await gmail.users.labels.create({
             userId: 'me',
             requestBody: {
-                name: labelName,
+                name: normalizedLabelName,
                 labelListVisibility: 'labelShow',
                 messageListVisibility: 'show',
             },
@@ -293,21 +316,23 @@ async function createOrGetGmailLabelId(gmail, labelMap, labelName) {
         if (!alreadyExists) throw error
 
         const refreshedMap = await loadExistingLabelMap(gmail)
-        const existingLabelId = refreshedMap.get(labelName)
-        if (existingLabelId) {
-            labelMap.set(labelName, existingLabelId)
-            return existingLabelId
+        const refreshedLabelId = findExistingLabelId(refreshedMap, normalizedLabelName)
+        if (refreshedLabelId) {
+            labelMap.set(normalizedLabelName, refreshedLabelId)
+            return refreshedLabelId
         }
 
-        throw error
+        throw new Error(
+            `Label name exists or conflicts in Gmail: "${normalizedLabelName}". Use the exact existing Gmail label name or rename this rule label.`
+        )
     }
 
     const labelId = createdLabel?.data?.id || null
     if (!labelId) {
-        throw new Error(`Failed creating Gmail label "${labelName}"`)
+        throw new Error(`Failed creating Gmail label "${normalizedLabelName}"`)
     }
 
-    labelMap.set(labelName, labelId)
+    labelMap.set(normalizedLabelName, labelId)
     return labelId
 }
 
@@ -483,27 +508,28 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         }
     }
 
-    const labelId = selectedDefinition.gmailLabelName.startsWith(ALDDONE_MANAGED_LABEL_PREFIX)
-        ? await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
-        : await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
-
-    logSync('Applying Gmail label to message', {
-        userId,
-        projectId,
-        messageId: normalizedMessage.messageId,
-        threadId: normalizedMessage.threadId,
-        selectedLabelKey: selectedDefinition.key,
-        selectedGmailLabelName: selectedDefinition.gmailLabelName,
-        labelId,
-        autoArchive: !!selectedDefinition.autoArchive,
-    })
-
+    let labelId
     let modifyResult
     try {
+        labelId = selectedDefinition.gmailLabelName.startsWith(ALDDONE_MANAGED_LABEL_PREFIX)
+            ? await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
+            : await createOrGetGmailLabelId(gmail, labelMap, selectedDefinition.gmailLabelName)
+
+        logSync('Applying Gmail label to message', {
+            userId,
+            projectId,
+            messageId: normalizedMessage.messageId,
+            threadId: normalizedMessage.threadId,
+            selectedLabelKey: selectedDefinition.key,
+            selectedGmailLabelName: selectedDefinition.gmailLabelName,
+            labelId,
+            autoArchive: !!selectedDefinition.autoArchive,
+        })
+
         modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, selectedDefinition.autoArchive)
     } catch (error) {
         await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
-        console.warn('[gmailLabeling] Refunded gold after Gmail label apply failure', {
+        console.warn('[gmailLabeling] Refunded gold after Gmail label resolution/apply failure', {
             userId,
             projectId,
             messageId: normalizedMessage.messageId,

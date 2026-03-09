@@ -152,7 +152,7 @@ function SyncSummary({ state, result }) {
     return (
         <View style={localStyles.summaryCard}>
             <Text style={localStyles.sectionTitle}>{translate('Gmail sync status')}</Text>
-            {syncDateLabel ? <Text style={localStyles.summaryText}>{`From: ${syncDateLabel}`}</Text> : null}
+            {syncDateLabel ? <Text style={localStyles.summaryText}>{`Last updated: ${syncDateLabel}`}</Text> : null}
             <Text style={localStyles.summaryText}>
                 {translate('Gmail sync scanned', { count: lastProcessedCount })}
             </Text>
@@ -212,6 +212,7 @@ function SyncAuditSection({ entries }) {
                 const rowId = entry.id || entry.gmailMessageId || `audit-${index}`
                 const isExpanded = !!expandedIds[rowId]
                 const classificationLabel = formatClassificationLabel(entry)
+                const processedAtLabel = formatSyncDateTime(entry.processedAt)
                 return (
                     <View key={rowId} style={localStyles.auditCard}>
                         <TouchableOpacity onPress={() => toggleExpanded(rowId)} activeOpacity={0.8}>
@@ -220,6 +221,9 @@ function SyncAuditSection({ entries }) {
                             <Text
                                 style={localStyles.auditClassification}
                             >{`Classification: ${classificationLabel}`}</Text>
+                            {processedAtLabel ? (
+                                <Text style={localStyles.auditTimestamp}>{`Classified: ${processedAtLabel}`}</Text>
+                            ) : null}
                             <Text style={localStyles.auditToggle}>{isExpanded ? 'Hide details' : 'Show details'}</Text>
                         </TouchableOpacity>
                         {isExpanded ? (
@@ -851,6 +855,11 @@ const localStyles = StyleSheet.create({
     auditClassification: {
         ...styles.body2,
         color: '#ffffff',
+    },
+    auditTimestamp: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginTop: 4,
     },
     auditToggle: {
         ...styles.caption1,
