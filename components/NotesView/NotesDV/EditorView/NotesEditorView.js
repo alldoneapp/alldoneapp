@@ -463,7 +463,7 @@ const NotesEditorView = ({
                         resizedUri: image,
                         isNew: NEW_ATTACHMENT,
                         isLoading: LOADING_MODE,
-                        id,
+                        externalId: id,
                         editorId: note.id,
                     }
 
