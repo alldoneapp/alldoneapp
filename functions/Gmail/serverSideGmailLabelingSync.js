@@ -22,6 +22,7 @@ const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
 const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
 const GMAIL_LABELING_GOLD_COST_PER_EMAIL = 1
+const DEFAULT_SYNC_INTERVAL_MINUTES = 5
 
 class GmailSyncLockedError extends Error {
     constructor(message) {
@@ -50,6 +51,31 @@ function createSyncLogContext(userId, projectId, gmailEmail = '') {
         projectId,
         gmailEmail,
     }
+}
+
+function normalizeTimestampToMillis(value) {
+    if (!value) return 0
+    if (typeof value?.toMillis === 'function') return value.toMillis()
+    if (typeof value?.toDate === 'function') return value.toDate().getTime()
+    if (typeof value?.seconds === 'number') return value.seconds * 1000
+    if (typeof value?._seconds === 'number') return value._seconds * 1000
+    if (typeof value === 'number') return value
+
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime()
+}
+
+function getConfiguredSyncIntervalMinutes(config = {}) {
+    const parsedInterval = Number(config?.syncIntervalMinutes)
+    if (!Number.isFinite(parsedInterval)) return DEFAULT_SYNC_INTERVAL_MINUTES
+    return Math.max(DEFAULT_SYNC_INTERVAL_MINUTES, Math.trunc(parsedInterval))
+}
+
+function isScheduledSyncDue(state = {}, config = {}) {
+    const intervalMinutes = getConfiguredSyncIntervalMinutes(config)
+    const lastSyncMillis = normalizeTimestampToMillis(state?.lastSyncAt || state?.lastSuccessfulSyncAt)
+    if (!lastSyncMillis) return true
+    return Date.now() - lastSyncMillis >= intervalMinutes * 60 * 1000
 }
 
 function logSync(message, context = {}) {
@@ -900,6 +926,18 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
         if (!userId || !data.projectId) continue
 
         try {
+            const { state } = await loadState(userId, data.projectId, data.gmailEmail || '')
+            if (!isScheduledSyncDue(state, data)) {
+                results.push({
+                    success: true,
+                    skippedReason: 'interval_not_due',
+                    userId,
+                    projectId: data.projectId,
+                    syncIntervalMinutes: getConfiguredSyncIntervalMinutes(data),
+                })
+                continue
+            }
+
             const result = await syncGmailLabeling(userId, data.projectId)
             results.push(result)
         } catch (error) {

@@ -6,6 +6,11 @@ const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_4'
 const DEFAULT_MAX_MESSAGES_PER_RUN = 20
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 const DEFAULT_LOOKBACK_DAYS = 7
+const DEFAULT_SYNC_INTERVAL_MINUTES = 5
+const MIN_SYNC_INTERVAL_MINUTES = 5
+const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
+const DEFAULT_ESTIMATED_EMAILS_PER_DAY = 20
+const MAX_ESTIMATED_EMAILS_PER_DAY = 10000
 const MAX_LOOKBACK_DAYS = 30
 const GMAIL_LABELING_CONFIG_TYPE = 'gmailLabelingConfig'
 const GMAIL_LABELING_STATE_TYPE = 'gmailLabelingState'
@@ -81,6 +86,8 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         processUnreadOnly: true,
         onlyInbox: true,
         lookbackDays: DEFAULT_LOOKBACK_DAYS,
+        syncIntervalMinutes: DEFAULT_SYNC_INTERVAL_MINUTES,
+        estimatedEmailsPerDay: DEFAULT_ESTIMATED_EMAILS_PER_DAY,
         maxMessagesPerRun: DEFAULT_MAX_MESSAGES_PER_RUN,
         confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
         labelDefinitions: getStarterLabelDefinitions(),
@@ -154,6 +161,15 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
         lookbackDays: Number.isFinite(input.lookbackDays)
             ? Math.min(Math.max(Math.trunc(input.lookbackDays), 1), MAX_LOOKBACK_DAYS)
             : defaultConfig.lookbackDays,
+        syncIntervalMinutes: Number.isFinite(input.syncIntervalMinutes)
+            ? Math.min(
+                  Math.max(Math.trunc(input.syncIntervalMinutes), MIN_SYNC_INTERVAL_MINUTES),
+                  MAX_SYNC_INTERVAL_MINUTES
+              )
+            : defaultConfig.syncIntervalMinutes,
+        estimatedEmailsPerDay: Number.isFinite(input.estimatedEmailsPerDay)
+            ? Math.min(Math.max(Math.trunc(input.estimatedEmailsPerDay), 0), MAX_ESTIMATED_EMAILS_PER_DAY)
+            : defaultConfig.estimatedEmailsPerDay,
         maxMessagesPerRun: Number.isFinite(input.maxMessagesPerRun)
             ? Math.min(Math.max(Math.trunc(input.maxMessagesPerRun), 1), 100)
             : defaultConfig.maxMessagesPerRun,
@@ -256,13 +272,18 @@ function buildDefaultState(projectId, gmailEmail = '') {
 
 module.exports = {
     DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_ESTIMATED_EMAILS_PER_DAY,
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_MAX_MESSAGES_PER_RUN,
+    DEFAULT_SYNC_INTERVAL_MINUTES,
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
     GMAIL_LABELING_STATE_TYPE,
+    MAX_ESTIMATED_EMAILS_PER_DAY,
     MAX_LOOKBACK_DAYS,
+    MAX_SYNC_INTERVAL_MINUTES,
+    MIN_SYNC_INTERVAL_MINUTES,
     SYSTEM_GMAIL_LABELS,
     buildConfigWriteData,
     buildDefaultState,
