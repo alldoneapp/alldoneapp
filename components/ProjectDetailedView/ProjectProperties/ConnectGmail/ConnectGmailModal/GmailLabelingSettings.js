@@ -90,6 +90,10 @@ function normalizeSyncDate(value) {
         const date = new Date(value.seconds * 1000)
         return Number.isNaN(date.getTime()) ? null : date
     }
+    if (typeof value?._seconds === 'number') {
+        const date = new Date(value._seconds * 1000)
+        return Number.isNaN(date.getTime()) ? null : date
+    }
     if (typeof value === 'number') {
         const date = new Date(value)
         return Number.isNaN(date.getTime()) ? null : date
