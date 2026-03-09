@@ -456,7 +456,7 @@ export default class EditContact extends Component {
                             projectId={projectId}
                             forceTriggerEnterActionForBreakLines={this.enterActionKey}
                             disabledEdition={!loggedUserCanUpdateObject}
-                            onMentionSelected={this.onMentionSelected}
+                            onMentionSelected={isNew ? undefined : this.onMentionSelected}
                         />
                     )}
                 </View>
