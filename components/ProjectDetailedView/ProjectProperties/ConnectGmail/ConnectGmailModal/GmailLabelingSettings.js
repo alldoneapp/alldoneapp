@@ -19,8 +19,6 @@ const MAX_LOOKBACK_DAYS = 30
 const MAX_MESSAGES_PER_RUN = 100
 const MIN_SYNC_INTERVAL_MINUTES = 5
 const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
-const MAX_ESTIMATED_EMAILS_PER_DAY = 10000
-const GMAIL_LABELING_GOLD_COST_PER_EMAIL = 1
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
     'You classify incoming emails into exactly one configured label or no match. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
 
@@ -52,9 +50,6 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
         lookbackDays: Number.isFinite(config.lookbackDays) ? String(config.lookbackDays) : '7',
         syncIntervalMinutes: Number.isFinite(config.syncIntervalMinutes) ? String(config.syncIntervalMinutes) : '5',
-        estimatedEmailsPerDay: Number.isFinite(config.estimatedEmailsPerDay)
-            ? String(config.estimatedEmailsPerDay)
-            : '20',
         maxMessagesPerRun: Number.isFinite(config.maxMessagesPerRun) ? String(config.maxMessagesPerRun) : '20',
         confidenceThreshold: Number.isFinite(config.confidenceThreshold) ? String(config.confidenceThreshold) : '0.7',
         labelDefinitions,
@@ -64,7 +59,6 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
 function sanitizeConfigForSave(config) {
     const parsedLookbackDays = parseInt(config.lookbackDays, 10)
     const parsedSyncIntervalMinutes = parseInt(config.syncIntervalMinutes, 10)
-    const parsedEstimatedEmailsPerDay = parseInt(config.estimatedEmailsPerDay, 10)
     const parsedMaxMessages = parseInt(config.maxMessagesPerRun, 10)
     const parsedConfidenceThreshold = parseFloat(config.confidenceThreshold)
 
@@ -81,9 +75,6 @@ function sanitizeConfigForSave(config) {
         syncIntervalMinutes: Number.isFinite(parsedSyncIntervalMinutes)
             ? Math.min(Math.max(parsedSyncIntervalMinutes, MIN_SYNC_INTERVAL_MINUTES), MAX_SYNC_INTERVAL_MINUTES)
             : 5,
-        estimatedEmailsPerDay: Number.isFinite(parsedEstimatedEmailsPerDay)
-            ? Math.min(Math.max(parsedEstimatedEmailsPerDay, 0), MAX_ESTIMATED_EMAILS_PER_DAY)
-            : 20,
         maxMessagesPerRun: Number.isFinite(parsedMaxMessages)
             ? Math.min(Math.max(parsedMaxMessages, 1), MAX_MESSAGES_PER_RUN)
             : 20,
@@ -217,27 +208,6 @@ function formatClassificationLabel(entry = {}) {
 function formatReasoning(entry = {}) {
     const reasoning = typeof entry.reasoning === 'string' ? entry.reasoning.trim() : ''
     return reasoning || 'No reasoning available.'
-}
-
-function CostEstimate({ config }) {
-    const parsedEmailsPerDay = parseInt(config?.estimatedEmailsPerDay, 10)
-    const estimatedEmailsPerDay = Number.isFinite(parsedEmailsPerDay) ? Math.max(parsedEmailsPerDay, 0) : 0
-    const estimatedGoldPerDay = estimatedEmailsPerDay * GMAIL_LABELING_GOLD_COST_PER_EMAIL
-
-    return (
-        <View style={localStyles.summaryCard}>
-            <Text style={localStyles.sectionTitle}>{translate('Gmail cost estimate')}</Text>
-            <Text style={localStyles.summaryText}>
-                {translate('Gmail estimated emails checked per day', { count: estimatedEmailsPerDay })}
-            </Text>
-            <Text style={localStyles.summaryText}>
-                {translate('Gmail gold per email check', { count: GMAIL_LABELING_GOLD_COST_PER_EMAIL })}
-            </Text>
-            <Text style={localStyles.summaryText}>
-                {translate('Gmail estimated gold per day', { count: estimatedGoldPerDay })}
-            </Text>
-        </View>
-    )
 }
 
 function SyncAuditSection({ entries }) {
@@ -694,21 +664,6 @@ export default function GmailLabelingSettings({
                                 <Text style={localStyles.helperText}>
                                     {translate('Gmail sync interval description')}
                                 </Text>
-                                <Text style={localStyles.inputLabel}>
-                                    {translate('Gmail estimated emails checked per day label')}
-                                </Text>
-                                <TextInput
-                                    value={config.estimatedEmailsPerDay}
-                                    onChangeText={estimatedEmailsPerDay => updateConfig({ estimatedEmailsPerDay })}
-                                    editable={canManage}
-                                    style={localStyles.input}
-                                    keyboardType="numeric"
-                                    placeholder={'20'}
-                                    placeholderTextColor={colors.Text03}
-                                />
-                                <Text style={localStyles.helperText}>
-                                    {translate('Gmail estimated emails checked per day description')}
-                                </Text>
                                 <Text style={localStyles.inputLabel}>{translate('Max messages per run')}</Text>
                                 <TextInput
                                     value={config.maxMessagesPerRun}
@@ -744,7 +699,6 @@ export default function GmailLabelingSettings({
                             </View>
 
                             <SyncSummary state={syncState} result={syncResult} />
-                            <CostEstimate config={config} />
                             <SyncAuditSection entries={recentAuditEntries} />
                         </>
                     ) : null}
