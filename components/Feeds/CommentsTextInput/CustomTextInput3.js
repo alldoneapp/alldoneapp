@@ -118,6 +118,7 @@ function CustomTextInput3(
         otherFormats,
         externalEditorId,
         keepBreakLines,
+        allowPlainEnterBreakLines,
         onCustomSelectionChange,
         isCalendarTask,
         forceTriggerEnterActionForBreakLines,
@@ -889,7 +890,7 @@ function CustomTextInput3(
 
         if (key === 'Enter' && !singleLine && !disabledEnterKey) {
             event.preventDefault()
-            if (shiftKey && quillRef.current.hasFocus()) {
+            if ((shiftKey || allowPlainEnterBreakLines) && quillRef.current.hasFocus()) {
                 const delta = new Delta()
                 delta.retain(selectionRef.current.index)
                 delta.insert('\n')

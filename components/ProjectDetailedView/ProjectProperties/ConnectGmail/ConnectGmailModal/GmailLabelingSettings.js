@@ -455,7 +455,6 @@ export default function GmailLabelingSettings({
                 <View style={localStyles.headerRow}>
                     <Text style={localStyles.sectionTitle}>{translate('Gmail labeling')}</Text>
                     <View style={localStyles.headerSwitchRow}>
-                        <Text style={localStyles.inputLabel}>{translate('Enable Gmail labeling')}</Text>
                         <Switch
                             active={config.enabled}
                             activeSwitch={() => updateConfig({ enabled: true })}
@@ -552,6 +551,7 @@ export default function GmailLabelingSettings({
                                     disabledEdition={!canManage}
                                     externalTextStyle={localStyles.multilineInputText}
                                     keepBreakLines={true}
+                                    allowPlainEnterBreakLines={true}
                                     onKeyPress={stopEnterPropagation}
                                     key={`gmail-prompt-${projectId}-${connectedEmail || 'default'}`}
                                 />
@@ -589,8 +589,9 @@ export default function GmailLabelingSettings({
                                             disabledEdition={!canManage}
                                             externalTextStyle={localStyles.multilineInputText}
                                             keepBreakLines={true}
+                                            allowPlainEnterBreakLines={true}
                                             onKeyPress={stopEnterPropagation}
-                                            key={`gmail-rule-${label.id || index}-${label.gmailLabelName || 'rule'}`}
+                                            key={`gmail-rule-${label.id || index}`}
                                         />
                                         <View style={localStyles.switchRow}>
                                             <Text style={localStyles.inputLabel}>
@@ -714,7 +715,7 @@ const localStyles = StyleSheet.create({
     headerRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         marginBottom: 8,
     },
     headerSwitchRow: {
