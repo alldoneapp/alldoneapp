@@ -106,6 +106,8 @@ export default function IframeModal() {
                             height: '100%',
                             border: 'none',
                         }}
+                        allow="display-capture; microphone; camera; autoplay; clipboard-read; clipboard-write"
+                        allowFullScreen
                         title="Task Iframe"
                     />
                 </View>
