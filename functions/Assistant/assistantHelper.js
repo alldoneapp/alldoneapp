@@ -4456,6 +4456,53 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
         }
 
+        case 'update_gmail_draft': {
+            console.log('📧 UPDATE_GMAIL_DRAFT TOOL: Starting Gmail draft update', {
+                draftId: toolArgs.draftId,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Gmail draft update requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { updateGmailDraftForAssistantRequest } = require('../Gmail/assistantGmailDrafts')
+                const result = await updateGmailDraftForAssistantRequest({
+                    userId: targetUserId,
+                    draftId: toolArgs.draftId,
+                    to: toolArgs.to,
+                    cc: toolArgs.cc,
+                    bcc: toolArgs.bcc,
+                    subject: toolArgs.subject,
+                    body: toolArgs.body,
+                })
+
+                console.log('📧 UPDATE_GMAIL_DRAFT TOOL: Completed', {
+                    success: result.success,
+                    gmailEmail: result.gmailEmail || null,
+                    draftId: result.draftId || null,
+                    threadId: result.threadId || null,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📧 UPDATE_GMAIL_DRAFT TOOL: Failed', {
+                    error: error.message,
+                    requestUserId: targetUserId,
+                    draftId: toolArgs.draftId,
+                })
+                return {
+                    success: false,
+                    message: `Gmail draft update failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'search_calendar_events': {
             console.log('📅 SEARCH_CALENDAR_EVENTS TOOL: Starting Calendar search', {
                 query: toolArgs.query,

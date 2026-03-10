@@ -10,6 +10,7 @@ export const TOOL_OPTIONS = [
     { key: 'search_gmail', labelKey: 'Search Gmail emails' },
     { key: 'create_gmail_reply_draft', labelKey: 'Create Gmail reply draft' },
     { key: 'create_gmail_draft', labelKey: 'Create Gmail draft' },
+    { key: 'update_gmail_draft', labelKey: 'Update Gmail draft' },
     { key: 'search_calendar_events', labelKey: 'Search Calendar events' },
     { key: 'create_calendar_event', labelKey: 'Create Calendar event' },
     { key: 'update_calendar_event', labelKey: 'Update Calendar event' },

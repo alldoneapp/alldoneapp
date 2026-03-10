@@ -8,6 +8,7 @@ const {
     buildPlainTextMimeMessage,
     buildGmailDraftUrl,
     buildReferencesHeader,
+    normalizeDraftData,
     normalizeRecipientList,
     pickLatestResult,
     selectDefaultAccount,
@@ -60,6 +61,48 @@ describe('assistantGmailDrafts helpers', () => {
         const url = buildGmailDraftUrl('person@example.com', 'message-123')
 
         expect(url).toBe('https://mail.google.com/mail/u/person%40example.com/#inbox?compose=message-123')
+    })
+
+    test('normalizes a Gmail draft payload for editing', () => {
+        const normalized = normalizeDraftData({
+            id: 'draft-123',
+            message: {
+                id: 'message-123',
+                threadId: 'thread-123',
+                payload: {
+                    headers: [
+                        { name: 'To', value: 'alice@example.com, bob@example.com' },
+                        { name: 'Cc', value: 'carol@example.com' },
+                        { name: 'Bcc', value: 'dave@example.com' },
+                        { name: 'Subject', value: 'Project update' },
+                    ],
+                    body: {},
+                    parts: [
+                        {
+                            mimeType: 'text/plain',
+                            body: {
+                                data: Buffer.from('Hello team', 'utf8')
+                                    .toString('base64')
+                                    .replace(/\+/g, '-')
+                                    .replace(/\//g, '_')
+                                    .replace(/=+$/g, ''),
+                            },
+                        },
+                    ],
+                },
+            },
+        })
+
+        expect(normalized).toEqual({
+            draftId: 'draft-123',
+            messageId: 'message-123',
+            threadId: 'thread-123',
+            to: ['alice@example.com', 'bob@example.com'],
+            cc: ['carol@example.com'],
+            bcc: ['dave@example.com'],
+            subject: 'Project update',
+            body: 'Hello team',
+        })
     })
 
     test('selects the project account for new drafts', () => {

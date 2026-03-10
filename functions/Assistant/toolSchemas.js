@@ -505,6 +505,63 @@ const toolSchemas = {
         },
     },
 
+    update_gmail_draft: {
+        type: 'function',
+        function: {
+            name: 'update_gmail_draft',
+            description:
+                'Update an existing Gmail draft by draftId. Use this when the user wants to revise, rewrite, shorten, or otherwise edit an already-created Gmail draft. Any omitted fields keep their current draft values.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    draftId: {
+                        type: 'string',
+                        description: 'The Gmail draft ID to update.',
+                    },
+                    to: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description: 'Optional replacement for the primary recipients.',
+                    },
+                    cc: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description: 'Optional replacement for cc recipients.',
+                    },
+                    bcc: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description: 'Optional replacement for bcc recipients.',
+                    },
+                    subject: {
+                        type: 'string',
+                        description: 'Optional replacement subject line.',
+                    },
+                    body: {
+                        type: 'string',
+                        description: 'Optional replacement plain-text body content.',
+                    },
+                },
+                required: ['draftId'],
+            },
+        },
+    },
+
     search_calendar_events: {
         type: 'function',
         function: {

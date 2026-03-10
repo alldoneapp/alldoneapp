@@ -26,17 +26,24 @@ describe('Calendar assistant tool schemas', () => {
 
 describe('Gmail assistant tool schemas', () => {
     test('exposes Gmail search and draft tools when allowed', () => {
-        const schemas = getToolSchemas(['search_gmail', 'create_gmail_reply_draft', 'create_gmail_draft'])
+        const schemas = getToolSchemas([
+            'search_gmail',
+            'create_gmail_reply_draft',
+            'create_gmail_draft',
+            'update_gmail_draft',
+        ])
 
         expect(schemas.map(schema => schema.function.name)).toEqual([
             'search_gmail',
             'create_gmail_reply_draft',
             'create_gmail_draft',
+            'update_gmail_draft',
         ])
     })
 
     test('defines required fields for new Gmail drafts', () => {
         expect(toolSchemas.create_gmail_draft.function.parameters.required).toEqual(['to', 'subject', 'body'])
         expect(toolSchemas.create_gmail_reply_draft.function.parameters.required).toEqual([])
+        expect(toolSchemas.update_gmail_draft.function.parameters.required).toEqual(['draftId'])
     })
 })

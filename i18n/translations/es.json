@@ -80,6 +80,7 @@
     "Search Gmail emails": "Buscar correos de Gmail",
     "Create Gmail reply draft": "Crear borrador de respuesta en Gmail",
     "Create Gmail draft": "Crear borrador de Gmail",
+    "Update Gmail draft": "Actualizar borrador de Gmail",
     "Use as default Gmail account": "Usar como cuenta predeterminada de Gmail",
     "New assistant email drafts use this Gmail account by default.": "Los nuevos borradores de correo del asistente usaran esta cuenta de Gmail por defecto.",
     "Search Calendar events": "Buscar eventos del calendario",
