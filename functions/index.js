@@ -2941,6 +2941,108 @@ exports.getGmailLabelingConfigSecondGen = onCall(
     }
 )
 
+exports.setDefaultGmailConnectionSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId, isDefault } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const apisConnected = userData.apisConnected || {}
+            const currentConnection = apisConnected[projectId] || {}
+
+            if (!currentConnection.gmail) {
+                throw new HttpsError('failed-precondition', 'Gmail is not connected for this project')
+            }
+
+            const updateData = {}
+            const shouldSetDefault = !!isDefault
+
+            Object.keys(apisConnected).forEach(connectedProjectId => {
+                if (!apisConnected[connectedProjectId]?.gmail) return
+                updateData[`apisConnected.${connectedProjectId}.gmailDefault`] =
+                    shouldSetDefault && connectedProjectId === projectId
+            })
+
+            if (!shouldSetDefault) {
+                updateData[`apisConnected.${projectId}.gmailDefault`] = false
+            }
+
+            await admin.firestore().doc(`users/${auth.uid}`).update(updateData)
+
+            return {
+                success: true,
+                projectId,
+                isDefault: shouldSetDefault,
+            }
+        } catch (error) {
+            console.error('Error setting default Gmail connection:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to update default Gmail connection')
+        }
+    }
+)
+
+exports.setDefaultCalendarConnectionSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId, isDefault } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const apisConnected = userData.apisConnected || {}
+            const currentConnection = apisConnected[projectId] || {}
+
+            if (!currentConnection.calendar) {
+                throw new HttpsError('failed-precondition', 'Calendar is not connected for this project')
+            }
+
+            const updateData = {}
+            const shouldSetDefault = !!isDefault
+
+            Object.keys(apisConnected).forEach(connectedProjectId => {
+                if (!apisConnected[connectedProjectId]?.calendar) return
+                updateData[`apisConnected.${connectedProjectId}.calendarDefault`] =
+                    shouldSetDefault && connectedProjectId === projectId
+            })
+
+            if (!shouldSetDefault) {
+                updateData[`apisConnected.${projectId}.calendarDefault`] = false
+            }
+
+            await admin.firestore().doc(`users/${auth.uid}`).update(updateData)
+
+            return {
+                success: true,
+                projectId,
+                isDefault: shouldSetDefault,
+            }
+        } catch (error) {
+            console.error('Error setting default Calendar connection:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to update default Calendar connection')
+        }
+    }
+)
+
 exports.runGmailLabelingSyncSecondGen = onCall(
     {
         timeoutSeconds: 540,

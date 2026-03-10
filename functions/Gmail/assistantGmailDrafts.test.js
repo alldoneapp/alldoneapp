@@ -9,6 +9,7 @@ const {
     buildReferencesHeader,
     normalizeRecipientList,
     pickLatestResult,
+    selectDefaultAccount,
     selectProjectAccount,
 } = require('./assistantGmailDrafts')
 
@@ -64,6 +65,15 @@ describe('assistantGmailDrafts helpers', () => {
         )
 
         expect(account).toEqual({ projectId: 'p2', gmailEmail: 'b@example.com' })
+    })
+
+    test('selects the default account when one is marked', () => {
+        const account = selectDefaultAccount([
+            { projectId: 'p1', gmailEmail: 'a@example.com', gmailDefault: false },
+            { projectId: 'p2', gmailEmail: 'b@example.com', gmailDefault: true },
+        ])
+
+        expect(account).toEqual({ projectId: 'p2', gmailEmail: 'b@example.com', gmailDefault: true })
     })
 
     test('picks the latest Gmail search result for reply resolution', () => {

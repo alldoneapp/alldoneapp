@@ -4404,7 +4404,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             console.log('📧 CREATE_GMAIL_DRAFT TOOL: Starting Gmail draft creation', {
                 subject: toolArgs.subject,
                 requestUserId: requestUserId || null,
-                projectId: toolRuntimeContext?.projectId || null,
+                projectId: projectId || null,
             })
 
             const targetUserId = requestUserId || creatorId
@@ -4415,7 +4415,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 }
             }
 
-            if (!toolRuntimeContext?.projectId) {
+            if (!projectId) {
                 return {
                     success: false,
                     message: 'Gmail draft creation requires a current project context.',
@@ -4426,7 +4426,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 const { createGmailDraftForAssistantRequest } = require('../Gmail/assistantGmailDrafts')
                 const result = await createGmailDraftForAssistantRequest({
                     userId: targetUserId,
-                    projectId: toolRuntimeContext.projectId,
+                    projectId,
                     to: toolArgs.to,
                     cc: toolArgs.cc,
                     bcc: toolArgs.bcc,
@@ -4446,7 +4446,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 console.error('📧 CREATE_GMAIL_DRAFT TOOL: Failed', {
                     error: error.message,
                     requestUserId: targetUserId,
-                    projectId: toolRuntimeContext?.projectId || null,
+                    projectId: projectId || null,
                     subject: toolArgs.subject,
                 })
                 return {

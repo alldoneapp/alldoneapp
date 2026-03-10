@@ -100,7 +100,7 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
                         hideCloseButton={showCloseConfirmation}
                     />
                     {isConnectedAndSignedIn && (
-                        <ConnectedUserData isConnected={isConnected} email={authStatus?.email} />
+                        <ConnectedUserData projectId={projectId} isConnected={isConnected} email={authStatus?.email} />
                     )}
                     <ActionButton
                         projectId={projectId}

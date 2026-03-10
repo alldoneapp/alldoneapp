@@ -189,6 +189,7 @@ async function getConnectedCalendarAccounts(userId) {
         accounts.push({
             projectId,
             calendarEmail: calendarEmail || null,
+            calendarDefault: connection.calendarDefault === true,
         })
     })
 
@@ -282,6 +283,18 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
+    if (!calendarId) {
+        const defaultAccount = accounts.find(account => account.calendarDefault)
+        if (defaultAccount) {
+            return {
+                success: true,
+                account: defaultAccount,
+                calendarId: resolvedCalendarId,
+                accounts,
+            }
+        }
+    }
+
     const emailMatch = accounts.filter(
         account =>
             account.calendarEmail &&
@@ -340,10 +353,31 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
 
 async function resolveEventTargetForWrite({ userId, eventId, calendarId }) {
     const accountResolution = await resolveCalendarAccountForWrite({ userId, calendarId })
-    if (accountResolution.success || calendarId) return accountResolution
+    if (calendarId) return accountResolution
+    if (accountResolution.success && (accountResolution.accounts || []).length === 1) return accountResolution
 
     const accounts = accountResolution.accounts || (await getConnectedCalendarAccounts(userId))
     if (accounts.length === 0) return accountResolution
+
+    if (accountResolution.success && accountResolution.account?.calendarDefault) {
+        try {
+            const calendar = await getCalendarClient(userId, accountResolution.account.projectId)
+            const response = await calendar.events.get({
+                calendarId: DEFAULT_CALENDAR_ID,
+                eventId,
+            })
+
+            if (response?.data) {
+                return {
+                    success: true,
+                    account: accountResolution.account,
+                    calendarId: DEFAULT_CALENDAR_ID,
+                    event: response.data,
+                    accounts,
+                }
+            }
+        } catch (error) {}
+    }
 
     const settled = await settleAll(
         accounts.map(async account => {

@@ -76,7 +76,7 @@ async function getConnectedGmailAccounts(userId) {
     const userData = userDoc.data() || {}
     const apisConnected = userData.apisConnected || {}
     const activeProjectIds = getActiveProjectIds(userData)
-    const seenKeys = new Set()
+    const accountIndexByKey = new Map()
     const accounts = []
 
     activeProjectIds.forEach(projectId => {
@@ -85,12 +85,25 @@ async function getConnectedGmailAccounts(userId) {
 
         const gmailEmail = typeof connection.gmailEmail === 'string' ? connection.gmailEmail.trim().toLowerCase() : ''
         const dedupeKey = gmailEmail || projectId
-        if (seenKeys.has(dedupeKey)) return
-        seenKeys.add(dedupeKey)
+        const gmailDefault = connection.gmailDefault === true
 
+        if (accountIndexByKey.has(dedupeKey)) {
+            if (!gmailDefault) return
+
+            const existingIndex = accountIndexByKey.get(dedupeKey)
+            accounts[existingIndex] = {
+                projectId,
+                gmailEmail: gmailEmail || null,
+                gmailDefault,
+            }
+            return
+        }
+
+        accountIndexByKey.set(dedupeKey, accounts.length)
         accounts.push({
             projectId,
             gmailEmail: gmailEmail || null,
+            gmailDefault,
         })
     })
 

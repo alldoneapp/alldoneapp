@@ -7314,6 +7314,20 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
     return result
 }
 
+export async function setDefaultGmailConnection(projectId, isDefault) {
+    return runHttpsCallableFunction('setDefaultGmailConnectionSecondGen', {
+        projectId,
+        isDefault,
+    })
+}
+
+export async function setDefaultCalendarConnection(projectId, isDefault) {
+    return runHttpsCallableFunction('setDefaultCalendarConnectionSecondGen', {
+        projectId,
+        isDefault,
+    })
+}
+
 export function watchUserProjects(userId, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = db
         .collection(`projects`)

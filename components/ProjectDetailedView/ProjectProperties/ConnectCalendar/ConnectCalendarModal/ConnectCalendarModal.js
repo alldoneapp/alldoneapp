@@ -26,7 +26,7 @@ export default function ConnectCalendarModal({ projectId, isSignedIn, closePopov
                 title={translate('Google calendar account')}
                 description={translate('Google calendar account description')}
             />
-            {isConnectedAndSignedIn && <ConnectedUserData isConnected={isConnected} />}
+            {isConnectedAndSignedIn && <ConnectedUserData projectId={projectId} isConnected={isConnected} />}
             <ActionButton
                 projectId={projectId}
                 isConnected={isConnected}

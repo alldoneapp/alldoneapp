@@ -83,6 +83,10 @@ function selectProjectAccount(accounts = [], projectId = '') {
     return accounts.find(account => account.projectId === projectId) || null
 }
 
+function selectDefaultAccount(accounts = []) {
+    return accounts.find(account => account.gmailDefault) || null
+}
+
 async function fetchMessageById(gmail, messageId) {
     const response = await gmail.users.messages.get({
         userId: 'me',
@@ -225,7 +229,7 @@ async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, 
     }
 
     const accounts = await getConnectedGmailAccounts(userId)
-    const account = selectProjectAccount(accounts, normalizedProjectId)
+    const account = selectDefaultAccount(accounts) || selectProjectAccount(accounts, normalizedProjectId)
     if (!account) {
         return {
             success: false,
@@ -351,5 +355,6 @@ module.exports = {
     createGmailReplyDraftForAssistantRequest,
     normalizeRecipientList,
     pickLatestResult,
+    selectDefaultAccount,
     selectProjectAccount,
 }

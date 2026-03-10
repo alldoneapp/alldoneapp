@@ -108,8 +108,8 @@ describe('assistantCalendarTools', () => {
         const accounts = await assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')
 
         expect(accounts).toEqual([
-            { projectId: 'p1', calendarEmail: 'me@example.com' },
-            { projectId: 'p3', calendarEmail: 'other@example.com' },
+            { projectId: 'p1', calendarEmail: 'me@example.com', calendarDefault: false },
+            { projectId: 'p3', calendarEmail: 'other@example.com', calendarDefault: false },
         ])
     })
 
@@ -294,8 +294,8 @@ describe('assistantCalendarTools', () => {
         setUser('user-1', {
             projectIds: ['p1', 'p2'],
             apisConnected: {
-                p1: { calendar: true, calendarEmail: 'one@example.com' },
-                p2: { calendar: true, calendarEmail: 'two@example.com' },
+                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
+                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: false },
             },
         })
 
@@ -311,6 +311,39 @@ describe('assistantCalendarTools', () => {
 
         expect(result.success).toBe(false)
         expect(result.code).toBe('calendar_account_ambiguous')
+    })
+
+    test('prefers the default calendar account for creates when multiple are connected', async () => {
+        setUser('user-1', {
+            projectIds: ['p1', 'p2'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
+                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: true },
+            },
+        })
+
+        setCalendarClient('p1')
+        const defaultClient = setCalendarClient('p2')
+        defaultClient.events.insert.mockResolvedValue({
+            data: {
+                id: 'evt-default',
+                summary: 'Default Event',
+                start: { dateTime: '2026-03-11T09:00:00+01:00' },
+                end: { dateTime: '2026-03-11T10:00:00+01:00' },
+            },
+        })
+
+        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            summary: 'Default Event',
+            start: '2026-03-11T09:00:00+01:00',
+            end: '2026-03-11T10:00:00+01:00',
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.projectId).toBe('p2')
+        expect(defaultClient.events.insert).toHaveBeenCalled()
+        expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
     })
 
     test('returns reconnect guidance when no calendar account is connected', async () => {
