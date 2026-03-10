@@ -57,9 +57,9 @@ function buildPlainTextMimeMessage({ to, cc, bcc, subject, body, inReplyTo, refe
 }
 
 function buildGmailDraftUrl(gmailEmail = '', draftId = '') {
-    const authQuery = gmailEmail ? `?authuser=${encodeURIComponent(gmailEmail)}` : ''
-    const composeFragment = draftId ? `?compose=${encodeURIComponent(draftId)}` : ''
-    return `https://mail.google.com/mail/u/${authQuery}#drafts${composeFragment}`
+    const accountSegment = gmailEmail ? encodeURIComponent(gmailEmail) : '0'
+    const draftSegment = draftId ? `/${encodeURIComponent(draftId)}` : ''
+    return `https://mail.google.com/mail/u/${accountSegment}/#drafts${draftSegment}`
 }
 
 function getBodyOrInstructions({ body, instructions }) {
@@ -350,6 +350,7 @@ async function createGmailReplyDraftForAssistantRequest({ userId, query, message
 
 module.exports = {
     buildPlainTextMimeMessage,
+    buildGmailDraftUrl,
     buildReferencesHeader,
     createGmailDraftForAssistantRequest,
     createGmailReplyDraftForAssistantRequest,

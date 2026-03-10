@@ -6,6 +6,7 @@ jest.mock('./assistantGmailSearch', () => ({
 
 const {
     buildPlainTextMimeMessage,
+    buildGmailDraftUrl,
     buildReferencesHeader,
     normalizeRecipientList,
     pickLatestResult,
@@ -53,6 +54,12 @@ describe('assistantGmailDrafts helpers', () => {
         expect(references).toBe('<older@example.com> <latest@example.com>')
         expect(mimeMessage).toContain('In-Reply-To: <latest@example.com>')
         expect(mimeMessage).toContain('References: <older@example.com> <latest@example.com>')
+    })
+
+    test('builds a Gmail URL that opens a specific draft', () => {
+        const url = buildGmailDraftUrl('person@example.com', 'draft-123')
+
+        expect(url).toBe('https://mail.google.com/mail/u/person%40example.com/#drafts/draft-123')
     })
 
     test('selects the project account for new drafts', () => {
