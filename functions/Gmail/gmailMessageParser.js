@@ -83,8 +83,13 @@ function normalizeGmailMessage(message = {}, maxBodyLength = 8000) {
         from: getHeaderValue(headers, 'From'),
         to: getHeaderValue(headers, 'To'),
         cc: getHeaderValue(headers, 'Cc'),
+        bcc: getHeaderValue(headers, 'Bcc'),
+        replyTo: getHeaderValue(headers, 'Reply-To'),
         subject: getHeaderValue(headers, 'Subject'),
         date: getHeaderValue(headers, 'Date'),
+        references: getHeaderValue(headers, 'References'),
+        inReplyTo: getHeaderValue(headers, 'In-Reply-To'),
+        rfcMessageId: getHeaderValue(headers, 'Message-Id'),
         snippet: typeof message.snippet === 'string' ? message.snippet : '',
         bodyText,
     }

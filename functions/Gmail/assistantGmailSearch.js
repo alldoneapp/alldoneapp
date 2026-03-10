@@ -248,5 +248,7 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
 }
 
 module.exports = {
+    getConnectedGmailAccounts,
+    getGmailClient,
     searchGmailForAssistantRequest,
 }

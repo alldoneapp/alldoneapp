@@ -415,6 +415,96 @@ const toolSchemas = {
         },
     },
 
+    create_gmail_reply_draft: {
+        type: 'function',
+        function: {
+            name: 'create_gmail_reply_draft',
+            description:
+                'Create a Gmail draft reply in-thread for an existing email conversation. Use this when the user asks you to draft or prepare a reply email. Resolve the target using a Gmail search query, explicit messageId, or explicit threadId. If multiple matching emails exist for a query, the latest matching thread will be used.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description:
+                            'Optional Gmail search query to identify the email thread to reply to. Use specific sender names, topics, or email addresses.',
+                    },
+                    messageId: {
+                        type: 'string',
+                        description: 'Optional explicit Gmail message ID to reply to.',
+                    },
+                    threadId: {
+                        type: 'string',
+                        description: 'Optional explicit Gmail thread ID to reply within.',
+                    },
+                    body: {
+                        type: 'string',
+                        description: 'The plain-text body content for the reply draft.',
+                    },
+                    instructions: {
+                        type: 'string',
+                        description:
+                            'Optional fallback plain-text content if body is omitted. This is stored as the draft body as-is.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    create_gmail_draft: {
+        type: 'function',
+        function: {
+            name: 'create_gmail_draft',
+            description:
+                'Create a brand-new Gmail draft in the connected Gmail account for the current project. Use this when the user wants to draft or compose a new email but not send it yet.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    to: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description: 'One or more primary recipients.',
+                    },
+                    cc: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description: 'Optional cc recipients.',
+                    },
+                    bcc: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description: 'Optional bcc recipients.',
+                    },
+                    subject: {
+                        type: 'string',
+                        description: 'The email subject line.',
+                    },
+                    body: {
+                        type: 'string',
+                        description: 'The plain-text body content for the draft.',
+                    },
+                },
+                required: ['to', 'subject', 'body'],
+            },
+        },
+    },
+
     search_calendar_events: {
         type: 'function',
         function: {

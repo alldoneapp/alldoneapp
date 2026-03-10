@@ -4350,6 +4350,112 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
         }
 
+        case 'create_gmail_reply_draft': {
+            console.log('📧 CREATE_GMAIL_REPLY_DRAFT TOOL: Starting Gmail reply draft creation', {
+                query: toolArgs.query,
+                messageId: toolArgs.messageId,
+                threadId: toolArgs.threadId,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Gmail reply draft creation requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { createGmailReplyDraftForAssistantRequest } = require('../Gmail/assistantGmailDrafts')
+                const result = await createGmailReplyDraftForAssistantRequest({
+                    userId: targetUserId,
+                    query: toolArgs.query,
+                    messageId: toolArgs.messageId,
+                    threadId: toolArgs.threadId,
+                    body: toolArgs.body,
+                    instructions: toolArgs.instructions,
+                })
+
+                console.log('📧 CREATE_GMAIL_REPLY_DRAFT TOOL: Completed', {
+                    success: result.success,
+                    gmailEmail: result.gmailEmail || null,
+                    draftId: result.draftId || null,
+                    threadId: result.threadId || null,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📧 CREATE_GMAIL_REPLY_DRAFT TOOL: Failed', {
+                    error: error.message,
+                    requestUserId: targetUserId,
+                    query: toolArgs.query,
+                    messageId: toolArgs.messageId,
+                    threadId: toolArgs.threadId,
+                })
+                return {
+                    success: false,
+                    message: `Gmail reply draft creation failed: ${error.message}`,
+                }
+            }
+        }
+
+        case 'create_gmail_draft': {
+            console.log('📧 CREATE_GMAIL_DRAFT TOOL: Starting Gmail draft creation', {
+                subject: toolArgs.subject,
+                requestUserId: requestUserId || null,
+                projectId: toolRuntimeContext?.projectId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Gmail draft creation requires a valid requesting user.',
+                }
+            }
+
+            if (!toolRuntimeContext?.projectId) {
+                return {
+                    success: false,
+                    message: 'Gmail draft creation requires a current project context.',
+                }
+            }
+
+            try {
+                const { createGmailDraftForAssistantRequest } = require('../Gmail/assistantGmailDrafts')
+                const result = await createGmailDraftForAssistantRequest({
+                    userId: targetUserId,
+                    projectId: toolRuntimeContext.projectId,
+                    to: toolArgs.to,
+                    cc: toolArgs.cc,
+                    bcc: toolArgs.bcc,
+                    subject: toolArgs.subject,
+                    body: toolArgs.body,
+                })
+
+                console.log('📧 CREATE_GMAIL_DRAFT TOOL: Completed', {
+                    success: result.success,
+                    gmailEmail: result.gmailEmail || null,
+                    draftId: result.draftId || null,
+                    threadId: result.threadId || null,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📧 CREATE_GMAIL_DRAFT TOOL: Failed', {
+                    error: error.message,
+                    requestUserId: targetUserId,
+                    projectId: toolRuntimeContext?.projectId || null,
+                    subject: toolArgs.subject,
+                })
+                return {
+                    success: false,
+                    message: `Gmail draft creation failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'search_calendar_events': {
             console.log('📅 SEARCH_CALENDAR_EVENTS TOOL: Starting Calendar search', {
                 query: toolArgs.query,
@@ -5721,6 +5827,15 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks about email history, what they discussed with someone in email, or to find emails by person or topic, use the search_gmail tool instead of guessing.',
+        ])
+    }
+    if (
+        Array.isArray(allowedTools) &&
+        allowedTools.some(toolName => ['create_gmail_reply_draft', 'create_gmail_draft'].includes(toolName))
+    ) {
+        messages.push([
+            'system',
+            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. Draft emails only; do not claim you sent anything.',
         ])
     }
     if (
