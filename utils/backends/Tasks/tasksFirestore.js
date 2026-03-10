@@ -3186,6 +3186,35 @@ const pickNextFocusTaskByDisplayOrder = async ({ projectId, userId, tasks }) => 
     return orderedWorkflow[0]
 }
 
+const pickPreferredFocusTaskInSameGoal = ({
+    projectId,
+    userId,
+    tasks,
+    preferredGoalId,
+    openMilestones,
+    doneMilestones,
+    goalsById,
+}) => {
+    if (!preferredGoalId || !tasks || tasks.length === 0) return null
+
+    const tasksInSameGoal = tasks.filter(task => task.parentGoalId === preferredGoalId)
+    if (tasksInSameGoal.length === 0) return null
+
+    const nonWorkflowTasksInSameGoal = tasksInSameGoal.filter(task => task.userIds?.length === 1)
+    const candidateTasks = nonWorkflowTasksInSameGoal.length > 0 ? nonWorkflowTasksInSameGoal : tasksInSameGoal
+
+    const orderedTasks = sortTasksByDisplayOrder({
+        projectId,
+        assigneeId: userId,
+        tasks: candidateTasks,
+        openMilestones,
+        doneMilestones,
+        goalsById,
+    })
+
+    return orderedTasks[0] || null
+}
+
 export async function autoReminderMultipleTasks(tasks) {
     store.dispatch(startLoadingData())
 
@@ -3248,6 +3277,25 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
     })
 
     if (candidateTasks.length === 0) return null
+
+    const sameGoalTask = pickPreferredFocusTaskInSameGoal({
+        projectId,
+        userId: completedTask.userId,
+        tasks: candidateTasks,
+        preferredGoalId: completedTask.parentGoalId,
+        openMilestones,
+        doneMilestones,
+        goalsById,
+    })
+
+    if (sameGoalTask) {
+        console.log(`[getOptimisticNextFocusTask] Selected same-goal candidate:`, {
+            id: sameGoalTask.id,
+            name: sameGoalTask.name,
+            goalId: sameGoalTask.parentGoalId,
+        })
+        return sameGoalTask
+    }
 
     const orderedTasks = sortTasksByDisplayOrder({
         projectId,
@@ -3389,11 +3437,35 @@ async function findAndSetNewFocusedTask(
                         : `${filteredOutTasks.length} tasks filtered (too many to log)`,
             })
 
-            newFocusedTask = await pickNextFocusTaskByDisplayOrder({
+            const { openMilestones, doneMilestones, goalsById, source } = await getGoalsOrderingDataForProject(
+                currentProjectId,
+                userId
+            )
+
+            newFocusedTask = pickPreferredFocusTaskInSameGoal({
                 projectId: currentProjectId,
                 userId,
                 tasks: allFetchedTasksInCurrentProject,
+                preferredGoalId: previousTaskParentGoalId,
+                openMilestones,
+                doneMilestones,
+                goalsById,
             })
+
+            if (newFocusedTask) {
+                console.log(`[findAndSetNewFocusedTask] Found same-goal focus task in current project:`, {
+                    taskId: newFocusedTask.id,
+                    taskName: newFocusedTask.name,
+                    parentGoalId: newFocusedTask.parentGoalId,
+                    goalsOrderingSource: source,
+                })
+            } else {
+                newFocusedTask = await pickNextFocusTaskByDisplayOrder({
+                    projectId: currentProjectId,
+                    userId,
+                    tasks: allFetchedTasksInCurrentProject,
+                })
+            }
         } else {
             console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId}: No open tasks found for user`)
         }
