@@ -4350,6 +4350,211 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
             }
         }
 
+        case 'search_calendar_events': {
+            console.log('📅 SEARCH_CALENDAR_EVENTS TOOL: Starting Calendar search', {
+                query: toolArgs.query,
+                timeMin: toolArgs.timeMin,
+                timeMax: toolArgs.timeMax,
+                calendarId: toolArgs.calendarId,
+                limit: toolArgs.limit,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    query: typeof toolArgs.query === 'string' ? toolArgs.query : '',
+                    searchedAccounts: [],
+                    accountsWithErrors: [],
+                    partialFailure: false,
+                    results: [],
+                    message: 'Calendar search requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { searchCalendarEventsForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
+                const result = await searchCalendarEventsForAssistantRequest({
+                    userId: targetUserId,
+                    query: toolArgs.query,
+                    timeMin: toolArgs.timeMin,
+                    timeMax: toolArgs.timeMax,
+                    calendarId: toolArgs.calendarId,
+                    limit: toolArgs.limit,
+                    includeDescription: toolArgs.includeDescription,
+                })
+
+                console.log('📅 SEARCH_CALENDAR_EVENTS TOOL: Search completed', {
+                    success: result.success,
+                    query: toolArgs.query,
+                    searchedAccounts: result.searchedAccounts?.length || 0,
+                    accountsWithErrors: result.accountsWithErrors?.length || 0,
+                    resultCount: result.results?.length || 0,
+                    partialFailure: !!result.partialFailure,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📅 SEARCH_CALENDAR_EVENTS TOOL: Search failed', {
+                    error: error.message,
+                    query: toolArgs.query,
+                    requestUserId: targetUserId,
+                })
+                return {
+                    success: false,
+                    query: typeof toolArgs.query === 'string' ? toolArgs.query : '',
+                    searchedAccounts: [],
+                    accountsWithErrors: [],
+                    partialFailure: false,
+                    results: [],
+                    message: `Calendar search failed: ${error.message}`,
+                }
+            }
+        }
+
+        case 'create_calendar_event': {
+            console.log('📅 CREATE_CALENDAR_EVENT TOOL: Starting Calendar create', {
+                summary: toolArgs.summary,
+                calendarId: toolArgs.calendarId,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Calendar event creation requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { createCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
+                const result = await createCalendarEventForAssistantRequest({
+                    userId: targetUserId,
+                    summary: toolArgs.summary,
+                    description: toolArgs.description,
+                    start: toolArgs.start,
+                    end: toolArgs.end,
+                    timeZone: toolArgs.timeZone,
+                    location: toolArgs.location,
+                    attendees: toolArgs.attendees,
+                    calendarId: toolArgs.calendarId,
+                })
+
+                console.log('📅 CREATE_CALENDAR_EVENT TOOL: Create completed', {
+                    success: result.success,
+                    calendarId: result.calendarId || toolArgs.calendarId || null,
+                    eventId: result.event?.eventId || null,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📅 CREATE_CALENDAR_EVENT TOOL: Create failed', {
+                    error: error.message,
+                    summary: toolArgs.summary,
+                    requestUserId: targetUserId,
+                })
+                return {
+                    success: false,
+                    message: `Calendar event creation failed: ${error.message}`,
+                }
+            }
+        }
+
+        case 'update_calendar_event': {
+            console.log('📅 UPDATE_CALENDAR_EVENT TOOL: Starting Calendar update', {
+                eventId: toolArgs.eventId,
+                calendarId: toolArgs.calendarId,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Calendar event update requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { updateCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
+                const result = await updateCalendarEventForAssistantRequest({
+                    userId: targetUserId,
+                    eventId: toolArgs.eventId,
+                    calendarId: toolArgs.calendarId,
+                    summary: toolArgs.summary,
+                    description: toolArgs.description,
+                    start: toolArgs.start,
+                    end: toolArgs.end,
+                    timeZone: toolArgs.timeZone,
+                    location: toolArgs.location,
+                    attendees: toolArgs.attendees,
+                })
+
+                console.log('📅 UPDATE_CALENDAR_EVENT TOOL: Update completed', {
+                    success: result.success,
+                    calendarId: result.calendarId || toolArgs.calendarId || null,
+                    eventId: result.event?.eventId || toolArgs.eventId || null,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📅 UPDATE_CALENDAR_EVENT TOOL: Update failed', {
+                    error: error.message,
+                    eventId: toolArgs.eventId,
+                    requestUserId: targetUserId,
+                })
+                return {
+                    success: false,
+                    message: `Calendar event update failed: ${error.message}`,
+                }
+            }
+        }
+
+        case 'delete_calendar_event': {
+            console.log('📅 DELETE_CALENDAR_EVENT TOOL: Starting Calendar delete', {
+                eventId: toolArgs.eventId,
+                calendarId: toolArgs.calendarId,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Calendar event deletion requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { deleteCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
+                const result = await deleteCalendarEventForAssistantRequest({
+                    userId: targetUserId,
+                    eventId: toolArgs.eventId,
+                    calendarId: toolArgs.calendarId,
+                })
+
+                console.log('📅 DELETE_CALENDAR_EVENT TOOL: Delete completed', {
+                    success: result.success,
+                    calendarId: result.calendarId || toolArgs.calendarId || null,
+                    eventId: result.eventId || toolArgs.eventId || null,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📅 DELETE_CALENDAR_EVENT TOOL: Delete failed', {
+                    error: error.message,
+                    eventId: toolArgs.eventId,
+                    requestUserId: targetUserId,
+                })
+                return {
+                    success: false,
+                    message: `Calendar event deletion failed: ${error.message}`,
+                }
+            }
+        }
+
         default:
             throw new Error(`Unknown tool: ${toolName}`)
     }
@@ -5516,6 +5721,22 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks about email history, what they discussed with someone in email, or to find emails by person or topic, use the search_gmail tool instead of guessing.',
+        ])
+    }
+    if (
+        Array.isArray(allowedTools) &&
+        allowedTools.some(toolName =>
+            [
+                'search_calendar_events',
+                'create_calendar_event',
+                'update_calendar_event',
+                'delete_calendar_event',
+            ].includes(toolName)
+        )
+    ) {
+        messages.push([
+            'system',
+            'When the user asks about their schedule, calendar history, meetings, or to create, move, update, or delete calendar entries, use the Calendar tools instead of guessing. For update/delete, use exact event targets and ask the tool for disambiguation rather than assuming the right calendar account.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(

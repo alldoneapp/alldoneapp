@@ -415,6 +415,246 @@ const toolSchemas = {
         },
     },
 
+    search_calendar_events: {
+        type: 'function',
+        function: {
+            name: 'search_calendar_events',
+            description:
+                "Search the user's connected Google Calendar accounts for matching events. Use this for schedule questions, calendar history, or to find meetings by person, topic, location, or date range.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description:
+                            'Optional search phrase for event summary, attendee, description, or location. Provide this or a time range.',
+                    },
+                    timeMin: {
+                        type: 'string',
+                        description: 'Optional ISO 8601 lower bound for event start time filtering.',
+                    },
+                    timeMax: {
+                        type: 'string',
+                        description: 'Optional ISO 8601 upper bound for event start time filtering.',
+                    },
+                    calendarId: {
+                        type: 'string',
+                        description:
+                            'Optional calendar ID to search. Defaults to "primary". Use this when the user specifies a non-primary calendar.',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of matching events to return. Default is 10, maximum is 20.',
+                    },
+                    includeDescription: {
+                        type: 'boolean',
+                        description:
+                            'Optional: whether to include event descriptions in the results. Defaults to true.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    create_calendar_event: {
+        type: 'function',
+        function: {
+            name: 'create_calendar_event',
+            description:
+                'Create a Google Calendar event in a connected account. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    summary: {
+                        type: 'string',
+                        description: 'The event title/summary.',
+                    },
+                    description: {
+                        type: 'string',
+                        description: 'Optional event description.',
+                    },
+                    start: {
+                        description: 'Event start as ISO 8601 string or Calendar API date/dateTime object.',
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'object',
+                                properties: {
+                                    date: { type: 'string' },
+                                    dateTime: { type: 'string' },
+                                    timeZone: { type: 'string' },
+                                },
+                            },
+                        ],
+                    },
+                    end: {
+                        description: 'Event end as ISO 8601 string or Calendar API date/dateTime object.',
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'object',
+                                properties: {
+                                    date: { type: 'string' },
+                                    dateTime: { type: 'string' },
+                                    timeZone: { type: 'string' },
+                                },
+                            },
+                        ],
+                    },
+                    timeZone: {
+                        type: 'string',
+                        description: 'Optional IANA timezone to pair with dateTime values that omit offset details.',
+                    },
+                    location: {
+                        type: 'string',
+                        description: 'Optional event location.',
+                    },
+                    attendees: {
+                        type: 'array',
+                        description:
+                            'Optional attendees. Each entry can be an email string or an object with email, displayName, optional, resource, and responseStatus.',
+                        items: {
+                            oneOf: [
+                                { type: 'string' },
+                                {
+                                    type: 'object',
+                                    properties: {
+                                        email: { type: 'string' },
+                                        displayName: { type: 'string' },
+                                        optional: { type: 'boolean' },
+                                        resource: { type: 'boolean' },
+                                        responseStatus: { type: 'string' },
+                                    },
+                                    required: ['email'],
+                                },
+                            ],
+                        },
+                    },
+                    calendarId: {
+                        type: 'string',
+                        description:
+                            'Optional calendar ID to write to. Defaults to "primary". Required when multiple connected accounts make the write target ambiguous.',
+                    },
+                },
+                required: ['summary', 'start', 'end'],
+            },
+        },
+    },
+
+    update_calendar_event: {
+        type: 'function',
+        function: {
+            name: 'update_calendar_event',
+            description:
+                'Update an existing Google Calendar event by eventId. Provide calendarId when needed to disambiguate multiple connected accounts. If updating times, provide both start and end.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    eventId: {
+                        type: 'string',
+                        description: 'The Google Calendar event ID to update.',
+                    },
+                    summary: {
+                        type: 'string',
+                        description: 'Optional new event title/summary.',
+                    },
+                    description: {
+                        type: 'string',
+                        description: 'Optional new event description.',
+                    },
+                    start: {
+                        description: 'Optional new start as ISO 8601 string or Calendar API date/dateTime object.',
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'object',
+                                properties: {
+                                    date: { type: 'string' },
+                                    dateTime: { type: 'string' },
+                                    timeZone: { type: 'string' },
+                                },
+                            },
+                        ],
+                    },
+                    end: {
+                        description: 'Optional new end as ISO 8601 string or Calendar API date/dateTime object.',
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'object',
+                                properties: {
+                                    date: { type: 'string' },
+                                    dateTime: { type: 'string' },
+                                    timeZone: { type: 'string' },
+                                },
+                            },
+                        ],
+                    },
+                    timeZone: {
+                        type: 'string',
+                        description: 'Optional IANA timezone to pair with dateTime values that omit offset details.',
+                    },
+                    location: {
+                        type: 'string',
+                        description: 'Optional new event location.',
+                    },
+                    attendees: {
+                        type: 'array',
+                        description: 'Optional full attendee list replacement.',
+                        items: {
+                            oneOf: [
+                                { type: 'string' },
+                                {
+                                    type: 'object',
+                                    properties: {
+                                        email: { type: 'string' },
+                                        displayName: { type: 'string' },
+                                        optional: { type: 'boolean' },
+                                        resource: { type: 'boolean' },
+                                        responseStatus: { type: 'string' },
+                                    },
+                                    required: ['email'],
+                                },
+                            ],
+                        },
+                    },
+                    calendarId: {
+                        type: 'string',
+                        description:
+                            'Optional calendar ID containing the event. Provide this when the event is not on the primary calendar or multiple accounts are connected.',
+                    },
+                },
+                required: ['eventId'],
+            },
+        },
+    },
+
+    delete_calendar_event: {
+        type: 'function',
+        function: {
+            name: 'delete_calendar_event',
+            description:
+                'Delete an existing Google Calendar event by exact eventId only. Provide calendarId when needed to disambiguate multiple connected accounts.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    eventId: {
+                        type: 'string',
+                        description: 'The Google Calendar event ID to delete.',
+                    },
+                    calendarId: {
+                        type: 'string',
+                        description:
+                            'Optional calendar ID containing the event. Provide this when the event is not on the primary calendar or multiple accounts are connected.',
+                    },
+                },
+                required: ['eventId'],
+            },
+        },
+    },
+
     get_note: {
         type: 'function',
         function: {
