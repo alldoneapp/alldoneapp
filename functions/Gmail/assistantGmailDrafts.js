@@ -56,10 +56,10 @@ function buildPlainTextMimeMessage({ to, cc, bcc, subject, body, inReplyTo, refe
     return `${headers.join('\r\n')}\r\n\r\n${String(body || '').replace(/\r?\n/g, '\r\n')}`
 }
 
-function buildGmailDraftUrl(gmailEmail = '', draftId = '') {
+function buildGmailDraftUrl(gmailEmail = '', messageId = '') {
     const accountSegment = gmailEmail ? encodeURIComponent(gmailEmail) : '0'
-    const draftSegment = draftId ? `/${encodeURIComponent(draftId)}` : ''
-    return `https://mail.google.com/mail/u/${accountSegment}/#drafts${draftSegment}`
+    const composeQuery = messageId ? `?compose=${encodeURIComponent(messageId)}` : '?compose=new'
+    return `https://mail.google.com/mail/u/${accountSegment}/#inbox${composeQuery}`
 }
 
 function getBodyOrInstructions({ body, instructions }) {
@@ -278,7 +278,7 @@ async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, 
         to: toRecipients,
         cc: ccRecipients,
         bcc: bccRecipients,
-        webUrl: buildGmailDraftUrl(account.gmailEmail || '', draft.id || ''),
+        webUrl: buildGmailDraftUrl(account.gmailEmail || '', draft.message?.id || ''),
         message: `Created a Gmail draft in ${account.gmailEmail || 'the connected Gmail account'}.`,
     }
 }
@@ -343,7 +343,7 @@ async function createGmailReplyDraftForAssistantRequest({ userId, query, message
         targetMessageId: target.normalizedMessage.messageId || '',
         targetSubject: target.normalizedMessage.subject || '',
         to: [replyTo],
-        webUrl: buildGmailDraftUrl(target.account.gmailEmail || '', draft.id || ''),
+        webUrl: buildGmailDraftUrl(target.account.gmailEmail || '', draft.message?.id || ''),
         message: `Created a Gmail reply draft in ${target.account.gmailEmail || 'the connected Gmail account'}.`,
     }
 }
