@@ -23,7 +23,14 @@ const run = () => {
 
     assert.strictEqual(
         getUserFacingToolErrorMessage('create_task', {
-            message: 'Anything',
+            message: 'Project not found: "Marketing"',
+        }),
+        'Project not found: "Marketing"'
+    )
+
+    assert.strictEqual(
+        getUserFacingToolErrorMessage('create_task', {
+            message: '   ',
         }),
         TASK_CREATION_FAILURE_MESSAGE
     )

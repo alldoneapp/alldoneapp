@@ -5,7 +5,7 @@ function getUserFacingToolErrorMessage(toolName, error) {
     const errorMessage = typeof error?.message === 'string' ? error.message.trim() : ''
 
     if (toolName === 'create_task') {
-        return TASK_CREATION_FAILURE_MESSAGE
+        return errorMessage || TASK_CREATION_FAILURE_MESSAGE
     }
 
     if (isTaskNotFoundError(errorMessage)) {
