@@ -249,6 +249,7 @@ async function generatePreConfigTaskResult(
             {
                 projectId,
                 assistantId: settings.uid || assistantId,
+                requestUserId: userId,
             }
         )
         contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])

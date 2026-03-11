@@ -181,6 +181,7 @@ async function generateBotDailyTopicFirstComment(
     await addBaseInstructions(messages, displayName, language, instructions, allowedTools, userTimezoneOffset, {
         projectId: defaultProjectId,
         assistantId: assistant.uid || assistantId,
+        requestUserId: userId,
     })
     messages.push(['system', template])
     const toolRuntimeContext = {

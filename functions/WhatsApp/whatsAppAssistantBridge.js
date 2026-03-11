@@ -92,6 +92,7 @@ async function processWhatsAppAssistantMessage(
     await addBaseInstructions(messages, displayName, user.language, instructions, allowedTools, userTimezoneOffset, {
         projectId,
         assistantId: assistant.uid || assistantId,
+        requestUserId: userId,
     })
 
     if (allowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {

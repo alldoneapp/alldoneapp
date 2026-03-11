@@ -28,6 +28,7 @@ async function generateBotWelcomeMessageForGuide(
     await addBaseInstructions(messages, displayName, language, instructions, allowedTools, null, {
         projectId,
         assistantId: assistant.uid || assistantId,
+        requestUserId: userIdsToNotify?.[0] || null,
     })
     messages.push(['system', template])
     const toolRuntimeContext = {

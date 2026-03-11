@@ -47,3 +47,18 @@ describe('Gmail assistant tool schemas', () => {
         expect(toolSchemas.update_gmail_draft.function.parameters.required).toEqual(['draftId'])
     })
 })
+
+describe('User memory assistant tool schemas', () => {
+    test('exposes update_user_memory only when allowed', () => {
+        expect(getToolSchemas(['update_user_memory']).map(schema => schema.function.name)).toEqual([
+            'update_user_memory',
+        ])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('defines required fields for update_user_memory', () => {
+        expect(toolSchemas.update_user_memory.function.parameters.required).toEqual(['fact'])
+        expect(toolSchemas.update_user_memory.function.parameters.properties.category.type).toBe('string')
+        expect(toolSchemas.update_user_memory.function.parameters.properties.reason.type).toBe('string')
+    })
+})

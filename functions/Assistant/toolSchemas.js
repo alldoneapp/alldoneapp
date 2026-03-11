@@ -317,6 +317,34 @@ const toolSchemas = {
         },
     },
 
+    update_user_memory: {
+        type: 'function',
+        function: {
+            name: 'update_user_memory',
+            description:
+                'Saves a noteworthy fact about the current app user into their per-project memory note. The tool resolves the correct user and project from runtime context and auto-creates the project-specific user note if missing.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    fact: {
+                        type: 'string',
+                        description: 'The concise user fact to remember',
+                    },
+                    category: {
+                        type: 'string',
+                        description:
+                            'Optional short label such as preference, goal, constraint, routine, or personal context',
+                    },
+                    reason: {
+                        type: 'string',
+                        description: 'Optional brief explanation of why this fact matters',
+                    },
+                },
+                required: ['fact'],
+            },
+        },
+    },
+
     search: {
         type: 'function',
         function: {

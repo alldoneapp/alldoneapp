@@ -40,6 +40,7 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
 const { getToolSchemasCacheContextVersion } = require('./toolSchemaCacheVersion')
+const { getUserMemoryContextMessage, updateUserMemory } = require('./userMemoryHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -2557,6 +2558,7 @@ async function executeDelegatedAssistantRequest({
     await addBaseInstructions(messages, targetDisplayName, 'English', targetInstructions, targetAllowedTools, null, {
         projectId: target.projectId,
         assistantId: target.assistantId,
+        requestUserId,
     })
     messages.push([
         'system',
@@ -4071,6 +4073,19 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                 console.error('NoteService update failed:', error)
                 throw new Error(`Failed to update note: ${error.message}`)
             }
+        }
+
+        case 'update_user_memory': {
+            const db = admin.firestore()
+
+            return await updateUserMemory({
+                db,
+                projectId,
+                requestUserId,
+                fact: toolArgs.fact,
+                category: toolArgs.category,
+                reason: toolArgs.reason,
+            })
         }
 
         case 'search': {
@@ -5860,6 +5875,22 @@ async function addBaseInstructions(
         )} (${timezoneInfo}).`,
     ])
 
+    if (assistantContext?.projectId && assistantContext?.requestUserId) {
+        try {
+            const userMemoryContext = await getUserMemoryContextMessage({
+                projectId: assistantContext.projectId,
+                requestUserId: assistantContext.requestUserId,
+            })
+            if (userMemoryContext) messages.push(['system', parseTextForUseLiKePrompt(userMemoryContext)])
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load user memory context', {
+                projectId: assistantContext.projectId,
+                requestUserId: assistantContext.requestUserId,
+                error: error.message,
+            })
+        }
+    }
+
     // Add emphasis on immediate action for tool-enabled assistants
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         messages.push([
@@ -6210,6 +6241,7 @@ async function getOptimizedContextMessages(
     await addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset, {
         projectId,
         assistantId,
+        requestUserId: userId,
     })
 
     // Add topic/context information if available
