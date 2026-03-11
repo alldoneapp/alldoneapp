@@ -65,12 +65,14 @@ function getStarterLabelDefinitions() {
             gmailLabelName: 'Alldone/Newsletter',
             description: 'Low priority newsletters and automated updates',
             autoArchive: true,
+            postLabelPrompt: '',
         },
         {
             key: 'urgent_client',
             gmailLabelName: 'Alldone/Urgent Client',
             description: 'Important client emails requiring fast action',
             autoArchive: false,
+            postLabelPrompt: '',
         },
     ]
 }
@@ -100,6 +102,7 @@ function normalizeLabelDefinition(label = {}) {
         gmailLabelName: typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : '',
         description: typeof label.description === 'string' ? label.description.trim() : '',
         autoArchive: !!label.autoArchive,
+        postLabelPrompt: typeof label.postLabelPrompt === 'string' ? label.postLabelPrompt.trim() : '',
     }
 }
 

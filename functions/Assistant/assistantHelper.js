@@ -6429,4 +6429,5 @@ module.exports = {
     getMaxTokensForModel,
     getMessageTextForTokenCounting,
     buildMultimodalUserContent,
+    collectAssistantTextWithToolCalls,
 }

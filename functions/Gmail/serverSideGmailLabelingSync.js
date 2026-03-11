@@ -1,9 +1,18 @@
 'use strict'
 
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
-const { calculateGoldCostFromTokens } = require('../Assistant/assistantHelper')
+const {
+    addBaseInstructions,
+    calculateGoldCostFromTokens,
+    collectAssistantTextWithToolCalls,
+    getAssistantForChat,
+    interactWithChatStream,
+    parseTextForUseLiKePrompt,
+} = require('../Assistant/assistantHelper')
+const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { deductGold } = require('../Gold/goldHelper')
 const { adGoldToUser } = require('../Users/usersFirestore')
 const {
@@ -80,6 +89,16 @@ function isScheduledSyncDue(state = {}, config = {}) {
 
 function logSync(message, context = {}) {
     console.log('[gmailLabeling]', message, context)
+}
+
+function buildGmailMessageUrl(gmailEmail = '', messageId = '') {
+    if (!messageId) return ''
+    const accountSegment = gmailEmail ? encodeURIComponent(gmailEmail) : '0'
+    return `https://mail.google.com/mail/u/${accountSegment}/#inbox/${encodeURIComponent(messageId)}`
+}
+
+function createPostLabelPromptHash(ruleKey = '', prompt = '') {
+    return crypto.createHash('sha1').update(`${ruleKey}:${prompt}`).digest('hex')
 }
 
 async function getGmailClient(userId, projectId) {
@@ -400,6 +419,275 @@ async function loadRecentAuditEntries(userId, projectId, limit = 20) {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
 
+async function loadAuditEntry(userId, projectId, messageId) {
+    if (!messageId) return null
+    const snapshot = await getMessagesAuditCollectionRef(userId, projectId).doc(messageId).get()
+    return snapshot.exists ? { id: snapshot.id, ...snapshot.data() } : null
+}
+
+async function getDefaultAssistantIdForProject(userData = {}, projectId = '') {
+    const db = admin.firestore()
+    const normalizedProjectId = String(projectId || '').trim()
+    const userDefaultAssistantId =
+        typeof userData?.defaultAssistantId === 'string' ? userData.defaultAssistantId.trim() : ''
+
+    if (!normalizedProjectId) return null
+
+    const assistantExistsInProjectOrGlobal = async assistantId => {
+        if (!assistantId) return false
+        const [projectAssistantDoc, globalAssistantDoc] = await db.getAll(
+            db.doc(`assistants/${normalizedProjectId}/items/${assistantId}`),
+            db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`)
+        )
+        return projectAssistantDoc.exists || globalAssistantDoc.exists
+    }
+
+    try {
+        const projectDoc = await db.doc(`projects/${normalizedProjectId}`).get()
+        const projectAssistantId = projectDoc.exists ? String(projectDoc.data()?.assistantId || '').trim() : ''
+        if (projectAssistantId && (await assistantExistsInProjectOrGlobal(projectAssistantId))) {
+            return projectAssistantId
+        }
+    } catch (error) {
+        console.warn('[gmailLabeling] Could not resolve project assistant', {
+            projectId: normalizedProjectId,
+            error: error.message,
+        })
+    }
+
+    if (userDefaultAssistantId) {
+        try {
+            if (await assistantExistsInProjectOrGlobal(userDefaultAssistantId)) {
+                return userDefaultAssistantId
+            }
+        } catch (error) {
+            console.warn('[gmailLabeling] Could not validate user default assistant', {
+                projectId: normalizedProjectId,
+                error: error.message,
+            })
+        }
+    }
+
+    try {
+        const snapshot = await db.collection(`assistants/${normalizedProjectId}/items`).limit(1).get()
+        if (!snapshot.empty) {
+            return snapshot.docs[0].id
+        }
+    } catch (error) {
+        console.warn('[gmailLabeling] Could not find assistant in project', {
+            projectId: normalizedProjectId,
+            error: error.message,
+        })
+    }
+
+    try {
+        const defaultAssistant = await getDefaultAssistantData(admin)
+        if (defaultAssistant?.uid) {
+            return defaultAssistant.uid
+        }
+    } catch (error) {
+        console.warn('[gmailLabeling] Could not fetch global default assistant', {
+            projectId: normalizedProjectId,
+            error: error.message,
+        })
+    }
+
+    return null
+}
+
+async function resolvePostLabelAssistantContext(userId, userData = {}) {
+    const defaultProjectId = typeof userData?.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+    if (!defaultProjectId) {
+        return {
+            assistantProjectId: null,
+            assistantId: null,
+            assistant: null,
+        }
+    }
+
+    const assistantId = await getDefaultAssistantIdForProject(userData, defaultProjectId)
+    if (!assistantId) {
+        return {
+            assistantProjectId: defaultProjectId,
+            assistantId: null,
+            assistant: null,
+        }
+    }
+
+    const assistant = await getAssistantForChat(defaultProjectId, assistantId, userId, { forceRefresh: true })
+    return {
+        assistantProjectId: defaultProjectId,
+        assistantId,
+        assistant,
+    }
+}
+
+function buildPostLabelActionSkipped({
+    prompt = '',
+    promptHash = '',
+    status = 'skipped',
+    error = '',
+    assistantProjectId = null,
+    assistantId = null,
+}) {
+    return {
+        prompt,
+        promptHash,
+        assistantProjectId,
+        assistantId,
+        executedToolNames: [],
+        executedToolCallsCount: 0,
+        assistantResponse: '',
+        status,
+        error: error || '',
+        executedAt: admin.firestore.Timestamp.now(),
+    }
+}
+
+function buildPostLabelAssistantMessages({ prompt, normalizedMessage, selectedDefinition, gmailEmail }) {
+    const gmailWebUrl = buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId)
+    return [
+        [
+            'system',
+            'You are executing a follow-up action after a Gmail labeling rule matched. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
+        ],
+        [
+            'user',
+            parseTextForUseLiKePrompt(
+                [
+                    `Matched Gmail rule key: ${selectedDefinition.key}`,
+                    `Matched Gmail label: ${selectedDefinition.gmailLabelName}`,
+                    `Gmail messageId: ${normalizedMessage.messageId || ''}`,
+                    `Gmail threadId: ${normalizedMessage.threadId || ''}`,
+                    `Gmail web URL: ${gmailWebUrl || ''}`,
+                    `From: ${normalizedMessage.from || ''}`,
+                    `To: ${normalizedMessage.to || ''}`,
+                    `Cc: ${normalizedMessage.cc || ''}`,
+                    `Date: ${normalizedMessage.date || ''}`,
+                    `Subject: ${normalizedMessage.subject || ''}`,
+                    `Snippet: ${normalizedMessage.snippet || ''}`,
+                    `Body:\n${normalizedMessage.bodyText || ''}`,
+                    '',
+                    `Follow-up instruction: ${prompt}`,
+                ].join('\n')
+            ),
+        ],
+    ]
+}
+
+async function executePostLabelPrompt({
+    userId,
+    userData,
+    selectedDefinition,
+    normalizedMessage,
+    gmailEmail,
+    forceExecute = false,
+    existingAuditEntry = null,
+}) {
+    const prompt =
+        typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
+    const promptHash = createPostLabelPromptHash(selectedDefinition?.key || '', prompt)
+
+    if (!prompt) {
+        return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
+    }
+
+    if (
+        !forceExecute &&
+        existingAuditEntry?.postLabelAction?.status === 'completed' &&
+        existingAuditEntry?.postLabelAction?.promptHash === promptHash
+    ) {
+        return {
+            ...existingAuditEntry.postLabelAction,
+            status: 'skipped',
+            error: '',
+        }
+    }
+
+    const { assistantProjectId, assistantId, assistant } = await resolvePostLabelAssistantContext(userId, userData)
+    if (!assistantProjectId || !assistantId || !assistant) {
+        return buildPostLabelActionSkipped({
+            prompt,
+            promptHash,
+            status: 'blocked',
+            error: 'No assistant could be resolved for the user default project.',
+            assistantProjectId,
+            assistantId,
+        })
+    }
+
+    const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+    const messages = []
+
+    await addBaseInstructions(
+        messages,
+        assistant.displayName || assistant.name || 'Assistant',
+        'English',
+        assistant.instructions || 'You are a helpful assistant.',
+        allowedTools,
+        null,
+        {
+            projectId: assistantProjectId,
+            assistantId,
+        }
+    )
+    messages.push(
+        ...buildPostLabelAssistantMessages({
+            prompt,
+            normalizedMessage,
+            selectedDefinition,
+            gmailEmail,
+        })
+    )
+
+    try {
+        const stream = await interactWithChatStream(messages, assistant.model, assistant.temperature, allowedTools, {
+            projectId: assistantProjectId,
+            assistantId,
+            requestUserId: userId,
+        })
+        const result = await collectAssistantTextWithToolCalls({
+            stream,
+            conversationHistory: messages,
+            modelKey: assistant.model,
+            temperatureKey: assistant.temperature,
+            allowedTools,
+            toolRuntimeContext: {
+                projectId: assistantProjectId,
+                assistantId,
+                requestUserId: userId,
+            },
+        })
+
+        return {
+            prompt,
+            promptHash,
+            assistantProjectId,
+            assistantId,
+            executedToolNames: Array.isArray(result?.executedToolNames) ? result.executedToolNames : [],
+            executedToolCallsCount: Number(result?.executedToolCallsCount) || 0,
+            assistantResponse: result?.assistantResponse || '',
+            status: 'completed',
+            error: '',
+            executedAt: admin.firestore.Timestamp.now(),
+        }
+    } catch (error) {
+        const isBlocked = error.message?.includes('Tool not permitted')
+        return {
+            prompt,
+            promptHash,
+            assistantProjectId,
+            assistantId,
+            executedToolNames: [],
+            executedToolCallsCount: 0,
+            assistantResponse: '',
+            status: isBlocked ? 'blocked' : 'failed',
+            error: error.message || 'Failed to execute follow-up prompt.',
+            executedAt: admin.firestore.Timestamp.now(),
+        }
+    }
+}
+
 async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive) {
     const removeLabelIds = autoArchive && normalizedMessage.labelIds.includes('INBOX') ? ['INBOX'] : []
     await gmail.users.messages.modify({
@@ -417,9 +705,21 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
     }
 }
 
-async function processSingleMessage({ gmail, labelMap, config, userId, projectId, rawMessage, syncRunId }) {
+async function processSingleMessage({
+    gmail,
+    labelMap,
+    config,
+    userId,
+    userData,
+    projectId,
+    gmailEmail,
+    rawMessage,
+    syncRunId,
+    forceFollowUp = false,
+}) {
     const normalizedMessage = normalizeGmailMessage(rawMessage)
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
+    const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
     const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
     if (!goldResult?.success) {
@@ -442,6 +742,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
             archived: false,
             skippedReason: 'insufficient_gold',
             promptVersion,
+            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
         })
 
         return {
@@ -497,6 +798,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
             archived: false,
             skippedReason: 'no_match',
             promptVersion,
+            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
         })
 
         return {
@@ -522,6 +824,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
             archived: false,
             skippedReason: 'missing_label_definition',
             promptVersion,
+            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
         })
 
         return {
@@ -565,6 +868,16 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         throw error
     }
 
+    const postLabelAction = await executePostLabelPrompt({
+        userId,
+        userData,
+        selectedDefinition,
+        normalizedMessage,
+        gmailEmail,
+        forceExecute: forceFollowUp,
+        existingAuditEntry,
+    })
+
     await writeAuditRecord(userId, projectId, normalizedMessage, {
         syncRunId,
         selectedLabelKey: selectedDefinition.key,
@@ -576,6 +889,7 @@ async function processSingleMessage({ gmail, labelMap, config, userId, projectId
         archived: modifyResult.archived,
         skippedReason: null,
         promptVersion,
+        postLabelAction,
     })
 
     return {
@@ -771,9 +1085,12 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     labelMap,
                     config,
                     userId,
+                    userData,
                     projectId,
+                    gmailEmail,
                     rawMessage,
                     syncRunId: logContext.runId,
+                    forceFollowUp: !!options.forceBootstrap,
                 })
                 labeled += result.labeled
                 archived += result.archived
@@ -820,6 +1137,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     archived: false,
                     skippedReason: 'processing_error',
                     promptVersion: config.updatedAt || admin.firestore.Timestamp.now(),
+                    postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
                 })
                 skipped += 1
             }
@@ -984,8 +1302,13 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 
 module.exports = {
     GmailSyncLockedError,
+    buildGmailMessageUrl,
+    createPostLabelPromptHash,
+    executePostLabelPrompt,
     getGmailLabelingConfigWithState,
+    getDefaultAssistantIdForProject,
     processEnabledGmailLabelingConfigs,
+    resolvePostLabelAssistantContext,
     syncGmailLabeling,
     upsertGmailLabelingConfig,
 }
