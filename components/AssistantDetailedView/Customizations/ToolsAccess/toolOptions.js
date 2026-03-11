@@ -3,6 +3,7 @@ export const TOOL_OPTIONS = [
     { key: 'create_note', labelKey: 'Create new note' },
     { key: 'update_task', labelKey: 'Update task' },
     { key: 'update_note', labelKey: 'Update note' },
+    { key: 'update_user_memory', labelKey: 'Update user memory' },
     { key: 'get_tasks', labelKey: 'Get tasks' },
     { key: 'get_focus_task', labelKey: 'Get focus task' },
     { key: 'get_user_projects', labelKey: 'Get user projects' },
