@@ -11,11 +11,13 @@ const { FEED_PUBLIC_FOR_ALL, MENTION_SPACE_CODE, TASK_ASSIGNEE_USER_TYPE } = req
 const {
     AUTO_FOLLOW_UP_TYPE,
     calculateFollowUpDueDate,
+    getManagedTaskBuckets,
     getContactMentionText,
     getFollowUpTaskTitle,
     getPrimaryOpenManagedTask,
     isManagedContactStatusFollowUpTask,
     isOpenTask,
+    normalizeTimezoneOffset,
     normalizeFollowUpDays,
     sortTasksDeterministically,
 } = require('./contactFollowUpTasksHelper')
@@ -44,6 +46,20 @@ async function getManagedFollowUpTasks(projectId, contactId) {
     return taskDocs
         .map(doc => ({ id: doc.id, ...doc.data() }))
         .filter(task => isManagedContactStatusFollowUpTask(task) && task.autoFollowUpContactId === contactId)
+}
+
+async function getUserTimezoneOffset(userId) {
+    if (!userId) return 0
+
+    const userDoc = await admin.firestore().collection('users').doc(userId).get()
+    const userData = userDoc.exists ? userDoc.data() || {} : {}
+    const rawTimezone =
+        (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+        (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+        (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+        (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+
+    return normalizeTimezoneOffset(rawTimezone)
 }
 
 function getManagedTaskUpdate(contact, statusId, followUpDays) {
@@ -185,6 +201,11 @@ async function deleteOpenManagedFollowUpTasks(projectId, contactId) {
     await Promise.all(openTasks.map(task => deleteManagedTask(projectId, task)))
 }
 
+async function deleteManagedTasks(projectId, tasks) {
+    if (!tasks || tasks.length === 0) return
+    await Promise.all(tasks.map(task => deleteManagedTask(projectId, task)))
+}
+
 async function syncContactFollowUpTask(projectId, contact) {
     console.log('[ContactFollowUp][Sync:start]', {
         projectId,
@@ -202,8 +223,15 @@ async function syncContactFollowUpTask(projectId, contact) {
 
         const tasks = await getManagedFollowUpTasks(projectId, contact.uid)
         const openTasks = tasks.filter(isOpenTask)
-        const primaryTask = getPrimaryOpenManagedTask(openTasks)
-        const duplicateOpenTasks = primaryTask ? openTasks.filter(task => task.id !== primaryTask.id) : openTasks
+        const timezoneOffset = await getUserTimezoneOffset(contact.recorderUserId)
+        const {
+            currentTask,
+            futureTask,
+            duplicateCurrentTasks,
+            duplicateFutureTasks,
+            endOfTodayTimestamp,
+        } = getManagedTaskBuckets(openTasks, timezoneOffset)
+        const duplicateOpenTasks = [...duplicateCurrentTasks, ...duplicateFutureTasks]
 
         console.log('[ContactFollowUp][Sync:state]', {
             projectId,
@@ -211,9 +239,12 @@ async function syncContactFollowUpTask(projectId, contact) {
             statusId: status?.id || null,
             rawFollowUpDays: status?.followUpDays ?? null,
             normalizedFollowUpDays: followUpDays,
+            timezoneOffset,
+            endOfTodayTimestamp,
             totalManagedTasks: tasks.length,
             openManagedTaskIds: openTasks.map(task => task.id),
-            primaryTaskId: primaryTask?.id || null,
+            currentTaskId: currentTask?.id || null,
+            futureTaskId: futureTask?.id || null,
             duplicateTaskIds: duplicateOpenTasks.map(task => task.id),
         })
 
@@ -223,7 +254,7 @@ async function syncContactFollowUpTask(projectId, contact) {
                 contactId: contact?.uid,
                 duplicateTaskIds: duplicateOpenTasks.map(task => task.id),
             })
-            await Promise.all(duplicateOpenTasks.map(task => deleteManagedTask(projectId, task)))
+            await deleteManagedTasks(projectId, duplicateOpenTasks)
         }
 
         if (!followUpDays || !contact.recorderUserId) {
@@ -231,9 +262,10 @@ async function syncContactFollowUpTask(projectId, contact) {
                 projectId,
                 contactId: contact?.uid,
                 reason: !followUpDays ? 'missing_follow_up_days' : 'missing_recorder_user_id',
-                primaryTaskId: primaryTask?.id || null,
+                currentTaskId: currentTask?.id || null,
+                futureTaskId: futureTask?.id || null,
             })
-            if (primaryTask) await deleteManagedTask(projectId, primaryTask)
+            await deleteManagedTasks(projectId, [currentTask, futureTask].filter(Boolean))
             return
         }
 
@@ -248,22 +280,22 @@ async function syncContactFollowUpTask(projectId, contact) {
             assigneeId: updateData.userId,
         })
 
-        if (primaryTask) {
+        if (futureTask) {
             console.log('[ContactFollowUp][Sync:updateTask]', {
                 projectId,
                 contactId: contact?.uid,
-                taskId: primaryTask.id,
+                taskId: futureTask.id,
             })
-            await admin.firestore().doc(`items/${projectId}/tasks/${primaryTask.id}`).update(updateData)
-            await createManagedFollowUpUpdateFeed(projectId, projectData, primaryTask.id, {
-                ...primaryTask,
+            await admin.firestore().doc(`items/${projectId}/tasks/${futureTask.id}`).update(updateData)
+            await createManagedFollowUpUpdateFeed(projectId, projectData, futureTask.id, {
+                ...futureTask,
                 ...updateData,
-                id: primaryTask.id,
+                id: futureTask.id,
             })
             console.log('[ContactFollowUp][Sync:updateTask:done]', {
                 projectId,
                 contactId: contact?.uid,
-                taskId: primaryTask.id,
+                taskId: futureTask.id,
             })
             return
         }
