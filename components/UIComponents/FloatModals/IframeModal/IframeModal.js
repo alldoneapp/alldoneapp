@@ -29,52 +29,62 @@ export default function IframeModal() {
 
             const { type, amount } = event.data
 
+            const postResult = message => {
+                event.source.postMessage(message, event.origin)
+            }
+
+            const handleGoldRequest = async ({ callableName, successType, errorType, errorLogLabel }) => {
+                try {
+                    const goldFn = firebase.app().functions('europe-west1').httpsCallable(callableName)
+                    const result = await goldFn({ gold: amount })
+
+                    if (result.data.success) {
+                        postResult({
+                            type: successType,
+                            newBalance: result.data.newBalance,
+                        })
+                    } else {
+                        postResult({
+                            type: errorType,
+                            error: result.data.message,
+                        })
+                    }
+                } catch (error) {
+                    console.error(errorLogLabel, error)
+                    postResult({
+                        type: errorType,
+                        error: error.message,
+                    })
+                }
+            }
+
             if (type === 'GET_USER_DATA') {
-                event.source.postMessage(
-                    {
-                        type: 'USER_DATA',
-                        user: {
-                            email: loggedUser?.email,
-                            name: loggedUser?.userName || loggedUser?.name,
-                            gold: loggedUser?.gold || 0,
-                        },
+                postResult({
+                    type: 'USER_DATA',
+                    user: {
+                        email: loggedUser?.email,
+                        name: loggedUser?.userName || loggedUser?.name,
+                        gold: loggedUser?.gold || 0,
                     },
-                    event.origin
-                )
+                })
             }
 
             if (type === 'DEDUCT_GOLD') {
-                try {
-                    const deductGoldFn = firebase.app().functions('europe-west1').httpsCallable('deductGoldSecondGen')
-                    const result = await deductGoldFn({ gold: amount })
+                await handleGoldRequest({
+                    callableName: 'deductGoldSecondGen',
+                    successType: 'DEDUCT_GOLD_SUCCESS',
+                    errorType: 'DEDUCT_GOLD_ERROR',
+                    errorLogLabel: 'Error deducting gold:',
+                })
+            }
 
-                    if (result.data.success) {
-                        event.source.postMessage(
-                            {
-                                type: 'DEDUCT_GOLD_SUCCESS',
-                                newBalance: result.data.newBalance,
-                            },
-                            event.origin
-                        )
-                    } else {
-                        event.source.postMessage(
-                            {
-                                type: 'DEDUCT_GOLD_ERROR',
-                                error: result.data.message,
-                            },
-                            event.origin
-                        )
-                    }
-                } catch (error) {
-                    console.error('Error deducting gold:', error)
-                    event.source.postMessage(
-                        {
-                            type: 'DEDUCT_GOLD_ERROR',
-                            error: error.message,
-                        },
-                        event.origin
-                    )
-                }
+            if (type === 'REFUND_GOLD') {
+                await handleGoldRequest({
+                    callableName: 'refundGoldSecondGen',
+                    successType: 'REFUND_GOLD_SUCCESS',
+                    errorType: 'REFUND_GOLD_ERROR',
+                    errorLogLabel: 'Error refunding gold:',
+                })
             }
         }
 
