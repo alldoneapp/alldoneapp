@@ -29,14 +29,39 @@ export default function IframeModal() {
 
             const { type, amount } = event.data
 
+            console.log('IframeModal: message received from iframe', {
+                origin: event.origin,
+                type,
+                amount,
+                userEmail: loggedUser?.email || '',
+            })
+
             const postResult = message => {
+                console.log('IframeModal: posting message to iframe', {
+                    origin: event.origin,
+                    messageType: message?.type,
+                    newBalance: message?.newBalance,
+                    error: message?.error,
+                })
                 event.source.postMessage(message, event.origin)
             }
 
             const handleGoldRequest = async ({ callableName, successType, errorType, errorLogLabel }) => {
                 try {
+                    console.log('IframeModal: calling gold function', {
+                        callableName,
+                        amount,
+                        userEmail: loggedUser?.email || '',
+                    })
+
                     const goldFn = firebase.app().functions('europe-west1').httpsCallable(callableName)
                     const result = await goldFn({ gold: amount })
+
+                    console.log('IframeModal: gold function responded', {
+                        callableName,
+                        amount,
+                        result: result?.data,
+                    })
 
                     if (result.data.success) {
                         postResult({
@@ -70,6 +95,7 @@ export default function IframeModal() {
             }
 
             if (type === 'DEDUCT_GOLD') {
+                console.log('IframeModal: processing DEDUCT_GOLD request', { amount })
                 await handleGoldRequest({
                     callableName: 'deductGoldSecondGen',
                     successType: 'DEDUCT_GOLD_SUCCESS',
@@ -79,6 +105,7 @@ export default function IframeModal() {
             }
 
             if (type === 'REFUND_GOLD') {
+                console.log('IframeModal: processing REFUND_GOLD request', { amount })
                 await handleGoldRequest({
                     callableName: 'refundGoldSecondGen',
                     successType: 'REFUND_GOLD_SUCCESS',

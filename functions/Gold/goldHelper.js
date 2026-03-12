@@ -163,10 +163,41 @@ const deductGold = async (userId, gold) => {
     return { success: false, message: 'User not found' }
 }
 
+const refundGold = async (userId, gold) => {
+    console.log('refundGold: starting refund', { userId, gold })
+
+    const user = await getUserData(userId)
+    if (!user) {
+        console.error('refundGold: user not found', { userId, gold })
+        return { success: false, message: 'User not found' }
+    }
+
+    const { gold: currentGold = 0, email = '', notificationEmail = '' } = user
+    const auditEmail = notificationEmail || email || userId
+
+    await adGoldToUser(userId, gold)
+    await logEvent(userId, 'refund_gold', {
+        amount: gold,
+        userId,
+    })
+
+    console.log(`Refunded ${gold} gold to ${auditEmail}`)
+    console.log('refundGold: refund completed', {
+        userId,
+        auditEmail,
+        refundedGold: gold,
+        previousBalance: currentGold,
+        newBalance: currentGold + gold,
+    })
+
+    return { success: true, newBalance: currentGold + gold }
+}
+
 module.exports = {
     addMonthlyGoldToUser,
     addMonthlyGoldToAllUsers,
     earnGold,
     resetDailyGoldLimit,
     deductGold,
+    refundGold,
 }

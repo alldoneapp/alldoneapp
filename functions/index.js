@@ -1290,6 +1290,43 @@ exports.deductGoldSecondGen = onCall(
     }
 )
 
+exports.refundGoldSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+
+        console.log('refundGoldSecondGen: request received', {
+            hasAuth: !!auth,
+            uid: auth?.uid || '',
+            gold: data?.gold,
+        })
+
+        if (auth) {
+            const { refundGold } = require('./Gold/goldHelper')
+            const { gold } = data
+            const result = await refundGold(auth.uid, gold)
+
+            console.log('refundGoldSecondGen: request completed', {
+                uid: auth.uid,
+                gold,
+                success: result?.success,
+                newBalance: result?.newBalance,
+                message: result?.message,
+            })
+
+            return result
+        } else {
+            console.error('refundGoldSecondGen: missing auth')
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
 // "Every Day at 00:00."
 exports.resetDailyGoldLimitSecondGen = onSchedule(
     {
