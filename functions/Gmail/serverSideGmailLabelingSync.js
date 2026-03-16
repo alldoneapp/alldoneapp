@@ -575,6 +575,22 @@ function buildPostLabelAssistantMessages({ prompt, normalizedMessage, selectedDe
     ]
 }
 
+function buildPostLabelGmailContext({ normalizedMessage, gmailEmail, assistantProjectId }) {
+    const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
+    const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
+    const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
+
+    return {
+        origin: 'gmail_label_follow_up',
+        gmailEmail: normalizedEmail,
+        projectId: assistantProjectId || '',
+        messageId,
+        threadId,
+        webUrl: buildGmailMessageUrl(normalizedEmail, messageId),
+        archiveOnComplete: true,
+    }
+}
+
 async function executePostLabelPrompt({
     userId,
     userData,
@@ -641,10 +657,16 @@ async function executePostLabelPrompt({
     )
 
     try {
+        const gmailContext = buildPostLabelGmailContext({
+            normalizedMessage,
+            gmailEmail,
+            assistantProjectId,
+        })
         const stream = await interactWithChatStream(messages, assistant.model, assistant.temperature, allowedTools, {
             projectId: assistantProjectId,
             assistantId,
             requestUserId: userId,
+            gmailContext,
         })
         const result = await collectAssistantTextWithToolCalls({
             stream,
@@ -656,6 +678,7 @@ async function executePostLabelPrompt({
                 projectId: assistantProjectId,
                 assistantId,
                 requestUserId: userId,
+                gmailContext,
             },
         })
 
@@ -1303,6 +1326,7 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 module.exports = {
     GmailSyncLockedError,
     buildGmailMessageUrl,
+    buildPostLabelGmailContext,
     createPostLabelPromptHash,
     executePostLabelPrompt,
     getGmailLabelingConfigWithState,

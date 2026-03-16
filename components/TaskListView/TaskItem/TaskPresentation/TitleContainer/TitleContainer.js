@@ -3,6 +3,11 @@ import { StyleSheet, View } from 'react-native'
 
 import styles, { colors } from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
+import Icon from '../../../../Icon'
+
+function isGmailLabelFollowUpTask(task) {
+    return task?.gmailData?.origin === 'gmail_label_follow_up' && !!task?.gmailData?.messageId
+}
 
 export default function TitleContainer({
     task,
@@ -24,6 +29,11 @@ export default function TitleContainer({
                 task.isSubtask ? localStyles.descriptionContainerSubtask : undefined,
             ]}
         >
+            {isGmailLabelFollowUpTask(task) && (
+                <View style={localStyles.gmailIconContainer}>
+                    <Icon name={'envelope-open'} size={14} color={colors.Text03} />
+                </View>
+            )}
             <SocialText
                 elementId={`social_text_${projectId}_${task.id}_${isObservedTask}`}
                 style={[
@@ -63,6 +73,8 @@ const localStyles = StyleSheet.create({
         flexGrow: 1,
         paddingLeft: 12,
         flex: 1,
+        flexDirection: 'row',
+        alignItems: 'flex-start',
     },
     descriptionContainerSubtask: {
         paddingLeft: 10,
@@ -78,5 +90,9 @@ const localStyles = StyleSheet.create({
         marginTop: 6,
         marginBottom: 6,
         maxHeight: 90,
+    },
+    gmailIconContainer: {
+        marginTop: 7,
+        marginRight: 6,
     },
 })

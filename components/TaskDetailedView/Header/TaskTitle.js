@@ -9,9 +9,14 @@ import { DV_TAB_TASK_CHAT, DV_TAB_TASK_NOTE } from '../../../utils/TabNavigation
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskName } from '../../../utils/backends/Tasks/tasksFirestore'
+import Icon from '../../Icon'
 
 export const TITLE_TASK = 0
 export const TITLE_NOTE = 2
+
+function isGmailLabelFollowUpTask(task) {
+    return task?.gmailData?.origin === 'gmail_label_follow_up' && !!task?.gmailData?.messageId
+}
 
 class TaskTitle extends Component {
     constructor(props) {
@@ -82,6 +87,11 @@ class TaskTitle extends Component {
             <View style={[localStyles.titleContainer, { maxHeight: maxHeight }]}>
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
+                    {isGmailLabelFollowUpTask(task) && (
+                        <View style={localStyles.gmailIconContainer}>
+                            <Icon name={'envelope-open'} size={16} color={colors.Text03} />
+                        </View>
+                    )}
                     <View
                         style={{
                             flex: 1,
@@ -165,6 +175,10 @@ const localStyles = StyleSheet.create({
         justifyContent: 'flex-start',
         alignItems: 'flex-start',
         alignContent: 'flex-start',
+    },
+    gmailIconContainer: {
+        marginRight: 8,
+        marginTop: 7,
     },
     ellipsis: {
         ...styles.title4,

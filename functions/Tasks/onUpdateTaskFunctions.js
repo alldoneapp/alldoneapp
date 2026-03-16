@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { isEqual } = require('lodash')
+const { google } = require('googleapis')
 
 const { updateGoalDynamicProgress, updateGoalEditionData } = require('../Goals/goalsFirestore')
 const { TASKS_OBJECTS_TYPE, updateRecord, createRecord, deleteRecord } = require('../AlgoliaGlobalSearchHelper')
@@ -12,6 +13,75 @@ const { getActiveTaskRoundedStartAndEndDates } = require('../MyDay/myDayHelperCl
 const { createRecurringTaskInCloudFunction } = require('./recurringTasksCloud')
 const { createTaskSomedaySelectedFeed } = require('../Feeds/tasksFeeds')
 const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
+const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+
+const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
+
+const isGmailTaskWithArchiveOnComplete = (gmailData = null) => {
+    return (
+        gmailData &&
+        gmailData.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN &&
+        typeof gmailData.messageId === 'string' &&
+        gmailData.messageId.trim() !== '' &&
+        gmailData.archiveOnComplete === true
+    )
+}
+
+async function getGmailClient(userId, projectId) {
+    const accessToken = await getAccessToken(userId, projectId, 'gmail')
+    const oauth2Client = getOAuth2Client()
+    oauth2Client.setCredentials({ access_token: accessToken })
+    return google.gmail({ version: 'v1', auth: oauth2Client })
+}
+
+async function updateTaskGmailArchiveStatus(projectId, taskId, gmailData, archiveStatus) {
+    await admin
+        .firestore()
+        .doc(`items/${projectId}/tasks/${taskId}`)
+        .update({
+            gmailData: {
+                ...gmailData,
+                archiveStatus,
+            },
+        })
+}
+
+async function archiveCompletedGmailTaskIfNeeded(projectId, taskId, oldTask, newTask) {
+    if (oldTask.done || !newTask.done) return
+
+    const gmailData = newTask.gmailData || null
+    if (!isGmailTaskWithArchiveOnComplete(gmailData)) return
+    if (gmailData.archiveStatus?.state === 'completed') return
+
+    const archiveStatusBase = {
+        attemptedAt: Date.now(),
+        messageId: gmailData.messageId,
+    }
+
+    try {
+        const gmail = await getGmailClient(newTask.userId, gmailData.projectId || projectId)
+        await gmail.users.messages.modify({
+            userId: 'me',
+            id: gmailData.messageId,
+            requestBody: {
+                removeLabelIds: ['INBOX'],
+            },
+        })
+
+        await updateTaskGmailArchiveStatus(projectId, taskId, gmailData, {
+            ...archiveStatusBase,
+            state: 'completed',
+            completedAt: Date.now(),
+            error: '',
+        })
+    } catch (error) {
+        await updateTaskGmailArchiveStatus(projectId, taskId, gmailData, {
+            ...archiveStatusBase,
+            state: 'failed',
+            error: error.message || 'Failed to archive Gmail message.',
+        })
+    }
+}
 
 const proccessAlgoliaRecord = async (taskId, projectId, oldTask, newTask) => {
     if (oldTask.lockKey === newTask.lockKey) {
@@ -186,6 +256,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
+    promises.push(archiveCompletedGmailTaskIfNeeded(projectId, taskId, oldTask, newTask))
 
     // Handle recurring task creation when task is completed
     // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
@@ -258,5 +329,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
 }
 
 module.exports = {
+    archiveCompletedGmailTaskIfNeeded,
+    isGmailTaskWithArchiveOnComplete,
     onUpdateTask,
 }

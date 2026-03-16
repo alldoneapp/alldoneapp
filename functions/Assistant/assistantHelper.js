@@ -80,6 +80,7 @@ const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 10
 const TOOL_PROGRESS_UPDATE_INTERVAL_MS = 7000
+const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
 
 // Service instance caches for reuse across tool executions (performance optimization)
 // Similar pattern to MCP server for consistency
@@ -99,6 +100,25 @@ function getCachedEnvFunctions() {
         envLoadTime = now
     }
     return cachedEnvFunctions
+}
+
+function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetProjectId = '') {
+    const gmailContext = toolRuntimeContext?.gmailContext
+    if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return null
+
+    const messageId = typeof gmailContext.messageId === 'string' ? gmailContext.messageId.trim() : ''
+    if (!messageId) return null
+
+    return {
+        origin: GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
+        gmailEmail: typeof gmailContext.gmailEmail === 'string' ? gmailContext.gmailEmail.trim().toLowerCase() : '',
+        projectId: targetProjectId || gmailContext.projectId || '',
+        messageId,
+        threadId: typeof gmailContext.threadId === 'string' ? gmailContext.threadId.trim() : '',
+        webUrl: typeof gmailContext.webUrl === 'string' ? gmailContext.webUrl.trim() : '',
+        archiveOnComplete: gmailContext.archiveOnComplete !== false,
+        archiveStatus: null,
+    }
 }
 
 // Cache OpenAI clients (performance optimization)
@@ -1323,7 +1343,8 @@ async function collectAssistantTextWithToolCalls({
             toolRuntimeContext?.projectId,
             toolRuntimeContext?.assistantId,
             toolRuntimeContext?.requestUserId,
-            userContext
+            userContext,
+            toolRuntimeContext
         )
         executedToolNames.push(toolName)
 
@@ -2797,7 +2818,15 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
  * Execute a tool natively and return the raw result (not processed by LLM)
  * This is used for OpenAI native tool calling
  */
-async function executeToolNatively(toolName, toolArgs, projectId, assistantId, requestUserId, userContext) {
+async function executeToolNatively(
+    toolName,
+    toolArgs,
+    projectId,
+    assistantId,
+    requestUserId,
+    userContext,
+    toolRuntimeContext = null
+) {
     console.log('🔧 executeToolNatively:', { toolName, toolArgs, projectId })
 
     const admin = require('firebase-admin')
@@ -3066,6 +3095,7 @@ async function executeToolNatively(toolName, toolArgs, projectId, assistantId, r
                         projectId: targetProjectId,
                         isPrivate: false,
                         feedUser,
+                        gmailData: buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId),
                     },
                     {
                         userId: creatorId,
@@ -5040,7 +5070,8 @@ async function storeChunks(
                             projectId,
                             assistantId,
                             runtimeContextForTools.requestUserId || requestUserId,
-                            userContext
+                            userContext,
+                            runtimeContextForTools
                         )
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {

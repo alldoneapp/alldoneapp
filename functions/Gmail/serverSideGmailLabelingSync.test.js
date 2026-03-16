@@ -74,6 +74,7 @@ const assistantHelper = require('../Assistant/assistantHelper')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
 const {
     buildGmailMessageUrl,
+    buildPostLabelGmailContext,
     createPostLabelPromptHash,
     executePostLabelPrompt,
     getDefaultAssistantIdForProject,
@@ -97,6 +98,24 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
         expect(hashA).toBe(hashB)
         expect(hashA).not.toBe(hashC)
+    })
+
+    test('builds Gmail follow-up tool runtime context', () => {
+        expect(
+            buildPostLabelGmailContext({
+                normalizedMessage: { messageId: 'message-1', threadId: 'thread-1' },
+                gmailEmail: 'Person@Example.com',
+                assistantProjectId: 'project-1',
+            })
+        ).toEqual({
+            origin: 'gmail_label_follow_up',
+            gmailEmail: 'person@example.com',
+            projectId: 'project-1',
+            messageId: 'message-1',
+            threadId: 'thread-1',
+            webUrl: 'https://mail.google.com/mail/u/person%40example.com/#inbox/message-1',
+            archiveOnComplete: true,
+        })
     })
 
     test('prefers project assistant when resolving default assistant id', async () => {
@@ -208,6 +227,21 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(result.status).toBe('completed')
         expect(result.executedToolNames).toEqual(['create_task'])
         expect(result.assistantResponse).toBe('Created a task with the email link.')
+        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledWith(
+            expect.objectContaining({
+                toolRuntimeContext: expect.objectContaining({
+                    gmailContext: {
+                        origin: 'gmail_label_follow_up',
+                        gmailEmail: 'person@example.com',
+                        projectId: 'default-project',
+                        messageId: 'message-1',
+                        threadId: 'thread-1',
+                        webUrl: 'https://mail.google.com/mail/u/person%40example.com/#inbox/message-1',
+                        archiveOnComplete: true,
+                    },
+                }),
+            })
+        )
     })
 
     test('records blocked follow-up when assistant tool execution is not permitted', async () => {

@@ -284,7 +284,8 @@ async function collectStreamWithToolCalls(
                             message: getMessageTextForTokenCounting(
                                 conversationHistory.find(m => m[0] === 'user')?.[1]
                             ),
-                        }
+                        },
+                        toolRuntimeContext
                     )
 
                     if (toolName === 'create_task') {
