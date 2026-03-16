@@ -90,6 +90,14 @@ Handle event propagation carefully. Set proper z-index and container `<div>` ele
 
 **Popover Centering**: Popovers using `react-tiny-popover` position content relative to the trigger element by default. For large modals, use `contentLocation={null}` to center the popover on screen instead of positioning relative to the trigger. The pattern `contentLocation={mobile ? null : undefined}` is used throughout the codebase to center on mobile only, but for large modals that need centering on all screen sizes, use `contentLocation={null}` unconditionally.
 
+### Gmail Follow-Up Tasks
+
+-   Gmail follow-up tasks created from labeling prompts use `task.gmailData.origin === 'gmail_label_follow_up'`.
+-   These tasks must stay in the normal task list, not the dedicated Gmail/email task bucket. Only inbox-summary Gmail tasks should be treated as email tasks.
+-   Do not rewrite or sanitize the task title text for Gmail follow-up tasks. If the assistant-created title contains a Gmail link, leave it as-is.
+-   In the task list row, the Gmail affordance should be rendered as an inline left tag/chip using `SocialText`'s `leftCustomElement`, not as an absolutely-positioned icon. This keeps wrapping correct so continuation lines align under the chip instead of under the first text token after it.
+-   Opening a Gmail follow-up task from the chip should target the specific Gmail message and should prefer an account-aware URL flow. Current helpers live in `utils/Gmail/gmailTaskUtils.js` and `functions/Gmail/serverSideGmailLabelingSync.js`.
+
 ### Code Style
 
 -   Prettier enforces formatting (4-space indent, single quotes, trailing commas)
