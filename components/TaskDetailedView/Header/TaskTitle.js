@@ -94,7 +94,7 @@ class TaskTitle extends Component {
                             style={localStyles.gmailIconContainer}
                             onPress={() => openGmailTaskLink(task)}
                         >
-                            <Icon name={'envelope-open'} size={16} color={colors.Text03} />
+                            <Icon name={'envelope-open'} size={12} color={colors.Text03} />
                         </TouchableOpacity>
                     )}
                     <View
@@ -180,10 +180,13 @@ const localStyles = StyleSheet.create({
         justifyContent: 'flex-start',
         alignItems: 'flex-start',
         alignContent: 'flex-start',
+        position: 'relative',
     },
     gmailIconContainer: {
-        marginRight: 8,
-        marginTop: 7,
+        position: 'absolute',
+        left: -4,
+        top: 14,
+        zIndex: 1,
     },
     ellipsis: {
         ...styles.title4,

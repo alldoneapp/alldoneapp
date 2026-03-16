@@ -13,7 +13,6 @@ import Icon from '../../Icon'
 import { useSelector } from 'react-redux'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
-import { cleanGmailFollowUpTaskTitle } from '../../../utils/Gmail/gmailTaskUtils'
 
 const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, updateObjectState }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -23,8 +22,6 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, upda
     const taskTitleInEditMode = useSelector(state => state.taskTitleInEditMode)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
-    const displayTitle = cleanGmailFollowUpTaskTitle(task.extendedName || task.name, task)
-
     return (
         <View style={[localStyles.container, isFullscreen && { paddingBottom: 8 }]}>
             <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
@@ -44,7 +41,7 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, upda
                     <TaskTitle
                         projectId={projectId}
                         task={task}
-                        title={displayTitle}
+                        title={task.extendedName || task.name}
                         object={task}
                         titleType={TITLE_TASK}
                     />

@@ -16,26 +16,24 @@ export function isInboxSummaryGmailTask(taskOrGmailData) {
 
 export function getGmailTaskWebUrl(taskOrGmailData) {
     const gmailData = getGmailTaskData(taskOrGmailData)
-    if (gmailData?.webUrl) return gmailData.webUrl
-
     const gmailEmail = gmailData?.gmailEmail || gmailData?.email
-    if (!gmailEmail) return null
+    const messageId = gmailData?.messageId
+    let continueUrl = null
 
-    return 'https://mail.google.com/mail/u/' + encodeURIComponent(gmailEmail)
-}
+    if (gmailEmail && messageId) {
+        continueUrl = `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(
+            gmailEmail
+        )}#all/${encodeURIComponent(messageId)}`
+    } else if (gmailData?.webUrl) {
+        continueUrl = gmailData.webUrl
+    } else if (gmailEmail) {
+        continueUrl = `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(gmailEmail)}`
+    }
 
-export function cleanGmailFollowUpTaskTitle(title, taskOrGmailData) {
-    const trimmedTitle = typeof title === 'string' ? title.trim() : ''
-    const gmailData = getGmailTaskData(taskOrGmailData)
-    const webUrl = getGmailTaskWebUrl(gmailData)
+    if (!continueUrl) return null
+    if (!gmailEmail) return continueUrl
 
-    if (!trimmedTitle || !isGmailLabelFollowUpTask(gmailData) || !webUrl) return trimmedTitle
-
-    let sanitizedTitle = trimmedTitle.replace(webUrl, ' ')
-    sanitizedTitle = sanitizedTitle.replace(/^(email|e-mail|mail)\s+/i, '')
-    sanitizedTitle = sanitizedTitle.replace(/^[:\-|]+\s*/i, '')
-    sanitizedTitle = sanitizedTitle.replace(/\s+[:\-|]\s+/g, ': ')
-    sanitizedTitle = sanitizedTitle.replace(/\s+/g, ' ').trim()
-
-    return sanitizedTitle || trimmedTitle
+    return `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(
+        gmailEmail
+    )}&continue=${encodeURIComponent(continueUrl)}&service=mail`
 }

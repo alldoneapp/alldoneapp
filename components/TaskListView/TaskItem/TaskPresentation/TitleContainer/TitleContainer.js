@@ -4,11 +4,7 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
 import Icon from '../../../../Icon'
-import {
-    cleanGmailFollowUpTaskTitle,
-    getGmailTaskWebUrl,
-    isGmailLabelFollowUpTask,
-} from '../../../../../utils/Gmail/gmailTaskUtils'
+import { getGmailTaskWebUrl, isGmailLabelFollowUpTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 
 function openGmailTaskLink(task) {
     const webUrl = getGmailTaskWebUrl(task)
@@ -28,9 +24,6 @@ export default function TitleContainer({
     tagsExpandedHeight,
     showVerticalEllipsisInByTime,
 }) {
-    const taskTitle =
-        task !== undefined && task.name != null && task.extendedName != null ? task.extendedName || task.name : ''
-
     return (
         <View
             style={[
@@ -40,7 +33,7 @@ export default function TitleContainer({
         >
             {isGmailLabelFollowUpTask(task) && (
                 <TouchableOpacity style={localStyles.gmailIconContainer} onPress={() => openGmailTaskLink(task)}>
-                    <Icon name={'envelope-open'} size={14} color={colors.Text03} />
+                    <Icon name={'envelope-open'} size={11} color={colors.Text03} />
                 </TouchableOpacity>
             )}
             <SocialText
@@ -67,7 +60,11 @@ export default function TitleContainer({
                 showVerticalEllipsisInByTime={showVerticalEllipsisInByTime}
                 dotsStyle={inMyDayAndNotSubtask && { paddingLeft: 6, bottom: 12 }}
             >
-                {cleanGmailFollowUpTaskTitle(taskTitle, task)}
+                {task !== undefined && task.name != null && task.extendedName != null
+                    ? task.extendedName !== ''
+                        ? task.extendedName
+                        : task.name
+                    : ''}
             </SocialText>
         </View>
     )
@@ -78,8 +75,7 @@ const localStyles = StyleSheet.create({
         flexGrow: 1,
         paddingLeft: 12,
         flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-start',
+        position: 'relative',
     },
     descriptionContainerSubtask: {
         paddingLeft: 10,
@@ -97,8 +93,9 @@ const localStyles = StyleSheet.create({
         maxHeight: 90,
     },
     gmailIconContainer: {
-        marginTop: 7,
-        marginRight: 6,
-        alignSelf: 'flex-start',
+        position: 'absolute',
+        left: -4,
+        top: 14,
+        zIndex: 1,
     },
 })

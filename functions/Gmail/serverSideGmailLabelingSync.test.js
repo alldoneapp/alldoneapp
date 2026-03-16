@@ -87,7 +87,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
     test('builds a Gmail message web url', () => {
         expect(buildGmailMessageUrl('person@example.com', 'msg-123')).toBe(
-            'https://mail.google.com/mail/u/person%40example.com/#inbox/msg-123'
+            'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/msg-123'
         )
     })
 
@@ -113,7 +113,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             projectId: 'project-1',
             messageId: 'message-1',
             threadId: 'thread-1',
-            webUrl: 'https://mail.google.com/mail/u/person%40example.com/#inbox/message-1',
+            webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
             archiveOnComplete: true,
         })
     })
@@ -236,7 +236,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         projectId: 'default-project',
                         messageId: 'message-1',
                         threadId: 'thread-1',
-                        webUrl: 'https://mail.google.com/mail/u/person%40example.com/#inbox/message-1',
+                        webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
                         archiveOnComplete: true,
                     },
                 }),

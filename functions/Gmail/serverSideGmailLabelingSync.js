@@ -93,8 +93,9 @@ function logSync(message, context = {}) {
 
 function buildGmailMessageUrl(gmailEmail = '', messageId = '') {
     if (!messageId) return ''
-    const accountSegment = gmailEmail ? encodeURIComponent(gmailEmail) : '0'
-    return `https://mail.google.com/mail/u/${accountSegment}/#inbox/${encodeURIComponent(messageId)}`
+    const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
+    const authQuery = normalizedEmail ? `?authuser=${encodeURIComponent(normalizedEmail)}` : ''
+    return `https://mail.google.com/mail/u/0/${authQuery}#all/${encodeURIComponent(messageId)}`
 }
 
 function createPostLabelPromptHash(ruleKey = '', prompt = '') {
