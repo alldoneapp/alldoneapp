@@ -137,6 +137,21 @@ import { getAssistant } from '../../../components/AdminPanel/Assistants/assistan
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
+async function updateLinkedContactsEditionData(projectId, task, editionDate) {
+    const linkedContactIds = uniq(task?.linkedParentContactsIds || []).filter(Boolean)
+    if (linkedContactIds.length === 0) return
+
+    const { loggedUser } = store.getState()
+    await Promise.all(
+        linkedContactIds.map(contactId =>
+            getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).update({
+                lastEditionDate: editionDate,
+                lastEditorId: loggedUser.uid,
+            })
+        )
+    )
+}
+
 export async function watchTask(projectId, taskId, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = getDb()
         .doc(`items/${projectId}/tasks/${taskId}`)
@@ -2748,7 +2763,8 @@ export async function setTaskStatus(
     newEstimation
 ) {
     const taskBatch = new BatchWrapper(getDb())
-    const completed = isDone ? Date.now() : firebase.firestore.FieldValue.delete()
+    const completedDate = isDone ? Date.now() : null
+    const completed = isDone ? completedDate : firebase.firestore.FieldValue.delete()
 
     const updateData = {
         done: isDone,
@@ -2811,6 +2827,10 @@ export async function setTaskStatus(
     }
 
     taskBatch.commit()
+
+    if (isDone && completedDate) {
+        await updateLinkedContactsEditionData(projectId, task, completedDate)
+    }
 
     const assignee = TasksHelper.getUserInProject(projectId, taskOwnerUid)
 
