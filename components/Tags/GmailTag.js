@@ -2,10 +2,12 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
+import { getGmailTaskWebUrl } from '../../utils/Gmail/gmailTaskUtils'
 
 const GmailTag = ({ gmailData, propStyles }) => {
     const openLink = () => {
-        return window.open('https://mail.google.com/mail/u/?' + `authuser=${gmailData.email}`, '_blank')
+        const webUrl = getGmailTaskWebUrl(gmailData)
+        if (webUrl) return window.open(webUrl, '_blank')
     }
 
     return (

@@ -7,6 +7,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import { BACKLOG_DATE_STRING, OPEN_STEP } from '../../../components/TaskListView/Utils/TasksHelper'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper'
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
+import { isInboxSummaryGmailTask } from '../../Gmail/gmailTaskUtils'
 
 export const DATE_TASK_INDEX = 0
 export const AMOUNT_TASKS_INDEX = 1
@@ -102,7 +103,7 @@ const getTaskTypeIndex = task => {
     if (genericData) return MENTION_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
     if (calendarData) return CALENDAR_TASK_INDEX
-    if (gmailData) return EMAIL_TASK_INDEX
+    if (isInboxSummaryGmailTask(gmailData)) return EMAIL_TASK_INDEX
     return MAIN_TASK_INDEX
 }
 

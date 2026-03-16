@@ -1,12 +1,18 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
 import Icon from '../../../../Icon'
+import {
+    cleanGmailFollowUpTaskTitle,
+    getGmailTaskWebUrl,
+    isGmailLabelFollowUpTask,
+} from '../../../../../utils/Gmail/gmailTaskUtils'
 
-function isGmailLabelFollowUpTask(task) {
-    return task?.gmailData?.origin === 'gmail_label_follow_up' && !!task?.gmailData?.messageId
+function openGmailTaskLink(task) {
+    const webUrl = getGmailTaskWebUrl(task)
+    if (webUrl) return window.open(webUrl, '_blank')
 }
 
 export default function TitleContainer({
@@ -22,6 +28,9 @@ export default function TitleContainer({
     tagsExpandedHeight,
     showVerticalEllipsisInByTime,
 }) {
+    const taskTitle =
+        task !== undefined && task.name != null && task.extendedName != null ? task.extendedName || task.name : ''
+
     return (
         <View
             style={[
@@ -30,9 +39,9 @@ export default function TitleContainer({
             ]}
         >
             {isGmailLabelFollowUpTask(task) && (
-                <View style={localStyles.gmailIconContainer}>
+                <TouchableOpacity style={localStyles.gmailIconContainer} onPress={() => openGmailTaskLink(task)}>
                     <Icon name={'envelope-open'} size={14} color={colors.Text03} />
-                </View>
+                </TouchableOpacity>
             )}
             <SocialText
                 elementId={`social_text_${projectId}_${task.id}_${isObservedTask}`}
@@ -58,11 +67,7 @@ export default function TitleContainer({
                 showVerticalEllipsisInByTime={showVerticalEllipsisInByTime}
                 dotsStyle={inMyDayAndNotSubtask && { paddingLeft: 6, bottom: 12 }}
             >
-                {task !== undefined && task.name != null && task.extendedName != null
-                    ? task.extendedName !== ''
-                        ? task.extendedName
-                        : task.name
-                    : ''}
+                {cleanGmailFollowUpTaskTitle(taskTitle, task)}
             </SocialText>
         </View>
     )
@@ -94,5 +99,6 @@ const localStyles = StyleSheet.create({
     gmailIconContainer: {
         marginTop: 7,
         marginRight: 6,
+        alignSelf: 'flex-start',
     },
 })

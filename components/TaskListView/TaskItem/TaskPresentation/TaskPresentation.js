@@ -19,6 +19,7 @@ import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_TASK_PROPERTIES } from '../../../../utils/TabNavigationConstants'
 import { objectIsLockedForUser } from '../../../Guides/guidesHelper'
 import LineOfTime from '../../LineOfTime'
+import { isInboxSummaryGmailTask } from '../../../../utils/Gmail/gmailTaskUtils'
 import {
     checkIfInMyDay,
     checkIfInMyDayOpenTab,
@@ -282,7 +283,7 @@ function TaskPresentation(
                                     pending={pending}
                                     showWorkflowIndicator={showWorkflowIndicator}
                                 />
-                                {!inMyDayAndNotSubtask && task?.gmailData && (
+                                {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
                                     <GmailTag
                                         gmailData={task.gmailData}
                                         propStyles={{ marginTop: 8, marginLeft: 12 }}

@@ -121,6 +121,19 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
     }
 }
 
+function sanitizeGmailFollowUpTaskName(name, gmailTaskData = null) {
+    const trimmedName = typeof name === 'string' ? name.trim() : ''
+    if (!trimmedName || !gmailTaskData?.webUrl) return trimmedName
+
+    let sanitizedName = trimmedName.replace(gmailTaskData.webUrl, ' ')
+    sanitizedName = sanitizedName.replace(/^(email|e-mail|mail)\s+/i, '')
+    sanitizedName = sanitizedName.replace(/^[:\-|]+\s*/i, '')
+    sanitizedName = sanitizedName.replace(/\s+[:\-|]\s+/g, ': ')
+    sanitizedName = sanitizedName.replace(/\s+/g, ' ').trim()
+
+    return sanitizedName || trimmedName
+}
+
 // Cache OpenAI clients (performance optimization)
 const openAIClients = new Map()
 const externalToolUserIdentityCache = new Map()
@@ -3085,17 +3098,18 @@ async function executeToolNatively(
             }
 
             try {
+                const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
-                        name: toolArgs.name,
+                        name: sanitizeGmailFollowUpTaskName(toolArgs.name, gmailTaskData),
                         description: toolArgs.description || '',
                         dueDate: processedDueDate,
                         userId: creatorId,
                         projectId: targetProjectId,
                         isPrivate: false,
                         feedUser,
-                        gmailData: buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId),
+                        gmailData: gmailTaskData,
                     },
                     {
                         userId: creatorId,

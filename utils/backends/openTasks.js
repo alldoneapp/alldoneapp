@@ -28,6 +28,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants
 import { BACKLOG_DATE_NUMERIC, BACKLOG_DATE_STRING } from '../../components/TaskListView/Utils/TasksHelper'
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from '../../components/Workstreams/WorkstreamHelper'
 import { BACKLOG_MILESTONE_ID, DYNAMIC_PERCENT, getOwnerId } from '../../components/GoalsView/GoalsHelper'
+import { isInboxSummaryGmailTask } from '../Gmail/gmailTaskUtils'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 import { filterOpenTasks } from '../../components/HashtagFilters/FilterHelpers/FilterTasks'
 
@@ -386,7 +387,7 @@ export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks) 
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
     if (calendarData) return CALENDAR_TASK_INDEX
-    if (gmailData) return EMAIL_TASK_INDEX
+    if (isInboxSummaryGmailTask(gmailData)) return EMAIL_TASK_INDEX
     return MAIN_TASK_INDEX
 }
 

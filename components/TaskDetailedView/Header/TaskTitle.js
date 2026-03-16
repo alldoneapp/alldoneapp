@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import Backend from '../../../utils/BackendBridge'
 import SocialTextInput from '../../SocialTextInput'
@@ -10,12 +10,14 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskName } from '../../../utils/backends/Tasks/tasksFirestore'
 import Icon from '../../Icon'
+import { getGmailTaskWebUrl, isGmailLabelFollowUpTask } from '../../../utils/Gmail/gmailTaskUtils'
 
 export const TITLE_TASK = 0
 export const TITLE_NOTE = 2
 
-function isGmailLabelFollowUpTask(task) {
-    return task?.gmailData?.origin === 'gmail_label_follow_up' && !!task?.gmailData?.messageId
+function openGmailTaskLink(task) {
+    const webUrl = getGmailTaskWebUrl(task)
+    if (webUrl) return window.open(webUrl, '_blank')
 }
 
 class TaskTitle extends Component {
@@ -88,9 +90,12 @@ class TaskTitle extends Component {
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
                     {isGmailLabelFollowUpTask(task) && (
-                        <View style={localStyles.gmailIconContainer}>
+                        <TouchableOpacity
+                            style={localStyles.gmailIconContainer}
+                            onPress={() => openGmailTaskLink(task)}
+                        >
                             <Icon name={'envelope-open'} size={16} color={colors.Text03} />
-                        </View>
+                        </TouchableOpacity>
                     )}
                     <View
                         style={{
