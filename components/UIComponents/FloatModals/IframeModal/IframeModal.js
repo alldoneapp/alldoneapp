@@ -23,9 +23,26 @@ export default function IframeModal() {
     useEffect(() => {
         if (!visible) return
 
+        let trustedOrigin = null
+
+        try {
+            trustedOrigin = finalUrl ? new URL(finalUrl).origin : null
+        } catch (error) {
+            console.error('IframeModal: invalid iframe URL', {
+                url: finalUrl,
+                error: error.message,
+            })
+        }
+
         const handleMessage = async event => {
-            // In the future for better security we can restrict origins here
-            // if (!event.origin.includes('alldone.team')) return
+            if (!trustedOrigin || event.origin !== trustedOrigin) {
+                console.warn('IframeModal: ignoring message from untrusted origin', {
+                    origin: event.origin,
+                    trustedOrigin,
+                    type: event?.data?.type,
+                })
+                return
+            }
 
             const { type, amount } = event.data
 
@@ -47,6 +64,14 @@ export default function IframeModal() {
             }
 
             const handleGoldRequest = async ({ callableName, successType, errorType, errorLogLabel }) => {
+                if (!Number.isFinite(amount) || amount <= 0) {
+                    postResult({
+                        type: errorType,
+                        error: 'Invalid gold amount',
+                    })
+                    return
+                }
+
                 try {
                     console.log('IframeModal: calling gold function', {
                         callableName,
