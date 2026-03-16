@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
@@ -32,8 +32,10 @@ export default function TitleContainer({
             ]}
         >
             {isGmailLabelFollowUpTask(task) && (
-                <TouchableOpacity style={localStyles.gmailIconContainer} onPress={() => openGmailTaskLink(task)}>
-                    <Icon name={'envelope-open'} size={11} color={colors.Text03} />
+                <TouchableOpacity style={localStyles.gmailTag} onPress={() => openGmailTaskLink(task)}>
+                    <Icon name={'envelope-open'} size={12} color={colors.Text03} />
+                    <View style={localStyles.gmailTagSpacer} />
+                    <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>
                 </TouchableOpacity>
             )}
             <SocialText
@@ -75,7 +77,8 @@ const localStyles = StyleSheet.create({
         flexGrow: 1,
         paddingLeft: 12,
         flex: 1,
-        position: 'relative',
+        flexDirection: 'row',
+        alignItems: 'flex-start',
     },
     descriptionContainerSubtask: {
         paddingLeft: 10,
@@ -92,10 +95,21 @@ const localStyles = StyleSheet.create({
         marginBottom: 6,
         maxHeight: 90,
     },
-    gmailIconContainer: {
-        position: 'absolute',
-        left: -4,
-        top: 14,
-        zIndex: 1,
+    gmailTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.Gray300,
+        borderRadius: 12,
+        height: 24,
+        paddingHorizontal: 8,
+        marginTop: 4,
+        marginRight: 8,
+    },
+    gmailTagSpacer: {
+        width: 4,
+    },
+    gmailTagText: {
+        color: colors.Text03,
     },
 })

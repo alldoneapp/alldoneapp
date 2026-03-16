@@ -90,11 +90,9 @@ class TaskTitle extends Component {
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
                     {isGmailLabelFollowUpTask(task) && (
-                        <TouchableOpacity
-                            style={localStyles.gmailIconContainer}
-                            onPress={() => openGmailTaskLink(task)}
-                        >
+                        <TouchableOpacity style={localStyles.gmailTag} onPress={() => openGmailTaskLink(task)}>
                             <Icon name={'envelope-open'} size={12} color={colors.Text03} />
+                            <Text style={localStyles.gmailTagText}>Email</Text>
                         </TouchableOpacity>
                     )}
                     <View
@@ -180,13 +178,22 @@ const localStyles = StyleSheet.create({
         justifyContent: 'flex-start',
         alignItems: 'flex-start',
         alignContent: 'flex-start',
-        position: 'relative',
     },
-    gmailIconContainer: {
-        position: 'absolute',
-        left: -4,
-        top: 14,
-        zIndex: 1,
+    gmailTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.Gray300,
+        borderRadius: 12,
+        height: 24,
+        paddingHorizontal: 8,
+        marginTop: 4,
+        marginRight: 8,
+    },
+    gmailTagText: {
+        ...styles.subtitle2,
+        color: colors.Text03,
+        marginLeft: 4,
     },
     ellipsis: {
         ...styles.title4,
