@@ -2,20 +2,30 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
-import { getGmailTaskWebUrl } from '../../utils/Gmail/gmailTaskUtils'
+import { getGmailTaskData, getGmailTaskWebUrl } from '../../utils/Gmail/gmailTaskUtils'
 
 const GmailTag = ({ gmailData, propStyles }) => {
+    const resolvedGmailData = getGmailTaskData(gmailData)
+    if (!resolvedGmailData) return null
+
     const openLink = () => {
-        const webUrl = getGmailTaskWebUrl(gmailData)
+        const webUrl = getGmailTaskWebUrl(resolvedGmailData)
         if (webUrl) return window.open(webUrl, '_blank')
     }
+
+    const unreadCount =
+        typeof resolvedGmailData.unreadMails === 'number' || typeof resolvedGmailData.unreadMails === 'string'
+            ? resolvedGmailData.unreadMails
+            : ''
 
     return (
         <TouchableOpacity style={[localStyles.tag, propStyles]} onPress={openLink}>
             <View style={localStyles.icon}>
                 <Icon name={'envelope-open'} size={16} color={colors.Text03} />
             </View>
-            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{gmailData.unreadMails}</Text>
+            {unreadCount !== '' && (
+                <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{unreadCount}</Text>
+            )}
         </TouchableOpacity>
     )
 }

@@ -1,6 +1,6 @@
 export function getGmailTaskData(taskOrGmailData) {
     if (!taskOrGmailData) return null
-    if (taskOrGmailData.gmailData) return taskOrGmailData.gmailData
+    if ('gmailData' in Object(taskOrGmailData)) return taskOrGmailData.gmailData
     return taskOrGmailData
 }
 
