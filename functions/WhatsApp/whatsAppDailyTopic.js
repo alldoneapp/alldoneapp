@@ -24,14 +24,24 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
     const chatDoc = await chatRef.get()
     if (chatDoc.exists) {
         console.log('WhatsApp DailyTopic: Topic exists, checking stickyData')
-        // Ensure existing topics have required fields for the app's query
+        // Ensure existing topics have required fields for the app's query.
         const data = chatDoc.data()
+        const patchData = {}
+
         if (!data.stickyData || data.stickyData.days === undefined) {
             console.log('WhatsApp DailyTopic: Patching missing stickyData')
-            await chatRef.update({
-                stickyData: { days: 0, stickyEndDate: 0 },
-                hasStar: data.hasStar || '#ffffff',
-            })
+            patchData.stickyData = { days: 0, stickyEndDate: 0 }
+            patchData.hasStar = data.hasStar || '#ffffff'
+        }
+
+        // WhatsApp daily topics should always respond when opened in-app.
+        if (data.isAssistantEnabled !== true) {
+            console.log('WhatsApp DailyTopic: Enabling assistant on existing topic')
+            patchData.isAssistantEnabled = true
+        }
+
+        if (Object.keys(patchData).length > 0) {
+            await chatRef.update(patchData)
         }
         return { chatId, isNew: false }
     }
@@ -64,6 +74,7 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
             lastCommentOwnerId: '',
             lastCommentType: '',
         },
+        isAssistantEnabled: true,
     }
     console.log('WhatsApp DailyTopic: Writing chat document', {
         path: `chatObjects/${projectId}/chats/${chatId}`,
