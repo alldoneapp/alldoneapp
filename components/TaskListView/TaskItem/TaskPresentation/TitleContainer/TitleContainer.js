@@ -24,6 +24,14 @@ export default function TitleContainer({
     tagsExpandedHeight,
     showVerticalEllipsisInByTime,
 }) {
+    const gmailTag = isGmailLabelFollowUpTask(task) ? (
+        <TouchableOpacity style={localStyles.gmailTag} onPress={() => openGmailTaskLink(task)}>
+            <Icon name={'envelope-open'} size={12} color={colors.Text03} />
+            <View style={localStyles.gmailTagSpacer} />
+            <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>
+        </TouchableOpacity>
+    ) : null
+
     return (
         <View
             style={[
@@ -31,13 +39,6 @@ export default function TitleContainer({
                 task.isSubtask ? localStyles.descriptionContainerSubtask : undefined,
             ]}
         >
-            {isGmailLabelFollowUpTask(task) && (
-                <TouchableOpacity style={localStyles.gmailTag} onPress={() => openGmailTaskLink(task)}>
-                    <Icon name={'envelope-open'} size={12} color={colors.Text03} />
-                    <View style={localStyles.gmailTagSpacer} />
-                    <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>
-                </TouchableOpacity>
-            )}
             <SocialText
                 elementId={`social_text_${projectId}_${task.id}_${isObservedTask}`}
                 style={[
@@ -56,6 +57,7 @@ export default function TitleContainer({
                 bgColor={hasStar ? backColorHighlight : backColor}
                 projectId={projectId}
                 blockOpen={blockOpen}
+                leftCustomElement={gmailTag}
                 activeCalendarStyle={inMyDayAndNotSubtask}
                 tagsExpandedHeight={tagsExpandedHeight}
                 isObservedTask={isObservedTask}
@@ -77,8 +79,6 @@ const localStyles = StyleSheet.create({
         flexGrow: 1,
         paddingLeft: 12,
         flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-start',
     },
     descriptionContainerSubtask: {
         paddingLeft: 10,
@@ -103,7 +103,6 @@ const localStyles = StyleSheet.create({
         borderRadius: 12,
         height: 24,
         paddingHorizontal: 8,
-        marginTop: 4,
         marginRight: 8,
     },
     gmailTagSpacer: {
