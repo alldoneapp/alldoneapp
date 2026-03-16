@@ -2511,6 +2511,7 @@ export async function moveTasksFromOpen(
 ) {
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
+    const completionDate = Date.now()
     const { parentId, subtaskIds, userId } = task
 
     if (comment)
@@ -2539,7 +2540,7 @@ export async function moveTasksFromOpen(
             userId: newUserId,
             userIds: [newUserId],
             currentReviewerId: DONE_STEP,
-            completed: Date.now(),
+            completed: completionDate,
             completedTime,
         }
     } else {
@@ -2548,7 +2549,7 @@ export async function moveTasksFromOpen(
             userId: newUserId,
             userIds: [newUserId, reviewerUid],
             currentReviewerId: reviewerUid,
-            completed: Date.now(),
+            completed: completionDate,
             stepHistory: [OPEN_STEP, stepToMoveId],
             completedTime,
         }
@@ -2654,6 +2655,8 @@ export async function moveTasksFromOpen(
     batch.commit().then(() => {
         moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
     })
+
+    await updateLinkedContactsEditionData(projectId, task, completionDate)
 
     if (assignee && assignee.inFocusTaskId === task.id) {
         // When a user completes their part of a task (either to DONE_STEP or workflow step),
