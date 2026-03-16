@@ -238,6 +238,8 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
 
     // Remove fields that shouldn't be copied
     delete newTaskData.id
+    // Force the new recurring instance to get its own fresh human-readable ID on create.
+    delete newTaskData.humanReadableId
     console.log('🗑️ Removed ID from task data')
 
     // Reset task state for new occurrence
