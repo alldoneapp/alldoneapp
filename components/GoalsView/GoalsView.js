@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import GoalsHeader from './GoalsHeader'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
 import {
@@ -124,7 +123,6 @@ export default function GoalsView() {
             ]}
         >
             {inAllProjects && <AllProjectsLine showActions={false} />}
-            {inAllProjects && <GoalsHeader />}
             <HashtagFiltersView />
 
             {inAllProjects ? (

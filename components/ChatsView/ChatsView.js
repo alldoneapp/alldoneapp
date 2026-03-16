@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
-import ChatsHeader from './ChatsHeader'
 import { useDispatch, useSelector } from 'react-redux'
 import { DV_TAB_ROOT_CHATS } from '../../utils/TabNavigationConstants'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
@@ -79,7 +78,6 @@ function ChatsView() {
             ]}
         >
             {inAllProjects && <AllProjectsLine showActions={false} />}
-            {inAllProjects && <ChatsHeader />}
 
             <HashtagFiltersView />
 

@@ -3,7 +3,6 @@ import { View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import ProjectHeader from '../../Header/ProjectHeader'
-import UserTasksHeader from '../../Header/UserTasksHeader'
 import { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import OpenTasksDateHeaderForAssistants from './OpenTasksDateHeaderForAssistants'
 import OpenTasksAssistantData from './OpenTasksAssistantData'
@@ -18,7 +17,6 @@ export default function OpenTasksByProjectForAssistants({ projectIndex }) {
     return (
         <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
             <ProjectHeader projectIndex={projectIndex} projectId={projectId} />
-            {inSelectedProject && <UserTasksHeader />}
             <OpenTasksDateHeaderForAssistants />
             <View style={{ marginLeft: 11, marginTop: 12 }}>
                 <OpenTasksAssistantData projectId={projectId} />

@@ -7,7 +7,6 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
-import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -45,7 +44,6 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
                 ]}
             >
                 <AllProjectsLine />
-                <UserTasksHeader />
                 <AssistantLine useAssistantProjectContext={false} />
                 {sortedProjects.map(project => (
                     <PendingTasksByProject key={project.id} project={project} />

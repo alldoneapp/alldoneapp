@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import store from '../../redux/store'
@@ -13,12 +13,8 @@ import {
     watchFollowedNotesAmount,
 } from '../../utils/backends/Notes/noteNumbers'
 import { FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
-import { updateNotesActiveTab } from '../../redux/actions'
-import MultiToggleSwitch from '../UIControls/MultiToggleSwitch/MultiToggleSwitch'
-import MainSectionTabsHeader from '../TaskListView/Header/MainSectionTabsHeader'
 
 export default function NotesHeader() {
-    const dispatch = useDispatch()
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const notesActiveTab = useSelector(state => state.notesActiveTab)
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
@@ -54,19 +50,6 @@ export default function NotesHeader() {
 
     return (
         <View style={localStyles.container}>
-            <MainSectionTabsHeader
-                showSectionToggle={true}
-                renderSectionToggle={() => (
-                    <MultiToggleSwitch
-                        options={[
-                            { icon: 'eye', text: 'Followed', badge: null },
-                            { icon: 'several-file-text', text: 'All', badge: null },
-                        ]}
-                        currentIndex={notesActiveTab}
-                        onChangeOption={index => dispatch(updateNotesActiveTab(index))}
-                    />
-                )}
-            />
             {notesAmount > 0 && (
                 <Text style={[styles.caption2, localStyles.amountText, { color: colors.Text02 }]}>
                     {translate(notesAmount === 1 ? 'Amount note' : 'Amount notes', {

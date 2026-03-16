@@ -19,6 +19,7 @@ import ChatsView from '../ChatsView/ChatsView'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import RootSectionNavigation from './RootSectionNavigation'
 
 export default function MainViewsContainer() {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
@@ -33,6 +34,7 @@ export default function MainViewsContainer() {
             scrollEnabled={enableScroll}
         >
             <View>
+                <RootSectionNavigation />
                 {(() => {
                     switch (selectedTab) {
                         case DV_TAB_ROOT_TASKS:

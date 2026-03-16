@@ -25,7 +25,6 @@ import StickyChats from './StickyChats'
 import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
-import ChatsHeader from './ChatsHeader'
 
 function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProject }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -121,7 +120,6 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
             />
             {inSelectedProject && (
                 <>
-                    <ChatsHeader />
                     <View style={localStyles.markAsReadRow}>
                         <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
                     </View>

@@ -7,7 +7,6 @@ import AllProjectsEmptyInbox from '../OpenTasksView/AllProjectsEmptyInbox'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
-import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function DoneTasksViewAllProjects() {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -46,7 +45,6 @@ export default function DoneTasksViewAllProjects() {
                 ]}
             >
                 <AllProjectsLine />
-                <UserTasksHeader />
                 <AssistantLine useAssistantProjectContext={false} />
                 {sortedLoggedUserProjects.map(project => (
                     <DoneTasksByProject key={project.id} project={project} />

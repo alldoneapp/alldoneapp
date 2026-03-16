@@ -21,7 +21,6 @@ import {
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
-import UserTasksHeader from '../Header/UserTasksHeader'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -139,7 +138,6 @@ export default function OpenTasksByProject({
                         showAddTask={!isAssistant}
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                     />
-                    {inSelectedProject && <UserTasksHeader />}
                     {showBelowHeaderSelectedAssistant && (
                         <View style={{ marginTop: showAboveHeaderDefaultAssistant ? 12 : 0 }}>
                             <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
