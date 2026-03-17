@@ -217,7 +217,7 @@ const localStyles = StyleSheet.create({
     },
     detailsTitle: {
         ...styles.subtitle2,
-        color: colors.Text01,
+        color: '#ffffff',
         marginBottom: 8,
     },
     detailSection: {
@@ -245,7 +245,7 @@ const localStyles = StyleSheet.create({
     },
     toolDescription: {
         ...styles.body2,
-        color: colors.Text01,
+        color: '#d7def7',
     },
     parametersSection: {
         marginTop: 10,
@@ -257,7 +257,7 @@ const localStyles = StyleSheet.create({
     },
     emptyParametersText: {
         ...styles.body2,
-        color: colors.Text02,
+        color: '#d7def7',
     },
     parameterItem: {
         marginTop: 6,
@@ -267,11 +267,11 @@ const localStyles = StyleSheet.create({
         color: '#ffffff',
     },
     parameterMeta: {
-        color: colors.Text02,
+        color: '#aeb9e6',
     },
     parameterDescription: {
         ...styles.caption2,
-        color: colors.Text01,
+        color: '#d7def7',
         marginTop: 1,
     },
 })
