@@ -38,6 +38,30 @@ function getHeaderValue(headers = [], name = '') {
     return header?.value || ''
 }
 
+function collectAttachments(payload, attachments = []) {
+    if (!payload) return attachments
+
+    const fileName = typeof payload.filename === 'string' ? payload.filename.trim() : ''
+    const attachmentId = typeof payload.body?.attachmentId === 'string' ? payload.body.attachmentId.trim() : ''
+    const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType.trim() : ''
+
+    if (fileName && attachmentId) {
+        attachments.push({
+            attachmentId,
+            fileName,
+            mimeType,
+            sizeBytes: Number(payload.body?.size || 0),
+            inline: String(payload.disposition || '').toLowerCase() === 'inline',
+        })
+    }
+
+    if (Array.isArray(payload.parts)) {
+        payload.parts.forEach(part => collectAttachments(part, attachments))
+    }
+
+    return attachments
+}
+
 function collectBodyParts(payload, parts = []) {
     if (!payload) return parts
 
@@ -73,6 +97,7 @@ function normalizeGmailMessage(message = {}, maxBodyLength = 8000) {
     const payload = message.payload || {}
     const headers = Array.isArray(payload.headers) ? payload.headers : []
     const bodyText = extractBodyText(payload).slice(0, maxBodyLength)
+    const attachments = collectAttachments(payload, [])
 
     return {
         messageId: message.id || '',
@@ -92,10 +117,12 @@ function normalizeGmailMessage(message = {}, maxBodyLength = 8000) {
         rfcMessageId: getHeaderValue(headers, 'Message-Id'),
         snippet: typeof message.snippet === 'string' ? message.snippet : '',
         bodyText,
+        attachments,
     }
 }
 
 module.exports = {
+    collectAttachments,
     decodeBase64Url,
     normalizeGmailMessage,
     stripHtml,

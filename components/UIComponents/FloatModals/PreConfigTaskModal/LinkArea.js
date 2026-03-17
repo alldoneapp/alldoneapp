@@ -161,12 +161,12 @@ const localStyles = StyleSheet.create({
     },
     detailLabel: {
         ...styles.caption2,
-        color: colors.Text03,
+        color: colors.Text02,
         marginBottom: 2,
     },
     detailValue: {
         ...styles.body2,
-        color: colors.Text01,
+        color: '#ffffff',
     },
     toolItem: {
         marginTop: 8,
@@ -176,11 +176,11 @@ const localStyles = StyleSheet.create({
     },
     toolName: {
         ...styles.subtitle2,
-        color: colors.Text01,
+        color: '#ffffff',
         marginBottom: 2,
     },
     toolDescription: {
         ...styles.body2,
-        color: colors.Text02,
+        color: colors.Text01,
     },
 })

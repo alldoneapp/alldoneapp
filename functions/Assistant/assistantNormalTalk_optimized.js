@@ -145,6 +145,9 @@ async function askToOpenAIBotOptimized(
             projectId,
             assistantId: assistant.uid || assistantId,
             requestUserId: userId,
+            objectType,
+            objectId,
+            messageId,
         }
         const stream = await interactWithChatStream(
             contextMessages,

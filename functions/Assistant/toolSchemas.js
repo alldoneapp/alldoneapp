@@ -419,7 +419,7 @@ const toolSchemas = {
         function: {
             name: 'search_gmail',
             description:
-                "Search the user's connected Gmail accounts for relevant emails and return matching messages with participants, dates, snippets, body text, Gmail labels, and special flags such as unread, inbox, important, sent, draft, starred, spam, and trash. Use this for questions about past email conversations, what was discussed with a person, or to find specific emails.",
+                "Search the user's connected Gmail accounts for relevant emails and return matching messages with participants, dates, snippets, body text, attachment metadata, Gmail labels, and special flags such as unread, inbox, important, sent, draft, starred, spam, and trash. Results include attachment metadata only (attachmentId, fileName, mimeType, sizeBytes, inline), not file bytes. Use this for questions about past email conversations, what was discussed with a person, to find specific emails, or to locate a Gmail attachment before calling get_gmail_attachment.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -439,6 +439,54 @@ const toolSchemas = {
                     },
                 },
                 required: ['query'],
+            },
+        },
+    },
+
+    get_chat_attachment: {
+        type: 'function',
+        function: {
+            name: 'get_chat_attachment',
+            description:
+                'Fetch the single file attached to the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    expectedFileName: {
+                        type: 'string',
+                        description:
+                            'Optional expected file name used for validation. If provided and it does not match the triggering chat attachment, the tool returns an error.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    get_gmail_attachment: {
+        type: 'function',
+        function: {
+            name: 'get_gmail_attachment',
+            description:
+                'Fetch a Gmail attachment as base64 after locating it with search_gmail. Use this before calling an external app tool when the user wants to use a PDF or other file found in Gmail. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    messageId: {
+                        type: 'string',
+                        description: 'The Gmail message ID containing the attachment.',
+                    },
+                    attachmentId: {
+                        type: 'string',
+                        description: 'The Gmail attachment ID from search_gmail results.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional project ID if the Gmail account context must be constrained to a specific connected project.',
+                    },
+                },
+                required: ['messageId', 'attachmentId'],
             },
         },
     },

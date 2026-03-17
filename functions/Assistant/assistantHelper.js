@@ -32,6 +32,7 @@ const {
     shrinkTagText,
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     getImageData,
+    getAttachmentData,
 } = require('../Utils/parseTextUtils')
 const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
@@ -69,6 +70,7 @@ const COMPLETION_MAX_TOKENS_GPT5_2 = 2000 // GPT-5.2 needs more tokens due to st
 const ENCODE_MESSAGE_GAP = 4
 const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per token for Sonar models
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
@@ -136,6 +138,7 @@ const DYNAMIC_TOOL_SCHEMAS_CACHE_TTL = 5 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES = 200
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL = 30 * 24 * 60 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION = 'runtimeCaches/dynamicToolSchemas/items'
+const MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
@@ -2692,6 +2695,14 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
         throw new Error('External tool execution URL is missing')
     }
 
+    if (
+        String(target.execution.method || 'POST').toUpperCase() === 'GET' &&
+        typeof toolArgs?.fileBase64 === 'string' &&
+        toolArgs.fileBase64.trim()
+    ) {
+        throw new Error('External tools that receive fileBase64 must not use GET')
+    }
+
     const requestId = uuidv4()
     const method = target.execution.method || 'POST'
     const timeoutMs = Number(target.execution.timeoutMs) || 10000
@@ -4396,6 +4407,81 @@ async function executeToolNatively(
             }
         }
 
+        case 'get_chat_attachment': {
+            console.log('📎 GET_CHAT_ATTACHMENT TOOL: Starting chat attachment fetch', {
+                projectId: toolRuntimeContext?.projectId || projectId || null,
+                objectType: toolRuntimeContext?.objectType || null,
+                objectId: toolRuntimeContext?.objectId || null,
+                messageId: toolRuntimeContext?.messageId || null,
+                expectedFileName: toolArgs.expectedFileName || null,
+            })
+
+            try {
+                return await getChatAttachmentForAssistantRequest({
+                    projectId: toolRuntimeContext?.projectId || projectId || '',
+                    objectType: toolRuntimeContext?.objectType || '',
+                    objectId: toolRuntimeContext?.objectId || '',
+                    messageId: toolRuntimeContext?.messageId || '',
+                    expectedFileName: toolArgs.expectedFileName,
+                })
+            } catch (error) {
+                console.error('📎 GET_CHAT_ATTACHMENT TOOL: Failed', {
+                    error: error.message,
+                    projectId: toolRuntimeContext?.projectId || projectId || null,
+                    objectType: toolRuntimeContext?.objectType || null,
+                    objectId: toolRuntimeContext?.objectId || null,
+                    messageId: toolRuntimeContext?.messageId || null,
+                })
+                return {
+                    success: false,
+                    message: `Chat attachment fetch failed: ${error.message}`,
+                    source: 'chat',
+                }
+            }
+        }
+
+        case 'get_gmail_attachment': {
+            console.log('📎 GET_GMAIL_ATTACHMENT TOOL: Starting Gmail attachment fetch', {
+                messageId: toolArgs.messageId,
+                attachmentId: toolArgs.attachmentId,
+                projectId: toolArgs.projectId || null,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    source: 'gmail',
+                    message: 'Gmail attachment fetch requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { getGmailAttachmentForAssistantRequest } = require('../Gmail/assistantGmailSearch')
+                return await getGmailAttachmentForAssistantRequest({
+                    userId: targetUserId,
+                    messageId: toolArgs.messageId,
+                    attachmentId: toolArgs.attachmentId,
+                    projectId: toolArgs.projectId,
+                    maxSizeBytes: MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES,
+                })
+            } catch (error) {
+                console.error('📎 GET_GMAIL_ATTACHMENT TOOL: Failed', {
+                    error: error.message,
+                    requestUserId: targetUserId,
+                    messageId: toolArgs.messageId,
+                    attachmentId: toolArgs.attachmentId,
+                    projectId: toolArgs.projectId || null,
+                })
+                return {
+                    success: false,
+                    source: 'gmail',
+                    message: `Gmail attachment fetch failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'create_gmail_reply_draft': {
             console.log('📧 CREATE_GMAIL_REPLY_DRAFT TOOL: Starting Gmail reply draft creation', {
                 query: toolArgs.query,
@@ -5964,6 +6050,18 @@ async function addBaseInstructions(
             'When the user asks about their schedule, calendar history, meetings, or to create, move, update, or delete calendar entries, use the Calendar tools instead of guessing. For update/delete, use exact event targets and ask the tool for disambiguation rather than assuming the right calendar account.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {
+        messages.push([
+            'system',
+            'When the user wants an external app tool to use a file they uploaded in the triggering chat message, call get_chat_attachment first. If it succeeds, pass the returned fileName and fileBase64 directly into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_gmail_attachment')) {
+        messages.push([
+            'system',
+            'When the user wants to use a PDF or other file from Gmail with an external app tool, first use search_gmail to find the message and attachment metadata, then call get_gmail_attachment with the selected messageId and attachmentId, then pass the returned fileName and fileBase64 into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+        ])
+    }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
         assistantContext?.projectId,
         assistantContext?.assistantId
@@ -6004,6 +6102,133 @@ function extractImageUrlsFromCommentText(commentText) {
     }
 
     return [...new Set(urls)]
+}
+
+function extractAttachmentTokensFromCommentText(commentText) {
+    if (!commentText || typeof commentText !== 'string') return []
+
+    const escapedTrigger = ATTACHMENT_TRIGGER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`${escapedTrigger}(.*?)${escapedTrigger}(.*?)${escapedTrigger}(true|false)?`, 'g')
+
+    return Array.from(commentText.matchAll(pattern))
+        .map(match => {
+            const token = match[0]
+            const { uri, attachmentText, isNew } = getAttachmentData(token)
+            return {
+                uri: typeof uri === 'string' ? uri.trim() : '',
+                fileName: typeof attachmentText === 'string' ? attachmentText.trim() : '',
+                isNew: typeof isNew === 'string' ? isNew.trim() : '',
+            }
+        })
+        .filter(attachment => attachment.uri && attachment.fileName)
+}
+
+function inferMimeTypeFromFileName(fileName = '') {
+    const normalized = String(fileName || '')
+        .trim()
+        .toLowerCase()
+    if (normalized.endsWith('.pdf')) return 'application/pdf'
+    if (normalized.endsWith('.txt')) return 'text/plain'
+    if (normalized.endsWith('.csv')) return 'text/csv'
+    if (normalized.endsWith('.json')) return 'application/json'
+    if (normalized.endsWith('.md')) return 'text/markdown'
+    if (normalized.endsWith('.docx')) {
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    }
+    if (normalized.endsWith('.xlsx')) {
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+    if (normalized.endsWith('.png')) return 'image/png'
+    if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
+    return 'application/octet-stream'
+}
+
+async function fetchBinaryFileAsBase64(fileUrl, fileName = '', maxSizeBytes = MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES) {
+    const response = await fetch(fileUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(30000),
+    })
+
+    if (!response.ok) {
+        throw new Error(`File fetch failed with HTTP ${response.status}`)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    if (buffer.length > maxSizeBytes) {
+        throw new Error(`File exceeds the 5 MB limit (${buffer.length} bytes)`)
+    }
+
+    const headerMimeType = response.headers?.get('content-type') || ''
+    const fileMimeType = headerMimeType.split(';')[0].trim() || inferMimeTypeFromFileName(fileName)
+
+    return {
+        fileBase64: buffer.toString('base64'),
+        fileMimeType,
+        fileSizeBytes: buffer.length,
+    }
+}
+
+async function getChatAttachmentForAssistantRequest({
+    projectId,
+    objectType,
+    objectId,
+    messageId,
+    expectedFileName = '',
+}) {
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
+    const normalizedObjectType = typeof objectType === 'string' ? objectType.trim() : ''
+    const normalizedObjectId = typeof objectId === 'string' ? objectId.trim() : ''
+    const normalizedMessageId = typeof messageId === 'string' ? messageId.trim() : ''
+    const normalizedExpectedFileName = typeof expectedFileName === 'string' ? expectedFileName.trim() : ''
+
+    if (!normalizedProjectId || !normalizedObjectType || !normalizedObjectId || !normalizedMessageId) {
+        throw new Error('Chat attachment retrieval requires projectId, objectType, objectId, and messageId')
+    }
+
+    const messageDoc = await admin
+        .firestore()
+        .doc(
+            `chatComments/${normalizedProjectId}/${normalizedObjectType}/${normalizedObjectId}/comments/${normalizedMessageId}`
+        )
+        .get()
+
+    if (!messageDoc.exists) {
+        throw new Error('Triggering chat message not found')
+    }
+
+    const messageData = messageDoc.data() || {}
+    if (messageData.fromAssistant) {
+        throw new Error('Chat attachment retrieval only works for user messages')
+    }
+
+    const commentText = typeof messageData.commentText === 'string' ? messageData.commentText : ''
+    const attachments = extractAttachmentTokensFromCommentText(commentText)
+
+    if (attachments.length === 0) {
+        throw new Error('No attachment was found on the triggering chat message')
+    }
+    if (attachments.length > 1) {
+        throw new Error('Multiple attachments were found on the triggering chat message')
+    }
+
+    const attachment = attachments[0]
+    if (normalizedExpectedFileName && attachment.fileName !== normalizedExpectedFileName) {
+        throw new Error(
+            `The triggering attachment does not match the expected file name (${attachment.fileName || 'unknown'})`
+        )
+    }
+
+    const fileData = await fetchBinaryFileAsBase64(attachment.uri, attachment.fileName)
+    return {
+        success: true,
+        fileName: attachment.fileName,
+        fileBase64: fileData.fileBase64,
+        fileMimeType: fileData.fileMimeType,
+        fileSizeBytes: fileData.fileSizeBytes,
+        source: 'chat',
+        messageId: normalizedMessageId,
+    }
 }
 
 function buildMultimodalUserContent(text, imageUrls = []) {

@@ -49,6 +49,17 @@ async function getGmailClient(userId, projectId) {
     return google.gmail({ version: 'v1', auth: oauth2Client })
 }
 
+async function getConnectedGmailAccountMap(userId) {
+    const accounts = await getConnectedGmailAccounts(userId)
+    const byProjectId = new Map()
+
+    accounts.forEach(account => {
+        byProjectId.set(account.projectId, account)
+    })
+
+    return { accounts, byProjectId }
+}
+
 async function loadLabelNameMap(gmail) {
     const response = await gmail.users.labels.list({ userId: 'me' })
     const labels = Array.isArray(response?.data?.labels) ? response.data.labels : []
@@ -159,6 +170,7 @@ async function searchConnectedAccount({ userId, account, query, limit, includeBo
                 date: internalDate ? new Date(internalDate).toISOString() : normalizedMessage.date || '',
                 snippet: normalizedMessage.snippet || '',
                 body: includeBodies ? normalizedMessage.bodyText || '' : '',
+                attachments: Array.isArray(normalizedMessage.attachments) ? normalizedMessage.attachments : [],
                 labelIds,
                 labelNames,
                 ...buildSpecialFlags(labelIds),
@@ -260,8 +272,98 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
     }
 }
 
+async function getGmailAttachmentForAssistantRequest({
+    userId,
+    messageId,
+    attachmentId,
+    projectId = '',
+    maxSizeBytes = 5 * 1024 * 1024,
+}) {
+    const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
+    const normalizedMessageId = typeof messageId === 'string' ? messageId.trim() : ''
+    const normalizedAttachmentId = typeof attachmentId === 'string' ? attachmentId.trim() : ''
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
+
+    if (!normalizedUserId) throw new Error('A valid userId is required')
+    if (!normalizedMessageId) throw new Error('A valid messageId is required')
+    if (!normalizedAttachmentId) throw new Error('A valid attachmentId is required')
+
+    const { accounts, byProjectId } = await getConnectedGmailAccountMap(normalizedUserId)
+    if (accounts.length === 0) {
+        throw new Error('No connected Gmail accounts were found for this user. Please connect Gmail first.')
+    }
+
+    const candidateAccounts = normalizedProjectId
+        ? [byProjectId.get(normalizedProjectId)].filter(Boolean)
+        : [...accounts]
+
+    for (const account of candidateAccounts) {
+        try {
+            const gmail = await getGmailClient(normalizedUserId, account.projectId)
+            const detailResponse = await gmail.users.messages.get({
+                userId: 'me',
+                id: normalizedMessageId,
+                format: 'full',
+            })
+            const message = detailResponse?.data || null
+            if (!message) continue
+
+            const normalizedMessage = normalizeGmailMessage(message, 0)
+            const attachmentMeta = (normalizedMessage.attachments || []).find(
+                attachment => attachment.attachmentId === normalizedAttachmentId
+            )
+            if (!attachmentMeta) continue
+
+            const sizeBytes = Number(attachmentMeta.sizeBytes || 0)
+            if (sizeBytes > maxSizeBytes) {
+                throw new Error(`Gmail attachment exceeds the 5 MB limit (${sizeBytes} bytes)`)
+            }
+
+            const attachmentResponse = await gmail.users.messages.attachments.get({
+                userId: 'me',
+                messageId: normalizedMessageId,
+                id: normalizedAttachmentId,
+            })
+            const attachmentData = attachmentResponse?.data?.data || ''
+            if (!attachmentData) {
+                throw new Error('Gmail attachment content is empty')
+            }
+
+            const normalizedBase64 = attachmentData.replace(/-/g, '+').replace(/_/g, '/')
+            const buffer = Buffer.from(normalizedBase64, 'base64')
+            if (buffer.length > maxSizeBytes) {
+                throw new Error(`Gmail attachment exceeds the 5 MB limit (${buffer.length} bytes)`)
+            }
+
+            return {
+                success: true,
+                fileName: attachmentMeta.fileName,
+                fileBase64: buffer.toString('base64'),
+                fileMimeType: attachmentMeta.mimeType || 'application/octet-stream',
+                fileSizeBytes: buffer.length,
+                source: 'gmail',
+                projectId: account.projectId,
+                gmailEmail: account.gmailEmail || null,
+                messageId: normalizedMessageId,
+                attachmentId: normalizedAttachmentId,
+            }
+        } catch (error) {
+            const message = error?.message || ''
+            const notFound =
+                message.includes('Not Found') ||
+                message.includes('Requested entity was not found') ||
+                message.includes('404')
+            if (notFound) continue
+            throw error
+        }
+    }
+
+    throw new Error('The requested Gmail attachment could not be found in the connected accounts')
+}
+
 module.exports = {
     getConnectedGmailAccounts,
+    getGmailAttachmentForAssistantRequest,
     getGmailClient,
     searchGmailForAssistantRequest,
 }
