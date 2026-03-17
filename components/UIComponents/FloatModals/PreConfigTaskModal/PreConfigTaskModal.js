@@ -118,6 +118,10 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         }
     }
     const [iframeDiscoveryStatus, setIframeDiscoveryStatus] = useState(getInitialIframeDiscoveryStatus)
+    const externalIntegrationDetails =
+        task?.taskMetadata?.externalIntegration && typeof task.taskMetadata.externalIntegration === 'object'
+            ? task.taskMetadata.externalIntegration
+            : null
 
     const applyCurrentUserRecurrenceConfig = baseTask => {
         const currentUserId = loggedUser.uid
@@ -506,6 +510,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     webhookAuth={webhookAuth}
                     setWebhookAuth={setWebhookAuth}
                     iframeDiscoveryStatus={iframeDiscoveryStatus}
+                    externalIntegrationDetails={externalIntegrationDetails}
                 />
             )}
         </View>

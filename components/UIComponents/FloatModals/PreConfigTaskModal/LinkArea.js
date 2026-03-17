@@ -14,9 +14,17 @@ export default function LinkArea({
     isValid,
     showDiscoveryStatus = false,
     discoveryStatus = null,
+    externalIntegrationDetails = null,
 }) {
     const trimmedLink = typeof link === 'string' ? link.trim() : ''
     const shouldShowStatus = showDiscoveryStatus && !!trimmedLink && isValid
+    const integrationName =
+        typeof externalIntegrationDetails?.integrationName === 'string'
+            ? externalIntegrationDetails.integrationName
+            : ''
+    const manifestUrl =
+        typeof externalIntegrationDetails?.manifestUrl === 'string' ? externalIntegrationDetails.manifestUrl : ''
+    const discoveredTools = Array.isArray(externalIntegrationDetails?.tools) ? externalIntegrationDetails.tools : []
 
     const getStatusData = () => {
         if (!shouldShowStatus) return null
@@ -55,6 +63,47 @@ export default function LinkArea({
             />
             {!isValid && !!trimmedLink && <Text style={localStyles.feedback}>{translate('The link is invalid')}</Text>}
             {!!statusData && <Text style={[localStyles.feedback, statusData.style]}>{statusData.text}</Text>}
+            {showDiscoveryStatus && (integrationName || manifestUrl || discoveredTools.length > 0) && (
+                <View style={localStyles.detailsCard}>
+                    <Text style={localStyles.detailsTitle}>{translate('Discovered app tools')}</Text>
+                    {!!integrationName && (
+                        <View style={localStyles.detailSection}>
+                            <Text style={localStyles.detailLabel}>{translate('Integration')}</Text>
+                            <Text style={localStyles.detailValue}>{integrationName}</Text>
+                        </View>
+                    )}
+                    {!!manifestUrl && (
+                        <View style={localStyles.detailSection}>
+                            <Text style={localStyles.detailLabel}>{translate('Manifest URL')}</Text>
+                            <Text style={localStyles.detailValue}>{manifestUrl}</Text>
+                        </View>
+                    )}
+                    {discoveredTools.length > 0 && (
+                        <View style={localStyles.detailSection}>
+                            <Text style={localStyles.detailLabel}>{translate('Tool descriptions')}</Text>
+                            {discoveredTools.map((tool, index) => {
+                                const toolName =
+                                    typeof tool?.name === 'string' && tool.name.trim()
+                                        ? tool.name.trim()
+                                        : typeof tool?.key === 'string' && tool.key.trim()
+                                        ? tool.key.trim()
+                                        : `Tool ${index + 1}`
+                                const toolDescription =
+                                    typeof tool?.description === 'string' ? tool.description.trim() : ''
+
+                                return (
+                                    <View key={`${toolName}-${index}`} style={localStyles.toolItem}>
+                                        <Text style={localStyles.toolName}>{toolName}</Text>
+                                        {!!toolDescription && (
+                                            <Text style={localStyles.toolDescription}>{toolDescription}</Text>
+                                        )}
+                                    </View>
+                                )
+                            })}
+                        </View>
+                    )}
+                </View>
+            )}
         </View>
     )
 }
@@ -93,5 +142,45 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         minHeight: 96,
         maxHeight: 96,
+    },
+    detailsCard: {
+        marginTop: 12,
+        padding: 12,
+        borderRadius: 6,
+        backgroundColor: colors.Secondary300,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+    },
+    detailsTitle: {
+        ...styles.subtitle2,
+        color: colors.Text01,
+        marginBottom: 8,
+    },
+    detailSection: {
+        marginTop: 8,
+    },
+    detailLabel: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginBottom: 2,
+    },
+    detailValue: {
+        ...styles.body2,
+        color: colors.Text01,
+    },
+    toolItem: {
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: colors.Grey400,
+    },
+    toolName: {
+        ...styles.subtitle2,
+        color: colors.Text01,
+        marginBottom: 2,
+    },
+    toolDescription: {
+        ...styles.body2,
+        color: colors.Text02,
     },
 })

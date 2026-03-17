@@ -121,6 +121,7 @@ const MemoizedModalContent = memo(
         webhookAuth,
         setWebhookAuth,
         iframeDiscoveryStatus,
+        externalIntegrationDetails,
     }) => {
         const handleModalClick = useCallback(e => {
             const target = e.target
@@ -376,6 +377,7 @@ const MemoizedModalContent = memo(
                         isValid={checkIfIsValidLink()}
                         showDiscoveryStatus={taskType === TASK_TYPE_IFRAME}
                         discoveryStatus={iframeDiscoveryStatus}
+                        externalIntegrationDetails={externalIntegrationDetails}
                     />
                 )}
                 {!disabled && (
@@ -424,6 +426,8 @@ const MemoizedModalContent = memo(
             prevProps.iframeDiscoveryStatus?.loading === nextProps.iframeDiscoveryStatus?.loading &&
             prevProps.iframeDiscoveryStatus?.toolsCount === nextProps.iframeDiscoveryStatus?.toolsCount &&
             prevProps.iframeDiscoveryStatus?.error === nextProps.iframeDiscoveryStatus?.error &&
+            JSON.stringify(prevProps.externalIntegrationDetails || {}) ===
+                JSON.stringify(nextProps.externalIntegrationDetails || {}) &&
             compareArrays(prevProps.variables, nextProps.variables)
         )
     }
@@ -471,6 +475,7 @@ export default function TaskModal({
     webhookAuth = '',
     setWebhookAuth,
     iframeDiscoveryStatus = null,
+    externalIntegrationDetails = null,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -801,6 +806,7 @@ export default function TaskModal({
                         webhookAuth={webhookAuth}
                         setWebhookAuth={setWebhookAuth}
                         iframeDiscoveryStatus={iframeDiscoveryStatus}
+                        externalIntegrationDetails={externalIntegrationDetails}
                     />
                 </View>
             )}
