@@ -6059,7 +6059,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes('get_gmail_attachment')) {
         messages.push([
             'system',
-            'When the user wants to use a PDF or other file from Gmail with an external app tool, first use search_gmail to find the message and attachment metadata, then call get_gmail_attachment with the selected messageId and attachmentId, then pass the returned fileName and fileBase64 into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+            'When the user wants to use a PDF or other file from Gmail with an external app tool, first use search_gmail to find the message and attachment metadata, then call get_gmail_attachment with the exact messageId and attachmentId from the same search result item. If search_gmail returned a projectId for that same result, reuse that exact projectId too; do not invent or substitute a different projectId. Then pass the returned fileName and fileBase64 into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(

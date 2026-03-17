@@ -294,7 +294,10 @@ async function getGmailAttachmentForAssistantRequest({
     }
 
     const candidateAccounts = normalizedProjectId
-        ? [byProjectId.get(normalizedProjectId)].filter(Boolean)
+        ? [
+              ...[byProjectId.get(normalizedProjectId)].filter(Boolean),
+              ...accounts.filter(account => account.projectId !== normalizedProjectId),
+          ]
         : [...accounts]
 
     for (const account of candidateAccounts) {
