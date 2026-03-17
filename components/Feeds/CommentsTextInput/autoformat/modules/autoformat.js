@@ -601,17 +601,17 @@ Autoformat.DEFAULTS = {
         transform: '$1',
         insert: 'hashtag',
     },
-
-    link: {
-        trigger: /[\s\r?\n]/,
-        find: /((https?|ftp):\/\/[\S]+|(www\.[\S]+))|([\S]+\.[a-zA-Z]{2,}[\S]*)/gi,
-        insert: 'url',
-    },
     email: {
         trigger: /[\s.,;:!?]/,
         find: /\S+@\S+\.\S+/i,
         extract: /^\S+@\S+$/i,
         insert: 'email',
+    },
+    link: {
+        trigger: /[\s\r?\n]/,
+        find: /(?:^|\s)((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([^\s@]+\.[a-zA-Z]{2,}[^\s@]*))/gi,
+        extract: /((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([^\s@]+\.[a-zA-Z]{2,}[^\s@]*))/i,
+        insert: 'url',
     },
 }
 
