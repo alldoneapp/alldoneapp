@@ -26,6 +26,40 @@ export default function LinkArea({
         typeof externalIntegrationDetails?.manifestUrl === 'string' ? externalIntegrationDetails.manifestUrl : ''
     const discoveredTools = Array.isArray(externalIntegrationDetails?.tools) ? externalIntegrationDetails.tools : []
 
+    const getSchemaTypeLabel = schema => {
+        if (!schema || typeof schema !== 'object') return 'any'
+        if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+            return (
+                schema.oneOf
+                    .map(option => option?.type)
+                    .filter(Boolean)
+                    .join(' | ') || 'any'
+            )
+        }
+        if (schema.type === 'array') {
+            const itemType = schema.items?.type || 'any'
+            return `array<${itemType}>`
+        }
+        return schema.type || 'any'
+    }
+
+    const getToolParameters = tool => {
+        const inputSchema = tool?.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {}
+        const properties =
+            inputSchema.properties && typeof inputSchema.properties === 'object' ? inputSchema.properties : {}
+        const required = new Set(Array.isArray(inputSchema.required) ? inputSchema.required : [])
+
+        return Object.entries(properties).map(([paramName, paramSchema]) => ({
+            name: paramName,
+            type: getSchemaTypeLabel(paramSchema),
+            description:
+                typeof paramSchema?.description === 'string' && paramSchema.description.trim()
+                    ? paramSchema.description.trim()
+                    : '',
+            required: required.has(paramName),
+        }))
+    }
+
     const getStatusData = () => {
         if (!shouldShowStatus) return null
         if (discoveryStatus?.loading) {
@@ -90,6 +124,7 @@ export default function LinkArea({
                                         : `Tool ${index + 1}`
                                 const toolDescription =
                                     typeof tool?.description === 'string' ? tool.description.trim() : ''
+                                const parameters = getToolParameters(tool)
 
                                 return (
                                     <View key={`${toolName}-${index}`} style={localStyles.toolItem}>
@@ -97,6 +132,35 @@ export default function LinkArea({
                                         {!!toolDescription && (
                                             <Text style={localStyles.toolDescription}>{toolDescription}</Text>
                                         )}
+                                        <View style={localStyles.parametersSection}>
+                                            <Text style={localStyles.parametersTitle}>{translate('Parameters')}</Text>
+                                            {parameters.length === 0 ? (
+                                                <Text style={localStyles.emptyParametersText}>
+                                                    {translate('No parameters')}
+                                                </Text>
+                                            ) : (
+                                                parameters.map(parameter => (
+                                                    <View
+                                                        key={`${toolName}-${parameter.name}`}
+                                                        style={localStyles.parameterItem}
+                                                    >
+                                                        <Text style={localStyles.parameterName}>
+                                                            {parameter.name}
+                                                            <Text style={localStyles.parameterMeta}>
+                                                                {` (${parameter.type}, ${translate(
+                                                                    parameter.required ? 'Required' : 'Optional'
+                                                                )})`}
+                                                            </Text>
+                                                        </Text>
+                                                        {!!parameter.description && (
+                                                            <Text style={localStyles.parameterDescription}>
+                                                                {parameter.description}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                ))
+                                            )}
+                                        </View>
                                     </View>
                                 )
                             })}
@@ -182,5 +246,32 @@ const localStyles = StyleSheet.create({
     toolDescription: {
         ...styles.body2,
         color: colors.Text01,
+    },
+    parametersSection: {
+        marginTop: 10,
+    },
+    parametersTitle: {
+        ...styles.caption2,
+        color: '#ffffff',
+        marginBottom: 4,
+    },
+    emptyParametersText: {
+        ...styles.body2,
+        color: colors.Text02,
+    },
+    parameterItem: {
+        marginTop: 6,
+    },
+    parameterName: {
+        ...styles.body2,
+        color: '#ffffff',
+    },
+    parameterMeta: {
+        color: colors.Text02,
+    },
+    parameterDescription: {
+        ...styles.caption2,
+        color: colors.Text01,
+        marginTop: 1,
     },
 })
