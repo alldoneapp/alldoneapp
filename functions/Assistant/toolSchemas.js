@@ -476,9 +476,15 @@ const toolSchemas = {
                         type: 'string',
                         description: 'The Gmail message ID containing the attachment.',
                     },
+                    fileName: {
+                        type: 'string',
+                        description:
+                            'The exact attachment file name from the search_gmail result item. Prefer this over attachmentId so the backend can resolve the right attachment inside the message.',
+                    },
                     attachmentId: {
                         type: 'string',
-                        description: 'The Gmail attachment ID from search_gmail results.',
+                        description:
+                            'Optional Gmail attachment ID from search_gmail results. Use only as a fallback when fileName is unavailable.',
                     },
                     projectId: {
                         type: 'string',
@@ -486,7 +492,7 @@ const toolSchemas = {
                             'Optional project ID if the Gmail account context must be constrained to a specific connected project.',
                     },
                 },
-                required: ['messageId', 'attachmentId'],
+                required: ['messageId', 'fileName'],
             },
         },
     },

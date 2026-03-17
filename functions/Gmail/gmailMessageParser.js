@@ -43,9 +43,10 @@ function collectAttachments(payload, attachments = []) {
 
     const fileName = typeof payload.filename === 'string' ? payload.filename.trim() : ''
     const attachmentId = typeof payload.body?.attachmentId === 'string' ? payload.body.attachmentId.trim() : ''
+    const bodyData = typeof payload.body?.data === 'string' ? payload.body.data.trim() : ''
     const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType.trim() : ''
 
-    if (fileName && attachmentId) {
+    if (fileName && (attachmentId || bodyData)) {
         attachments.push({
             attachmentId,
             fileName,

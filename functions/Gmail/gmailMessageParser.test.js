@@ -20,6 +20,11 @@ describe('gmailMessageParser attachments', () => {
                     disposition: 'inline',
                     body: { attachmentId: 'att-2', size: 456 },
                 },
+                {
+                    filename: 'embedded.pdf',
+                    mimeType: 'application/pdf',
+                    body: { data: 'SGVsbG8=', size: 5 },
+                },
             ],
         }
 
@@ -37,6 +42,13 @@ describe('gmailMessageParser attachments', () => {
                 mimeType: 'image/png',
                 sizeBytes: 456,
                 inline: true,
+            },
+            {
+                attachmentId: '',
+                fileName: 'embedded.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 5,
+                inline: false,
             },
         ])
     })

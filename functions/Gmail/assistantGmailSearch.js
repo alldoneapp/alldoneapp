@@ -9,6 +9,8 @@ const { normalizeGmailMessage } = require('./gmailMessageParser')
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
 const MAX_BODY_LENGTH = 4000
+const DEFAULT_GMAIL_RETRY_ATTEMPTS = 3
+const DEFAULT_GMAIL_RETRY_BASE_DELAY_MS = 250
 const SPECIAL_FLAG_LABELS = {
     isUnread: 'UNREAD',
     isInbox: 'INBOX',
@@ -78,6 +80,82 @@ function buildSpecialFlags(labelIds = []) {
         acc[key] = labelSet.has(SPECIAL_FLAG_LABELS[key])
         return acc
     }, {})
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function normalizeBase64UrlToBuffer(base64Url = '') {
+    const normalized = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const padding = normalized.length % 4
+    const padded = padding === 0 ? normalized : normalized + '='.repeat(4 - padding)
+    return Buffer.from(padded, 'base64')
+}
+
+function isTransientGmailError(error) {
+    const status = error?.code || error?.status || error?.response?.status
+    if ([429, 500, 502, 503, 504].includes(Number(status))) return true
+
+    const message = (error?.message || '').toLowerCase()
+    return (
+        message.includes('rate limit') ||
+        message.includes('quota exceeded') ||
+        message.includes('backend error') ||
+        message.includes('temporarily unavailable') ||
+        message.includes('timeout') ||
+        message.includes('econnreset') ||
+        message.includes('etimedout')
+    )
+}
+
+async function withGmailRetry(operation) {
+    let attempt = 0
+    let lastError = null
+
+    while (attempt < DEFAULT_GMAIL_RETRY_ATTEMPTS) {
+        try {
+            return await operation()
+        } catch (error) {
+            lastError = error
+            attempt += 1
+
+            if (attempt >= DEFAULT_GMAIL_RETRY_ATTEMPTS || !isTransientGmailError(error)) {
+                throw error
+            }
+
+            const delayMs = DEFAULT_GMAIL_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1)
+            await sleep(delayMs)
+        }
+    }
+
+    throw lastError || new Error('Unknown Gmail request failure')
+}
+
+function collectAttachmentParts(payload, parts = []) {
+    if (!payload) return parts
+
+    const fileName = typeof payload.filename === 'string' ? payload.filename.trim() : ''
+    const attachmentId = typeof payload.body?.attachmentId === 'string' ? payload.body.attachmentId.trim() : ''
+    const bodyData = typeof payload.body?.data === 'string' ? payload.body.data.trim() : ''
+    const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType.trim() : ''
+
+    if (fileName && (attachmentId || bodyData)) {
+        parts.push({
+            attachmentId,
+            bodyData,
+            fileName,
+            mimeType,
+            sizeBytes: Number(payload.body?.size || 0),
+            inline: String(payload.disposition || '').toLowerCase() === 'inline',
+        })
+    }
+
+    if (Array.isArray(payload.parts)) {
+        payload.parts.forEach(part => collectAttachmentParts(part, parts))
+    }
+
+    return parts
 }
 
 async function getConnectedGmailAccounts(userId) {
@@ -275,18 +353,22 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
 async function getGmailAttachmentForAssistantRequest({
     userId,
     messageId,
+    fileName = '',
     attachmentId,
     projectId = '',
     maxSizeBytes = 5 * 1024 * 1024,
 }) {
     const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
     const normalizedMessageId = typeof messageId === 'string' ? messageId.trim() : ''
+    const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : ''
     const normalizedAttachmentId = typeof attachmentId === 'string' ? attachmentId.trim() : ''
     const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
 
     if (!normalizedUserId) throw new Error('A valid userId is required')
     if (!normalizedMessageId) throw new Error('A valid messageId is required')
-    if (!normalizedAttachmentId) throw new Error('A valid attachmentId is required')
+    if (!normalizedFileName && !normalizedAttachmentId) {
+        throw new Error('A valid fileName or attachmentId is required')
+    }
 
     const { accounts, byProjectId } = await getConnectedGmailAccountMap(normalizedUserId)
     if (accounts.length === 0) {
@@ -303,18 +385,29 @@ async function getGmailAttachmentForAssistantRequest({
     for (const account of candidateAccounts) {
         try {
             const gmail = await getGmailClient(normalizedUserId, account.projectId)
-            const detailResponse = await gmail.users.messages.get({
-                userId: 'me',
-                id: normalizedMessageId,
-                format: 'full',
-            })
+            const detailResponse = await withGmailRetry(() =>
+                gmail.users.messages.get({
+                    userId: 'me',
+                    id: normalizedMessageId,
+                    format: 'full',
+                })
+            )
             const message = detailResponse?.data || null
             if (!message) continue
 
             const normalizedMessage = normalizeGmailMessage(message, 0)
-            const attachmentMeta = (normalizedMessage.attachments || []).find(
-                attachment => attachment.attachmentId === normalizedAttachmentId
-            )
+            const attachments = normalizedMessage.attachments || []
+            const attachmentParts = collectAttachmentParts(message.payload || {})
+            const attachmentMetaByFileName = normalizedFileName
+                ? attachments.filter(attachment => attachment.fileName === normalizedFileName)
+                : []
+            if (attachmentMetaByFileName.length > 1) {
+                throw new Error(`Multiple Gmail attachments named "${normalizedFileName}" were found in that message`)
+            }
+            const attachmentMetaByAttachmentId = normalizedAttachmentId
+                ? attachments.find(attachment => attachment.attachmentId === normalizedAttachmentId)
+                : null
+            const attachmentMeta = attachmentMetaByFileName[0] || attachmentMetaByAttachmentId
             if (!attachmentMeta) continue
 
             const sizeBytes = Number(attachmentMeta.sizeBytes || 0)
@@ -322,18 +415,32 @@ async function getGmailAttachmentForAssistantRequest({
                 throw new Error(`Gmail attachment exceeds the 5 MB limit (${sizeBytes} bytes)`)
             }
 
-            const attachmentResponse = await gmail.users.messages.attachments.get({
-                userId: 'me',
-                messageId: normalizedMessageId,
-                id: normalizedAttachmentId,
+            const attachmentPart = attachmentParts.find(part => {
+                if (normalizedFileName) return part.fileName === attachmentMeta.fileName
+                return normalizedAttachmentId && part.attachmentId === normalizedAttachmentId
             })
-            const attachmentData = attachmentResponse?.data?.data || ''
-            if (!attachmentData) {
-                throw new Error('Gmail attachment content is empty')
+            if (!attachmentPart) continue
+
+            let buffer = null
+            if (attachmentPart.bodyData) {
+                buffer = normalizeBase64UrlToBuffer(attachmentPart.bodyData)
+            } else if (attachmentPart.attachmentId) {
+                const attachmentResponse = await withGmailRetry(() =>
+                    gmail.users.messages.attachments.get({
+                        userId: 'me',
+                        messageId: normalizedMessageId,
+                        id: attachmentPart.attachmentId,
+                    })
+                )
+                const attachmentData = attachmentResponse?.data?.data || ''
+                if (!attachmentData) {
+                    throw new Error('Gmail attachment content is empty')
+                }
+                buffer = normalizeBase64UrlToBuffer(attachmentData)
+            } else {
+                throw new Error('Gmail attachment content is not available')
             }
 
-            const normalizedBase64 = attachmentData.replace(/-/g, '+').replace(/_/g, '/')
-            const buffer = Buffer.from(normalizedBase64, 'base64')
             if (buffer.length > maxSizeBytes) {
                 throw new Error(`Gmail attachment exceeds the 5 MB limit (${buffer.length} bytes)`)
             }
@@ -348,7 +455,7 @@ async function getGmailAttachmentForAssistantRequest({
                 projectId: account.projectId,
                 gmailEmail: account.gmailEmail || null,
                 messageId: normalizedMessageId,
-                attachmentId: normalizedAttachmentId,
+                attachmentId: attachmentPart.attachmentId || attachmentMeta.attachmentId || '',
             }
         } catch (error) {
             const message = error?.message || ''

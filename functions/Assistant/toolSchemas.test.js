@@ -50,7 +50,7 @@ describe('Gmail assistant tool schemas', () => {
     })
 
     test('defines required fields for Gmail attachment fetch', () => {
-        expect(toolSchemas.get_gmail_attachment.function.parameters.required).toEqual(['messageId', 'attachmentId'])
+        expect(toolSchemas.get_gmail_attachment.function.parameters.required).toEqual(['messageId', 'fileName'])
         expect(toolSchemas.get_chat_attachment.function.parameters.required).toEqual([])
     })
 })
