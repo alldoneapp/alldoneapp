@@ -42,6 +42,11 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
 const { getToolSchemasCacheContextVersion } = require('./toolSchemaCacheVersion')
 const { getUserMemoryContextMessage, updateUserMemory } = require('./userMemoryHelper')
+const {
+    buildConversationSafeToolResult,
+    buildPendingAttachmentPayload,
+    injectPendingAttachmentIntoToolArgs,
+} = require('./attachmentToolHandoff')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -1306,6 +1311,7 @@ async function collectAssistantTextWithToolCalls({
     let currentToolCalls = null
     let toolCallIteration = 0
     const executedToolNames = []
+    let pendingAttachmentPayload = null
 
     const collectStreamContent = async activeStream => {
         let nextToolCalls = null
@@ -1335,6 +1341,10 @@ async function collectAssistantTextWithToolCalls({
             throw new Error(`Failed to parse tool arguments for ${toolName}`)
         }
 
+        const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload)
+        toolArgs = enrichedToolArgs.toolArgs
+        if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
+
         const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
         if (!isAllowed) {
             throw new Error(`Tool not permitted: ${toolName}`)
@@ -1350,6 +1360,8 @@ async function collectAssistantTextWithToolCalls({
             toolRuntimeContext
         )
         executedToolNames.push(toolName)
+        const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
+        pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
 
         currentConversation = [
             ...currentConversation,
@@ -1369,7 +1381,7 @@ async function collectAssistantTextWithToolCalls({
             },
             {
                 role: 'tool',
-                content: JSON.stringify(toolResult),
+                content: JSON.stringify(conversationSafeToolResult),
                 tool_call_id: toolCallId,
             },
             {
@@ -5049,6 +5061,7 @@ async function storeChunks(
                 let currentConversation = conversationHistory
                 let currentToolCalls = chunk.additional_kwargs.tool_calls
                 let toolCallIteration = 0
+                let pendingAttachmentPayload = null
 
                 while (
                     currentToolCalls &&
@@ -5082,6 +5095,14 @@ async function storeChunks(
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
+
+                    const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
+                        toolName,
+                        toolArgs,
+                        pendingAttachmentPayload
+                    )
+                    toolArgs = enrichedToolArgs.toolArgs
+                    if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
 
                     // Check permissions
                     const assistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
@@ -5190,6 +5211,9 @@ async function storeChunks(
                     }
                     stopToolProgressUpdates = true
                     clearInterval(toolProgressInterval)
+                    const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
+                    pendingAttachmentPayload =
+                        buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
 
                     // Build new conversation history with tool result
                     // Need to add: assistant's message with tool call, then tool result message
@@ -5222,7 +5246,7 @@ async function storeChunks(
                         },
                         {
                             role: 'tool',
-                            content: JSON.stringify(toolResult),
+                            content: JSON.stringify(conversationSafeToolResult),
                             tool_call_id: toolCallId,
                         },
                         {
@@ -6722,4 +6746,7 @@ module.exports = {
     getMessageTextForTokenCounting,
     buildMultimodalUserContent,
     collectAssistantTextWithToolCalls,
+    buildConversationSafeToolResult,
+    buildPendingAttachmentPayload,
+    injectPendingAttachmentIntoToolArgs,
 }
