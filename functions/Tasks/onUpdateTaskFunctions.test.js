@@ -79,12 +79,13 @@ jest.mock('../Feeds/tasksFeeds', () => ({
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
-const { archiveCompletedGmailTaskIfNeeded } = require('./onUpdateTaskFunctions')
+const { archiveGmailTaskIfNeeded } = require('./onUpdateTaskFunctions')
 
 describe('onUpdateTaskFunctions Gmail archive handling', () => {
     const baseTask = {
         userId: 'user-1',
         done: false,
+        dueDate: 1000,
         gmailData: {
             origin: 'gmail_label_follow_up',
             projectId: 'gmail-project',
@@ -111,7 +112,7 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
             },
         })
 
-        await archiveCompletedGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
+        await archiveGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
             ...baseTask,
             done: true,
         })
@@ -144,7 +145,7 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         getAccessToken.mockRejectedValue(new Error('User not authenticated with Google for gmail'))
 
         await expect(
-            archiveCompletedGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
+            archiveGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
                 ...baseTask,
                 done: true,
             })
@@ -166,7 +167,7 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
     })
 
     test('skips already archived Gmail-origin tasks', async () => {
-        await archiveCompletedGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
+        await archiveGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
             ...baseTask,
             done: true,
             gmailData: {
@@ -179,5 +180,42 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
 
         expect(getAccessToken).not.toHaveBeenCalled()
         expect(admin.__mock.update).not.toHaveBeenCalled()
+    })
+
+    test('archives Gmail-origin message when task is postponed', async () => {
+        const modify = jest.fn(() => Promise.resolve())
+        const setCredentials = jest.fn()
+
+        getAccessToken.mockResolvedValue('token-1')
+        getOAuth2Client.mockReturnValue({ setCredentials })
+        google.gmail.mockReturnValue({
+            users: {
+                messages: {
+                    modify,
+                },
+            },
+        })
+
+        await archiveGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
+            ...baseTask,
+            dueDate: 2000,
+        })
+
+        expect(getAccessToken).toHaveBeenCalledWith('user-1', 'gmail-project', 'gmail')
+        expect(modify).toHaveBeenCalledWith({
+            userId: 'me',
+            id: 'msg-1',
+            requestBody: {
+                removeLabelIds: ['INBOX'],
+            },
+        })
+        expect(admin.__mock.update).toHaveBeenCalledWith({
+            gmailData: expect.objectContaining({
+                archiveStatus: expect.objectContaining({
+                    state: 'completed',
+                    messageId: 'msg-1',
+                }),
+            }),
+        })
     })
 })

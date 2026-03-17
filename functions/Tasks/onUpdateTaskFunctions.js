@@ -46,8 +46,16 @@ async function updateTaskGmailArchiveStatus(projectId, taskId, gmailData, archiv
         })
 }
 
-async function archiveCompletedGmailTaskIfNeeded(projectId, taskId, oldTask, newTask) {
-    if (oldTask.done || !newTask.done) return
+const shouldArchiveGmailTask = (oldTask, newTask) => {
+    const completedNow = !oldTask.done && newTask.done
+    const postponedNow =
+        typeof oldTask.dueDate === 'number' && typeof newTask.dueDate === 'number' && newTask.dueDate > oldTask.dueDate
+
+    return completedNow || postponedNow
+}
+
+async function archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask) {
+    if (!shouldArchiveGmailTask(oldTask, newTask)) return
 
     const gmailData = newTask.gmailData || null
     if (!isGmailTaskWithArchiveOnComplete(gmailData)) return
@@ -256,7 +264,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
-    promises.push(archiveCompletedGmailTaskIfNeeded(projectId, taskId, oldTask, newTask))
+    promises.push(archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask))
 
     // Handle recurring task creation when task is completed
     // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
@@ -329,7 +337,8 @@ const onUpdateTask = async (taskId, projectId, change) => {
 }
 
 module.exports = {
-    archiveCompletedGmailTaskIfNeeded,
+    archiveGmailTaskIfNeeded,
     isGmailTaskWithArchiveOnComplete,
     onUpdateTask,
+    shouldArchiveGmailTask,
 }
