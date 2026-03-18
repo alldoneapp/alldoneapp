@@ -82,18 +82,28 @@ async function processBatchForUser(userId, batch) {
         markBatchStage('getOrCreateWhatsAppDailyTopic', topicStart, { chatId })
 
         const storeUserMessagesStart = Date.now()
+        let triggeringMessageId = ''
         for (const item of sortedBatch) {
             const textToStore = item.isVoice ? item.messageText : item.storedMessageText || item.messageText || ''
             const processedMedia = Array.isArray(item.processedMedia) ? item.processedMedia : []
-            await storeUserMessageInTopic(projectId, chatId, userId, textToStore, !!item.isVoice, {
-                imageCount: Number(item.processedImageCount) || 0,
-                mediaCount: processedMedia.length,
-                mediaKinds: [...new Set(processedMedia.map(media => media.kind).filter(Boolean))],
-                fileUnderstandingSummary: buildFileUnderstandingSummary(processedMedia),
-                processedMedia,
-            })
+            triggeringMessageId = await storeUserMessageInTopic(
+                projectId,
+                chatId,
+                userId,
+                textToStore,
+                !!item.isVoice,
+                {
+                    imageCount: Number(item.processedImageCount) || 0,
+                    mediaCount: processedMedia.length,
+                    mediaKinds: [...new Set(processedMedia.map(media => media.kind).filter(Boolean))],
+                    fileUnderstandingSummary: buildFileUnderstandingSummary(processedMedia),
+                    processedMedia,
+                }
+            )
         }
-        markBatchStage('storeUserMessagesInTopic', storeUserMessagesStart)
+        markBatchStage('storeUserMessagesInTopic', storeUserMessagesStart, {
+            triggeringMessageId: triggeringMessageId || null,
+        })
 
         const mergedMessageText = sortedBatch
             .map(item => String(item.messageText || '').trim())
@@ -108,7 +118,7 @@ async function processBatchForUser(userId, batch) {
             mergedMessageText,
             assistantId,
             null,
-            { skipCurrentMessageAppend: true }
+            { skipCurrentMessageAppend: true, messageId: triggeringMessageId }
         )
         markBatchStage('processWhatsAppAssistantMessage', aiStart, {
             aiResponseLength: (aiResponse || '').length,
@@ -392,4 +402,7 @@ function createStageTimer(prefix, baseMeta = {}) {
 
 module.exports = {
     processWhatsAppInboundQueueItem,
+    processBatchForUser,
+    buildFileUnderstandingSummary,
+    buildMediaOutcomeNotice,
 }
