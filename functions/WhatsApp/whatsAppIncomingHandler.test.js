@@ -98,6 +98,32 @@ describe('WhatsApp incoming media filename handling', () => {
         )
     })
 
+    test('getFileNameFromMediaResponse reads content-disposition filenames', () => {
+        const response = {
+            headers: {
+                get: jest.fn(header =>
+                    header === 'content-disposition' ? 'attachment; filename="Invoice-95ECF774-0021.pdf"' : null
+                ),
+            },
+        }
+
+        expect(__private__.getFileNameFromMediaResponse(response)).toBe('Invoice-95ECF774-0021.pdf')
+    })
+
+    test('getFileNameFromMediaResponse reads utf-8 encoded content-disposition filenames', () => {
+        const response = {
+            headers: {
+                get: jest.fn(header =>
+                    header === 'content-disposition'
+                        ? "attachment; filename*=UTF-8''Rechnung%20M%C3%A4rz%202026.pdf"
+                        : null
+                ),
+            },
+        }
+
+        expect(__private__.getFileNameFromMediaResponse(response)).toBe('Rechnung März 2026.pdf')
+    })
+
     test('sanitizeIncomingMediaFileName strips path segments and unsafe empty values', () => {
         expect(__private__.sanitizeIncomingMediaFileName('folder/sub folder/invoice.pdf')).toBe('invoice.pdf')
         expect(__private__.sanitizeIncomingMediaFileName('   ')).toBe('')

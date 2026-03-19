@@ -733,7 +733,8 @@ async function downloadAndStoreTwilioMedia(
         throw new Error(`Media too large (${buffer.length} bytes, limit ${sizeLimit})`)
     }
 
-    const fileName = buildStoredMediaFileName(originalFileName, contentType, mediaUrl, mediaIndex)
+    const responseFileName = getFileNameFromMediaResponse(response)
+    const fileName = buildStoredMediaFileName(originalFileName || responseFileName, contentType, mediaUrl, mediaIndex)
     const datePath = moment().format('DDMMYYYY')
     const randomHash = uuidv4().replace(/-/g, '')
     const filePath = `notesAttachments/${datePath}/${randomHash}/${fileName}`
@@ -823,6 +824,28 @@ function buildStoredMediaFileName(originalFileName, contentType, mediaUrl = '', 
     return `${Date.now()}_${mediaIndex}_${uuidv4()}.${extension}`
 }
 
+function getFileNameFromMediaResponse(response) {
+    const contentDisposition =
+        response?.headers?.get?.('content-disposition') || response?.headers?.get?.('Content-Disposition') || ''
+    if (!contentDisposition) return ''
+
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utf8Match?.[1]) {
+        try {
+            return sanitizeIncomingMediaFileName(decodeURIComponent(utf8Match[1]))
+        } catch (_) {
+            return sanitizeIncomingMediaFileName(utf8Match[1])
+        }
+    }
+
+    const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
+    if (basicMatch?.[1]) {
+        return sanitizeIncomingMediaFileName(basicMatch[1])
+    }
+
+    return ''
+}
+
 function sanitizeIncomingMediaFileName(fileName) {
     const baseName = String(fileName || '')
         .split(/[\\/]/)
@@ -857,6 +880,7 @@ module.exports = {
     __private__: {
         extractMediaItems,
         buildStoredMediaFileName,
+        getFileNameFromMediaResponse,
         sanitizeIncomingMediaFileName,
     },
 }
