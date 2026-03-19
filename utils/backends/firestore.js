@@ -3461,7 +3461,7 @@ export function mapUserData(userId, user) {
         displayName: user.displayName ? user.displayName : '',
         email: user.email ? user.email : '',
         notificationEmail: user.notificationEmail ? user.notificationEmail : '',
-        assistantEmailEnabled: user.assistantEmailEnabled === true,
+        assistantEmailEnabled: user.assistantEmailEnabled !== false,
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],

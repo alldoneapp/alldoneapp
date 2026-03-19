@@ -168,6 +168,7 @@ export async function updateUserDataDirectly(userId, data, batch) {
 
 export async function uploadNewUser(uid, user, project, task, workstream, assistant) {
     const userToStore = { ...user }
+    if (userToStore.assistantEmailEnabled === undefined) userToStore.assistantEmailEnabled = true
     delete userToStore.uid
 
     const projectToStore = { ...project }

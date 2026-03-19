@@ -6,7 +6,7 @@ import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { setUserAssistantEmailEnabled } from '../../../../utils/backends/Users/usersFirestore'
 
-const ANNA_EMAIL_ADDRESS = 'anna@alldone.app'
+const ANNA_EMAIL_ADDRESS = 'anna@alldoneapp.com'
 
 export default function AssistantEmail({ userId, assistantEmailEnabled }) {
     const mobileNav = useSelector(state => state.smallScreenNavigation)
