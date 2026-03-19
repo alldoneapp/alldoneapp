@@ -55,6 +55,10 @@ const getEnvFunctions = () => {
             GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
             GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                 process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+            ANNA_EMAIL_WEBHOOK_BEARER_TOKEN: process.env.ANNA_EMAIL_WEBHOOK_BEARER_TOKEN || '',
+            ANNA_EMAIL_PUBLIC_ADDRESS: process.env.ANNA_EMAIL_PUBLIC_ADDRESS || '',
+            ANNA_EMAIL_WEBHOOK_BASIC_USER: process.env.ANNA_EMAIL_WEBHOOK_BASIC_USER || '',
+            ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
             DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
             APIFY_API_KEY: process.env.APIFY_API_KEY || '',
@@ -90,6 +94,10 @@ const getEnvFunctions = () => {
                     GOOGLE_ANALYTICS_KEY: envJson.GOOGLE_ANALYTICS_KEY || '',
                     GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                         envJson.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                    ANNA_EMAIL_WEBHOOK_BEARER_TOKEN: envJson.ANNA_EMAIL_WEBHOOK_BEARER_TOKEN || '',
+                    ANNA_EMAIL_PUBLIC_ADDRESS: envJson.ANNA_EMAIL_PUBLIC_ADDRESS || '',
+                    ANNA_EMAIL_WEBHOOK_BASIC_USER: envJson.ANNA_EMAIL_WEBHOOK_BASIC_USER || '',
+                    ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: envJson.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                     DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
                     APIFY_API_KEY: envJson.APIFY_API_KEY || '',
@@ -125,6 +133,10 @@ const getEnvFunctions = () => {
                         GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                         GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                             process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                        ANNA_EMAIL_WEBHOOK_BEARER_TOKEN: process.env.ANNA_EMAIL_WEBHOOK_BEARER_TOKEN || '',
+                        ANNA_EMAIL_PUBLIC_ADDRESS: process.env.ANNA_EMAIL_PUBLIC_ADDRESS || '',
+                        ANNA_EMAIL_WEBHOOK_BASIC_USER: process.env.ANNA_EMAIL_WEBHOOK_BASIC_USER || '',
+                        ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                         DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                         TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                         APIFY_API_KEY: process.env.APIFY_API_KEY || '',
@@ -155,6 +167,10 @@ const getEnvFunctions = () => {
                     GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                     GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                         process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                    ANNA_EMAIL_WEBHOOK_BEARER_TOKEN: process.env.ANNA_EMAIL_WEBHOOK_BEARER_TOKEN || '',
+                    ANNA_EMAIL_PUBLIC_ADDRESS: process.env.ANNA_EMAIL_PUBLIC_ADDRESS || '',
+                    ANNA_EMAIL_WEBHOOK_BASIC_USER: process.env.ANNA_EMAIL_WEBHOOK_BASIC_USER || '',
+                    ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                     DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                 }
@@ -184,6 +200,10 @@ const getEnvFunctions = () => {
                 GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                 GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                     process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
+                ANNA_EMAIL_WEBHOOK_BEARER_TOKEN: process.env.ANNA_EMAIL_WEBHOOK_BEARER_TOKEN || '',
+                ANNA_EMAIL_PUBLIC_ADDRESS: process.env.ANNA_EMAIL_PUBLIC_ADDRESS || '',
+                ANNA_EMAIL_WEBHOOK_BASIC_USER: process.env.ANNA_EMAIL_WEBHOOK_BASIC_USER || '',
+                ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                 DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                 APIFY_API_KEY: process.env.APIFY_API_KEY || '',
