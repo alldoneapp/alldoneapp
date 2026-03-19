@@ -7,6 +7,8 @@ const {
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
     pickActionableAttachment,
+    stripHtmlToText,
+    trimQuotedReplyText,
     verifyInboundEmailSignature,
 } = require('./emailChannelHelpers')
 const { normalizeInboundEmailPayload } = require('./emailIncomingHandler')
@@ -30,6 +32,31 @@ describe('emailChannelHelpers', () => {
         expect(buildEmailCommentText('Invoice March', 'Please process this invoice')).toBe(
             'Subject: Invoice March\n\nPlease process this invoice'
         )
+    })
+
+    test('falls back to html body when plain text body is missing', () => {
+        expect(buildEmailCommentText('Invoice March', '', '<p>Please process <strong>this</strong> invoice</p>')).toBe(
+            'Subject: Invoice March\n\nPlease process this invoice'
+        )
+    })
+
+    test('strips basic html tags into readable text', () => {
+        expect(stripHtmlToText('<div>Hello<br>World</div>')).toBe('Hello\nWorld')
+    })
+
+    test('trims quoted reply chains from plain text bodies', () => {
+        expect(
+            trimQuotedReplyText('Please do this\n\nOn Tue, Mar 19, 2026 at 10:00 AM Anna wrote:\n> older text')
+        ).toBe('Please do this')
+    })
+
+    test('builds comment text without quoted reply history', () => {
+        expect(
+            buildEmailCommentText(
+                'Re: Test',
+                'Newest request\n\nFrom: Anna <anna@alldoneapp.com>\nSent: today\nOlder thread'
+            )
+        ).toBe('Subject: Re: Test\n\nNewest request')
     })
 
     test('prefers a single pdf attachment as actionable', () => {

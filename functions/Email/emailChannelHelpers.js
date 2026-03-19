@@ -29,9 +29,56 @@ function buildDailyEmailTitle(firstName = 'User', dateLabel = '') {
     return `Daily email <> ${String(firstName || 'User').trim() || 'User'} ${String(dateLabel || '').trim()}`.trim()
 }
 
-function buildEmailCommentText(subject = '', textBody = '') {
+function stripHtmlToText(html = '') {
+    return String(html || '')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/\r/g, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim()
+}
+
+function trimQuotedReplyText(text = '') {
+    const normalized = String(text || '')
+        .replace(/\r/g, '')
+        .trim()
+    if (!normalized) return ''
+
+    const patterns = [
+        /^\s*On .+ wrote:\s*$/im,
+        /^\s*From:\s.+$/im,
+        /^\s*Sent:\s.+$/im,
+        /^\s*To:\s.+$/im,
+        /^\s*Subject:\s.+$/im,
+        /^\s*-{2,}\s*Original Message\s*-{2,}\s*$/im,
+        /^\s*Begin forwarded message:\s*$/im,
+        /^\s*>+/im,
+    ]
+
+    let cutIndex = normalized.length
+    patterns.forEach(pattern => {
+        const match = pattern.exec(normalized)
+        if (match && typeof match.index === 'number') {
+            cutIndex = Math.min(cutIndex, match.index)
+        }
+    })
+
+    return normalized.slice(0, cutIndex).trim()
+}
+
+function buildEmailCommentText(subject = '', textBody = '', htmlBody = '') {
     const normalizedSubject = String(subject || '').trim()
-    const normalizedBody = String(textBody || '').trim()
+    const normalizedBody = trimQuotedReplyText(String(textBody || '').trim() || stripHtmlToText(htmlBody))
 
     if (normalizedSubject && normalizedBody) {
         return `Subject: ${normalizedSubject}\n\n${normalizedBody}`
@@ -155,6 +202,8 @@ module.exports = {
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
     pickActionableAttachment,
+    stripHtmlToText,
+    trimQuotedReplyText,
     summarizeAttachments,
     verifyInboundEmailSignature,
 }

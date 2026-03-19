@@ -54,7 +54,7 @@ async function processQueueItem(userId, item) {
     try {
         ;({ chatId } = await getOrCreateDailyEmailTopic(userId, projectId, assistantId))
         const hydratedAttachments = await hydrateAttachments(data.attachments)
-        const messageText = buildEmailCommentText(data.subject, data.textBody)
+        const messageText = buildEmailCommentText(data.subject, data.textBody, data.htmlBody)
 
         await storeEmailUserMessageInTopic(projectId, chatId, userId, messageText, {
             fromEmail: data.fromEmail || '',
