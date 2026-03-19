@@ -1,0 +1,160 @@
+'use strict'
+
+const crypto = require('crypto')
+
+const DEFAULT_PUBLIC_EMAIL = 'anna@alldone.app'
+const EMAIL_EXTERNAL_TOOLS_KEY = 'external_tools'
+const EMAIL_CREATE_TASK_KEY = 'create_task'
+const MAX_EMAIL_EXTRACTED_TEXT_LENGTH = 8000
+
+function normalizeEmailAddress(value = '') {
+    const normalized = String(value || '').trim()
+    const angleMatch = normalized.match(/<([^>]+)>/)
+    const candidate = angleMatch?.[1] || normalized
+    return String(candidate || '')
+        .trim()
+        .toLowerCase()
+}
+
+function getEmailSafeAllowedTools(rawTools = []) {
+    if (!Array.isArray(rawTools)) return []
+
+    const allowed = []
+    if (rawTools.includes(EMAIL_CREATE_TASK_KEY)) allowed.push(EMAIL_CREATE_TASK_KEY)
+    if (rawTools.includes(EMAIL_EXTERNAL_TOOLS_KEY)) allowed.push(EMAIL_EXTERNAL_TOOLS_KEY)
+    return allowed
+}
+
+function buildDailyEmailTitle(firstName = 'User', dateLabel = '') {
+    return `Daily email <> ${String(firstName || 'User').trim() || 'User'} ${String(dateLabel || '').trim()}`.trim()
+}
+
+function buildEmailCommentText(subject = '', textBody = '') {
+    const normalizedSubject = String(subject || '').trim()
+    const normalizedBody = String(textBody || '').trim()
+
+    if (normalizedSubject && normalizedBody) {
+        return `Subject: ${normalizedSubject}\n\n${normalizedBody}`
+    }
+
+    if (normalizedSubject) return `Subject: ${normalizedSubject}`
+    return normalizedBody
+}
+
+function getSupportedAttachmentPriority(attachment = {}) {
+    const fileName = String(attachment.fileName || '').toLowerCase()
+    const contentType = String(attachment.contentType || attachment.mimeType || '').toLowerCase()
+
+    if (contentType.includes('application/pdf') || fileName.endsWith('.pdf')) return 1
+    if (
+        contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+        fileName.endsWith('.docx')
+    ) {
+        return 2
+    }
+    if (
+        contentType.startsWith('text/') ||
+        contentType.includes('application/json') ||
+        contentType.includes('application/csv') ||
+        contentType.includes('text/csv') ||
+        fileName.endsWith('.txt') ||
+        fileName.endsWith('.csv') ||
+        fileName.endsWith('.json') ||
+        fileName.endsWith('.md')
+    ) {
+        return 3
+    }
+
+    return 0
+}
+
+function pickActionableAttachment(attachments = []) {
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+        return { status: 'none', attachment: null, supportedAttachments: [] }
+    }
+
+    const supportedAttachments = attachments
+        .map(attachment => ({ ...attachment, priority: getSupportedAttachmentPriority(attachment) }))
+        .filter(attachment => attachment.priority > 0)
+        .sort((a, b) => a.priority - b.priority)
+
+    if (supportedAttachments.length === 0) {
+        return { status: 'none', attachment: null, supportedAttachments: [] }
+    }
+
+    if (supportedAttachments.length > 1) {
+        return { status: 'multiple_supported', attachment: null, supportedAttachments }
+    }
+
+    return { status: 'ok', attachment: supportedAttachments[0], supportedAttachments }
+}
+
+function summarizeAttachments(attachments = []) {
+    if (!Array.isArray(attachments) || attachments.length === 0) return []
+
+    return attachments.map(attachment => ({
+        fileName: attachment.fileName || '',
+        contentType: attachment.contentType || attachment.mimeType || '',
+        sizeBytes: Number(attachment.sizeBytes || 0) || 0,
+        extractedText: String(attachment.extractedText || '').substring(0, MAX_EMAIL_EXTRACTED_TEXT_LENGTH),
+        extractionStatus: attachment.extractionStatus || '',
+        storagePath: attachment.storagePath || '',
+    }))
+}
+
+function buildAttachmentSummaryForComment(attachments = []) {
+    if (!Array.isArray(attachments) || attachments.length === 0) return ''
+
+    const lines = attachments.map(attachment => {
+        const fileName = attachment.fileName || 'attachment'
+        const contentType = attachment.contentType || attachment.mimeType || 'unknown'
+        const extractionStatus = attachment.extractionStatus || 'not_processed'
+        return `${fileName} (${contentType}, ${extractionStatus})`
+    })
+
+    return `Attachments:\n- ${lines.join('\n- ')}`
+}
+
+function computeWebhookSignature(secret, timestamp, payload) {
+    if (!secret) return ''
+    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload || {})
+    return crypto.createHmac('sha256', secret).update(`${timestamp}.${payloadString}`).digest('hex')
+}
+
+function verifyInboundEmailSignature(secret, signature = {}, payload) {
+    if (!secret) return { valid: false, reason: 'missing_secret' }
+
+    const timestamp = String(signature?.timestamp || '').trim()
+    const value = String(signature?.value || '').trim()
+    if (!timestamp || !value) return { valid: false, reason: 'missing_signature_fields' }
+
+    const expected = computeWebhookSignature(secret, timestamp, payload)
+    if (!expected) return { valid: false, reason: 'missing_expected_signature' }
+
+    try {
+        const providedBuffer = Buffer.from(value, 'hex')
+        const expectedBuffer = Buffer.from(expected, 'hex')
+        if (providedBuffer.length !== expectedBuffer.length) {
+            return { valid: false, reason: 'signature_length_mismatch' }
+        }
+        const valid = crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+        return valid ? { valid: true } : { valid: false, reason: 'signature_mismatch' }
+    } catch (error) {
+        return { valid: false, reason: error.message || 'signature_parse_error' }
+    }
+}
+
+module.exports = {
+    DEFAULT_PUBLIC_EMAIL,
+    EMAIL_CREATE_TASK_KEY,
+    EMAIL_EXTERNAL_TOOLS_KEY,
+    buildAttachmentSummaryForComment,
+    buildDailyEmailTitle,
+    buildEmailCommentText,
+    computeWebhookSignature,
+    getEmailSafeAllowedTools,
+    normalizeEmailAddress,
+    pickActionableAttachment,
+    summarizeAttachments,
+    verifyInboundEmailSignature,
+}

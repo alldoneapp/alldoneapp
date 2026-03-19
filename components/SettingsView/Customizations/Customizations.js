@@ -11,6 +11,7 @@ import SomedayTaskTriggerPercent from './Properties/SomedayTaskTriggerPercent'
 import GlobalKarmaPoints from './Properties/GlobalKarmaPoints'
 import DateFormat from './Properties/DateFormat'
 import NotificationEmail from './Properties/NotificationEmail'
+import AssistantEmail from './Properties/AssistantEmail'
 import Notifications from './Properties/Notifications'
 import ServerTime from './Properties/ServerTime'
 import UserTimezone from './Properties/UserTimezone'
@@ -64,6 +65,10 @@ const Customizations = () => {
                         userId={loggedUser.uid}
                         email={loggedUser.email}
                         notificationEmail={loggedUser.notificationEmail}
+                    />
+                    <AssistantEmail
+                        userId={loggedUser.uid}
+                        assistantEmailEnabled={loggedUser.assistantEmailEnabled === true}
                     />
                     <Notifications />
                     <ServerTime />

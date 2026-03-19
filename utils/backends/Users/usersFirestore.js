@@ -842,6 +842,10 @@ export async function setUserReceiveWhatsApp(userId, receiveWhatsApp) {
     getDb().doc(`users/${userId}`).update({ receiveWhatsApp })
 }
 
+export async function setUserAssistantEmailEnabled(userId, assistantEmailEnabled) {
+    getDb().doc(`users/${userId}`).update({ assistantEmailEnabled })
+}
+
 export async function setUserLastDayEmptyInbox(userId, date) {
     getDb().doc(`users/${userId}`).update({ lastDayEmptyInbox: date })
 }

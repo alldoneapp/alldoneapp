@@ -1,5 +1,3 @@
-const REDACTED_FILE_BASE64_PLACEHOLDER = '[omitted from conversation; preserved for the next external tool call]'
-
 function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
 }
@@ -18,7 +16,7 @@ function buildConversationSafeToolResult(toolName, toolResult) {
 
     return {
         ...toolResult,
-        fileBase64: REDACTED_FILE_BASE64_PLACEHOLDER,
+        fileBase64: '[omitted from conversation; preserved for the next external tool call]',
         fileBase64Length: toolResult.fileBase64.length,
     }
 }
@@ -36,13 +34,6 @@ function buildPendingAttachmentPayload(toolName, toolResult) {
     }
 }
 
-function looksLikeBase64(value) {
-    if (typeof value !== 'string') return false
-    const normalized = value.replace(/\s+/g, '')
-    if (!normalized || normalized.length % 4 !== 0) return false
-    return /^[A-Za-z0-9+/]+={0,2}$/.test(normalized)
-}
-
 function injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload) {
     if (!isExternalIntegrationToolName(toolName) || !pendingAttachmentPayload) {
         return {
@@ -53,14 +44,8 @@ function injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachme
 
     const normalizedArgs = isObject(toolArgs) ? { ...toolArgs } : {}
     let usedPendingAttachment = false
-    const shouldReplaceFileBase64 =
-        typeof normalizedArgs.fileBase64 !== 'string' ||
-        !normalizedArgs.fileBase64.trim() ||
-        normalizedArgs.fileBase64 === REDACTED_FILE_BASE64_PLACEHOLDER ||
-        !looksLikeBase64(normalizedArgs.fileBase64) ||
-        normalizedArgs.fileBase64.length !== pendingAttachmentPayload.fileBase64.length
 
-    if (shouldReplaceFileBase64) {
+    if (typeof normalizedArgs.fileBase64 !== 'string' || !normalizedArgs.fileBase64.trim()) {
         normalizedArgs.fileBase64 = pendingAttachmentPayload.fileBase64
         usedPendingAttachment = true
     }

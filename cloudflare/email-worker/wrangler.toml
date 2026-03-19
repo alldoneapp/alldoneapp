@@ -1,0 +1,10 @@
+name = "anna-email-worker"
+main = "src/index.mjs"
+compatibility_date = "2026-03-19"
+
+[observability.logs]
+enabled = true
+
+[vars]
+# FIREBASE_EMAIL_WEBHOOK_URL = "https://europe-west1-your-project.cloudfunctions.net/annaEmailIncomingMessage"
+# ANNA_PUBLIC_EMAIL = "anna@reply.alldone.app"

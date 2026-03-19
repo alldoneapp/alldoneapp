@@ -3138,3 +3138,28 @@ exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
         await processWhatsAppInboundQueueItem(event)
     }
 )
+
+exports.annaEmailIncomingMessage = onRequest(
+    {
+        timeoutSeconds: 540,
+        memory: '2GiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleIncomingAnnaEmail } = require('./Email/emailIncomingHandler')
+        await handleIncomingAnnaEmail(req, res)
+    }
+)
+
+exports.processAnnaEmailInboundQueueItemSecondGen = onDocumentCreated(
+    {
+        document: 'annaEmailInboundQueue/{userId}/items/{messageId}',
+        timeoutSeconds: 540,
+        memory: '2GiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { processAnnaEmailInboundQueueItem } = require('./Email/emailInboundQueueProcessor')
+        await processAnnaEmailInboundQueueItem(event)
+    }
+)

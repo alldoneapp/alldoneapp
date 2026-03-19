@@ -575,9 +575,8 @@ function extractMediaItems(body, numMedia) {
     for (let index = 0; index < numMedia; index++) {
         const url = body[`MediaUrl${index}`]
         const contentType = body[`MediaContentType${index}`]
-        const fileName = body[`MediaFileName${index}`] || body[`MediaFilename${index}`] || ''
         if (url && contentType) {
-            items.push({ url, contentType, index, fileName })
+            items.push({ url, contentType, index })
         }
     }
     return items
@@ -658,8 +657,7 @@ async function processSingleWhatsAppMedia(
         accountSid,
         authToken,
         media.index,
-        kind,
-        media.fileName
+        kind
     )
     const tokenFileName = sanitizeTokenText(storedMedia.fileName)
 
@@ -704,16 +702,7 @@ async function processSingleWhatsAppMedia(
     }
 }
 
-async function downloadAndStoreTwilioMedia(
-    mediaUrl,
-    contentType,
-    userId,
-    accountSid,
-    authToken,
-    mediaIndex,
-    kind,
-    originalFileName
-) {
+async function downloadAndStoreTwilioMedia(mediaUrl, contentType, userId, accountSid, authToken, mediaIndex, kind) {
     const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
     const response = await fetch(mediaUrl, {
         headers: {
@@ -733,8 +722,8 @@ async function downloadAndStoreTwilioMedia(
         throw new Error(`Media too large (${buffer.length} bytes, limit ${sizeLimit})`)
     }
 
-    const responseFileName = getFileNameFromMediaResponse(response)
-    const fileName = buildStoredMediaFileName(originalFileName || responseFileName, contentType, mediaUrl, mediaIndex)
+    const extension = getFileExtensionForMedia(contentType, mediaUrl)
+    const fileName = `${Date.now()}_${mediaIndex}_${uuidv4()}.${extension}`
     const datePath = moment().format('DDMMYYYY')
     const randomHash = uuidv4().replace(/-/g, '')
     const filePath = `notesAttachments/${datePath}/${randomHash}/${fileName}`
@@ -807,57 +796,6 @@ function getFileExtensionForMedia(contentType, mediaUrl = '') {
     return 'bin'
 }
 
-function buildStoredMediaFileName(originalFileName, contentType, mediaUrl = '', mediaIndex = 0) {
-    const normalizedOriginal = sanitizeIncomingMediaFileName(originalFileName)
-    if (normalizedOriginal) {
-        if (normalizedOriginal.includes('.')) return normalizedOriginal
-
-        const extension = getFileExtensionForMedia(contentType, mediaUrl)
-        if (extension && extension !== 'bin') {
-            return `${normalizedOriginal}.${extension}`
-        }
-
-        return normalizedOriginal
-    }
-
-    const extension = getFileExtensionForMedia(contentType, mediaUrl)
-    return `${Date.now()}_${mediaIndex}_${uuidv4()}.${extension}`
-}
-
-function getFileNameFromMediaResponse(response) {
-    const contentDisposition =
-        response?.headers?.get?.('content-disposition') || response?.headers?.get?.('Content-Disposition') || ''
-    if (!contentDisposition) return ''
-
-    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-    if (utf8Match?.[1]) {
-        try {
-            return sanitizeIncomingMediaFileName(decodeURIComponent(utf8Match[1]))
-        } catch (_) {
-            return sanitizeIncomingMediaFileName(utf8Match[1])
-        }
-    }
-
-    const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
-    if (basicMatch?.[1]) {
-        return sanitizeIncomingMediaFileName(basicMatch[1])
-    }
-
-    return ''
-}
-
-function sanitizeIncomingMediaFileName(fileName) {
-    const baseName = String(fileName || '')
-        .split(/[\\/]/)
-        .pop()
-        .replace(/[\u0000-\u001f\u007f]/g, '')
-        .trim()
-
-    if (!baseName || baseName === '.' || baseName === '..') return ''
-
-    return baseName.replace(/\s+/g, ' ')
-}
-
 function getBooleanFlag(value, defaultValue = false) {
     if (value === undefined || value === null || value === '') return defaultValue
     const normalized = String(value).trim().toLowerCase()
@@ -875,12 +813,4 @@ function runWithTimeout(promise, timeoutMs, message) {
     return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeout))
 }
 
-module.exports = {
-    handleIncomingWhatsAppMessage,
-    __private__: {
-        extractMediaItems,
-        buildStoredMediaFileName,
-        getFileNameFromMediaResponse,
-        sanitizeIncomingMediaFileName,
-    },
-}
+module.exports = { handleIncomingWhatsAppMessage }
