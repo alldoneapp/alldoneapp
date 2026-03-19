@@ -2,6 +2,7 @@ name = "anna-email-worker"
 account_id = "508f7dd5aaf745f8262e3a61b6d17331"
 main = "src/index.mjs"
 compatibility_date = "2026-03-19"
+workers_dev = false
 
 [observability.logs]
 enabled = true

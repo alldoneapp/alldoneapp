@@ -1,3 +1,5 @@
+import PostalMime from 'postal-mime'
+
 export default {
     async email(message, env, ctx) {
         const payload = await buildNormalizedPayload(message, env)
@@ -26,8 +28,9 @@ export async function buildNormalizedPayload(message, env = {}) {
     const rawHeaders = objectFromHeaders(message.headers)
     const parsedFrom = extractMailboxAddress(rawHeaders.from || rawHeaders.From || message.from || '')
     const parsedReplyTo = extractMailboxAddress(rawHeaders['reply-to'] || rawHeaders['Reply-To'] || '')
-    const { textBody, htmlBody } = await readBodyParts(message)
-    const attachments = await readAttachments(message)
+    const parsedEmail = await parseMimeMessage(message)
+    const { textBody, htmlBody } = await readBodyParts(message, parsedEmail)
+    const attachments = await readAttachments(message, parsedEmail)
 
     return {
         messageId: String(message.headers?.get?.('message-id') || message.messageId || cryptoRandomId()).trim(),
@@ -46,13 +49,33 @@ export async function buildNormalizedPayload(message, env = {}) {
     }
 }
 
-async function readBodyParts(message) {
+async function parseMimeMessage(message) {
+    try {
+        const raw = await message.raw
+        if (!raw) return null
+
+        const parser = new PostalMime()
+        return await parser.parse(raw)
+    } catch (_) {
+        return null
+    }
+}
+
+async function readBodyParts(message, parsedEmail = null) {
     let textBody = ''
     let htmlBody = ''
 
     try {
+        if (typeof parsedEmail?.text === 'string') {
+            textBody = parsedEmail.text
+        }
+        if (typeof parsedEmail?.html === 'string') {
+            htmlBody = parsedEmail.html
+        }
+
         const raw = await message.raw
-        if (typeof raw?.text === 'function') {
+        if (!textBody && typeof raw?.text === 'function') {
+            // Local tests may provide only a simple text() helper instead of a full raw MIME payload.
             textBody = await raw.text()
         }
     } catch (_) {}
@@ -71,8 +94,33 @@ async function readBodyParts(message) {
     }
 }
 
-async function readAttachments(message) {
+async function readAttachments(message, parsedEmail = null) {
     const attachments = []
+
+    const parsedAttachments = Array.isArray(parsedEmail?.attachments) ? parsedEmail.attachments : []
+    for (const attachment of parsedAttachments) {
+        const fileName = String(attachment.filename || attachment.name || 'attachment').trim()
+        const contentType = String(attachment.mimeType || attachment.contentType || 'application/octet-stream').trim()
+        const content = attachment.content
+        const bytes =
+            content instanceof Uint8Array
+                ? content
+                : content instanceof ArrayBuffer
+                ? new Uint8Array(content)
+                : typeof Buffer !== 'undefined' && Buffer.isBuffer(content)
+                ? new Uint8Array(content)
+                : new Uint8Array()
+
+        attachments.push({
+            fileName,
+            contentType,
+            contentBase64: uint8ToBase64(bytes),
+            sizeBytes: Number(bytes.byteLength || attachment.size || 0) || 0,
+        })
+    }
+
+    if (attachments.length > 0) return attachments
+
     const iterable = Array.isArray(message.attachments) ? message.attachments : []
 
     for (const attachment of iterable) {
@@ -106,7 +154,9 @@ function extractMailboxAddress(value = '') {
     const normalized = String(value || '').trim()
     const match = normalized.match(/<([^>]+)>/)
     const candidate = match?.[1] || normalized
-    return String(candidate || '').trim().toLowerCase()
+    return String(candidate || '')
+        .trim()
+        .toLowerCase()
 }
 
 function uint8ToBase64(bytes) {

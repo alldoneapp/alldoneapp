@@ -46,6 +46,36 @@ async function run() {
     }
 
     {
+        const mime = [
+            'From: Alice <alice@example.com>',
+            'Subject: Plain body',
+            'Message-ID: <mime@example.com>',
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            'Buy milk tomorrow',
+        ].join('\r\n')
+
+        const payload = await buildNormalizedPayload({
+            headers: createHeaders([
+                ['from', 'Alice <alice@example.com>'],
+                ['subject', 'Plain body'],
+                ['message-id', '<mime@example.com>'],
+            ]),
+            raw: Promise.resolve(
+                new ReadableStream({
+                    start(controller) {
+                        controller.enqueue(new TextEncoder().encode(mime))
+                        controller.close()
+                    },
+                })
+            ),
+            attachments: [],
+        })
+
+        assert.equal(payload.textBody, 'Buy milk tomorrow')
+    }
+
+    {
         const bytes = new Uint8Array([104, 101, 108, 108, 111])
         const payload = await buildNormalizedPayload({
             headers: createHeaders([
