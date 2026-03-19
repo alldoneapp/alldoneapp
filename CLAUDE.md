@@ -32,6 +32,8 @@ npm run format-code          # Format with Prettier
 
 **Required versions**: Node 14.21.3, npm 6.14.18, expo-cli 6.1.0, firebase-tools 13.29.3
 
+**Cloudflare worker exception**: The repo stays on Node 14.21.3 for the main app and Firebase work, but `cloudflare/email-worker/` uses Node 20 for Wrangler. That directory has its own `.nvmrc`; use `nvm use 20` inside `cloudflare/email-worker/`, then switch back to `nvm use 14` at the repo root for normal app work.
+
 ## Architecture Overview
 
 ### Directory Structure
@@ -133,6 +135,7 @@ Note: Standard syntax checkers like `acorn` may fail on modern JavaScript featur
 -   `envs/env.develop`, `envs/env.master` - Environment-specific configs
 -   `env_functions.json`, `env_functions_dev.json`, `env_functions_master.json` - Function configs
 -   Service accounts: `serviceAccountKey.json`, `serv_account_key_develop.json`, `serv_account_key_master.json`
+-   Cloudflare worker deployment should be run from `cloudflare/email-worker/` under Node 20, not from the repo-wide Node 14 environment
 
 ### CI/CD & Deployment
 

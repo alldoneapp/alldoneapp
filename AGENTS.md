@@ -8,6 +8,8 @@
 
 Install dependencies with `npm install` using Node.js 14.21.x. Start Metro and Expo with `npm start`; target devices via `npm run ios`, `npm run android`, or `npm run web`. Create a static bundle using `npm run build-web`. When caching causes stale assets, reset the bundler with `npm run start-clean`. Apply repository formatting before commits through `npm run format-code`.
 
+For additional repo-specific development guidance, including the Node 20 exception for `cloudflare/email-worker/`, refer to `CLAUDE.md`.
+
 ## Coding Style & Naming Conventions
 
 Prettier governs formatting (4-space indent, single quotes, trailing commas). React components and screens use PascalCase (`ProjectDetailedView.js`); hooks, helpers, and Redux modules stay camelCase (`useComments.js`, `taskActions.js`). Keep mocks and fixtures alongside their feature directories. Husky executes `pretty-quick --staged`, so ensure staged files already match Prettier output to avoid failing hooks.
