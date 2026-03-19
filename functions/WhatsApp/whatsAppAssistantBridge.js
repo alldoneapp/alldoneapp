@@ -7,6 +7,9 @@ const {
     executeToolNatively,
     getMessageTextForTokenCounting,
     isToolAllowedForExecution,
+    buildConversationSafeToolResult,
+    buildPendingAttachmentPayload,
+    injectPendingAttachmentIntoToolArgs,
 } = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
@@ -76,6 +79,9 @@ async function processWhatsAppAssistantMessage(
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
+        objectType: 'topics',
+        objectId: chatId,
+        messageId: typeof options?.messageId === 'string' ? options.messageId.trim() : '',
     }
 
     // Extract user timezone
@@ -228,6 +234,7 @@ async function collectStreamWithToolCalls(
 ) {
     let responseText = ''
     let currentConversation = conversationHistory
+    let pendingAttachmentPayload = null
     const toolEvidence = {
         createTask: {
             called: false,
@@ -259,6 +266,14 @@ async function collectStreamWithToolCalls(
                     responseText += `\n\nError: Failed to parse tool arguments for ${toolName}`
                     return responseText
                 }
+
+                const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
+                    toolName,
+                    toolArgs,
+                    pendingAttachmentPayload
+                )
+                toolArgs = enrichedToolArgs.toolArgs
+                if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
 
                 // Check permissions
                 const allowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
@@ -308,6 +323,10 @@ async function collectStreamWithToolCalls(
                     return getUserFacingToolErrorMessage(toolName, error)
                 }
 
+                const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
+                pendingAttachmentPayload =
+                    buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+
                 // Build updated conversation with tool result
                 const delegationFailed =
                     toolName.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX) &&
@@ -337,7 +356,7 @@ async function collectStreamWithToolCalls(
                     },
                     {
                         role: 'tool',
-                        content: JSON.stringify(toolResult),
+                        content: JSON.stringify(conversationSafeToolResult),
                         tool_call_id: toolCallId,
                     },
                     {
@@ -453,6 +472,8 @@ function normalizeWhatsAppToolArgs(toolName, toolArgs, fallbackProjectId) {
 
 module.exports = {
     processWhatsAppAssistantMessage,
+    collectStreamWithToolCalls,
+    normalizeWhatsAppToolArgs,
 }
 
 function createStageTimer(prefix, baseMeta = {}) {

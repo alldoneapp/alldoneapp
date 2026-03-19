@@ -99,6 +99,63 @@ describe('assistant attachment handoff helpers', () => {
         })
     })
 
+    test('replaces the redacted placeholder with the real pending attachment payload', () => {
+        const pendingAttachmentPayload = {
+            fileName: 'invoice.pdf',
+            fileBase64: 'YWJjMTIz',
+            fileMimeType: 'application/pdf',
+            fileSizeBytes: 42,
+            source: 'chat',
+        }
+
+        expect(
+            injectPendingAttachmentIntoToolArgs(
+                'external_tool_bookkeeping_send_invoice',
+                {
+                    fileName: 'invoice.pdf',
+                    fileBase64: '[omitted from conversation; preserved for the next external tool call]',
+                },
+                pendingAttachmentPayload
+            )
+        ).toEqual({
+            toolArgs: {
+                fileName: 'invoice.pdf',
+                fileBase64: 'YWJjMTIz',
+                fileMimeType: 'application/pdf',
+                fileSizeBytes: 42,
+                source: 'chat',
+            },
+            usedPendingAttachment: true,
+        })
+    })
+
+    test('replaces a truncated base64 value with the full pending attachment payload', () => {
+        const pendingAttachmentPayload = {
+            fileName: 'invoice.pdf',
+            fileBase64: 'YWJjMTIz',
+            fileMimeType: 'application/pdf',
+            fileSizeBytes: 42,
+            source: 'chat',
+        }
+
+        expect(
+            injectPendingAttachmentIntoToolArgs(
+                'external_tool_bookkeeping_send_invoice',
+                { fileName: 'invoice.pdf', fileBase64: 'YWJj' },
+                pendingAttachmentPayload
+            )
+        ).toEqual({
+            toolArgs: {
+                fileName: 'invoice.pdf',
+                fileBase64: 'YWJjMTIz',
+                fileMimeType: 'application/pdf',
+                fileSizeBytes: 42,
+                source: 'chat',
+            },
+            usedPendingAttachment: true,
+        })
+    })
+
     test('does not override file data already provided by the model', () => {
         const pendingAttachmentPayload = {
             fileName: 'invoice.pdf',
