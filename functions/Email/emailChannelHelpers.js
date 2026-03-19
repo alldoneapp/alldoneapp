@@ -76,9 +76,25 @@ function trimQuotedReplyText(text = '') {
     return normalized.slice(0, cutIndex).trim()
 }
 
+function looksLikeForwardedEmail(subject = '', body = '') {
+    const normalizedSubject = String(subject || '').trim()
+    const normalizedBody = String(body || '').replace(/\r/g, '')
+
+    if (/^\s*fwd?:/i.test(normalizedSubject)) return true
+
+    return [
+        /^\s*-{2,}\s*Forwarded message\s*-{2,}\s*$/im,
+        /^\s*Begin forwarded message:\s*$/im,
+        /^\s*Attachments:\s*$/im,
+    ].some(pattern => pattern.test(normalizedBody))
+}
+
 function buildEmailCommentText(subject = '', textBody = '', htmlBody = '') {
     const normalizedSubject = String(subject || '').trim()
-    const normalizedBody = trimQuotedReplyText(String(textBody || '').trim() || stripHtmlToText(htmlBody))
+    const rawBody = String(textBody || '').trim() || stripHtmlToText(htmlBody)
+    const normalizedBody = looksLikeForwardedEmail(normalizedSubject, rawBody)
+        ? rawBody.trim()
+        : trimQuotedReplyText(rawBody)
 
     if (normalizedSubject && normalizedBody) {
         return `Subject: ${normalizedSubject}\n\n${normalizedBody}`
@@ -202,6 +218,7 @@ module.exports = {
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
     pickActionableAttachment,
+    looksLikeForwardedEmail,
     stripHtmlToText,
     trimQuotedReplyText,
     summarizeAttachments,

@@ -5,6 +5,7 @@ const {
     buildEmailCommentText,
     computeWebhookSignature,
     getEmailSafeAllowedTools,
+    looksLikeForwardedEmail,
     normalizeEmailAddress,
     pickActionableAttachment,
     stripHtmlToText,
@@ -57,6 +58,21 @@ describe('emailChannelHelpers', () => {
                 'Newest request\n\nFrom: Anna <anna@alldoneapp.com>\nSent: today\nOlder thread'
             )
         ).toBe('Subject: Re: Test\n\nNewest request')
+    })
+
+    test('detects forwarded emails from subject or body markers', () => {
+        expect(looksLikeForwardedEmail('Fwd: Invoice', 'anything')).toBe(true)
+        expect(looksLikeForwardedEmail('Invoice', '---------- Forwarded message ----------\nFrom: GitLab')).toBe(true)
+        expect(looksLikeForwardedEmail('Re: Invoice', 'Newest request\n\nOn Tue, Mar 19 wrote:')).toBe(false)
+    })
+
+    test('keeps the full forwarded email body intact', () => {
+        const forwardedBody =
+            '---------- Forwarded message ----------\nFrom: GitLab <ar@gitlab.com>\nDate: Tue, Mar 10, 2026\n\nPlease handle this invoice'
+
+        expect(buildEmailCommentText('Fwd: Your GitLab invoice', forwardedBody)).toBe(
+            'Subject: Fwd: Your GitLab invoice\n\n' + forwardedBody
+        )
     })
 
     test('prefers a single pdf attachment as actionable', () => {
