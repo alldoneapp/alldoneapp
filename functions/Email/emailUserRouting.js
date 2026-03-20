@@ -52,12 +52,21 @@ async function findVerifiedUsersByPrimaryEmail(normalizedEmail) {
 }
 
 async function findUsersByConnectedGmailEmail(normalizedEmail) {
-    const snapshot = await admin
-        .firestore()
-        .collectionGroup('private')
-        .where('email', '==', normalizedEmail)
-        .limit(20)
-        .get()
+    let snapshot
+    try {
+        snapshot = await admin
+            .firestore()
+            .collectionGroup('private')
+            .where('email', '==', normalizedEmail)
+            .limit(20)
+            .get()
+    } catch (error) {
+        console.warn('Email Channel: Connected Gmail lookup failed', {
+            email: normalizedEmail,
+            error: error.message,
+        })
+        return []
+    }
 
     if (snapshot.empty) return []
 

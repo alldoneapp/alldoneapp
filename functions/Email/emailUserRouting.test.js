@@ -175,4 +175,28 @@ describe('emailUserRouting', () => {
         const result = await findVerifiedUserByEmailIdentity('karsten@alldone.app')
         expect(result).toBeNull()
     })
+
+    test('falls back cleanly when connected Gmail lookup errors', async () => {
+        const userDataById = {
+            user1: { email: 'karsten.wysk@gmail.com', apisConnected: {} },
+        }
+
+        admin.firestore.mockReturnValue({
+            collection: jest.fn().mockReturnValue(buildQuery([buildUserDoc('user1', userDataById.user1)])),
+            collectionGroup: jest.fn().mockReturnValue({
+                where: jest.fn().mockReturnThis(),
+                limit: jest.fn().mockReturnThis(),
+                get: jest.fn().mockRejectedValue(new Error('9 FAILED_PRECONDITION: missing index')),
+            }),
+        })
+        admin.auth.mockReturnValue({
+            getUser: jest.fn().mockResolvedValue({
+                email: 'karsten.wysk@gmail.com',
+                emailVerified: true,
+            }),
+        })
+
+        const result = await findVerifiedUserByEmailIdentity('karsten.wysk@gmail.com')
+        expect(result?.uid).toBe('user1')
+    })
 })

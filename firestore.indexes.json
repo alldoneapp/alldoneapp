@@ -156,5 +156,20 @@
             ]
         }
     ],
-    "fieldOverrides": []
+    "fieldOverrides": [
+        {
+            "collectionGroup": "private",
+            "fieldPath": "email",
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION_GROUP"
+                },
+                {
+                    "order": "DESCENDING",
+                    "queryScope": "COLLECTION_GROUP"
+                }
+            ]
+        }
+    ]
 }
