@@ -41,9 +41,10 @@ export default function AssistantEmail({ userId, assistantEmailEnabled }) {
                 </View>
             </TouchableOpacity>
             <Text style={localStyles.infoText}>
-                Send from your Google login email. For security reasons, Anna can only use these tools by email: create
-                task, create calendar event, create note, update note, create Gmail draft, create Gmail reply draft, and
-                approved external tools. Every interaction appears in the daily email thread.
+                Send from your Google login email and/or any connected Gmail account. For security reasons, Anna can
+                only use these tools by email: create task, create calendar event, create note, update note, create
+                Gmail draft, create Gmail reply draft, and approved external tools. Every interaction appears in the
+                daily email thread.
             </Text>
         </View>
     )
