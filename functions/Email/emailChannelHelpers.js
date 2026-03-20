@@ -5,6 +5,10 @@ const crypto = require('crypto')
 const DEFAULT_PUBLIC_EMAIL = 'anna@alldone.app'
 const EMAIL_EXTERNAL_TOOLS_KEY = 'external_tools'
 const EMAIL_CREATE_TASK_KEY = 'create_task'
+const EMAIL_CREATE_CALENDAR_EVENT_KEY = 'create_calendar_event'
+const EMAIL_CREATE_NOTE_KEY = 'create_note'
+const EMAIL_CREATE_GMAIL_DRAFT_KEY = 'create_gmail_draft'
+const EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY = 'create_gmail_reply_draft'
 const MAX_EMAIL_EXTRACTED_TEXT_LENGTH = 8000
 
 function normalizeEmailAddress(value = '') {
@@ -21,6 +25,12 @@ function getEmailSafeAllowedTools(rawTools = []) {
 
     const allowed = []
     if (rawTools.includes(EMAIL_CREATE_TASK_KEY)) allowed.push(EMAIL_CREATE_TASK_KEY)
+    if (rawTools.includes(EMAIL_CREATE_CALENDAR_EVENT_KEY)) allowed.push(EMAIL_CREATE_CALENDAR_EVENT_KEY)
+    if (rawTools.includes(EMAIL_CREATE_NOTE_KEY)) allowed.push(EMAIL_CREATE_NOTE_KEY)
+    if (rawTools.includes(EMAIL_CREATE_GMAIL_DRAFT_KEY)) allowed.push(EMAIL_CREATE_GMAIL_DRAFT_KEY)
+    if (rawTools.includes(EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY)) {
+        allowed.push(EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY)
+    }
     if (rawTools.includes(EMAIL_EXTERNAL_TOOLS_KEY)) allowed.push(EMAIL_EXTERNAL_TOOLS_KEY)
     return allowed
 }
@@ -209,6 +219,10 @@ function verifyInboundEmailSignature(secret, signature = {}, payload) {
 
 module.exports = {
     DEFAULT_PUBLIC_EMAIL,
+    EMAIL_CREATE_CALENDAR_EVENT_KEY,
+    EMAIL_CREATE_GMAIL_DRAFT_KEY,
+    EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY,
+    EMAIL_CREATE_NOTE_KEY,
     EMAIL_CREATE_TASK_KEY,
     EMAIL_EXTERNAL_TOOLS_KEY,
     buildAttachmentSummaryForComment,

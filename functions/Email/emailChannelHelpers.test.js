@@ -19,10 +19,28 @@ describe('emailChannelHelpers', () => {
         expect(normalizeEmailAddress('  User@Example.COM ')).toBe('user@example.com')
     })
 
-    test('limits email-safe tools to create_task and external_tools', () => {
+    test('limits email-safe tools to the approved action-only email set', () => {
         expect(
-            getEmailSafeAllowedTools(['create_task', 'search', 'external_tools', 'talk_to_assistant', 'update_task'])
-        ).toEqual(['create_task', 'external_tools'])
+            getEmailSafeAllowedTools([
+                'create_task',
+                'create_calendar_event',
+                'create_note',
+                'create_gmail_draft',
+                'create_gmail_reply_draft',
+                'search',
+                'external_tools',
+                'talk_to_assistant',
+                'update_task',
+                'search_calendar_events',
+            ])
+        ).toEqual([
+            'create_task',
+            'create_calendar_event',
+            'create_note',
+            'create_gmail_draft',
+            'create_gmail_reply_draft',
+            'external_tools',
+        ])
     })
 
     test('builds daily email title in WhatsApp-like style', () => {
