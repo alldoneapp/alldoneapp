@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress } = require('./emailChannelHelpers')
-const { findVerifiedUserByPrimaryEmail, getDefaultAssistantIdForUser } = require('./emailUserRouting')
+const { findVerifiedUserByEmailIdentity, getDefaultAssistantIdForUser } = require('./emailUserRouting')
 
 async function handleIncomingAnnaEmail(req, res) {
     if (req.method !== 'POST') {
@@ -30,7 +30,7 @@ async function handleIncomingAnnaEmail(req, res) {
             return res.status(403).send('Forbidden')
         }
 
-        const user = await findVerifiedUserByPrimaryEmail(payload.fromEmail)
+        const user = await findVerifiedUserByEmailIdentity(payload.fromEmail)
         if (!user) {
             await replySafely(payload, `I couldn't match this sender to a verified Alldone account email.`)
             return res.status(200).json({ ok: true, status: 'unknown_sender' })

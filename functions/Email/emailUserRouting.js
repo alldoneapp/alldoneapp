@@ -4,12 +4,30 @@ const admin = require('firebase-admin')
 
 const { normalizeEmailAddress } = require('./emailChannelHelpers')
 
-async function findVerifiedUserByPrimaryEmail(email) {
+async function findVerifiedUserByEmailIdentity(email) {
     const normalizedEmail = normalizeEmailAddress(email)
     if (!normalizedEmail) return null
 
+    const candidateUsersById = new Map()
+
+    const primaryMatches = await findVerifiedUsersByPrimaryEmail(normalizedEmail)
+    primaryMatches.forEach(user => candidateUsersById.set(user.uid, user))
+
+    const connectedMatches = await findUsersByConnectedGmailEmail(normalizedEmail)
+    connectedMatches.forEach(user => {
+        if (!candidateUsersById.has(user.uid)) candidateUsersById.set(user.uid, user)
+    })
+
+    if (candidateUsersById.size !== 1) {
+        return null
+    }
+
+    return Array.from(candidateUsersById.values())[0]
+}
+
+async function findVerifiedUsersByPrimaryEmail(normalizedEmail) {
     const snapshot = await admin.firestore().collection('users').where('email', '==', normalizedEmail).limit(5).get()
-    if (snapshot.empty) return null
+    if (snapshot.empty) return []
 
     const verifiedMatches = []
     for (const doc of snapshot.docs) {
@@ -30,11 +48,57 @@ async function findVerifiedUserByPrimaryEmail(email) {
         }
     }
 
-    if (verifiedMatches.length !== 1) {
-        return null
+    return verifiedMatches
+}
+
+async function findUsersByConnectedGmailEmail(normalizedEmail) {
+    const snapshot = await admin
+        .firestore()
+        .collectionGroup('private')
+        .where('email', '==', normalizedEmail)
+        .limit(20)
+        .get()
+
+    if (snapshot.empty) return []
+
+    const usersById = new Map()
+
+    for (const doc of snapshot.docs) {
+        const data = doc.data() || {}
+        if (String(data.service || '').trim() !== 'gmail') continue
+
+        const userRef = doc.ref?.parent?.parent
+        const userId = String(userRef?.id || '').trim()
+        if (!userId || usersById.has(userId)) continue
+
+        try {
+            const userDoc = await userRef.get()
+            if (!userDoc.exists) continue
+
+            const userData = userDoc.data() || {}
+            if (!hasActiveConnectedGmailEmail(userData, normalizedEmail)) continue
+
+            usersById.set(userId, {
+                uid: userId,
+                ...userData,
+            })
+        } catch (error) {
+            console.warn('Email Channel: Failed resolving connected Gmail user for sender routing', {
+                userId,
+                error: error.message,
+            })
+        }
     }
 
-    return verifiedMatches[0]
+    return Array.from(usersById.values())
+}
+
+function hasActiveConnectedGmailEmail(userData = {}, normalizedEmail = '') {
+    const apisConnected = userData?.apisConnected || {}
+    return Object.values(apisConnected).some(connection => {
+        if (!connection?.gmail) return false
+        return normalizeEmailAddress(connection.gmailEmail || '') === normalizedEmail
+    })
 }
 
 async function getDefaultAssistantIdForUser(user, projectId) {
@@ -92,6 +156,7 @@ async function getDefaultAssistantIdForUser(user, projectId) {
 }
 
 module.exports = {
-    findVerifiedUserByPrimaryEmail,
+    findVerifiedUserByEmailIdentity,
     getDefaultAssistantIdForUser,
+    hasActiveConnectedGmailEmail,
 }
