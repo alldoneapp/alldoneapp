@@ -16,6 +16,7 @@ import TaskFlowModal from './TaskFlowModal'
 import CheckBoxContainer from './CheckBoxContainer'
 import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 
 function CheckBoxWrapper(
     {
@@ -86,6 +87,7 @@ function CheckBoxWrapper(
     } = task
 
     const ownerIsWorkstream = userId?.startsWith(WORKSTREAM_ID_PREFIX)
+    const isLockedGmailTask = isInboxSummaryGmailTask(task)
 
     const toggleCheckAction = isLongPress => {
         const { loggedUser } = store.getState()
@@ -122,7 +124,7 @@ function CheckBoxWrapper(
             }
         } else if (done) {
             moveTasksFromDone(projectId, task, OPEN_STEP)
-        } else if (genericData || (isPrivate && !isLongPress) || calendarData || gmailData) {
+        } else if (genericData || (isPrivate && !isLongPress) || calendarData || isLockedGmailTask) {
             setShowAnimation(true)
             // Delay task completion until animation finishes
             const t = setTimeout(() => {
