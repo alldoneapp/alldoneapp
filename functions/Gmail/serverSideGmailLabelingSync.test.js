@@ -45,6 +45,7 @@ jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
 
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: jest.fn(() => Promise.resolve()),
+    calculateTokens: jest.fn(() => 0),
     calculateGoldCostFromTokens: jest.fn(() => 0),
     collectAssistantTextWithToolCalls: jest.fn(),
     getAssistantForChat: jest.fn(),
@@ -72,6 +73,7 @@ jest.mock('./gmailPromptClassifier', () => ({
 const admin = require('firebase-admin')
 const assistantHelper = require('../Assistant/assistantHelper')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
+const { deductGold } = require('../Gold/goldHelper')
 const {
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
@@ -83,6 +85,7 @@ const {
 describe('serverSideGmailLabelingSync helpers', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        deductGold.mockResolvedValue({ success: true, newBalance: 99 })
     })
 
     test('builds a Gmail message web url', () => {
@@ -200,7 +203,10 @@ describe('serverSideGmailLabelingSync helpers', () => {
             assistantResponse: 'Created a task with the email link.',
             executedToolCallsCount: 1,
             executedToolNames: ['create_task'],
+            finalConversation: [{ role: 'user', content: 'context' }],
         })
+        assistantHelper.calculateTokens.mockReturnValue(420)
+        assistantHelper.calculateGoldCostFromTokens.mockReturnValue(2)
 
         const result = await executePostLabelPrompt({
             userId: 'user-1',
@@ -227,6 +233,10 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(result.status).toBe('completed')
         expect(result.executedToolNames).toEqual(['create_task'])
         expect(result.assistantResponse).toBe('Created a task with the email link.')
+        expect(result.goldSpent).toBe(2)
+        expect(result.estimatedNormalGoldCost).toBe(2)
+        expect(result.tokenUsage).toEqual({ totalTokens: 420 })
+        expect(deductGold).toHaveBeenCalledWith('user-1', 2)
         expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledWith(
             expect.objectContaining({
                 toolRuntimeContext: expect.objectContaining({
@@ -288,5 +298,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
         expect(result.status).toBe('blocked')
         expect(result.error).toContain('Tool not permitted')
+        expect(result.goldSpent).toBe(0)
     })
 })

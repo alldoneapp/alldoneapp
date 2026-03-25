@@ -1415,6 +1415,7 @@ async function collectAssistantTextWithToolCalls({
         executedToolCallsCount: toolCallIteration,
         executedToolNames,
         reachedMaxToolIterations: toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS,
+        finalConversation: currentConversation,
     }
 }
 
@@ -6756,6 +6757,7 @@ module.exports = {
     getOptimizedContextMessages,
     getMaxTokensForModel,
     getMessageTextForTokenCounting,
+    calculateTokens,
     buildMultimodalUserContent,
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,

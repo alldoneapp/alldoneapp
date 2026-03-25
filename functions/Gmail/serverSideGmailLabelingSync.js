@@ -6,6 +6,7 @@ const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
     addBaseInstructions,
+    calculateTokens,
     calculateGoldCostFromTokens,
     collectAssistantTextWithToolCalls,
     getAssistantForChat,
@@ -530,6 +531,9 @@ function buildPostLabelActionSkipped({
     error = '',
     assistantProjectId = null,
     assistantId = null,
+    goldSpent = 0,
+    estimatedNormalGoldCost = 0,
+    tokenUsage = null,
 }) {
     return {
         prompt,
@@ -541,6 +545,9 @@ function buildPostLabelActionSkipped({
         assistantResponse: '',
         status,
         error: error || '',
+        goldSpent: Number.isFinite(goldSpent) ? goldSpent : 0,
+        estimatedNormalGoldCost: Number.isFinite(estimatedNormalGoldCost) ? estimatedNormalGoldCost : 0,
+        tokenUsage,
         executedAt: admin.firestore.Timestamp.now(),
     }
 }
@@ -682,6 +689,28 @@ async function executePostLabelPrompt({
                 gmailContext,
             },
         })
+        const totalTokens = calculateTokens(
+            result?.assistantResponse || '',
+            Array.isArray(result?.finalConversation) ? result.finalConversation : messages,
+            assistant.model
+        )
+        const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, assistant.model)
+        let goldSpent = 0
+        if (estimatedNormalGoldCost > 0) {
+            const goldResult = await deductGold(userId, estimatedNormalGoldCost)
+            if (goldResult?.success) {
+                goldSpent = estimatedNormalGoldCost
+            } else {
+                console.warn('[gmailLabeling] Failed to deduct gold for post-label prompt', {
+                    userId,
+                    assistantProjectId,
+                    assistantId,
+                    messageId: normalizedMessage?.messageId || '',
+                    requestedGold: estimatedNormalGoldCost,
+                    currentGold: goldResult?.currentGold ?? null,
+                })
+            }
+        }
 
         return {
             prompt,
@@ -693,6 +722,11 @@ async function executePostLabelPrompt({
             assistantResponse: result?.assistantResponse || '',
             status: 'completed',
             error: '',
+            goldSpent,
+            estimatedNormalGoldCost,
+            tokenUsage: {
+                totalTokens,
+            },
             executedAt: admin.firestore.Timestamp.now(),
         }
     } catch (error) {
@@ -707,6 +741,9 @@ async function executePostLabelPrompt({
             assistantResponse: '',
             status: isBlocked ? 'blocked' : 'failed',
             error: error.message || 'Failed to execute follow-up prompt.',
+            goldSpent: 0,
+            estimatedNormalGoldCost: 0,
+            tokenUsage: null,
             executedAt: admin.firestore.Timestamp.now(),
         }
     }
@@ -901,6 +938,8 @@ async function processSingleMessage({
         forceExecute: forceFollowUp,
         existingAuditEntry,
     })
+    const followUpGoldSpent = Number(postLabelAction?.goldSpent) || 0
+    const followUpEstimatedNormalGoldCost = Number(postLabelAction?.estimatedNormalGoldCost) || 0
 
     await writeAuditRecord(userId, projectId, normalizedMessage, {
         syncRunId,
@@ -920,8 +959,8 @@ async function processSingleMessage({
         labeled: 1,
         archived: modifyResult.archived ? 1 : 0,
         skipped: 0,
-        goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
-        estimatedNormalGoldCost,
+        goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL + followUpGoldSpent,
+        estimatedNormalGoldCost: estimatedNormalGoldCost + followUpEstimatedNormalGoldCost,
         insufficientGold: false,
     }
 }
