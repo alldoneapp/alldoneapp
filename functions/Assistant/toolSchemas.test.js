@@ -68,4 +68,15 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_user_memory.function.parameters.properties.category.type).toBe('string')
         expect(toolSchemas.update_user_memory.function.parameters.properties.reason.type).toBe('string')
     })
+
+    test('defines optional image URLs for create_task', () => {
+        expect(toolSchemas.create_task.function.parameters.properties.images).toEqual({
+            type: 'array',
+            items: {
+                type: 'string',
+            },
+            description:
+                'Optional: image URLs to embed in the task description. Use exact URLs from the current user message when the task should include attached images.',
+        })
+    })
 })

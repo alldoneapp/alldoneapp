@@ -21,6 +21,14 @@ const toolSchemas = {
                         type: 'string',
                         description: 'Optional: description for the task',
                     },
+                    images: {
+                        type: 'array',
+                        items: {
+                            type: 'string',
+                        },
+                        description:
+                            'Optional: image URLs to embed in the task description. Use exact URLs from the current user message when the task should include attached images.',
+                    },
                     dueDate: {
                         oneOf: [
                             {

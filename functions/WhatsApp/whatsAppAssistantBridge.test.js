@@ -136,6 +136,37 @@ describe('WhatsApp assistant attachment handoff', () => {
         expect(storeAssistantMessageInTopic).toHaveBeenCalled()
     })
 
+    test('passes multimodal current-message images through to the model context', async () => {
+        getUserData.mockResolvedValue({ gold: 10, language: 'en' })
+        assistantHelper.getAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            model: 'MODEL_GPT4O',
+            temperature: 'TEMPERATURE_NORMAL',
+            instructions: '',
+            displayName: 'Helper',
+            allowedTools: ['create_task'],
+        })
+        getConversationHistory.mockResolvedValue([])
+        assistantHelper.interactWithChatStream.mockResolvedValue(createAsyncStream([{ content: 'Done.' }]))
+
+        const userMessageContent = [
+            { type: 'text', text: 'Create a task from this' },
+            { type: 'image_url', image_url: { url: 'https://cdn.example.com/uploads/task-image.png' } },
+        ]
+
+        await processWhatsAppAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Create a task from this',
+            'assistant-1',
+            userMessageContent
+        )
+
+        const messages = assistantHelper.interactWithChatStream.mock.calls[0][0]
+        expect(messages[messages.length - 1]).toEqual(['user', userMessageContent])
+    })
+
     test('injects current-message attachment into the next external tool call', async () => {
         const stream = createAsyncStream([
             {

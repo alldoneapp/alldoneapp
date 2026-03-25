@@ -47,6 +47,11 @@ const {
     buildPendingAttachmentPayload,
     injectPendingAttachmentIntoToolArgs,
 } = require('./attachmentToolHandoff')
+const {
+    normalizeCreateTaskImageUrls,
+    buildCreateTaskImageTokens,
+    mergeTaskDescriptionWithImages,
+} = require('./createTaskImageHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -3109,11 +3114,12 @@ async function executeToolNatively(
 
             try {
                 const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
+                const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
                         name: toolArgs.name,
-                        description: toolArgs.description || '',
+                        description: descriptionWithImages,
                         dueDate: processedDueDate,
                         userId: creatorId,
                         projectId: targetProjectId,
@@ -6089,6 +6095,12 @@ async function addBaseInstructions(
             'When the user wants to use a PDF or other file from Gmail with an external app tool, first use search_gmail to find the message and attachment metadata, then call get_gmail_attachment with the exact messageId and exact fileName from the same search result item. If search_gmail returned a projectId for that same result, reuse that exact projectId too; do not invent or substitute a different projectId. Use attachmentId only as a fallback when fileName is unavailable. Then pass the returned fileName and fileBase64 into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('create_task')) {
+        messages.push([
+            'system',
+            'When you call create_task based on the current user message and that message includes images, include those exact image URLs in create_task.images. Use only URLs from the current triggering user message; do not invent, transform, or omit them.',
+        ])
+    }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
         assistantContext?.projectId,
         assistantContext?.assistantId
@@ -6745,6 +6757,9 @@ module.exports = {
     getMaxTokensForModel,
     getMessageTextForTokenCounting,
     buildMultimodalUserContent,
+    normalizeCreateTaskImageUrls,
+    buildCreateTaskImageTokens,
+    mergeTaskDescriptionWithImages,
     collectAssistantTextWithToolCalls,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,

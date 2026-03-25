@@ -1,4 +1,9 @@
 const {
+    normalizeCreateTaskImageUrls,
+    buildCreateTaskImageTokens,
+    mergeTaskDescriptionWithImages,
+} = require('./createTaskImageHelper')
+const {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     injectPendingAttachmentIntoToolArgs,
@@ -181,5 +186,49 @@ describe('assistant attachment handoff helpers', () => {
             },
             usedPendingAttachment: false,
         })
+    })
+})
+
+describe('assistant create_task image helpers', () => {
+    test('keeps description unchanged when images are omitted', () => {
+        expect(mergeTaskDescriptionWithImages('Follow up with vendor', undefined)).toBe('Follow up with vendor')
+    })
+
+    test('builds description from images only when no description is provided', () => {
+        const result = mergeTaskDescriptionWithImages('', ['https://cdn.example.com/uploads/receipt.png'])
+
+        expect(result).toContain('https://cdn.example.com/uploads/receipt.png')
+        expect(result).toContain('receipt.png')
+    })
+
+    test('appends image tokens after existing description text', () => {
+        const result = mergeTaskDescriptionWithImages('Create expense task', [
+            'https://cdn.example.com/uploads/receipt.png',
+        ])
+
+        expect(result.startsWith('Create expense task\n\n')).toBe(true)
+        expect(result).toContain('https://cdn.example.com/uploads/receipt.png')
+    })
+
+    test('preserves multiple image URLs in order', () => {
+        const result = buildCreateTaskImageTokens([
+            'https://cdn.example.com/uploads/first.png',
+            'https://cdn.example.com/uploads/second.png',
+        ])
+
+        expect(result.indexOf('first.png')).toBeLessThan(result.indexOf('second.png'))
+    })
+
+    test('ignores invalid, empty, and duplicate image URLs', () => {
+        expect(
+            normalizeCreateTaskImageUrls([
+                '',
+                '   ',
+                'not-a-url',
+                'https://cdn.example.com/uploads/a.png',
+                'https://cdn.example.com/uploads/a.png',
+                'http://cdn.example.com/uploads/b.png',
+            ])
+        ).toEqual(['https://cdn.example.com/uploads/a.png', 'http://cdn.example.com/uploads/b.png'])
     })
 })
