@@ -18,6 +18,7 @@ import { DV_TAB_ROOT_TASKS } from '../utils/TabNavigationConstants'
 import Backend from '../utils/BackendBridge'
 import { exitsOpenModals } from './ModalsManager/modalsManager'
 import { Dismissible } from 'react-dismissible'
+import { isInboxSummaryGmailTask } from '../utils/Gmail/gmailTaskUtils'
 
 class SocialTextInput extends Component {
     constructor(props) {
@@ -307,7 +308,7 @@ class SocialTextInput extends Component {
                 hasLinkBack={task.linkBack !== undefined && task.linkBack.length > 0}
                 task={task}
                 onPress={() => {
-                    if (!task.calendarData && !task.gmailData) {
+                    if (!task.calendarData && !isInboxSummaryGmailTask(task)) {
                         store.dispatch(setTaskTitleInEditMode(!(task.genericData || !accessGranted || disabled)))
                     }
                 }}

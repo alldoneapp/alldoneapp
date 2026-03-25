@@ -33,6 +33,7 @@ import Premium from './Premium'
 import InFocus from './InFocus'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import TaskId from './TaskId'
+import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 
 export default function PropertiesView({ project, task, loggedUser }) {
     const [creator, setCreator] = useState({})
@@ -73,6 +74,7 @@ export default function PropertiesView({ project, task, loggedUser }) {
         loggedUserIsTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+    const isLockedGmailTask = isInboxSummaryGmailTask(task)
 
     return (
         <View style={{ flexDirection: 'column', marginBottom: 92 }}>
@@ -103,17 +105,17 @@ export default function PropertiesView({ project, task, loggedUser }) {
                         <DueDate
                             projectId={projectId}
                             task={task}
-                            disabled={!accessGranted || task.gmailData || !loggedUserCanUpdateObject}
+                            disabled={!accessGranted || isLockedGmailTask || !loggedUserCanUpdateObject}
                         />
                         <AlertTime
                             projectId={projectId}
                             task={task}
-                            disabled={!accessGranted || task.gmailData || !loggedUserCanUpdateObject}
+                            disabled={!accessGranted || isLockedGmailTask || !loggedUserCanUpdateObject}
                         />
                         <Project
                             item={{ type: 'task', data: task }}
                             project={project}
-                            disabled={!accessGranted || task.gmailData || isAssistant}
+                            disabled={!accessGranted || isLockedGmailTask || isAssistant}
                         />
                         <Highlight
                             task={task}
@@ -124,7 +126,7 @@ export default function PropertiesView({ project, task, loggedUser }) {
                             projectId={projectId}
                             task={task}
                             disabled={
-                                !accessGranted || task.gmailData || task.calendarData || !loggedUserCanUpdateObject
+                                !accessGranted || isLockedGmailTask || task.calendarData || !loggedUserCanUpdateObject
                             }
                         />
                         {!isRecurrentTask && (
@@ -182,7 +184,7 @@ export default function PropertiesView({ project, task, loggedUser }) {
                             task={task}
                             disabled={
                                 !accessGranted ||
-                                task.gmailData ||
+                                isLockedGmailTask ||
                                 task.calendarData ||
                                 !loggedUserCanUpdateObject ||
                                 isAssistant

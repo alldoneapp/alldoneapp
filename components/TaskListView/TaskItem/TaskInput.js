@@ -7,6 +7,7 @@ import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NOT_ALLOW_EDIT_TAGS, SUBTASK_THEME, TASK_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
 import { translate } from '../../../i18n/TranslationService'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 
 export default function TaskInput({
     isSubtask,
@@ -45,7 +46,7 @@ export default function TaskInput({
         tmpTask.genericData ||
         !accessGranted ||
         tmpTask.calendarData ||
-        tmpTask.gmailData ||
+        isInboxSummaryGmailTask(tmpTask) ||
         isAssistant
 
     useEffect(() => {

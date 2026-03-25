@@ -42,6 +42,7 @@ import {
 } from '../../../../../utils/backends/Tasks/tasksFirestore'
 import HighlightColorModal from '../../HighlightColorModal/HighlightColorModal'
 import { translate } from '../../../../../i18n/TranslationService'
+import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 
 export default function TaskMoreButton({
     formType,
@@ -76,6 +77,7 @@ export default function TaskMoreButton({
     const modalRef = useRef()
 
     const hidePrivacyButton = !task.isSubtask && !task.done && task.userIds.length > 1
+    const isLockedGmailTask = isInboxSummaryGmailTask(task)
 
     const link = `${window.location.origin}${getDvMainTabLink(projectId, task.id, 'tasks')}`
     const project = ProjectHelper.getProjectById(projectId)
@@ -226,7 +228,7 @@ export default function TaskMoreButton({
             })
         }
 
-        if (!task.calendarData && !task.gmailData && !isAssistant) {
+        if (!task.calendarData && !isLockedGmailTask && !isAssistant) {
             list.push(shortcut => {
                 return (
                     <GenericModalItem
@@ -258,7 +260,7 @@ export default function TaskMoreButton({
             })
         }
 
-        if (!task.calendarData && !task.gmailData && !isAssistant) {
+        if (!task.calendarData && !isLockedGmailTask && !isAssistant) {
             list.push(shortcut => {
                 return (
                     <GenericModalItem
@@ -272,7 +274,7 @@ export default function TaskMoreButton({
             })
         }
 
-        if (editing && !task.gmailData && !isGuide && !isAssistant) {
+        if (editing && !isLockedGmailTask && !isGuide && !isAssistant) {
             list.push(shortcut => {
                 return (
                     <GenericModalItem
@@ -286,7 +288,7 @@ export default function TaskMoreButton({
             })
         }
 
-        if (editing && !task.calendarData && !task.gmailData) {
+        if (editing && !task.calendarData && !isLockedGmailTask) {
             list.push(shortcut => {
                 return (
                     <GenericModalItem

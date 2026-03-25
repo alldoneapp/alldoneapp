@@ -26,6 +26,7 @@ import { showFloatPopup, hideFloatPopup } from '../../../redux/actions'
 import { Keyboard } from 'react-native'
 import Backend from '../../../utils/BackendBridge'
 import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelper'
+import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -64,6 +65,7 @@ export default function SecondaryButtonsArea({
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
     const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const isLockedGmailTask = isInboxSummaryGmailTask(tmpTask)
 
     const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
 
@@ -163,7 +165,7 @@ export default function SecondaryButtonsArea({
             {loggedUserCanUpdateObject &&
                 !tmpTask.done &&
                 taskViewToggleSection !== 'Workflow' &&
-                !tmpTask.gmailData && (
+                !isLockedGmailTask && (
                     <>
                         {tmpTask.calendarData ? (
                             <TranscribeButton
