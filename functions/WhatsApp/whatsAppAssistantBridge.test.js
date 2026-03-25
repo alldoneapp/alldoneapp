@@ -369,4 +369,75 @@ describe('WhatsApp assistant attachment handoff', () => {
             expect.any(Object)
         )
     })
+
+    test('injects current-message image URLs into create_task when the model omits images', async () => {
+        const stream = createAsyncStream([
+            {
+                additional_kwargs: {
+                    tool_calls: [
+                        {
+                            id: 'tool-1',
+                            function: {
+                                name: 'create_task',
+                                arguments: JSON.stringify({
+                                    name: 'Neue Aufgabe',
+                                    description: 'Bild aus dem Chat angehängt.',
+                                }),
+                            },
+                        },
+                    ],
+                },
+            },
+        ])
+
+        assistantHelper.executeToolNatively.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-1',
+            projectId: 'project-1',
+        })
+        assistantHelper.interactWithChatStream.mockResolvedValueOnce(createAsyncStream([{ content: 'Erledigt.' }]))
+
+        await collectStreamWithToolCalls(
+            stream,
+            [
+                [
+                    'user',
+                    [
+                        { type: 'text', text: 'Bitte erstelle eine Aufgabe' },
+                        { type: 'image_url', image_url: { url: 'https://cdn.example.com/uploads/task-image.png' } },
+                    ],
+                ],
+            ],
+            'MODEL_GPT4O',
+            'TEMPERATURE_NORMAL',
+            ['create_task'],
+            'project-1',
+            'assistant-1',
+            'user-1',
+            {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+                messageId: 'comment-123',
+            }
+        )
+
+        expect(assistantHelper.executeToolNatively).toHaveBeenCalledWith(
+            'create_task',
+            expect.objectContaining({
+                name: 'Neue Aufgabe',
+                description: 'Bild aus dem Chat angehängt.',
+                images: ['https://cdn.example.com/uploads/task-image.png'],
+            }),
+            'project-1',
+            'assistant-1',
+            'user-1',
+            expect.objectContaining({
+                currentMessageImageUrls: ['https://cdn.example.com/uploads/task-image.png'],
+            }),
+            expect.objectContaining({ messageId: 'comment-123' })
+        )
+    })
 })

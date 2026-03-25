@@ -12,6 +12,7 @@ const {
     ENCODE_MESSAGE_GAP,
     getMessageTextForTokenCounting,
 } = require('./assistantHelper')
+const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
 
 const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
@@ -137,7 +138,13 @@ async function askToOpenAIBotOptimized(
 
         // Extract user context for tools
         const userContext = messages?.find(msg => msg[0] === 'user')
-        const userContextForTools = userContext ? { message: getMessageTextForTokenCounting(userContext[1]) } : null
+        const userContextForTools = userContext
+            ? {
+                  message: getMessageTextForTokenCounting(userContext[1]),
+                  content: userContext[1],
+                  currentMessageImageUrls: extractImageUrlsFromMessageContent(userContext[1]),
+              }
+            : null
 
         // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()

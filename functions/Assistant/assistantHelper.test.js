@@ -2,6 +2,8 @@ const {
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,
     mergeTaskDescriptionWithImages,
+    extractImageUrlsFromMessageContent,
+    injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
 const {
     buildConversationSafeToolResult,
@@ -230,5 +232,34 @@ describe('assistant create_task image helpers', () => {
                 'http://cdn.example.com/uploads/b.png',
             ])
         ).toEqual(['https://cdn.example.com/uploads/a.png', 'http://cdn.example.com/uploads/b.png'])
+    })
+
+    test('extracts image URLs from multimodal message content', () => {
+        expect(
+            extractImageUrlsFromMessageContent([
+                { type: 'text', text: 'Create a task from this' },
+                { type: 'image_url', image_url: { url: 'https://cdn.example.com/uploads/a.png' } },
+                { type: 'image_url', image_url: { url: 'https://cdn.example.com/uploads/b.png' } },
+            ])
+        ).toEqual(['https://cdn.example.com/uploads/a.png', 'https://cdn.example.com/uploads/b.png'])
+    })
+
+    test('injects current-message images into create_task args when the model omitted them', () => {
+        expect(
+            injectCurrentMessageImagesIntoCreateTaskArgs(
+                'create_task',
+                { name: 'Create a task', description: 'Bild aus dem Chat angehängt.' },
+                {
+                    content: [{ type: 'image_url', image_url: { url: 'https://cdn.example.com/uploads/a.png' } }],
+                }
+            )
+        ).toEqual({
+            toolArgs: {
+                name: 'Create a task',
+                description: 'Bild aus dem Chat angehängt.',
+                images: ['https://cdn.example.com/uploads/a.png'],
+            },
+            usedCurrentMessageImages: true,
+        })
     })
 })

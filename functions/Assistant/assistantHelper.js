@@ -51,6 +51,8 @@ const {
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,
     mergeTaskDescriptionWithImages,
+    extractImageUrlsFromMessageContent,
+    injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
@@ -1349,6 +1351,9 @@ async function collectAssistantTextWithToolCalls({
         const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload)
         toolArgs = enrichedToolArgs.toolArgs
         if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
+
+        const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext)
+        toolArgs = createTaskImageArgs.toolArgs
 
         const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
         if (!isAllowed) {
@@ -5111,6 +5116,13 @@ async function storeChunks(
                     toolArgs = enrichedToolArgs.toolArgs
                     if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
 
+                    const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
+                        toolName,
+                        toolArgs,
+                        userContext
+                    )
+                    toolArgs = createTaskImageArgs.toolArgs
+
                     // Check permissions
                     const assistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
                         forceRefresh: true,
@@ -6762,6 +6774,8 @@ module.exports = {
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,
     mergeTaskDescriptionWithImages,
+    extractImageUrlsFromMessageContent,
+    injectCurrentMessageImagesIntoCreateTaskArgs,
     collectAssistantTextWithToolCalls,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,

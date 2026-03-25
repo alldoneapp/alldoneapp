@@ -14,6 +14,10 @@ const {
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
 const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('./whatsAppToolErrorUtils')
+const {
+    extractImageUrlsFromMessageContent,
+    injectCurrentMessageImagesIntoCreateTaskArgs,
+} = require('../Assistant/createTaskImageHelper')
 
 const MAX_TOOL_ITERATIONS = 10
 const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
@@ -235,6 +239,12 @@ async function collectStreamWithToolCalls(
     let responseText = ''
     let currentConversation = conversationHistory
     let pendingAttachmentPayload = null
+    const triggeringUserContent = [...conversationHistory].reverse().find(entry => entry[0] === 'user')?.[1] || null
+    const toolUserContext = {
+        message: getMessageTextForTokenCounting(triggeringUserContent || ''),
+        content: triggeringUserContent,
+        currentMessageImageUrls: extractImageUrlsFromMessageContent(triggeringUserContent),
+    }
     const toolEvidence = {
         createTask: {
             called: false,
@@ -275,6 +285,13 @@ async function collectStreamWithToolCalls(
                 toolArgs = enrichedToolArgs.toolArgs
                 if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
 
+                const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
+                    toolName,
+                    toolArgs,
+                    toolUserContext
+                )
+                toolArgs = createTaskImageArgs.toolArgs
+
                 // Check permissions
                 const allowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
                 if (!allowed) {
@@ -295,11 +312,7 @@ async function collectStreamWithToolCalls(
                         projectId,
                         assistantId,
                         requestUserId,
-                        {
-                            message: getMessageTextForTokenCounting(
-                                conversationHistory.find(m => m[0] === 'user')?.[1]
-                            ),
-                        },
+                        toolUserContext,
                         toolRuntimeContext
                     )
 
