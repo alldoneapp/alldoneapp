@@ -105,17 +105,71 @@ describe('emailChannelHelpers', () => {
         expect(selection.attachment.fileName).toBe('invoice.pdf')
     })
 
-    test('rejects multiple supported attachments', () => {
+    test('selects the more invoice-like supported attachment by filename', () => {
         const selection = pickActionableAttachment([
-            { fileName: 'invoice.pdf', contentType: 'application/pdf' },
             {
                 fileName: 'notes.docx',
                 contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             },
+            {
+                fileName: 'invoice-march.docx',
+                contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            },
         ])
 
-        expect(selection.status).toBe('multiple_supported')
+        expect(selection.status).toBe('ok')
+        expect(selection.attachment.fileName).toBe('invoice-march.docx')
         expect(selection.supportedAttachments).toHaveLength(2)
+    })
+
+    test('selects the more invoice-like supported attachment by extracted text', () => {
+        const selection = pickActionableAttachment([
+            {
+                fileName: 'document.pdf',
+                contentType: 'application/pdf',
+                extractedText: 'Invoice number 2026-001\nAmount due 1200 EUR\nIBAN DE12',
+            },
+            {
+                fileName: 'document-copy.pdf',
+                contentType: 'application/pdf',
+                extractedText: 'General notes from the meeting',
+            },
+        ])
+
+        expect(selection.status).toBe('ok')
+        expect(selection.attachment.fileName).toBe('document.pdf')
+    })
+
+    test('breaks equally relevant ties by file type priority, then original order', () => {
+        const docxPreferred = pickActionableAttachment([
+            {
+                fileName: 'invoice.docx',
+                contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            },
+            { fileName: 'invoice.txt', contentType: 'text/plain' },
+        ])
+
+        expect(docxPreferred.attachment.fileName).toBe('invoice.docx')
+
+        const originalOrderPreferred = pickActionableAttachment([
+            { fileName: 'invoice-a.pdf', contentType: 'application/pdf' },
+            { fileName: 'invoice-b.pdf', contentType: 'application/pdf' },
+        ])
+
+        expect(originalOrderPreferred.attachment.fileName).toBe('invoice-a.pdf')
+    })
+
+    test('returns none when no supported attachments are present', () => {
+        const selection = pickActionableAttachment([
+            { fileName: 'logo.png', contentType: 'image/png' },
+            { fileName: 'signature.jpg', contentType: 'image/jpeg' },
+        ])
+
+        expect(selection).toEqual({
+            status: 'none',
+            attachment: null,
+            supportedAttachments: [],
+        })
     })
 
     test('verifies normalized webhook signatures', () => {

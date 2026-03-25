@@ -66,25 +66,7 @@ async function processQueueItem(userId, item) {
             attachments: summarizeAttachments(hydratedAttachments),
         })
 
-        const actionableSelection = pickActionableAttachment(hydratedAttachments)
-        if (actionableSelection.status === 'multiple_supported') {
-            const responseText =
-                'I found more than one supported attachment in this email. Please send one invoice per email.'
-            await storeEmailAssistantMessageInTopic(projectId, chatId, assistantId, responseText, userId, {
-                status: 'failed_multiple_attachments',
-                toEmail: data.fromEmail || '',
-                subject: data.subject || '',
-                messageId,
-            })
-            await sendReplyForQueueItem(data, responseText)
-            await finalizeQueueItem(item.ref, messageId, {
-                status: 'failed_multiple_attachments',
-                replyStatus: 'sent',
-            })
-            return
-        }
-
-        const actionableAttachment = actionableSelection.attachment
+        const actionableAttachment = pickActionableAttachment(hydratedAttachments).attachment
         const initialPendingAttachmentPayload = actionableAttachment
             ? {
                   fileName: actionableAttachment.fileName || '',
@@ -309,4 +291,7 @@ async function releaseUserQueueLock(userId, ownerId) {
 module.exports = {
     processAnnaEmailInboundQueueItem,
     hydrateAttachments,
+    __private__: {
+        processQueueItem,
+    },
 }

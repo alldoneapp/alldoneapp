@@ -143,22 +143,95 @@ function getSupportedAttachmentPriority(attachment = {}) {
     return 0
 }
 
+const INVOICE_LIKE_PATTERNS = [
+    /\binvoice\b/i,
+    /\brechnung\b/i,
+    /\bfactura\b/i,
+    /\bfaktura\b/i,
+    /\breceipt\b/i,
+    /\bbill(?:ing)?\b/i,
+    /\bstatement\b/i,
+    /\bcredit[ _-]?note\b/i,
+    /\bdebit[ _-]?note\b/i,
+    /\bpayment[ _-]?request\b/i,
+]
+
+const INVOICE_CONTENT_PATTERNS = [
+    /\binvoice\b/i,
+    /\binvoice\s*(?:number|no\.?|#)\b/i,
+    /\bamount\s+due\b/i,
+    /\bdue\s+date\b/i,
+    /\btotal\b/i,
+    /\bsubtotal\b/i,
+    /\bvat\b/i,
+    /\btax\b/i,
+    /\biban\b/i,
+    /\bbic\b/i,
+    /\baccount\s+number\b/i,
+    /\bpayment\s+terms\b/i,
+    /\bnet\s+\d+\b/i,
+]
+
+const NON_ACTIONABLE_PATTERNS = [
+    /\blogo\b/i,
+    /\bsignature\b/i,
+    /\bbrand(?:ing)?\b/i,
+    /\bbanner\b/i,
+    /\bicon\b/i,
+    /\bheader\b/i,
+    /\bfooter\b/i,
+    /\bimage\b/i,
+    /\bphoto\b/i,
+    /\bscan\d*\b/i,
+]
+
+function getAttachmentRelevanceScore(attachment = {}) {
+    const fileName = String(attachment.fileName || '').trim()
+    const extractedText = String(attachment.extractedText || '').trim()
+    const priority = getSupportedAttachmentPriority(attachment)
+    if (priority <= 0) return -Infinity
+
+    let score = (4 - priority) * 100
+
+    INVOICE_LIKE_PATTERNS.forEach(pattern => {
+        if (pattern.test(fileName)) score += 40
+    })
+
+    INVOICE_CONTENT_PATTERNS.forEach(pattern => {
+        if (pattern.test(extractedText)) score += 15
+    })
+
+    NON_ACTIONABLE_PATTERNS.forEach(pattern => {
+        if (pattern.test(fileName)) score -= 30
+    })
+
+    return score
+}
+
 function pickActionableAttachment(attachments = []) {
     if (!Array.isArray(attachments) || attachments.length === 0) {
         return { status: 'none', attachment: null, supportedAttachments: [] }
     }
 
     const supportedAttachments = attachments
-        .map(attachment => ({ ...attachment, priority: getSupportedAttachmentPriority(attachment) }))
+        .map((attachment, index) => {
+            const priority = getSupportedAttachmentPriority(attachment)
+            return {
+                ...attachment,
+                priority,
+                originalIndex: index,
+                relevanceScore: priority > 0 ? getAttachmentRelevanceScore(attachment) : -Infinity,
+            }
+        })
         .filter(attachment => attachment.priority > 0)
-        .sort((a, b) => a.priority - b.priority)
+        .sort((a, b) => {
+            if (b.relevanceScore !== a.relevanceScore) return b.relevanceScore - a.relevanceScore
+            if (a.priority !== b.priority) return a.priority - b.priority
+            return a.originalIndex - b.originalIndex
+        })
 
     if (supportedAttachments.length === 0) {
         return { status: 'none', attachment: null, supportedAttachments: [] }
-    }
-
-    if (supportedAttachments.length > 1) {
-        return { status: 'multiple_supported', attachment: null, supportedAttachments }
     }
 
     return { status: 'ok', attachment: supportedAttachments[0], supportedAttachments }
