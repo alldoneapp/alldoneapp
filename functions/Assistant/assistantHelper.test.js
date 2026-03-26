@@ -10,6 +10,16 @@ const {
     buildPendingAttachmentPayload,
     injectPendingAttachmentIntoToolArgs,
 } = require('./attachmentToolHandoff')
+const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
+
+jest.mock('../shared/ProjectService', () => ({
+    ProjectService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUserProjects: jest.fn().mockResolvedValue([]),
+    })),
+}))
+
+const { ProjectService } = require('../shared/ProjectService')
 
 describe('assistant attachment handoff helpers', () => {
     test('redacts attachment base64 from conversation-safe tool results', () => {
@@ -260,6 +270,68 @@ describe('assistant create_task image helpers', () => {
                 images: ['https://cdn.example.com/uploads/a.png'],
             },
             usedCurrentMessageImages: true,
+        })
+    })
+})
+
+describe('resolveCreateTaskTargetProject', () => {
+    beforeEach(() => {
+        ProjectService.mockClear()
+    })
+
+    test('falls back to the user default project when the requested project name does not exist', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'p-context', name: 'Operations' }])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+
+        const fakeDb = {
+            collection: jest.fn(collectionName => ({
+                doc: jest.fn(docId => ({
+                    get: jest.fn().mockResolvedValue(
+                        collectionName === 'users'
+                            ? {
+                                  exists: true,
+                                  data: () => ({
+                                      defaultProjectId: 'p-default',
+                                      projectIds: ['p-default', 'p-context'],
+                                  }),
+                              }
+                            : collectionName === 'projects' && docId === 'p-default'
+                            ? {
+                                  exists: true,
+                                  data: () => ({ name: 'Inbox' }),
+                              }
+                            : { exists: false, data: () => ({}) }
+                    ),
+                })),
+            })),
+            doc: jest.fn(path => ({ path })),
+            getAll: jest.fn(async (...refs) =>
+                refs.map(ref => ({
+                    exists: ref.path === 'assistants/p-default/items/a-1',
+                }))
+            ),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-context',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectName: 'Made Up Project',
+            })
+        ).resolves.toEqual({
+            targetProjectId: 'p-default',
+            targetProjectName: 'Inbox',
+            source: 'defaultProjectFallback',
+        })
+
+        expect(getUserProjects).toHaveBeenCalledWith('u-1', {
+            includeArchived: false,
+            includeCommunity: false,
         })
     })
 })

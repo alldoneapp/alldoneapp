@@ -54,6 +54,7 @@ const {
     extractImageUrlsFromMessageContent,
     injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
+const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -2944,105 +2945,23 @@ async function executeToolNatively(
             const moment = require('moment-timezone')
             const db = admin.firestore()
 
-            // Determine target project ID with three-level fallback
-            // 1. Explicit projectId in toolArgs (highest priority)
-            // 2. Project name resolution (if projectName provided)
-            // 3. Current assistant project (required default behavior)
-            let targetProjectId = toolArgs.projectId
-            let targetProjectName = null
-
-            // Project name resolution (if name provided but no ID)
-            if (!targetProjectId && toolArgs.projectName) {
-                const { ProjectService } = require('../shared/ProjectService')
-                const projectService = new ProjectService({ database: db })
-                await projectService.initialize()
-
-                const projects = await projectService.getUserProjects(creatorId, {
-                    includeArchived: false,
-                    includeCommunity: false,
-                })
-
-                // Case-insensitive partial match
-                const matchingProject = projects.find(
-                    p => p.name && p.name.toLowerCase().includes(toolArgs.projectName.toLowerCase())
-                )
-
-                if (matchingProject) {
-                    targetProjectId = matchingProject.id
-                    targetProjectName = matchingProject.name
-                    console.log('📝 CREATE_TASK TOOL: Resolved project name to ID', {
-                        projectName: toolArgs.projectName,
-                        projectId: matchingProject.id,
-                        projectFullName: matchingProject.name,
-                    })
-                } else {
-                    throw new Error(`Project not found: "${toolArgs.projectName}"`)
-                }
-            }
-
-            // Fallback to current assistant project
-            if (!targetProjectId) {
-                try {
-                    const candidateProjectIds = []
-                    const appendProjectId = value => {
-                        if (typeof value === 'string' && value.trim() && !candidateProjectIds.includes(value.trim())) {
-                            candidateProjectIds.push(value.trim())
-                        }
-                    }
-
-                    // Prioritize likely assistant locations first
-                    appendProjectId(projectId)
-
-                    const userDoc = await db.collection('users').doc(creatorId).get()
-                    if (userDoc.exists) {
-                        const userData = userDoc.data() || {}
-                        appendProjectId(userData.defaultProjectId)
-                        if (Array.isArray(userData.projectIds)) {
-                            userData.projectIds.forEach(pid => appendProjectId(pid))
-                        }
-                    }
-
-                    // Global assistant is valid in this app and can own preconfigured tasks
-                    appendProjectId(GLOBAL_PROJECT_ID)
-
-                    if (candidateProjectIds.length > 0) {
-                        const assistantRefs = candidateProjectIds.map(pid =>
-                            db.doc(`assistants/${pid}/items/${assistantId}`)
-                        )
-                        const assistantDocs = await db.getAll(...assistantRefs)
-                        const assistantIndex = assistantDocs.findIndex(doc => doc.exists)
-
-                        if (assistantIndex >= 0) {
-                            targetProjectId = candidateProjectIds[assistantIndex]
-                            if (targetProjectId !== GLOBAL_PROJECT_ID) {
-                                const assistantProjectDoc = await db.collection('projects').doc(targetProjectId).get()
-                                if (assistantProjectDoc.exists) {
-                                    targetProjectName = assistantProjectDoc.data().name || null
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error resolving assistant project for create_task:', error)
-                }
-            }
-
-            if (!targetProjectId) {
-                throw new Error(
-                    'No project specified and no assistant project found. Please specify a projectId or projectName.'
-                )
-            }
+            const createTaskProjectSelection = await resolveCreateTaskTargetProject(db, {
+                creatorId,
+                contextProjectId: projectId,
+                assistantId,
+                globalProjectId: GLOBAL_PROJECT_ID,
+                requestedProjectId: toolArgs.projectId,
+                requestedProjectName: toolArgs.projectName,
+            })
+            const targetProjectId = createTaskProjectSelection.targetProjectId
+            let targetProjectName = createTaskProjectSelection.targetProjectName
 
             console.log('📝 CREATE_TASK TOOL: Project selection', {
                 toolArgsProjectId: toolArgs.projectId,
                 toolArgsProjectName: toolArgs.projectName,
                 contextProjectId: projectId,
                 selectedProjectId: targetProjectId,
-                source: toolArgs.projectId
-                    ? 'toolArgs.projectId'
-                    : toolArgs.projectName
-                    ? 'toolArgs.projectName'
-                    : 'assistantProject',
+                source: createTaskProjectSelection.source,
             })
 
             // Get user data for feed creation and timezone
