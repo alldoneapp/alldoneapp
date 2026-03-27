@@ -95,7 +95,7 @@ export default function DefaultProject({ user }) {
                         />
                     ) : (
                         <Button
-                            icon={'edit'}
+                            icon={'edit-2'}
                             type={'ghost'}
                             title={'None'}
                             onPress={openModal}

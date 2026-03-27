@@ -38,7 +38,7 @@ export default function DateFormat({ userId, dateFormat }) {
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button
-                        icon={'edit'}
+                        icon={'edit-2'}
                         type={'ghost'}
                         title={`${moment().format(dateFormat)} • ${
                             dateFormat === DATE_FORMAT_EUROPE

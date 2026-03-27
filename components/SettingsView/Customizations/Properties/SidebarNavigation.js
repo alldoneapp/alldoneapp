@@ -60,7 +60,7 @@ export default function SidebarNavigation({ userId, sidebarNavigationMode }) {
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button
-                        icon={'edit'}
+                        icon={'edit-2'}
                         type={'ghost'}
                         title={translate(currentOption.label)}
                         onPress={() => setOpen(true)}

@@ -71,7 +71,7 @@ export default function GlobalUserPhone({ userId, phone }) {
                     align={'end'}
                     contentLocation={smallScreen ? null : undefined}
                 >
-                    <Button icon={'edit'} type={'ghost'} onPress={() => setOpen(true)} />
+                    <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
                 </Popover>
             </View>
         </View>

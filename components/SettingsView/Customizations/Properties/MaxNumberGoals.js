@@ -56,7 +56,7 @@ export default function MaxNumberGoals({ userId, numberGoalsAllTeams }) {
                     align={'end'}
                     contentLocation={mobile ? null : undefined}
                 >
-                    <Button icon={'edit'} type={'ghost'} onPress={() => setOpen(true)} />
+                    <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
                 </Popover>
             </View>
         </View>

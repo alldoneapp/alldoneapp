@@ -33,7 +33,7 @@ export default function Theme({ userId, themeName }) {
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button
-                        icon={'edit'}
+                        icon={'edit-2'}
                         type={'ghost'}
                         title={translate(themeOptionsMap[themeName].name)}
                         onPress={() => setOpen(true)}

@@ -75,7 +75,7 @@ export default function GlobalUserInfo({ userId, role, company, description }) {
                     align={'end'}
                     contentLocation={smallScreen ? null : undefined}
                 >
-                    <Button icon={'edit'} type={'ghost'} onPress={() => setOpen(true)} />
+                    <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
                 </Popover>
             </View>
         </View>
