@@ -42,6 +42,24 @@ jest.mock('../Assistant/assistantHelper', () => ({
             messageId: toolResult.messageId || '',
         }
     }),
+    buildConversationSafeToolArgs: jest.fn((toolName, toolArgs, pendingAttachmentPayload) => {
+        if (!String(toolName || '').startsWith('external_tool_') || !toolArgs || typeof toolArgs !== 'object') {
+            return toolArgs
+        }
+
+        const normalizedArgs = { ...toolArgs }
+        if (
+            typeof normalizedArgs.fileBase64 === 'string' &&
+            normalizedArgs.fileBase64 &&
+            (normalizedArgs.fileBase64 === pendingAttachmentPayload?.fileBase64 ||
+                /^[A-Za-z0-9+/]+={0,2}$/.test(normalizedArgs.fileBase64))
+        ) {
+            normalizedArgs.fileBase64 = '[omitted from conversation; preserved for the next external tool call]'
+            normalizedArgs.fileBase64Length = toolArgs.fileBase64.length
+        }
+
+        return normalizedArgs
+    }),
     injectPendingAttachmentIntoToolArgs: jest.fn((toolName, toolArgs, pendingAttachmentPayload) => {
         if (!String(toolName || '').startsWith('external_tool_') || !pendingAttachmentPayload) {
             return { toolArgs, usedPendingAttachment: false }
@@ -267,13 +285,29 @@ describe('WhatsApp assistant attachment handoff', () => {
             expect.objectContaining({ messageId: 'comment-123' })
         )
 
-        const resumedConversation = assistantHelper.interactWithChatStream.mock.calls[0][0]
-        expect(resumedConversation[resumedConversation.length - 2]).toEqual(
+        const resumedConversations = assistantHelper.interactWithChatStream.mock.calls.map(call => call[0])
+        const externalToolReplay = resumedConversations.find(conversation =>
+            conversation.some(
+                entry =>
+                    entry?.role === 'assistant' &&
+                    Array.isArray(entry.tool_calls) &&
+                    entry.tool_calls.some(toolCall => toolCall?.function?.name === 'external_tool_bookkeeping_send_invoice')
+            )
+        )
+
+        expect(externalToolReplay).toBeTruthy()
+        expect(externalToolReplay[externalToolReplay.length - 3]).toEqual(
             expect.objectContaining({
-                role: 'tool',
-                content: expect.stringContaining(
-                    '[omitted from conversation; preserved for the next external tool call]'
-                ),
+                role: 'assistant',
+                tool_calls: [
+                    expect.objectContaining({
+                        function: expect.objectContaining({
+                            arguments: expect.stringContaining(
+                                '[omitted from conversation; preserved for the next external tool call]'
+                            ),
+                        }),
+                    }),
+                ],
             })
         )
     })

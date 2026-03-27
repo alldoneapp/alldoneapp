@@ -36,6 +36,27 @@ function buildPendingAttachmentPayload(toolName, toolResult) {
     }
 }
 
+function buildConversationSafeToolArgs(toolName, toolArgs, pendingAttachmentPayload) {
+    if (!isExternalIntegrationToolName(toolName) || !isObject(toolArgs)) return toolArgs
+
+    const safeToolArgs = { ...toolArgs }
+    const pendingFileBase64 = pendingAttachmentPayload?.fileBase64 || ''
+
+    if (typeof safeToolArgs.fileBase64 === 'string' && safeToolArgs.fileBase64.trim()) {
+        const shouldRedact =
+            safeToolArgs.fileBase64 === pendingFileBase64 ||
+            safeToolArgs.fileBase64 === REDACTED_FILE_BASE64_PLACEHOLDER ||
+            looksLikeBase64(safeToolArgs.fileBase64)
+
+        if (shouldRedact) {
+            safeToolArgs.fileBase64 = REDACTED_FILE_BASE64_PLACEHOLDER
+            safeToolArgs.fileBase64Length = safeToolArgs.fileBase64Length || toolArgs.fileBase64.length
+        }
+    }
+
+    return safeToolArgs
+}
+
 function looksLikeBase64(value) {
     if (typeof value !== 'string') return false
     const normalized = value.replace(/\s+/g, '')
@@ -90,5 +111,6 @@ function injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachme
 module.exports = {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
+    buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
 }

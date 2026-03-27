@@ -45,6 +45,7 @@ const { getUserMemoryContextMessage, updateUserMemory } = require('./userMemoryH
 const {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
+    buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
 } = require('./attachmentToolHandoff')
 const {
@@ -6698,5 +6699,6 @@ module.exports = {
     collectAssistantTextWithToolCalls,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
+    buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
 }

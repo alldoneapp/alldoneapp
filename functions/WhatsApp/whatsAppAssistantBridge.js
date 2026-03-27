@@ -9,6 +9,7 @@ const {
     isToolAllowedForExecution,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
+    buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
 } = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
@@ -339,6 +340,11 @@ async function collectStreamWithToolCalls(
                 const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
                 pendingAttachmentPayload =
                     buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                const conversationSafeToolArgs = buildConversationSafeToolArgs(
+                    toolName,
+                    toolArgs,
+                    pendingAttachmentPayload
+                )
 
                 // Build updated conversation with tool result
                 const delegationFailed =
@@ -362,7 +368,7 @@ async function collectStreamWithToolCalls(
                                 type: 'function',
                                 function: {
                                     name: toolName,
-                                    arguments: JSON.stringify(toolArgs),
+                                    arguments: JSON.stringify(conversationSafeToolArgs),
                                 },
                             },
                         ],
