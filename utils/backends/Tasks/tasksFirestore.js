@@ -3238,6 +3238,27 @@ const pickPreferredFocusTaskInSameGoal = ({
     return orderedTasks[0] || null
 }
 
+const pickNextGeneralFocusTask = ({ projectId, userId, tasks, openMilestones, doneMilestones, goalsById }) => {
+    if (!tasks || tasks.length === 0) return null
+
+    const generalTasks = tasks.filter(task => !task.parentGoalId)
+    if (generalTasks.length === 0) return null
+
+    const nonWorkflowGeneralTasks = generalTasks.filter(task => task.userIds?.length === 1)
+    const candidateTasks = nonWorkflowGeneralTasks.length > 0 ? nonWorkflowGeneralTasks : generalTasks
+
+    const orderedTasks = sortTasksByDisplayOrder({
+        projectId,
+        assigneeId: userId,
+        tasks: candidateTasks,
+        openMilestones,
+        doneMilestones,
+        goalsById,
+    })
+
+    return orderedTasks[0] || null
+}
+
 export async function autoReminderMultipleTasks(tasks) {
     store.dispatch(startLoadingData())
 
@@ -3300,6 +3321,28 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
     })
 
     if (candidateTasks.length === 0) return null
+
+    const wasGeneralTask = !completedTask.parentGoalId
+
+    if (wasGeneralTask) {
+        const nextGeneralTask = pickNextGeneralFocusTask({
+            projectId,
+            userId: completedTask.userId,
+            tasks: candidateTasks,
+            openMilestones,
+            doneMilestones,
+            goalsById,
+        })
+
+        if (nextGeneralTask) {
+            console.log(`[getOptimisticNextFocusTask] Selected general-task candidate:`, {
+                id: nextGeneralTask.id,
+                name: nextGeneralTask.name,
+                goalId: nextGeneralTask.parentGoalId,
+            })
+            return nextGeneralTask
+        }
+    }
 
     const sameGoalTask = pickPreferredFocusTaskInSameGoal({
         projectId,
@@ -3465,17 +3508,41 @@ async function findAndSetNewFocusedTask(
                 userId
             )
 
-            newFocusedTask = pickPreferredFocusTaskInSameGoal({
-                projectId: currentProjectId,
-                userId,
-                tasks: allFetchedTasksInCurrentProject,
-                preferredGoalId: previousTaskParentGoalId,
-                openMilestones,
-                doneMilestones,
-                goalsById,
-            })
+            const wasGeneralTask = !previousTaskParentGoalId
 
-            if (newFocusedTask) {
+            if (wasGeneralTask) {
+                newFocusedTask = pickNextGeneralFocusTask({
+                    projectId: currentProjectId,
+                    userId,
+                    tasks: allFetchedTasksInCurrentProject,
+                    openMilestones,
+                    doneMilestones,
+                    goalsById,
+                })
+
+                if (newFocusedTask) {
+                    console.log(`[findAndSetNewFocusedTask] Found general focus task in current project:`, {
+                        taskId: newFocusedTask.id,
+                        taskName: newFocusedTask.name,
+                        parentGoalId: newFocusedTask.parentGoalId,
+                        goalsOrderingSource: source,
+                    })
+                }
+            }
+
+            if (!newFocusedTask) {
+                newFocusedTask = pickPreferredFocusTaskInSameGoal({
+                    projectId: currentProjectId,
+                    userId,
+                    tasks: allFetchedTasksInCurrentProject,
+                    preferredGoalId: previousTaskParentGoalId,
+                    openMilestones,
+                    doneMilestones,
+                    goalsById,
+                })
+            }
+
+            if (newFocusedTask && !wasGeneralTask) {
                 console.log(`[findAndSetNewFocusedTask] Found same-goal focus task in current project:`, {
                     taskId: newFocusedTask.id,
                     taskName: newFocusedTask.name,

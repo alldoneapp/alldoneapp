@@ -70,6 +70,36 @@ class FocusTaskService {
         return momentInstance
     }
 
+    isGeneralTask(task) {
+        return !task?.parentGoalId
+    }
+
+    pickPreferredTask(tasks, excludeTaskId = null) {
+        if (!tasks || tasks.length === 0) return null
+
+        const filteredTasks = excludeTaskId ? tasks.filter(task => task.id !== excludeTaskId) : tasks
+        if (filteredTasks.length === 0) return null
+
+        if (excludeTaskId) {
+            const candidates = filteredTasks.slice(0, 10)
+            return candidates[Math.floor(Math.random() * candidates.length)]
+        }
+
+        return filteredTasks[0]
+    }
+
+    pickGeneralTask(tasks, excludeTaskId = null) {
+        if (!tasks || tasks.length === 0) return null
+
+        const generalTasks = tasks.filter(task => this.isGeneralTask(task))
+        if (generalTasks.length === 0) return null
+
+        const nonWorkflowGeneralTasks = generalTasks.filter(task => task.userIds?.length === 1)
+        const candidateTasks = nonWorkflowGeneralTasks.length > 0 ? nonWorkflowGeneralTasks : generalTasks
+
+        return this.pickPreferredTask(candidateTasks, excludeTaskId)
+    }
+
     /**
      * Get current focus task for a user
      * @param {string} userId - User ID
@@ -327,20 +357,20 @@ class FocusTaskService {
                             (!excludeTaskId || task.id !== excludeTaskId)
                     )
 
+                const previousTaskWasGeneral = previousTaskParentGoalId === null || previousTaskParentGoalId === undefined
+
+                if (previousTaskWasGeneral) {
+                    newFocusedTask = this.pickGeneralTask(allFetchedTasks, excludeTaskId)
+                }
+
                 // Prioritize tasks in same goal group as previous task
-                if (previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
+                if (!newFocusedTask && previousTaskParentGoalId !== null && previousTaskParentGoalId !== undefined) {
                     const tasksInSameGroup = allFetchedTasks.filter(
                         task => task.parentGoalId === previousTaskParentGoalId
                     )
-                    const nonWorkflowTasksInGroup = tasksInSameGroup.filter(task => task.userIds.length === 1)
+                    const nonWorkflowTasksInGroup = tasksInSameGroup.filter(task => task.userIds?.length === 1)
                     if (nonWorkflowTasksInGroup.length > 0) {
-                        // If excludeTaskId is provided (force new), select random from top 10
-                        if (excludeTaskId) {
-                            const candidates = nonWorkflowTasksInGroup.slice(0, 10)
-                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                        } else {
-                            newFocusedTask = nonWorkflowTasksInGroup[0]
-                        }
+                        newFocusedTask = this.pickPreferredTask(nonWorkflowTasksInGroup, excludeTaskId)
                     }
                     // If only workflow tasks remain in same goal, fall through to goal-order fallback
                     // which will find non-workflow tasks in other goals first
@@ -390,12 +420,7 @@ class FocusTaskService {
                                 for (const goal of goalsWithSort) {
                                     const tasksInGoal = tasksByGoal[goal.id]
                                     if (tasksInGoal && tasksInGoal.length > 0) {
-                                        if (excludeTaskId) {
-                                            const candidates = tasksInGoal.slice(0, 10)
-                                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                                        } else {
-                                            newFocusedTask = tasksInGoal[0]
-                                        }
+                                        newFocusedTask = this.pickPreferredTask(tasksInGoal, excludeTaskId)
                                         break
                                     }
                                 }
@@ -420,12 +445,7 @@ class FocusTaskService {
                                     : tasksWithoutGoals.length > 0
                                     ? tasksWithoutGoals
                                     : candidateTasks
-                            if (excludeTaskId) {
-                                const candidates = fallbackTasks.slice(0, 10)
-                                newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                            } else {
-                                newFocusedTask = fallbackTasks[0]
-                            }
+                            newFocusedTask = this.pickPreferredTask(fallbackTasks, excludeTaskId)
                         }
                     }
                 }
@@ -434,12 +454,7 @@ class FocusTaskService {
                 if (!newFocusedTask && allFetchedTasks.length > 0) {
                     const workflowTasks = allFetchedTasks.filter(task => task.userIds.length > 1)
                     if (workflowTasks.length > 0) {
-                        if (excludeTaskId) {
-                            const candidates = workflowTasks.slice(0, 10)
-                            newFocusedTask = candidates[Math.floor(Math.random() * candidates.length)]
-                        } else {
-                            newFocusedTask = workflowTasks[0]
-                        }
+                        newFocusedTask = this.pickPreferredTask(workflowTasks, excludeTaskId)
                     }
                 }
             }
