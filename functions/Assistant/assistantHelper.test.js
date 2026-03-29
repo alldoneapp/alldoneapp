@@ -478,6 +478,61 @@ describe('assistant chat media helpers', () => {
         })
     })
 
+    test('falls back to a recent matching attachment when the current message has no file', async () => {
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                fromAssistant: false,
+                commentText: 'Can you use the Tagesticket from earlier?',
+                mediaContext: [],
+            }),
+        })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-old',
+                    ref: { set: jest.fn(async () => {}) },
+                    data: () => ({
+                        created: 100,
+                        fromAssistant: false,
+                        mediaContext: [
+                            {
+                                kind: 'file',
+                                fileName: 'Tagesticket.pdf',
+                                mimeType: 'application/pdf',
+                                storageUrl: 'https://cdn.example.com/tagesticket.pdf',
+                            },
+                        ],
+                    }),
+                },
+            ],
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => Buffer.from('ticket-bytes'),
+            headers: { get: jest.fn(() => 'application/pdf') },
+        })
+
+        await expect(
+            getChatAttachmentForAssistantRequest({
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+                messageId: 'message-current',
+                explicitMessageIdProvided: false,
+                userMessageText: 'Please send the Tagesticket from earlier.',
+            })
+        ).resolves.toEqual({
+            success: true,
+            fileName: 'Tagesticket.pdf',
+            fileBase64: Buffer.from('ticket-bytes').toString('base64'),
+            fileMimeType: 'application/pdf',
+            fileSizeBytes: Buffer.from('ticket-bytes').length,
+            source: 'chat',
+            messageId: 'message-old',
+        })
+    })
+
     test('lists recent chat media with message ids and extracted-text availability', async () => {
         mockCollectionGet.mockResolvedValue({
             docs: [

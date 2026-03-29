@@ -4431,6 +4431,8 @@ async function executeToolNatively(
                     objectId: toolRuntimeContext?.objectId || '',
                     messageId: toolArgs.messageId || toolRuntimeContext?.messageId || '',
                     expectedFileName: toolArgs.expectedFileName,
+                    explicitMessageIdProvided: !!(typeof toolArgs.messageId === 'string' && toolArgs.messageId.trim()),
+                    userMessageText: userContext?.message || '',
                 })
             } catch (error) {
                 console.error('📎 GET_CHAT_ATTACHMENT TOOL: Failed', {
@@ -6329,6 +6331,87 @@ function buildFileContextFromMediaContext(mediaContext = []) {
     return parts.join('\n\n')
 }
 
+function normalizeLookupText(value = '') {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+}
+
+function scoreAttachmentCandidate(media = {}, lookupText = '', expectedFileName = '') {
+    const normalizedExpectedFileName = normalizeLookupText(expectedFileName)
+    const normalizedLookup = normalizeLookupText(lookupText)
+    const normalizedFileName = normalizeLookupText(media.fileName || '')
+    if (!normalizedFileName) return 0
+    if (normalizedExpectedFileName && normalizedFileName === normalizedExpectedFileName) return 100
+    if (normalizedExpectedFileName && normalizedFileName.includes(normalizedExpectedFileName)) return 80
+    if (!normalizedLookup) return 0
+
+    const lookupTokens = normalizedLookup.split(/\s+/).filter(token => token.length >= 4)
+    let score = 0
+    lookupTokens.forEach(token => {
+        if (normalizedFileName.includes(token)) score += 10
+    })
+    return score
+}
+
+async function findFallbackRecentChatAttachment({
+    projectId,
+    objectType,
+    objectId,
+    excludedMessageId = '',
+    expectedFileName = '',
+    userMessageText = '',
+    limit = 10,
+}) {
+    const snapshot = await admin
+        .firestore()
+        .collection(`chatComments/${projectId}/${objectType}/${objectId}/comments`)
+        .orderBy('lastChangeDate', 'desc')
+        .limit(Math.max(1, Math.min(Number(limit) || 10, MAX_CHAT_MEDIA_CONTEXT_LIMIT)))
+        .get()
+
+    const candidates = []
+    for (const doc of snapshot.docs) {
+        if (doc.id === excludedMessageId) continue
+        const messageData = doc.data() || {}
+        if (messageData.fromAssistant) continue
+        const mediaContext = await enrichCommentMediaContext(doc.ref, messageData)
+        mediaContext
+            .filter(media => media.kind === 'file')
+            .forEach(media => {
+                candidates.push({
+                    messageId: doc.id,
+                    created: Number(messageData.created) || 0,
+                    media,
+                    score: scoreAttachmentCandidate(media, userMessageText, expectedFileName),
+                })
+            })
+    }
+
+    if (candidates.length === 0) return null
+
+    if (expectedFileName) {
+        const exactMatches = candidates.filter(candidate => candidate.score >= 80)
+        if (exactMatches.length === 1) return exactMatches[0]
+        if (exactMatches.length > 1) {
+            throw new Error(`Multiple recent attachments matched ${expectedFileName}`)
+        }
+    }
+
+    const scoredMatches = candidates
+        .filter(candidate => candidate.score > 0)
+        .sort((a, b) => b.score - a.score || b.created - a.created)
+    if (scoredMatches.length === 1) return scoredMatches[0]
+    if (scoredMatches.length > 1 && scoredMatches[0].score > scoredMatches[1].score) return scoredMatches[0]
+
+    if (candidates.length === 1) return candidates[0]
+
+    return null
+}
+
 function buildUserMessageContentFromComment(commentText, mediaContext = []) {
     const cleanedComment = parseTextForUseLiKePrompt(cleanTextMetaData(commentText || '', false, true))
     const fileContext = buildFileContextFromMediaContext(mediaContext)
@@ -6417,6 +6500,8 @@ async function getChatAttachmentForAssistantRequest({
     objectId,
     messageId,
     expectedFileName = '',
+    explicitMessageIdProvided = false,
+    userMessageText = '',
 }) {
     const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
     const normalizedObjectType = typeof objectType === 'string' ? objectType.trim() : ''
@@ -6445,7 +6530,39 @@ async function getChatAttachmentForAssistantRequest({
     }
 
     const mediaContext = await enrichCommentMediaContext(messageDoc.ref, messageData)
-    const attachments = mediaContext.filter(media => media.kind === 'file')
+    let attachments = mediaContext.filter(media => media.kind === 'file')
+
+    if (attachments.length === 0 && !explicitMessageIdProvided) {
+        const fallbackAttachment = await findFallbackRecentChatAttachment({
+            projectId: normalizedProjectId,
+            objectType: normalizedObjectType,
+            objectId: normalizedObjectId,
+            excludedMessageId: normalizedMessageId,
+            expectedFileName: normalizedExpectedFileName,
+            userMessageText,
+        })
+
+        if (fallbackAttachment) {
+            attachments = [fallbackAttachment.media]
+            return {
+                ...(await (async () => {
+                    const fileData = await fetchBinaryFileAsBase64(
+                        fallbackAttachment.media.storageUrl,
+                        fallbackAttachment.media.fileName
+                    )
+                    return {
+                        success: true,
+                        fileName: fallbackAttachment.media.fileName,
+                        fileBase64: fileData.fileBase64,
+                        fileMimeType: fileData.fileMimeType,
+                        fileSizeBytes: fileData.fileSizeBytes,
+                        source: 'chat',
+                        messageId: fallbackAttachment.messageId,
+                    }
+                })()),
+            }
+        }
+    }
 
     if (attachments.length === 0) {
         throw new Error('No file attachment was found on the requested chat message')
