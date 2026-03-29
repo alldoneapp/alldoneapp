@@ -3797,6 +3797,7 @@ async function executeToolNatively(
             const { NoteService } = require('../shared/NoteService')
             const { SearchService } = require('../shared/SearchService')
             const { UserHelper } = require('../shared/UserHelper')
+            const { resolveContactNoteTarget } = require('../shared/contactNoteTargetHelper')
             const db = admin.firestore()
             const moveToProjectId = typeof toolArgs.moveToProjectId === 'string' ? toolArgs.moveToProjectId.trim() : ''
             const moveToProjectName =
@@ -3804,6 +3805,10 @@ async function executeToolNatively(
             const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
             const hasContentUpdate = toolArgs.content !== undefined
             const hasTitleUpdate = toolArgs.title !== undefined
+            const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
+            const contactName = typeof toolArgs.contactName === 'string' ? toolArgs.contactName.trim() : ''
+            const contactEmail = typeof toolArgs.contactEmail === 'string' ? toolArgs.contactEmail.trim() : ''
+            const hasContactTarget = !!(contactId || contactName || contactEmail)
 
             // Initialize or reuse SearchService instance (performance optimization)
             if (!cachedSearchService) {
@@ -3847,46 +3852,6 @@ async function executeToolNatively(
                 })
                 await cachedSearchService.initialize()
             }
-
-            // Step 1: Note Discovery - get final result from SearchService
-            let searchResult = await cachedSearchService.findNoteForUpdateWithResults(
-                creatorId,
-                {
-                    noteTitle: toolArgs.noteTitle,
-                    noteId: toolArgs.noteId, // Optional direct lookup
-                    projectName: toolArgs.projectName, // Optional project filter
-                    projectId: toolArgs.projectId || (toolArgs.projectName ? undefined : projectId), // Use explicit source project if provided, otherwise current context project when no projectName is given
-                },
-                {
-                    // Tune confidence for internal assistant to be more aggressive
-                    highConfidenceThreshold: 600, // Lower from default 800
-                    dominanceMargin: 200, // Lower from default 300
-                }
-            )
-
-            // Handle search failure - match MCP behavior
-            if (!searchResult.success) {
-                if (searchResult.error === 'NO_MATCHES') {
-                    throw new Error(searchResult.message)
-                } else if (searchResult.error === 'MULTIPLE_MATCHES') {
-                    // Return match info to LLM instead of throwing (MCP pattern)
-                    return {
-                        success: false,
-                        message: searchResult.message,
-                        confidence: searchResult.confidence,
-                        reasoning: searchResult.reasoning,
-                        matches: searchResult.matches,
-                        totalMatches: searchResult.totalMatches,
-                    }
-                } else {
-                    throw new Error(searchResult.message)
-                }
-            }
-
-            // Step 2: Note Update - proceed with selected note
-            const currentNote = searchResult.selectedNote
-            const currentProjectId = searchResult.projectId
-            const currentProjectName = searchResult.projectName
 
             if (!hasContentUpdate && !hasTitleUpdate && !hasMoveRequest) {
                 throw new Error(
@@ -3937,6 +3902,88 @@ async function executeToolNatively(
                     storageBucket: storageBucket,
                 })
                 await cachedNoteService.initialize()
+            }
+
+            let searchResult = null
+            let currentNote = null
+            let currentProjectId = ''
+            let currentProjectName = ''
+            let contactResolution = null
+
+            if (hasContactTarget) {
+                const contactTargetProjectId =
+                    toolArgs.projectId || (toolArgs.projectName ? undefined : projectId) || projectId
+                if (!contactTargetProjectId) {
+                    throw new Error('projectId is required when targeting a contact note.')
+                }
+
+                const contactResult = await resolveContactNoteTarget({
+                    db,
+                    noteService: cachedNoteService,
+                    feedUser,
+                    userId: creatorId,
+                    projectId: contactTargetProjectId,
+                    contactId,
+                    contactName,
+                    contactEmail,
+                    createIfMissing: toolArgs.createIfMissing !== false,
+                })
+
+                if (!contactResult.success) {
+                    if (
+                        contactResult.error === 'MULTIPLE_CONTACT_MATCHES' ||
+                        contactResult.error === 'NO_CONTACT_MATCH'
+                    ) {
+                        return {
+                            success: false,
+                            message: contactResult.message,
+                            matches: contactResult.matches || [],
+                            totalMatches: contactResult.totalMatches || 0,
+                        }
+                    }
+                    throw new Error(contactResult.message)
+                }
+
+                contactResolution = contactResult
+                currentNote = contactResult.note
+                currentProjectId = contactResult.projectId
+                currentProjectName = currentProjectId
+            } else {
+                // Step 1: Note Discovery - get final result from SearchService
+                searchResult = await cachedSearchService.findNoteForUpdateWithResults(
+                    creatorId,
+                    {
+                        noteTitle: toolArgs.noteTitle,
+                        noteId: toolArgs.noteId,
+                        projectName: toolArgs.projectName,
+                        projectId: toolArgs.projectId || (toolArgs.projectName ? undefined : projectId),
+                    },
+                    {
+                        highConfidenceThreshold: 600,
+                        dominanceMargin: 200,
+                    }
+                )
+
+                if (!searchResult.success) {
+                    if (searchResult.error === 'NO_MATCHES') {
+                        throw new Error(searchResult.message)
+                    } else if (searchResult.error === 'MULTIPLE_MATCHES') {
+                        return {
+                            success: false,
+                            message: searchResult.message,
+                            confidence: searchResult.confidence,
+                            reasoning: searchResult.reasoning,
+                            matches: searchResult.matches,
+                            totalMatches: searchResult.totalMatches,
+                        }
+                    } else {
+                        throw new Error(searchResult.message)
+                    }
+                }
+
+                currentNote = searchResult.selectedNote
+                currentProjectId = searchResult.projectId
+                currentProjectName = searchResult.projectName
             }
 
             try {
@@ -4046,7 +4093,7 @@ async function executeToolNatively(
                     message += `.\n\nContent added:\n"${toolArgs.content}"`
                 }
 
-                if (searchResult.isAutoSelected) {
+                if (searchResult?.isAutoSelected) {
                     message += ` (${searchResult.reasoning})`
                 }
 
@@ -4061,6 +4108,16 @@ async function executeToolNatively(
                     project: { id: finalProjectId, name: finalProjectName },
                     changes: changes,
                     move: moveResult,
+                    contact:
+                        contactResolution && contactResolution.contact
+                            ? {
+                                  contactId: contactResolution.contact.uid,
+                                  displayName: contactResolution.contact.displayName || '',
+                                  email: contactResolution.contact.email || '',
+                                  created: !!contactResolution.contactCreated,
+                                  noteCreated: !!contactResolution.noteCreated,
+                              }
+                            : undefined,
                 }
             } catch (error) {
                 console.error('NoteService update failed:', error)

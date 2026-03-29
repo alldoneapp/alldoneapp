@@ -80,3 +80,12 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 })
+
+describe('Update note assistant tool schema', () => {
+    test('supports contact-targeted note updates', () => {
+        expect(toolSchemas.update_note.function.parameters.properties.contactId.type).toBe('string')
+        expect(toolSchemas.update_note.function.parameters.properties.contactName.type).toBe('string')
+        expect(toolSchemas.update_note.function.parameters.properties.contactEmail.type).toBe('string')
+        expect(toolSchemas.update_note.function.parameters.properties.createIfMissing.type).toBe('boolean')
+    })
+})

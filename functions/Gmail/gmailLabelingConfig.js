@@ -15,6 +15,14 @@ const MAX_LOOKBACK_DAYS = 30
 const GMAIL_LABELING_CONFIG_TYPE = 'gmailLabelingConfig'
 const GMAIL_LABELING_STATE_TYPE = 'gmailLabelingState'
 const GMAIL_LABELING_LOCK_TIMEOUT_MS = 10 * 60 * 1000
+const GMAIL_DIRECTION_SCOPE_INCOMING = 'incoming'
+const GMAIL_DIRECTION_SCOPE_OUTGOING = 'outgoing'
+const GMAIL_DIRECTION_SCOPE_BOTH = 'both'
+const GMAIL_DIRECTION_SCOPES = new Set([
+    GMAIL_DIRECTION_SCOPE_INCOMING,
+    GMAIL_DIRECTION_SCOPE_OUTGOING,
+    GMAIL_DIRECTION_SCOPE_BOTH,
+])
 const SYSTEM_GMAIL_LABELS = new Set([
     'INBOX',
     'UNREAD',
@@ -64,6 +72,7 @@ function getStarterLabelDefinitions() {
             key: 'newsletter',
             gmailLabelName: 'Alldone/Newsletter',
             description: 'Low priority newsletters and automated updates',
+            directionScope: GMAIL_DIRECTION_SCOPE_INCOMING,
             autoArchive: true,
             postLabelPrompt: '',
         },
@@ -71,6 +80,7 @@ function getStarterLabelDefinitions() {
             key: 'urgent_client',
             gmailLabelName: 'Alldone/Urgent Client',
             description: 'Important client emails requiring fast action',
+            directionScope: GMAIL_DIRECTION_SCOPE_BOTH,
             autoArchive: false,
             postLabelPrompt: '',
         },
@@ -83,7 +93,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         projectId,
         gmailEmail,
         prompt:
-            'Read each incoming inbox email and assign exactly one of the configured Gmail labels when it clearly matches. Prefer precision over recall. If no label clearly matches, return no match. Focus on sender, subject, deadlines, action requests, and business relevance.',
+            'Read each Gmail message and assign exactly one of the configured Gmail labels when it clearly matches. Messages may be incoming or outgoing depending on the rule scope. Prefer precision over recall. If no label clearly matches, return no match. Focus on participants, subject, deadlines, action requests, and business relevance.',
         model: DEFAULT_GMAIL_LABELING_MODEL,
         processUnreadOnly: true,
         onlyInbox: true,
@@ -97,10 +107,12 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
 }
 
 function normalizeLabelDefinition(label = {}) {
+    const directionScope = typeof label.directionScope === 'string' ? label.directionScope.trim().toLowerCase() : ''
     return {
         key: typeof label.key === 'string' ? label.key.trim() : '',
         gmailLabelName: typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : '',
         description: typeof label.description === 'string' ? label.description.trim() : '',
+        directionScope: GMAIL_DIRECTION_SCOPES.has(directionScope) ? directionScope : GMAIL_DIRECTION_SCOPE_INCOMING,
         autoArchive: !!label.autoArchive,
         postLabelPrompt: typeof label.postLabelPrompt === 'string' ? label.postLabelPrompt.trim() : '',
     }
@@ -280,6 +292,10 @@ module.exports = {
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_MAX_MESSAGES_PER_RUN,
     DEFAULT_SYNC_INTERVAL_MINUTES,
+    GMAIL_DIRECTION_SCOPE_BOTH,
+    GMAIL_DIRECTION_SCOPE_INCOMING,
+    GMAIL_DIRECTION_SCOPE_OUTGOING,
+    GMAIL_DIRECTION_SCOPES,
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
     GMAIL_LABELING_STATE_TYPE,

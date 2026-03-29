@@ -291,6 +291,21 @@ const toolSchemas = {
                         type: 'string',
                         description: 'The title of the note to update (used for searching)',
                     },
+                    contactId: {
+                        type: 'string',
+                        description:
+                            'Optional: target the note linked to this contact ID instead of searching by note title or note ID.',
+                    },
+                    contactName: {
+                        type: 'string',
+                        description:
+                            'Optional: target the note linked to a contact by exact contact name. Prefer contactEmail when available.',
+                    },
+                    contactEmail: {
+                        type: 'string',
+                        description:
+                            'Optional: target the note linked to a contact by exact email address. This is the preferred way to update contact notes from Gmail follow-up prompts.',
+                    },
                     projectName: {
                         type: 'string',
                         description:
@@ -308,6 +323,11 @@ const toolSchemas = {
                     title: {
                         type: 'string',
                         description: 'New title for the note (optional, for renaming)',
+                    },
+                    createIfMissing: {
+                        type: 'boolean',
+                        description:
+                            'Optional for contact-targeted updates: when true, auto-create the contact and/or linked note if no existing contact note is found. Defaults to true for contact-targeted updates.',
                     },
                     moveToProjectId: {
                         type: 'string',

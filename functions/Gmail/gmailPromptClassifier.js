@@ -4,7 +4,7 @@ const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('.
 const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('./gmailLabelingConfig')
 
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify incoming emails into exactly one configured label or no match. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
+    'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
 
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)

@@ -1475,46 +1475,111 @@ class AlldoneSimpleMCPServer {
 
     async updateNote(args, request) {
         const { content, title } = args
+        const contactId = typeof args.contactId === 'string' ? args.contactId.trim() : ''
+        const contactName = typeof args.contactName === 'string' ? args.contactName.trim() : ''
+        const contactEmail = typeof args.contactEmail === 'string' ? args.contactEmail.trim() : ''
+        const hasContactTarget = !!(contactId || contactName || contactEmail)
 
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
         const db = admin.firestore()
 
-        // Step 1: Note Discovery - get final result from SearchService
-        const searchResult = await this.findTargetNoteForUpdate(
-            {
-                noteTitle: args.title,
-                noteId: args.noteId,
-                projectName: args.projectName,
-                projectId: args.projectId,
-            },
-            userId,
-            db
-        )
+        let currentNote
+        let currentProjectId
+        let currentProjectName
+        let searchResult = null
+        let contactResolution = null
 
-        // Handle search failure
-        if (!searchResult.success) {
-            if (searchResult.error === 'NO_MATCHES') {
-                throw new Error(searchResult.message)
-            } else if (searchResult.error === 'MULTIPLE_MATCHES') {
-                return {
-                    success: false,
-                    message: searchResult.message,
-                    confidence: searchResult.confidence,
-                    reasoning: searchResult.reasoning,
-                    matches: searchResult.matches,
-                    totalMatches: searchResult.totalMatches,
-                }
-            } else {
-                throw new Error(searchResult.message)
+        if (hasContactTarget) {
+            const { resolveContactNoteTarget } = require('../shared/contactNoteTargetHelper')
+            const projectId = args.projectId || (await this.getUserDefaultProject(userId))
+            if (!projectId) {
+                throw new Error('projectId is required for contact note updates when no default project exists.')
             }
+
+            const { UserHelper } = require('../shared/UserHelper')
+            const feedUser = await UserHelper.getFeedUserData(db, userId)
+            if (!this.noteService) {
+                const { NoteService } = require('../shared/NoteService')
+                this.noteService = new NoteService({
+                    database: db,
+                    moment: moment,
+                    idGenerator: () => db.collection('_').doc().id,
+                    enableFeeds: true,
+                    enableValidation: true,
+                    isCloudFunction: true,
+                })
+                await this.noteService.initialize()
+            }
+
+            contactResolution = await resolveContactNoteTarget({
+                db,
+                noteService: this.noteService,
+                feedUser,
+                userId,
+                projectId,
+                contactId,
+                contactName,
+                contactEmail,
+                createIfMissing: args.createIfMissing !== false,
+            })
+
+            if (!contactResolution.success) {
+                if (
+                    contactResolution.error === 'MULTIPLE_CONTACT_MATCHES' ||
+                    contactResolution.error === 'NO_CONTACT_MATCH'
+                ) {
+                    return {
+                        success: false,
+                        message: contactResolution.message,
+                        matches: contactResolution.matches || [],
+                        totalMatches: contactResolution.totalMatches || 0,
+                    }
+                }
+                throw new Error(contactResolution.message)
+            }
+
+            currentNote = contactResolution.note
+            currentProjectId = contactResolution.projectId
+            currentProjectName = currentProjectId
+        } else {
+            searchResult = await this.findTargetNoteForUpdate(
+                {
+                    noteTitle: args.noteTitle,
+                    noteId: args.noteId,
+                    projectName: args.projectName,
+                    projectId: args.projectId,
+                },
+                userId,
+                db
+            )
+
+            if (!searchResult.success) {
+                if (searchResult.error === 'NO_MATCHES') {
+                    throw new Error(searchResult.message)
+                } else if (searchResult.error === 'MULTIPLE_MATCHES') {
+                    return {
+                        success: false,
+                        message: searchResult.message,
+                        confidence: searchResult.confidence,
+                        reasoning: searchResult.reasoning,
+                        matches: searchResult.matches,
+                        totalMatches: searchResult.totalMatches,
+                    }
+                } else {
+                    throw new Error(searchResult.message)
+                }
+            }
+
+            currentNote = searchResult.selectedNote
+            currentProjectId = searchResult.projectId
+            currentProjectName = searchResult.projectName
         }
 
-        // Step 2: Note Update - proceed with selected note
         const updateResult = await this.performNoteUpdate(
-            searchResult.selectedNote,
-            searchResult.projectId,
-            searchResult.projectName,
+            currentNote,
+            currentProjectId,
+            currentProjectName,
             {
                 content,
                 title,
@@ -1523,14 +1588,23 @@ class AlldoneSimpleMCPServer {
             db
         )
 
-        // Add search reasoning to the update result for transparency
-        if (searchResult.isAutoSelected) {
+        if (searchResult?.isAutoSelected) {
             updateResult.searchInfo = {
                 confidence: searchResult.confidence,
                 reasoning: searchResult.reasoning,
                 alternativeMatches: searchResult.alternativeMatches?.length || 0,
             }
             updateResult.message += ` (${searchResult.reasoning})`
+        }
+
+        if (contactResolution?.contact) {
+            updateResult.contact = {
+                contactId: contactResolution.contact.uid,
+                displayName: contactResolution.contact.displayName || '',
+                email: contactResolution.contact.email || '',
+                created: !!contactResolution.contactCreated,
+                noteCreated: !!contactResolution.noteCreated,
+            }
         }
 
         return updateResult
@@ -2702,6 +2776,18 @@ class AlldoneSimpleMCPServer {
                                         type: 'string',
                                         description: 'Full or partial note title to search (optional)',
                                     },
+                                    contactId: {
+                                        type: 'string',
+                                        description: 'Target the note linked to this contact ID (optional)',
+                                    },
+                                    contactName: {
+                                        type: 'string',
+                                        description: 'Target the note linked to this contact name (optional)',
+                                    },
+                                    contactEmail: {
+                                        type: 'string',
+                                        description: 'Target the note linked to this contact email (optional)',
+                                    },
                                     projectName: {
                                         type: 'string',
                                         description: 'Full or partial project name to search (optional)',
@@ -2717,6 +2803,11 @@ class AlldoneSimpleMCPServer {
                                     title: {
                                         type: 'string',
                                         description: 'Update the note title (optional)',
+                                    },
+                                    createIfMissing: {
+                                        type: 'boolean',
+                                        description:
+                                            'For contact-targeted updates, auto-create the contact and/or linked note when missing (optional, default true)',
                                     },
                                 },
                                 required: ['content'],

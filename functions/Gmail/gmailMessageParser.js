@@ -1,5 +1,7 @@
 'use strict'
 
+const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
+
 function decodeBase64Url(input = '') {
     if (!input || typeof input !== 'string') return ''
 
@@ -122,9 +124,23 @@ function normalizeGmailMessage(message = {}, maxBodyLength = 8000) {
     }
 }
 
+function extractEmailAddresses(value = '') {
+    return String(value || '')
+        .split(',')
+        .map(entry => normalizeEmailAddress(entry))
+        .filter(Boolean)
+}
+
+function getGmailMessageDirection(message = {}) {
+    const labelIds = Array.isArray(message.labelIds) ? message.labelIds : []
+    return labelIds.includes('SENT') ? 'outgoing' : 'incoming'
+}
+
 module.exports = {
     collectAttachments,
     decodeBase64Url,
+    extractEmailAddresses,
+    getGmailMessageDirection,
     normalizeGmailMessage,
     stripHtml,
 }

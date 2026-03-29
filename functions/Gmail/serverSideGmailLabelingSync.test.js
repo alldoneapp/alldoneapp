@@ -118,6 +118,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
             threadId: 'thread-1',
             webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
             archiveOnComplete: true,
+            direction: 'incoming',
+            targetContactEmail: '',
         })
     })
 
@@ -248,6 +250,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         threadId: 'thread-1',
                         webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
                         archiveOnComplete: true,
+                        direction: 'incoming',
+                        targetContactEmail: '',
                     },
                 }),
             })

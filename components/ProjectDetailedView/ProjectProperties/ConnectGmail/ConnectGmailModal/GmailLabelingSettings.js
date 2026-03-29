@@ -22,7 +22,12 @@ import {
 } from './GmailLabelingSettings.helpers'
 
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify incoming emails into exactly one configured label or no match. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
+    'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
+const DIRECTION_OPTIONS = [
+    { key: 'incoming', label: 'Incoming' },
+    { key: 'outgoing', label: 'Outgoing' },
+    { key: 'both', label: 'Both' },
+]
 
 function normalizeSyncDate(value) {
     if (!value) return null
@@ -143,6 +148,12 @@ function formatClassificationLabel(entry = {}) {
     return 'Skipped'
 }
 
+function formatDirectionLabel(direction = '') {
+    if (direction === 'outgoing') return 'Outgoing'
+    if (direction === 'both') return 'Both'
+    return 'Incoming'
+}
+
 function formatReasoning(entry = {}) {
     const reasoning = typeof entry.reasoning === 'string' ? entry.reasoning.trim() : ''
     return reasoning || 'No reasoning available.'
@@ -173,6 +184,9 @@ function SyncAuditSection({ entries }) {
                         <TouchableOpacity onPress={() => toggleExpanded(rowId)} activeOpacity={0.8}>
                             <Text style={localStyles.auditSubject}>{entry.subject || '(No subject)'}</Text>
                             <Text style={localStyles.auditMeta}>{entry.from || 'Unknown sender'}</Text>
+                            <Text style={localStyles.auditMeta}>{`Direction: ${formatDirectionLabel(
+                                entry.direction
+                            )}`}</Text>
                             <Text
                                 style={localStyles.auditClassification}
                             >{`Classification: ${classificationLabel}`}</Text>
@@ -554,6 +568,35 @@ export default function GmailLabelingSettings({
                                             placeholder={translate('Gmail label name')}
                                             placeholderTextColor={colors.Text03}
                                         />
+                                        <Text style={localStyles.inputLabel}>Rule direction</Text>
+                                        <View style={localStyles.directionRow}>
+                                            {DIRECTION_OPTIONS.map(option => {
+                                                const active = (label.directionScope || 'incoming') === option.key
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={option.key}
+                                                        style={[
+                                                            localStyles.directionButton,
+                                                            active && localStyles.directionButtonActive,
+                                                        ]}
+                                                        onPress={() =>
+                                                            updateLabel(index, { directionScope: option.key })
+                                                        }
+                                                        disabled={!canManage}
+                                                        activeOpacity={0.8}
+                                                    >
+                                                        <Text
+                                                            style={[
+                                                                localStyles.directionButtonText,
+                                                                active && localStyles.directionButtonTextActive,
+                                                            ]}
+                                                        >
+                                                            {option.label}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                )
+                                            })}
+                                        </View>
                                         <CustomTextInput3
                                             containerStyle={[
                                                 localStyles.input,
@@ -824,6 +867,30 @@ const localStyles = StyleSheet.create({
         padding: 12,
         marginBottom: 12,
         backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    directionRow: {
+        flexDirection: 'row',
+        marginBottom: 10,
+    },
+    directionButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.16)',
+        borderRadius: 6,
+        marginRight: 8,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+    },
+    directionButtonActive: {
+        borderColor: colors.Primary300,
+        backgroundColor: 'rgba(66, 153, 225, 0.18)',
+    },
+    directionButtonText: {
+        ...styles.caption1,
+        color: colors.Text03,
+    },
+    directionButtonTextActive: {
+        color: '#ffffff',
     },
     buttonRow: {
         flexDirection: 'row',

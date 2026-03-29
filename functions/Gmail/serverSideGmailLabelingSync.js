@@ -19,13 +19,16 @@ const { adGoldToUser } = require('../Users/usersFirestore')
 const {
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
+    GMAIL_DIRECTION_SCOPE_BOTH,
+    GMAIL_DIRECTION_SCOPE_INCOMING,
+    GMAIL_DIRECTION_SCOPE_OUTGOING,
     buildConfigWriteData,
     buildDefaultState,
     getDefaultGmailLabelingConfig,
     getGmailLabelingConfigRef,
     getGmailLabelingStateRef,
 } = require('./gmailLabelingConfig')
-const { normalizeGmailMessage } = require('./gmailMessageParser')
+const { extractEmailAddresses, getGmailMessageDirection, normalizeGmailMessage } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 
 const MAX_HISTORY_PAGES = 5
@@ -111,10 +114,7 @@ async function getGmailClient(userId, projectId) {
 }
 
 function buildBootstrapQuery(config) {
-    const queryParts = [`newer_than:${config.lookbackDays || 7}d`]
-    if (config.onlyInbox) queryParts.push('in:inbox')
-    if (config.processUnreadOnly) queryParts.push('is:unread')
-    return queryParts.join(' ')
+    return `newer_than:${config.lookbackDays || 7}d`
 }
 
 async function loadConfig(userId, projectId, gmailEmail = '') {
@@ -294,6 +294,10 @@ async function fetchMessagesByIds(gmail, messageIds) {
 function filterCandidateMessages(messages, config) {
     return messages.filter(message => {
         const labelIds = Array.isArray(message.labelIds) ? message.labelIds : []
+        const direction = getGmailMessageDirection(message)
+        if (direction === GMAIL_DIRECTION_SCOPE_OUTGOING) {
+            return labelIds.includes('SENT') && !labelIds.includes('DRAFT')
+        }
         if (config.onlyInbox && !labelIds.includes('INBOX')) return false
         if (config.processUnreadOnly && !labelIds.includes('UNREAD')) return false
         return true
@@ -552,7 +556,38 @@ function buildPostLabelActionSkipped({
     }
 }
 
-function buildPostLabelAssistantMessages({ prompt, normalizedMessage, selectedDefinition, gmailEmail }) {
+function getDefinitionDirectionScope(definition = {}) {
+    const scope = typeof definition.directionScope === 'string' ? definition.directionScope.trim().toLowerCase() : ''
+    if (scope === GMAIL_DIRECTION_SCOPE_OUTGOING || scope === GMAIL_DIRECTION_SCOPE_BOTH) return scope
+    return GMAIL_DIRECTION_SCOPE_INCOMING
+}
+
+function getEligibleLabelDefinitions(labelDefinitions = [], direction = GMAIL_DIRECTION_SCOPE_INCOMING) {
+    return (Array.isArray(labelDefinitions) ? labelDefinitions : []).filter(label => {
+        const scope = getDefinitionDirectionScope(label)
+        return scope === GMAIL_DIRECTION_SCOPE_BOTH || scope === direction
+    })
+}
+
+function getExternalRecipientEmails(normalizedMessage = {}, gmailEmail = '') {
+    const connectedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
+    const recipients = [
+        ...extractEmailAddresses(normalizedMessage.to),
+        ...extractEmailAddresses(normalizedMessage.cc),
+        ...extractEmailAddresses(normalizedMessage.bcc),
+    ]
+
+    return Array.from(new Set(recipients.filter(email => email && email !== connectedEmail)))
+}
+
+function buildPostLabelAssistantMessages({
+    prompt,
+    normalizedMessage,
+    selectedDefinition,
+    gmailEmail,
+    direction = GMAIL_DIRECTION_SCOPE_INCOMING,
+    targetContactEmail = '',
+}) {
     const gmailWebUrl = buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId)
     return [
         [
@@ -563,14 +598,17 @@ function buildPostLabelAssistantMessages({ prompt, normalizedMessage, selectedDe
             'user',
             parseTextForUseLiKePrompt(
                 [
+                    `Direction: ${direction}`,
                     `Matched Gmail rule key: ${selectedDefinition.key}`,
                     `Matched Gmail label: ${selectedDefinition.gmailLabelName}`,
+                    `Matched Gmail direction scope: ${getDefinitionDirectionScope(selectedDefinition)}`,
                     `Gmail messageId: ${normalizedMessage.messageId || ''}`,
                     `Gmail threadId: ${normalizedMessage.threadId || ''}`,
                     `Gmail web URL: ${gmailWebUrl || ''}`,
                     `From: ${normalizedMessage.from || ''}`,
                     `To: ${normalizedMessage.to || ''}`,
                     `Cc: ${normalizedMessage.cc || ''}`,
+                    `Target contact email: ${targetContactEmail || ''}`,
                     `Date: ${normalizedMessage.date || ''}`,
                     `Subject: ${normalizedMessage.subject || ''}`,
                     `Snippet: ${normalizedMessage.snippet || ''}`,
@@ -583,7 +621,13 @@ function buildPostLabelAssistantMessages({ prompt, normalizedMessage, selectedDe
     ]
 }
 
-function buildPostLabelGmailContext({ normalizedMessage, gmailEmail, assistantProjectId }) {
+function buildPostLabelGmailContext({
+    normalizedMessage,
+    gmailEmail,
+    assistantProjectId,
+    direction = GMAIL_DIRECTION_SCOPE_INCOMING,
+    targetContactEmail = '',
+}) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
     const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
@@ -595,7 +639,9 @@ function buildPostLabelGmailContext({ normalizedMessage, gmailEmail, assistantPr
         messageId,
         threadId,
         webUrl: buildGmailMessageUrl(normalizedEmail, messageId),
-        archiveOnComplete: true,
+        archiveOnComplete: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : true,
+        direction,
+        targetContactEmail: typeof targetContactEmail === 'string' ? targetContactEmail.trim().toLowerCase() : '',
     }
 }
 
@@ -605,6 +651,8 @@ async function executePostLabelPrompt({
     selectedDefinition,
     normalizedMessage,
     gmailEmail,
+    direction = GMAIL_DIRECTION_SCOPE_INCOMING,
+    targetContactEmail = '',
     forceExecute = false,
     existingAuditEntry = null,
 }) {
@@ -661,6 +709,8 @@ async function executePostLabelPrompt({
             normalizedMessage,
             selectedDefinition,
             gmailEmail,
+            direction,
+            targetContactEmail,
         })
     )
 
@@ -669,6 +719,8 @@ async function executePostLabelPrompt({
             normalizedMessage,
             gmailEmail,
             assistantProjectId,
+            direction,
+            targetContactEmail,
         })
         const stream = await interactWithChatStream(messages, assistant.model, assistant.temperature, allowedTools, {
             projectId: assistantProjectId,
@@ -749,8 +801,9 @@ async function executePostLabelPrompt({
     }
 }
 
-async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive) {
-    const removeLabelIds = autoArchive && normalizedMessage.labelIds.includes('INBOX') ? ['INBOX'] : []
+async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive, direction) {
+    const shouldArchive = direction !== GMAIL_DIRECTION_SCOPE_OUTGOING && autoArchive
+    const removeLabelIds = shouldArchive && normalizedMessage.labelIds.includes('INBOX') ? ['INBOX'] : []
     await gmail.users.messages.modify({
         userId: 'me',
         id: normalizedMessage.messageId,
@@ -762,7 +815,7 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
 
     return {
         applied: true,
-        archived: removeLabelIds.includes('INBOX'),
+        archived: shouldArchive && removeLabelIds.includes('INBOX'),
     }
 }
 
@@ -779,6 +832,8 @@ async function processSingleMessage({
     forceFollowUp = false,
 }) {
     const normalizedMessage = normalizeGmailMessage(rawMessage)
+    const direction = getGmailMessageDirection(rawMessage)
+    const eligibleLabelDefinitions = getEligibleLabelDefinitions(config.labelDefinitions, direction)
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
@@ -794,6 +849,7 @@ async function processSingleMessage({
 
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
+            direction,
             selectedLabelKey: null,
             selectedGmailLabelName: null,
             autoArchive: false,
@@ -817,7 +873,16 @@ async function processSingleMessage({
 
     let classifierResult
     try {
-        classifierResult = await classifyGmailMessage({ config, message: normalizedMessage })
+        classifierResult = await classifyGmailMessage({
+            config: {
+                ...config,
+                labelDefinitions: eligibleLabelDefinitions,
+            },
+            message: {
+                ...normalizedMessage,
+                direction,
+            },
+        })
     } catch (error) {
         await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
         console.warn('[gmailLabeling] Refunded gold after Gmail classification failure', {
@@ -835,6 +900,7 @@ async function processSingleMessage({
         projectId,
         messageId: normalizedMessage.messageId,
         threadId: normalizedMessage.threadId,
+        direction,
         matched: classifierResult.matched,
         labelKey: classifierResult.labelKey || null,
         confidence: classifierResult.confidence,
@@ -850,6 +916,7 @@ async function processSingleMessage({
     if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
+            direction,
             selectedLabelKey: null,
             selectedGmailLabelName: null,
             autoArchive: false,
@@ -872,10 +939,11 @@ async function processSingleMessage({
         }
     }
 
-    const selectedDefinition = config.labelDefinitions.find(label => label.key === classifierResult.labelKey)
+    const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
     if (!selectedDefinition) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
+            direction,
             selectedLabelKey: classifierResult.labelKey,
             selectedGmailLabelName: null,
             autoArchive: false,
@@ -914,9 +982,16 @@ async function processSingleMessage({
             selectedGmailLabelName: selectedDefinition.gmailLabelName,
             labelId,
             autoArchive: !!selectedDefinition.autoArchive,
+            direction,
         })
 
-        modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, selectedDefinition.autoArchive)
+        modifyResult = await applyLabelAndArchive(
+            gmail,
+            normalizedMessage,
+            labelId,
+            selectedDefinition.autoArchive,
+            direction
+        )
     } catch (error) {
         await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
         console.warn('[gmailLabeling] Refunded gold after Gmail label resolution/apply failure', {
@@ -929,30 +1004,46 @@ async function processSingleMessage({
         throw error
     }
 
-    const postLabelAction = await executePostLabelPrompt({
-        userId,
-        userData,
-        selectedDefinition,
-        normalizedMessage,
-        gmailEmail,
-        forceExecute: forceFollowUp,
-        existingAuditEntry,
-    })
-    const followUpGoldSpent = Number(postLabelAction?.goldSpent) || 0
-    const followUpEstimatedNormalGoldCost = Number(postLabelAction?.estimatedNormalGoldCost) || 0
+    const targetContactEmails =
+        direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? getExternalRecipientEmails(normalizedMessage, gmailEmail) : ['']
+    const postLabelActions = []
+    let followUpGoldSpent = 0
+    let followUpEstimatedNormalGoldCost = 0
+
+    for (const targetContactEmail of targetContactEmails) {
+        const action = await executePostLabelPrompt({
+            userId,
+            userData,
+            selectedDefinition,
+            normalizedMessage,
+            gmailEmail,
+            direction,
+            targetContactEmail,
+            forceExecute: forceFollowUp,
+            existingAuditEntry,
+        })
+        postLabelActions.push(action)
+        followUpGoldSpent += Number(action?.goldSpent) || 0
+        followUpEstimatedNormalGoldCost += Number(action?.estimatedNormalGoldCost) || 0
+    }
+
+    const primaryPostLabelAction = postLabelActions[0] || buildPostLabelActionSkipped({ status: 'skipped' })
 
     await writeAuditRecord(userId, projectId, normalizedMessage, {
         syncRunId,
+        direction,
         selectedLabelKey: selectedDefinition.key,
         selectedGmailLabelName: selectedDefinition.gmailLabelName,
-        autoArchive: !!selectedDefinition.autoArchive,
+        autoArchive: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : !!selectedDefinition.autoArchive,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
         applied: modifyResult.applied,
         archived: modifyResult.archived,
         skippedReason: null,
         promptVersion,
-        postLabelAction,
+        recipientEmails: targetContactEmails.filter(Boolean),
+        postLabelAction: primaryPostLabelAction,
+        postLabelActions,
     })
 
     return {
@@ -1189,8 +1280,10 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 })
 
                 const normalizedMessage = normalizeGmailMessage(rawMessage)
+                const direction = getGmailMessageDirection(rawMessage)
                 await writeAuditRecord(userId, projectId, normalizedMessage, {
                     syncRunId: logContext.runId,
+                    direction,
                     selectedLabelKey: null,
                     selectedGmailLabelName: null,
                     autoArchive: false,

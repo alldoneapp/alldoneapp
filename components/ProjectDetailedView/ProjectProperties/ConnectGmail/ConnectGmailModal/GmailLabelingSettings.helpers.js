@@ -8,6 +8,7 @@ function createEmptyLabel(index = 0) {
         key: '',
         gmailLabelName: '',
         description: '',
+        directionScope: 'incoming',
         autoArchive: false,
         postLabelPrompt: '',
         id: `label-${Date.now()}-${index}`,
@@ -63,6 +64,7 @@ function sanitizeConfigForSave(config) {
         confidenceThreshold: Number.isFinite(parsedConfidenceThreshold) ? parsedConfidenceThreshold : 0.7,
         labelDefinitions: (config.labelDefinitions || []).map(({ id, ...label }) => ({
             ...label,
+            directionScope: label.directionScope || 'incoming',
             autoArchive: !!label.autoArchive,
             postLabelPrompt: label.postLabelPrompt || '',
         })),
