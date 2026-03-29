@@ -13,7 +13,7 @@ const REGEX_HASHTAG = /(^|\s)(#[\S]+)$/i
 const REGEX_MENTION = /^(@[\S]+)$/i
 const REGEX_URL = /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
 
-const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/g
+const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/gi
 
 const FEED_PUBLIC_FOR_ALL = 0
 

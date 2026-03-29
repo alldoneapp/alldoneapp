@@ -27,7 +27,7 @@ export default function MentionTag({
     tagContainerStyle,
 }) {
     const loggedUser = useSelector(state => state.loggedUser)
-    const parsedText = text.replaceAll(MENTION_SPACE_CODE, ' ')
+    const parsedText = text.replace(new RegExp(MENTION_SPACE_CODE, 'gi'), ' ')
     const onPressTag = () => {
         if (user) {
             if (TasksHelper.getUserInProject(projectId, user.uid)) {

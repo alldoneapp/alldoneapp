@@ -13,6 +13,11 @@ const run = () => {
     assert.strictEqual(userId, 'user-1')
     assert.strictEqual(mentionText, '@Alex Smith')
 
+    const lowercaseSpaceCodeMention = '@Christianm2mvosjavppkwelBallerstaller#user-2'
+    const parsedLowercaseMention = getMentionData(lowercaseSpaceCodeMention, true)
+    assert.strictEqual(parsedLowercaseMention.userId, 'user-2')
+    assert.strictEqual(parsedLowercaseMention.mentionText, '@Christian Ballerstaller')
+
     console.log('parseTextUtils mention parsing tests passed')
 }
 

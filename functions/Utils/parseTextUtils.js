@@ -14,6 +14,7 @@ const VIDEO_TRIGGER = 'ptPQsef7OeB5eWd'
 const MILESTONE_TAG_TRIGGER = 'qM54HU5TsTOe3Yw'
 
 const MENTION_SPACE_CODE = 'M2mVOSjAVPPKweL'
+const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/gi
 const NOT_USER_MENTIONED = '0'
 
 const CHAT_LAST_COMMENT_PREVIEW_CHARACTER_LIMIT = 150
@@ -62,7 +63,7 @@ const getMentionData = (text, notRemoveTrigger) => {
 
     let mentionText = notRemoveTrigger ? mentionTextWithTrigger : mentionTextWithTrigger.substring(1)
 
-    mentionText = mentionText.replaceAll(MENTION_SPACE_CODE, ' ')
+    mentionText = mentionText.replace(MENTION_SPACE_CODE_REGEX, ' ')
 
     return { userId, mentionText }
 }

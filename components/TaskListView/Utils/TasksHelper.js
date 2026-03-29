@@ -119,6 +119,8 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import { getSkillData } from '../../../utils/backends/Skills/skillsFirestore'
 import { getWorkstreamData } from '../../../utils/backends/Workstreams/workstreamsFirestore'
 import { getMentionData } from '../../../functions/Utils/parseTextUtils'
+
+const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/gi
 import NavigationService from '../../../utils/NavigationService'
 
 export const TASK_ASSIGNEE_USER_TYPE = 'USER'
@@ -1382,9 +1384,9 @@ class TasksHelper {
             if (words[i].startsWith('@')) {
                 const parts = words[i].split('#')
                 if (parts.length === 2 && parts[1].trim().length >= 0) {
-                    words[i] = parts[0].replaceAll(MENTION_SPACE_CODE, ' ')
+                    words[i] = parts[0].replace(MENTION_SPACE_CODE_REGEX, ' ')
                 } else {
-                    words[i] = words[i].replaceAll(MENTION_SPACE_CODE, ' ')
+                    words[i] = words[i].replace(MENTION_SPACE_CODE_REGEX, ' ')
                 }
             }
         }
