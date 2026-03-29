@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
+const { inferMimeTypeFromFileName } = require('../Utils/parseTextUtils')
 const { getUserData } = require('../Users/usersFirestore')
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+$/
@@ -152,6 +153,7 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
             extractionStatus: media.extractionStatus || '',
             sizeBytes: Number(media.sizeBytes) || 0,
         }))
+        comment.mediaContext = normalizeMediaContext(comment.processedMedia)
     }
 
     const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
@@ -292,26 +294,38 @@ async function getConversationHistory(projectId, chatId, limit = 10) {
 
     const messages = []
     let multimodalUserMessages = 0
-    snapshot.docs.reverse().forEach(doc => {
+    for (const doc of snapshot.docs.reverse()) {
         const data = doc.data()
         if (data.commentText) {
             const role = data.fromAssistant ? 'assistant' : 'user'
             if (role === 'user') {
-                const imageUrls = extractImageUrlsFromCommentText(data.commentText)
-                const fileContext = buildFileContextForAssistant(data.processedMedia)
-                const textWithFileContext = appendFileContext(data.commentText, fileContext)
+                const tokenMediaContext = extractImageUrlsFromCommentText(data.commentText).map(url => ({
+                    kind: 'image',
+                    fileName: 'Image',
+                    storageUrl: url,
+                    previewUrl: url,
+                }))
+                const mediaContext = normalizeMediaContext(data.mediaContext, data.processedMedia, tokenMediaContext)
+                if (!Array.isArray(data.mediaContext) && mediaContext.length > 0) {
+                    await doc.ref.set({ mediaContext }, { merge: true })
+                }
+                const imageUrls = mediaContext
+                    .filter(media => media.kind === 'image')
+                    .map(media => media.storageUrl)
+                    .filter(Boolean)
+                const fileContext = buildFileContextForAssistant(mediaContext)
+                const textWithFileContext = appendFileContext(stripImageTokens(data.commentText), fileContext)
                 if (imageUrls.length > 0) {
                     multimodalUserMessages++
-                    const cleanedText = stripImageTokens(textWithFileContext)
-                    messages.push([role, buildMultimodalUserContent(cleanedText, imageUrls)])
-                    return
+                    messages.push([role, buildMultimodalUserContent(textWithFileContext, imageUrls)])
+                    continue
                 }
                 messages.push([role, textWithFileContext])
-                return
+                continue
             }
             messages.push([role, data.commentText])
         }
-    })
+    }
 
     if (multimodalUserMessages > 0) {
         console.log('WhatsApp DailyTopic: Built multimodal history entries', {
@@ -371,16 +385,48 @@ function appendFileContext(commentText, fileContext) {
     return `${baseText}\n\n${extraText}`
 }
 
-function buildFileContextForAssistant(processedMedia) {
-    if (!Array.isArray(processedMedia) || processedMedia.length === 0) return ''
+function normalizeMediaContext(...mediaGroups) {
+    const mediaItems = mediaGroups.flat().filter(Boolean)
+    if (mediaItems.length === 0) return []
+
+    const normalized = []
+    const seen = new Set()
+
+    mediaItems.forEach(media => {
+        const entry = {
+            kind: media.kind || 'file',
+            fileName: media.fileName || '',
+            mimeType: media.mimeType || media.contentType || inferMimeTypeFromFileName(media.fileName),
+            storageUrl: media.storageUrl || '',
+            previewUrl: media.previewUrl || media.storageUrl || '',
+            extractedText: String(media.extractedText || '').substring(0, 8000),
+            extractionStatus: media.extractionStatus || '',
+        }
+        if (!entry.storageUrl) return
+
+        const entryKey = `${entry.kind}|${entry.storageUrl}|${entry.fileName}`
+        if (seen.has(entryKey)) return
+        seen.add(entryKey)
+        normalized.push(entry)
+    })
+
+    return normalized
+}
+
+function buildFileContextForAssistant(mediaContext) {
+    if (!Array.isArray(mediaContext) || mediaContext.length === 0) return ''
 
     const parts = []
-    processedMedia.forEach(media => {
+    mediaContext.forEach(media => {
+        if (media.kind === 'image') return
         const fileName = media.fileName || 'attachment'
-        const contentType = media.contentType || 'unknown'
+        const contentType = media.mimeType || media.contentType || 'unknown'
         const extractedText = String(media.extractedText || '').trim()
-        if (!extractedText) return
-        parts.push(`[FILE: ${fileName}, type=${contentType}]\n${extractedText}`)
+        if (extractedText) {
+            parts.push(`[FILE: ${fileName}, type=${contentType}]\n${extractedText}`)
+        } else {
+            parts.push(`[FILE ATTACHED: ${fileName}, type=${contentType}]`)
+        }
     })
 
     return parts.join('\n\n')

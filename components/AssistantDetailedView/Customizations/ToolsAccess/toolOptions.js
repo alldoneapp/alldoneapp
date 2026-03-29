@@ -9,6 +9,7 @@ export const TOOL_OPTIONS = [
     { key: 'get_user_projects', labelKey: 'Get user projects' },
     { key: 'search', labelKey: 'Search content' },
     { key: 'search_gmail', labelKey: 'Search Gmail emails' },
+    { key: 'list_recent_chat_media', labelKey: 'List recent chat media' },
     { key: 'get_chat_attachment', labelKey: 'Get chat attachment' },
     { key: 'get_gmail_attachment', labelKey: 'Get Gmail attachment' },
     { key: 'create_gmail_reply_draft', labelKey: 'Create Gmail reply draft' },

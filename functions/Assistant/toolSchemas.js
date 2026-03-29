@@ -456,14 +456,44 @@ const toolSchemas = {
         function: {
             name: 'get_chat_attachment',
             description:
-                'Fetch the single file attached to the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
+                'Fetch the single file attached to a user chat message in the current thread. If messageId is omitted, it uses the user message that triggered the current assistant run. Use this before calling an external app tool when the user uploaded a file in chat and wants that file sent to the tool. Returns fileName, fileBase64, fileMimeType, fileSizeBytes, and source.',
             parameters: {
                 type: 'object',
                 properties: {
+                    messageId: {
+                        type: 'string',
+                        description:
+                            'Optional chat message ID for a prior user message in this same thread. Omit to use the current triggering user message.',
+                    },
                     expectedFileName: {
                         type: 'string',
                         description:
-                            'Optional expected file name used for validation. If provided and it does not match the triggering chat attachment, the tool returns an error.',
+                            'Optional expected file name used for validation. If provided and it does not match the requested chat attachment, the tool returns an error.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
+    list_recent_chat_media: {
+        type: 'function',
+        function: {
+            name: 'list_recent_chat_media',
+            description:
+                'List recent files and images from earlier user messages in the current chat thread. Use this when the user refers to a file or image they sent earlier and you need the correct messageId before calling get_chat_attachment or reasoning about the earlier media.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional maximum number of recent messages to inspect. Default is 10, maximum is 20.',
+                    },
+                    kind: {
+                        type: 'string',
+                        enum: ['file', 'image', 'video'],
+                        description: 'Optional media kind filter.',
                     },
                 },
                 required: [],
@@ -926,7 +956,12 @@ function getToolSchemas(allowedTools) {
         return []
     }
 
-    return allowedTools.map(toolName => toolSchemas[toolName]).filter(schema => schema !== undefined)
+    const effectiveTools = [...allowedTools]
+    if (effectiveTools.includes('get_chat_attachment') && !effectiveTools.includes('list_recent_chat_media')) {
+        effectiveTools.push('list_recent_chat_media')
+    }
+
+    return effectiveTools.map(toolName => toolSchemas[toolName]).filter(schema => schema !== undefined)
 }
 
 module.exports = {

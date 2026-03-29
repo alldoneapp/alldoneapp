@@ -33,6 +33,7 @@ const {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     getImageData,
     getAttachmentData,
+    extractMediaContextFromText,
 } = require('../Utils/parseTextUtils')
 const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
@@ -153,6 +154,9 @@ const DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES = 200
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL = 30 * 24 * 60 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION = 'runtimeCaches/dynamicToolSchemas/items'
 const MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES = 5 * 1024 * 1024
+const MAX_CHAT_MEDIA_CONTEXT_LIMIT = 20
+const MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES = 20 * 1024 * 1024
+const MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH = 8000
 
 function getOpenAIClient(apiKey) {
     if (!openAIClients.has(apiKey)) {
@@ -1289,6 +1293,9 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     if (!Array.isArray(assistantAllowedTools)) return false
     if (assistantAllowedTools.includes(toolName)) {
         return toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
+    }
+    if (toolName === 'list_recent_chat_media' && assistantAllowedTools.includes('get_chat_attachment')) {
+        return true
     }
 
     const hasDelegationToggle = assistantAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)
@@ -4356,7 +4363,7 @@ async function executeToolNatively(
                 projectId: toolRuntimeContext?.projectId || projectId || null,
                 objectType: toolRuntimeContext?.objectType || null,
                 objectId: toolRuntimeContext?.objectId || null,
-                messageId: toolRuntimeContext?.messageId || null,
+                messageId: toolArgs.messageId || toolRuntimeContext?.messageId || null,
                 expectedFileName: toolArgs.expectedFileName || null,
             })
 
@@ -4365,7 +4372,7 @@ async function executeToolNatively(
                     projectId: toolRuntimeContext?.projectId || projectId || '',
                     objectType: toolRuntimeContext?.objectType || '',
                     objectId: toolRuntimeContext?.objectId || '',
-                    messageId: toolRuntimeContext?.messageId || '',
+                    messageId: toolArgs.messageId || toolRuntimeContext?.messageId || '',
                     expectedFileName: toolArgs.expectedFileName,
                 })
             } catch (error) {
@@ -4374,12 +4381,44 @@ async function executeToolNatively(
                     projectId: toolRuntimeContext?.projectId || projectId || null,
                     objectType: toolRuntimeContext?.objectType || null,
                     objectId: toolRuntimeContext?.objectId || null,
-                    messageId: toolRuntimeContext?.messageId || null,
+                    messageId: toolArgs.messageId || toolRuntimeContext?.messageId || null,
                 })
                 return {
                     success: false,
                     message: `Chat attachment fetch failed: ${error.message}`,
                     source: 'chat',
+                }
+            }
+        }
+
+        case 'list_recent_chat_media': {
+            console.log('🗂️ LIST_RECENT_CHAT_MEDIA TOOL: Starting recent chat media listing', {
+                projectId: toolRuntimeContext?.projectId || projectId || null,
+                objectType: toolRuntimeContext?.objectType || null,
+                objectId: toolRuntimeContext?.objectId || null,
+                limit: toolArgs.limit || null,
+                kind: toolArgs.kind || null,
+            })
+
+            try {
+                return await listRecentChatMediaForAssistantRequest({
+                    projectId: toolRuntimeContext?.projectId || projectId || '',
+                    objectType: toolRuntimeContext?.objectType || '',
+                    objectId: toolRuntimeContext?.objectId || '',
+                    limit: toolArgs.limit,
+                    kind: toolArgs.kind,
+                })
+            } catch (error) {
+                console.error('🗂️ LIST_RECENT_CHAT_MEDIA TOOL: Failed', {
+                    error: error.message,
+                    projectId: toolRuntimeContext?.projectId || projectId || null,
+                    objectType: toolRuntimeContext?.objectType || null,
+                    objectId: toolRuntimeContext?.objectId || null,
+                })
+                return {
+                    success: false,
+                    items: [],
+                    message: `Recent chat media listing failed: ${error.message}`,
                 }
             }
         }
@@ -6019,7 +6058,16 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {
         messages.push([
             'system',
-            'When the user wants an external app tool to use a file they uploaded in the triggering chat message, call get_chat_attachment first. If it succeeds, pass the returned fileName and fileBase64 directly into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+            'When the user wants an external app tool to use a file they uploaded in chat, call get_chat_attachment first. If they refer to a file from an earlier message, use list_recent_chat_media first to identify the right messageId, then call get_chat_attachment with that messageId. If get_chat_attachment succeeds, pass the returned fileName and fileBase64 directly into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+        ])
+    }
+    if (
+        Array.isArray(allowedTools) &&
+        (allowedTools.includes('list_recent_chat_media') || allowedTools.includes('get_chat_attachment'))
+    ) {
+        messages.push([
+            'system',
+            'When the user refers to a file or image they sent earlier in this thread, use list_recent_chat_media to find the correct prior messageId before using get_chat_attachment or reasoning about that earlier media.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_gmail_attachment')) {
@@ -6141,6 +6189,171 @@ async function fetchBinaryFileAsBase64(fileUrl, fileName = '', maxSizeBytes = MA
     }
 }
 
+async function fetchBinaryFileBuffer(fileUrl, fileName = '', maxSizeBytes = MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES) {
+    const response = await fetch(fileUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(30000),
+    })
+
+    if (!response.ok) {
+        throw new Error(`File fetch failed with HTTP ${response.status}`)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    if (buffer.length > maxSizeBytes) {
+        throw new Error(`File exceeds the ${maxSizeBytes} byte limit (${buffer.length} bytes)`)
+    }
+
+    const headerMimeType = response.headers?.get('content-type') || ''
+    const fileMimeType = headerMimeType.split(';')[0].trim() || inferMimeTypeFromFileName(fileName)
+
+    return {
+        buffer,
+        fileMimeType,
+        fileSizeBytes: buffer.length,
+    }
+}
+
+function normalizeCommentMediaContext(messageData = {}) {
+    const primaryMedia = Array.isArray(messageData.mediaContext) ? messageData.mediaContext : []
+    const fallbackMedia = Array.isArray(messageData.processedMedia) ? messageData.processedMedia : []
+    const parsedCommentMedia = extractMediaContextFromText(
+        typeof messageData.commentText === 'string' ? messageData.commentText : ''
+    )
+    const rawMedia = [...primaryMedia, ...fallbackMedia, ...parsedCommentMedia]
+    if (rawMedia.length === 0) return []
+
+    const normalizedMedia = []
+    const seen = new Set()
+
+    rawMedia.forEach(media => {
+        const kind = media?.kind || 'file'
+        const fileName = String(media?.fileName || '').trim()
+        const storageUrl = String(media?.storageUrl || media?.uri || '').trim()
+        const previewUrl = String(media?.previewUrl || '').trim()
+        const mimeType = String(media?.mimeType || media?.contentType || inferMimeTypeFromFileName(fileName)).trim()
+        if (!storageUrl) return
+
+        const mediaKey = `${kind}|${storageUrl}|${fileName}`
+        if (seen.has(mediaKey)) return
+        seen.add(mediaKey)
+
+        normalizedMedia.push({
+            kind,
+            fileName,
+            mimeType,
+            storageUrl,
+            previewUrl: previewUrl || (kind === 'image' ? storageUrl : ''),
+            extractedText: String(media?.extractedText || '').substring(0, MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH),
+            extractionStatus: String(media?.extractionStatus || '').trim(),
+        })
+    })
+
+    return normalizedMedia
+}
+
+function buildFileContextFromMediaContext(mediaContext = []) {
+    if (!Array.isArray(mediaContext) || mediaContext.length === 0) return ''
+
+    const parts = []
+    mediaContext.forEach(media => {
+        if (!media || media.kind === 'image') return
+        const fileName = media.fileName || 'attachment'
+        const mimeType = media.mimeType || 'unknown'
+        const extractedText = String(media.extractedText || '').trim()
+        if (extractedText) {
+            parts.push(`[FILE: ${fileName}, type=${mimeType}]\n${extractedText}`)
+        } else {
+            parts.push(`[FILE ATTACHED: ${fileName}, type=${mimeType}]`)
+        }
+    })
+
+    return parts.join('\n\n')
+}
+
+function buildUserMessageContentFromComment(commentText, mediaContext = []) {
+    const cleanedComment = parseTextForUseLiKePrompt(cleanTextMetaData(commentText || '', false, true))
+    const fileContext = buildFileContextFromMediaContext(mediaContext)
+    const imageUrls = mediaContext
+        .filter(media => media?.kind === 'image')
+        .map(media => media.storageUrl || media.previewUrl || '')
+        .filter(Boolean)
+
+    const combinedText = [cleanedComment, fileContext].filter(Boolean).join('\n\n').trim()
+    if (imageUrls.length > 0) {
+        return buildMultimodalUserContent(combinedText, imageUrls)
+    }
+    return combinedText || cleanedComment || ''
+}
+
+function shouldExtractTextFromMedia(media = {}) {
+    if (!media || media.kind !== 'file' || !media.storageUrl) return false
+    const mimeType = String(media.mimeType || '').toLowerCase()
+    const fileName = String(media.fileName || '').toLowerCase()
+
+    return (
+        mimeType.startsWith('text/') ||
+        ['application/pdf', 'application/json', 'text/markdown'].includes(mimeType) ||
+        fileName.endsWith('.pdf') ||
+        fileName.endsWith('.txt') ||
+        fileName.endsWith('.csv') ||
+        fileName.endsWith('.json') ||
+        fileName.endsWith('.md') ||
+        fileName.endsWith('.docx')
+    )
+}
+
+async function enrichCommentMediaContext(commentRef, messageData = {}) {
+    const normalizedMediaContext = normalizeCommentMediaContext(messageData)
+    if (normalizedMediaContext.length === 0) return normalizedMediaContext
+
+    let updated = !Array.isArray(messageData.mediaContext) && normalizedMediaContext.length > 0
+    const nextMediaContext = [...normalizedMediaContext]
+
+    for (let i = 0; i < nextMediaContext.length; i++) {
+        const media = nextMediaContext[i]
+        if (String(media.extractedText || '').trim() || !shouldExtractTextFromMedia(media)) continue
+
+        try {
+            const { buffer, fileMimeType } = await fetchBinaryFileBuffer(
+                media.storageUrl,
+                media.fileName,
+                MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES
+            )
+            const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtraction')
+            const extraction = await extractTextFromWhatsAppFile({
+                buffer,
+                contentType: fileMimeType || media.mimeType,
+                fileName: media.fileName,
+            })
+
+            nextMediaContext[i] = {
+                ...media,
+                mimeType: fileMimeType || media.mimeType,
+                extractedText: String(extraction?.extractedText || '').substring(
+                    0,
+                    MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH
+                ),
+                extractionStatus: extraction?.status || (extraction?.extractedText ? 'extracted' : 'unsupported'),
+            }
+            updated = true
+        } catch (error) {
+            nextMediaContext[i] = {
+                ...media,
+                extractionStatus: media.extractionStatus || `failed:${error.message.substring(0, 120)}`,
+            }
+            updated = true
+        }
+    }
+
+    if (updated && commentRef) {
+        await commentRef.set({ mediaContext: nextMediaContext }, { merge: true })
+    }
+
+    return nextMediaContext
+}
+
 async function getChatAttachmentForAssistantRequest({
     projectId,
     objectType,
@@ -6166,7 +6379,7 @@ async function getChatAttachmentForAssistantRequest({
         .get()
 
     if (!messageDoc.exists) {
-        throw new Error('Triggering chat message not found')
+        throw new Error('Requested chat message not found')
     }
 
     const messageData = messageDoc.data() || {}
@@ -6174,24 +6387,24 @@ async function getChatAttachmentForAssistantRequest({
         throw new Error('Chat attachment retrieval only works for user messages')
     }
 
-    const commentText = typeof messageData.commentText === 'string' ? messageData.commentText : ''
-    const attachments = extractAttachmentTokensFromCommentText(commentText)
+    const mediaContext = await enrichCommentMediaContext(messageDoc.ref, messageData)
+    const attachments = mediaContext.filter(media => media.kind === 'file')
 
     if (attachments.length === 0) {
-        throw new Error('No attachment was found on the triggering chat message')
+        throw new Error('No file attachment was found on the requested chat message')
     }
     if (attachments.length > 1) {
-        throw new Error('Multiple attachments were found on the triggering chat message')
+        throw new Error('Multiple file attachments were found on the requested chat message')
     }
 
     const attachment = attachments[0]
     if (normalizedExpectedFileName && attachment.fileName !== normalizedExpectedFileName) {
         throw new Error(
-            `The triggering attachment does not match the expected file name (${attachment.fileName || 'unknown'})`
+            `The requested attachment does not match the expected file name (${attachment.fileName || 'unknown'})`
         )
     }
 
-    const fileData = await fetchBinaryFileAsBase64(attachment.uri, attachment.fileName)
+    const fileData = await fetchBinaryFileAsBase64(attachment.storageUrl, attachment.fileName)
     return {
         success: true,
         fileName: attachment.fileName,
@@ -6200,6 +6413,49 @@ async function getChatAttachmentForAssistantRequest({
         fileSizeBytes: fileData.fileSizeBytes,
         source: 'chat',
         messageId: normalizedMessageId,
+    }
+}
+
+async function listRecentChatMediaForAssistantRequest({ projectId, objectType, objectId, limit = 10, kind = '' }) {
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
+    const normalizedObjectType = typeof objectType === 'string' ? objectType.trim() : ''
+    const normalizedObjectId = typeof objectId === 'string' ? objectId.trim() : ''
+    const normalizedLimit = Math.max(1, Math.min(Number(limit) || 10, MAX_CHAT_MEDIA_CONTEXT_LIMIT))
+    const normalizedKind = typeof kind === 'string' ? kind.trim().toLowerCase() : ''
+
+    if (!normalizedProjectId || !normalizedObjectType || !normalizedObjectId) {
+        throw new Error('Chat media listing requires projectId, objectType, and objectId')
+    }
+
+    const snapshot = await admin
+        .firestore()
+        .collection(`chatComments/${normalizedProjectId}/${normalizedObjectType}/${normalizedObjectId}/comments`)
+        .orderBy('lastChangeDate', 'desc')
+        .limit(normalizedLimit)
+        .get()
+
+    const items = []
+    for (const doc of snapshot.docs) {
+        const messageData = doc.data() || {}
+        if (messageData.fromAssistant) continue
+        const mediaContext = await enrichCommentMediaContext(doc.ref, messageData)
+
+        mediaContext.forEach(media => {
+            if (normalizedKind && media.kind !== normalizedKind) return
+            items.push({
+                messageId: doc.id,
+                created: Number(messageData.created) || 0,
+                kind: media.kind || 'file',
+                fileName: media.fileName || '',
+                mimeType: media.mimeType || '',
+                hasExtractedText: !!String(media.extractedText || '').trim(),
+            })
+        })
+    }
+
+    return {
+        success: true,
+        items,
     }
 }
 
@@ -6451,14 +6707,11 @@ async function getOptimizedContextMessages(
 
             if (commentText) {
                 const role = fromAssistant ? 'assistant' : 'user'
-                const parsedComment = parseTextForUseLiKePrompt(commentText)
-
-                if (!fromAssistant && commentDocs[i].id === messageId) {
-                    const imageUrls = extractImageUrlsFromCommentText(commentText)
-                    const cleanedComment = parseTextForUseLiKePrompt(cleanTextMetaData(commentText, false, true))
-                    messages.push([role, buildMultimodalUserContent(cleanedComment || parsedComment, imageUrls)])
+                if (!fromAssistant) {
+                    const mediaContext = await enrichCommentMediaContext(commentDocs[i].ref, messageData)
+                    messages.push([role, buildUserMessageContentFromComment(commentText, mediaContext)])
                 } else {
-                    messages.push([role, parsedComment])
+                    messages.push([role, parseTextForUseLiKePrompt(commentText)])
                 }
             }
             amountOfCommentsInContext++
@@ -6701,4 +6954,8 @@ module.exports = {
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
+    getChatAttachmentForAssistantRequest,
+    listRecentChatMediaForAssistantRequest,
+    normalizeCommentMediaContext,
+    buildUserMessageContentFromComment,
 }

@@ -45,6 +45,7 @@ import store from '../../../redux/store'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     cleanTextMetaData,
+    extractMediaContextFromText,
     removeFormatTagsFromText,
     shrinkTagText,
 } from '../../../functions/Utils/parseTextUtils'
@@ -324,6 +325,7 @@ const storeComment = async (
     chatMembers
 ) => {
     const batch = new BatchWrapper(getDb())
+    const mediaContext = extractMediaContextFromText(comment)
     if (!editingCommentId) {
         const followrsMap = {}
         followerIds.forEach(uid => {
@@ -356,9 +358,10 @@ const storeComment = async (
     batch.set(
         getDb().doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`),
         editingCommentId
-            ? { commentText: comment }
+            ? { commentText: comment, mediaContext }
             : {
                   commentText: comment,
+                  mediaContext,
                   lastChangeDate: getFirestoreTime(),
                   created: moment().valueOf(),
                   creatorId,

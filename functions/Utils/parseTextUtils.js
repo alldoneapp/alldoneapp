@@ -75,6 +75,98 @@ const getMilestoneTagData = text => {
     return { text: date, milestoneId: id }
 }
 
+const inferMimeTypeFromFileName = fileName => {
+    const normalized = String(fileName || '')
+        .trim()
+        .toLowerCase()
+
+    if (normalized.endsWith('.pdf')) return 'application/pdf'
+    if (normalized.endsWith('.txt')) return 'text/plain'
+    if (normalized.endsWith('.csv')) return 'text/csv'
+    if (normalized.endsWith('.json')) return 'application/json'
+    if (normalized.endsWith('.md')) return 'text/markdown'
+    if (normalized.endsWith('.docx')) {
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    }
+    if (normalized.endsWith('.xlsx')) {
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+    if (normalized.endsWith('.png')) return 'image/png'
+    if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg'
+    if (normalized.endsWith('.gif')) return 'image/gif'
+    if (normalized.endsWith('.webp')) return 'image/webp'
+    if (normalized.endsWith('.heic')) return 'image/heic'
+    if (normalized.endsWith('.mp4')) return 'video/mp4'
+    if (normalized.endsWith('.mov')) return 'video/quicktime'
+    if (normalized.endsWith('.avi')) return 'video/x-msvideo'
+    if (normalized.endsWith('.webm')) return 'video/webm'
+    return 'application/octet-stream'
+}
+
+const extractMediaContextFromText = text => {
+    if (!text || typeof text !== 'string') return []
+
+    const words = text.replace(/<\/?[^>]+>/gi, '').split(/\s+/)
+    const mediaContext = []
+    const seen = new Set()
+
+    for (const word of words) {
+        if (!word) continue
+
+        let media = null
+        if (REGEX_ATTACHMENT.test(word)) {
+            const { uri, attachmentText } = getAttachmentData(word)
+            if (uri) {
+                media = {
+                    kind: 'file',
+                    fileName: attachmentText || 'Attachment',
+                    mimeType: inferMimeTypeFromFileName(attachmentText),
+                    storageUrl: uri,
+                    previewUrl: '',
+                    extractedText: '',
+                    extractionStatus: '',
+                }
+            }
+        } else if (REGEX_IMAGE.test(word)) {
+            const { uri, resizedUri, imageText } = getImageData(word)
+            if (uri || resizedUri) {
+                const imageUrl = uri || resizedUri
+                media = {
+                    kind: 'image',
+                    fileName: imageText || 'Image',
+                    mimeType: inferMimeTypeFromFileName(imageText),
+                    storageUrl: imageUrl,
+                    previewUrl: resizedUri || imageUrl,
+                    extractedText: '',
+                    extractionStatus: '',
+                }
+            }
+        } else if (REGEX_VIDEO.test(word)) {
+            const { uri, videoText } = getVideoData(word)
+            if (uri) {
+                media = {
+                    kind: 'video',
+                    fileName: videoText || 'Video',
+                    mimeType: inferMimeTypeFromFileName(videoText),
+                    storageUrl: uri,
+                    previewUrl: '',
+                    extractedText: '',
+                    extractionStatus: '',
+                }
+            }
+        }
+
+        if (!media) continue
+
+        const mediaKey = `${media.kind}|${media.storageUrl}|${media.fileName}`
+        if (seen.has(mediaKey)) continue
+        seen.add(mediaKey)
+        mediaContext.push(media)
+    }
+
+    return mediaContext
+}
+
 const shrinkTagText = (text, limit = 15, hideDots) => {
     if (!text) return ''
     if (text.length > limit) {
@@ -131,6 +223,8 @@ module.exports = {
     getVideoData,
     getImageData,
     getAttachmentData,
+    inferMimeTypeFromFileName,
+    extractMediaContextFromText,
     CHAT_LAST_COMMENT_PREVIEW_CHARACTER_LIMIT,
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN,

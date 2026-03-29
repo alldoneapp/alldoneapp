@@ -11,6 +11,7 @@ const {
     injectPendingAttachmentIntoToolArgs,
 } = require('./attachmentToolHandoff')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
+const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
 jest.mock('../shared/ProjectService', () => ({
     ProjectService: jest.fn().mockImplementation(() => ({
@@ -18,8 +19,74 @@ jest.mock('../shared/ProjectService', () => ({
         getUserProjects: jest.fn().mockResolvedValue([]),
     })),
 }))
+jest.mock('../GAnalytics/GAnalytics', () => ({
+    logEvent: jest.fn(),
+}))
+
+const mockDocGet = jest.fn()
+const mockDocSet = jest.fn(async () => {})
+const mockCollectionGet = jest.fn()
+
+jest.mock('firebase-admin', () => ({
+    firestore: jest.fn(() => ({
+        doc: jest.fn(() => ({
+            get: mockDocGet,
+            set: mockDocSet,
+        })),
+        collection: jest.fn(() => ({
+            orderBy: jest.fn(() => ({
+                limit: jest.fn(() => ({
+                    get: mockCollectionGet,
+                })),
+            })),
+        })),
+    })),
+}))
+
+jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
+    extractTextFromWhatsAppFile: jest.fn(async ({ fileName }) => ({
+        extractedText: `Extracted text for ${fileName}`,
+        status: 'extracted',
+    })),
+}))
+
+jest.mock('openai', () => jest.fn())
+jest.mock(
+    '@dqbd/tiktoken/lite',
+    () => ({
+        Tiktoken: jest.fn().mockImplementation(() => ({
+            encode: jest.fn(() => []),
+            free: jest.fn(),
+        })),
+    }),
+    { virtual: true }
+)
+jest.mock(
+    '@dqbd/tiktoken/encoders/cl100k_base.json',
+    () => ({
+        bpe_ranks: {},
+        special_tokens: {},
+        pat_str: '',
+    }),
+    { virtual: true }
+)
+jest.mock(
+    'firebase-functions/params',
+    () => ({
+        defineString: jest.fn(() => ({ value: jest.fn(() => '') })),
+    }),
+    { virtual: true }
+)
 
 const { ProjectService } = require('../shared/ProjectService')
+global.fetch = jest.fn()
+global.AbortSignal = { timeout: jest.fn(() => undefined) }
+const {
+    getChatAttachmentForAssistantRequest,
+    listRecentChatMediaForAssistantRequest,
+    normalizeCommentMediaContext,
+    buildUserMessageContentFromComment,
+} = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
     test('redacts attachment base64 from conversation-safe tool results', () => {
@@ -270,6 +337,213 @@ describe('assistant create_task image helpers', () => {
                 images: ['https://cdn.example.com/uploads/a.png'],
             },
             usedCurrentMessageImages: true,
+        })
+    })
+})
+
+describe('assistant chat media helpers', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        global.fetch = jest.fn()
+    })
+
+    test('extracts normalized media context from chat comment tokens', () => {
+        const text =
+            'Please review ' +
+            'EbDsQTD14ahtSR5https://cdn.example.com/file.pdfEbDsQTD14ahtSR5invoice.pdfEbDsQTD14ahtSR5false ' +
+            'and ' +
+            'O2TI5plHBf1QfdYhttps://cdn.example.com/image.pngO2TI5plHBf1QfdYhttps://cdn.example.com/image-small.pngO2TI5plHBf1QfdYreceipt.pngO2TI5plHBf1QfdYfalse'
+
+        expect(extractMediaContextFromText(text)).toEqual([
+            {
+                kind: 'file',
+                fileName: 'invoice.pdf',
+                mimeType: 'application/pdf',
+                storageUrl: 'https://cdn.example.com/file.pdf',
+                previewUrl: '',
+                extractedText: '',
+                extractionStatus: '',
+            },
+            {
+                kind: 'image',
+                fileName: 'receipt.png',
+                mimeType: 'image/png',
+                storageUrl: 'https://cdn.example.com/image.png',
+                previewUrl: 'https://cdn.example.com/image-small.png',
+                extractedText: '',
+                extractionStatus: '',
+            },
+        ])
+    })
+
+    test('normalizes legacy processedMedia entries for assistant history', () => {
+        expect(
+            normalizeCommentMediaContext({
+                processedMedia: [
+                    {
+                        kind: 'file',
+                        fileName: 'notes.txt',
+                        contentType: 'text/plain',
+                        storageUrl: 'https://cdn.example.com/notes.txt',
+                        extractedText: 'hello',
+                        extractionStatus: 'extracted',
+                    },
+                ],
+            })
+        ).toEqual([
+            {
+                kind: 'file',
+                fileName: 'notes.txt',
+                mimeType: 'text/plain',
+                storageUrl: 'https://cdn.example.com/notes.txt',
+                previewUrl: '',
+                extractedText: 'hello',
+                extractionStatus: 'extracted',
+            },
+        ])
+    })
+
+    test('builds multimodal user content with file context for prior messages', () => {
+        expect(
+            buildUserMessageContentFromComment('See attached', [
+                {
+                    kind: 'file',
+                    fileName: 'invoice.pdf',
+                    mimeType: 'application/pdf',
+                    storageUrl: 'https://cdn.example.com/file.pdf',
+                    previewUrl: '',
+                    extractedText: 'Invoice total is 120 EUR.',
+                    extractionStatus: 'extracted',
+                },
+                {
+                    kind: 'image',
+                    fileName: 'receipt.png',
+                    mimeType: 'image/png',
+                    storageUrl: 'https://cdn.example.com/image.png',
+                    previewUrl: 'https://cdn.example.com/image-small.png',
+                    extractedText: '',
+                    extractionStatus: '',
+                },
+            ])
+        ).toEqual([
+            {
+                type: 'text',
+                text: 'See attached\n\n[FILE: invoice.pdf, type=application/pdf]\nInvoice total is 120 EUR.',
+            },
+            {
+                type: 'image_url',
+                image_url: { url: 'https://cdn.example.com/image.png' },
+            },
+        ])
+    })
+
+    test('fetches a prior chat attachment from a referenced messageId', async () => {
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                fromAssistant: false,
+                commentText: 'invoice',
+                mediaContext: [
+                    {
+                        kind: 'file',
+                        fileName: 'invoice.pdf',
+                        mimeType: 'application/pdf',
+                        storageUrl: 'https://cdn.example.com/file.pdf',
+                    },
+                ],
+            }),
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => Buffer.from('pdf-bytes'),
+            headers: { get: jest.fn(() => 'application/pdf') },
+        })
+
+        await expect(
+            getChatAttachmentForAssistantRequest({
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+                messageId: 'message-1',
+                expectedFileName: 'invoice.pdf',
+            })
+        ).resolves.toEqual({
+            success: true,
+            fileName: 'invoice.pdf',
+            fileBase64: Buffer.from('pdf-bytes').toString('base64'),
+            fileMimeType: 'application/pdf',
+            fileSizeBytes: Buffer.from('pdf-bytes').length,
+            source: 'chat',
+            messageId: 'message-1',
+        })
+    })
+
+    test('lists recent chat media with message ids and extracted-text availability', async () => {
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-2',
+                    ref: { set: jest.fn(async () => {}) },
+                    data: () => ({
+                        created: 200,
+                        fromAssistant: false,
+                        mediaContext: [
+                            {
+                                kind: 'file',
+                                fileName: 'invoice.pdf',
+                                mimeType: 'application/pdf',
+                                storageUrl: 'https://cdn.example.com/file.pdf',
+                                extractedText: 'Invoice total is 120 EUR.',
+                            },
+                        ],
+                    }),
+                },
+                {
+                    id: 'message-1',
+                    ref: { set: jest.fn(async () => {}) },
+                    data: () => ({
+                        created: 100,
+                        fromAssistant: false,
+                        mediaContext: [
+                            {
+                                kind: 'image',
+                                fileName: 'receipt.png',
+                                mimeType: 'image/png',
+                                storageUrl: 'https://cdn.example.com/image.png',
+                            },
+                        ],
+                    }),
+                },
+            ],
+        })
+
+        await expect(
+            listRecentChatMediaForAssistantRequest({
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+                limit: 10,
+            })
+        ).resolves.toEqual({
+            success: true,
+            items: [
+                {
+                    messageId: 'message-2',
+                    created: 200,
+                    kind: 'file',
+                    fileName: 'invoice.pdf',
+                    mimeType: 'application/pdf',
+                    hasExtractedText: true,
+                },
+                {
+                    messageId: 'message-1',
+                    created: 100,
+                    kind: 'image',
+                    fileName: 'receipt.png',
+                    mimeType: 'image/png',
+                    hasExtractedText: false,
+                },
+            ],
         })
     })
 })
