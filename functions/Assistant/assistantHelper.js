@@ -3797,7 +3797,10 @@ async function executeToolNatively(
             const { NoteService } = require('../shared/NoteService')
             const { SearchService } = require('../shared/SearchService')
             const { UserHelper } = require('../shared/UserHelper')
-            const { resolveContactNoteTarget } = require('../shared/contactNoteTargetHelper')
+            const {
+                resolveContactNoteTarget,
+                resolveProjectForContactNote,
+            } = require('../shared/contactNoteTargetHelper')
             const db = admin.firestore()
             const moveToProjectId = typeof toolArgs.moveToProjectId === 'string' ? toolArgs.moveToProjectId.trim() : ''
             const moveToProjectName =
@@ -3911,8 +3914,15 @@ async function executeToolNatively(
             let contactResolution = null
 
             if (hasContactTarget) {
-                const contactTargetProjectId =
-                    toolArgs.projectId || (toolArgs.projectName ? undefined : projectId) || projectId
+                const contactTargetProject = await resolveProjectForContactNote({
+                    db,
+                    userId: creatorId,
+                    projectId: toolArgs.projectId || '',
+                    projectName: toolArgs.projectName || '',
+                })
+                const contactTargetProjectId = contactTargetProject?.id || projectId
+                const contactTargetProjectName = contactTargetProject?.name || contactTargetProjectId
+
                 if (!contactTargetProjectId) {
                     throw new Error('projectId is required when targeting a contact note.')
                 }
@@ -3947,7 +3957,7 @@ async function executeToolNatively(
                 contactResolution = contactResult
                 currentNote = contactResult.note
                 currentProjectId = contactResult.projectId
-                currentProjectName = currentProjectId
+                currentProjectName = contactTargetProjectName
             } else {
                 // Step 1: Note Discovery - get final result from SearchService
                 searchResult = await cachedSearchService.findNoteForUpdateWithResults(

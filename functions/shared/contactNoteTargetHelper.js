@@ -2,6 +2,7 @@
 
 const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
+const { ProjectService } = require('./ProjectService')
 
 function normalizeText(value = '') {
     return String(value || '').trim()
@@ -31,6 +32,54 @@ function buildContactDisplayName({ contactName, contactEmail }) {
 async function loadProjectContacts(db, projectId) {
     const snapshot = await db.collection(`projectsContacts/${projectId}/contacts`).get()
     return snapshot.docs.map(mapContactDoc)
+}
+
+async function resolveProjectForContactNote({ db, userId, projectId = '', projectName = '' }) {
+    const normalizedProjectId = normalizeText(projectId)
+    const normalizedProjectName = normalizeText(projectName)
+
+    if (normalizedProjectId) {
+        const projectDoc = await db.collection('projects').doc(normalizedProjectId).get()
+        if (!projectDoc.exists) {
+            throw new Error(`Project "${normalizedProjectId}" was not found.`)
+        }
+        return {
+            id: normalizedProjectId,
+            name: projectDoc.data()?.name || normalizedProjectId,
+        }
+    }
+
+    if (!normalizedProjectName) {
+        return null
+    }
+
+    const projectService = new ProjectService({
+        database: db,
+    })
+    await projectService.initialize()
+    const projects = await projectService.getUserProjects(userId, {
+        includeArchived: true,
+        includeCommunity: false,
+        activeOnly: false,
+    })
+
+    const exactMatches = projects.filter(
+        project => normalizeName(project.name) === normalizeName(normalizedProjectName)
+    )
+    if (exactMatches.length === 1) return exactMatches[0]
+    if (exactMatches.length > 1) {
+        throw new Error(`Multiple projects matched "${normalizedProjectName}". Please provide projectId instead.`)
+    }
+
+    const partialMatches = projects.filter(project =>
+        normalizeName(project.name).includes(normalizeName(normalizedProjectName))
+    )
+    if (partialMatches.length === 1) return partialMatches[0]
+    if (partialMatches.length > 1) {
+        throw new Error(`Multiple projects matched "${normalizedProjectName}". Please provide projectId instead.`)
+    }
+
+    throw new Error(`Project "${normalizedProjectName}" was not found.`)
 }
 
 function findMatchingContacts(contacts, { contactId = '', contactEmail = '', contactName = '' }) {
@@ -224,4 +273,5 @@ module.exports = {
     buildContactDisplayName,
     findMatchingContacts,
     resolveContactNoteTarget,
+    resolveProjectForContactNote,
 }

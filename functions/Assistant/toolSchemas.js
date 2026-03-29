@@ -279,7 +279,7 @@ const toolSchemas = {
         function: {
             name: 'update_note',
             description:
-                'Updates an existing note by searching for it by title or ID. Can prepend new content with date stamp, update the note title, and move a note to another project.',
+                'Updates an existing note by searching for it by note title or ID, or by targeting the note linked to a contact via contact ID, name, or email. Can prepend new content with date stamp, update the note title, auto-create a missing contact note when contact targeting is used, and move a note to another project.',
             parameters: {
                 type: 'object',
                 properties: {

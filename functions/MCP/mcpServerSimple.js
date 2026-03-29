@@ -1491,8 +1491,18 @@ class AlldoneSimpleMCPServer {
         let contactResolution = null
 
         if (hasContactTarget) {
-            const { resolveContactNoteTarget } = require('../shared/contactNoteTargetHelper')
-            const projectId = args.projectId || (await this.getUserDefaultProject(userId))
+            const {
+                resolveContactNoteTarget,
+                resolveProjectForContactNote,
+            } = require('../shared/contactNoteTargetHelper')
+            const resolvedProject = await resolveProjectForContactNote({
+                db,
+                userId,
+                projectId: args.projectId || '',
+                projectName: args.projectName || '',
+            })
+            const projectId = resolvedProject?.id || (await this.getUserDefaultProject(userId))
+            const projectName = resolvedProject?.name || projectId
             if (!projectId) {
                 throw new Error('projectId is required for contact note updates when no default project exists.')
             }
@@ -1541,7 +1551,7 @@ class AlldoneSimpleMCPServer {
 
             currentNote = contactResolution.note
             currentProjectId = contactResolution.projectId
-            currentProjectName = currentProjectId
+            currentProjectName = projectName
         } else {
             searchResult = await this.findTargetNoteForUpdate(
                 {
@@ -2764,7 +2774,7 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'update_note',
                             description:
-                                'Update an existing note by prepending new content with a date stamp (requires OAuth 2.0 Bearer token authentication)',
+                                'Update an existing note by prepending new content with a date stamp, either by note lookup or by targeting the note linked to a contact via contact ID, name, or email (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
