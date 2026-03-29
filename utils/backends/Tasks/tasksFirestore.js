@@ -3302,15 +3302,14 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
         milestonesCount: openMilestones.length,
     })
 
-    // Get all candidate non-workflow tasks
+    // Get all candidate tasks due today; selection logic below still prefers non-workflow first
     const candidateTasks = Object.values(projectTasks).filter(
         t =>
             t.id !== completedTask.id &&
             !t.done &&
             !t.isSubtask &&
             !t.calendarData &&
-            t.dueDate <= endOfToday &&
-            t.userIds?.length === 1
+            t.dueDate <= endOfToday
     )
 
     console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
@@ -3363,10 +3362,13 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
         return sameGoalTask
     }
 
+    const nonWorkflowTasks = candidateTasks.filter(task => task.userIds?.length === 1)
+    const workflowTasks = candidateTasks.filter(task => !task.userIds || task.userIds.length !== 1)
+
     const orderedTasks = sortTasksByDisplayOrder({
         projectId,
         assigneeId: completedTask.userId,
-        tasks: candidateTasks,
+        tasks: nonWorkflowTasks.length > 0 ? nonWorkflowTasks : workflowTasks,
         openMilestones,
         doneMilestones,
         goalsById,
@@ -3549,7 +3551,9 @@ async function findAndSetNewFocusedTask(
                     parentGoalId: newFocusedTask.parentGoalId,
                     goalsOrderingSource: source,
                 })
-            } else {
+            }
+
+            if (!newFocusedTask) {
                 newFocusedTask = await pickNextFocusTaskByDisplayOrder({
                     projectId: currentProjectId,
                     userId,
