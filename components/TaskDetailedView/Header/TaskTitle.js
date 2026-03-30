@@ -15,7 +15,9 @@ import { getGmailTaskWebUrl, isGmailLabelFollowUpTask } from '../../../utils/Gma
 export const TITLE_TASK = 0
 export const TITLE_NOTE = 2
 
-function openGmailTaskLink(task) {
+function openGmailTaskLink(task, event) {
+    event?.stopPropagation?.()
+    event?.preventDefault?.()
     const webUrl = getGmailTaskWebUrl(task)
     if (webUrl) return window.open(webUrl, '_blank')
 }
@@ -90,7 +92,10 @@ class TaskTitle extends Component {
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
                     {isGmailLabelFollowUpTask(task) && (
-                        <TouchableOpacity style={localStyles.gmailTag} onPress={() => openGmailTaskLink(task)}>
+                        <TouchableOpacity
+                            style={localStyles.gmailTag}
+                            onPress={event => openGmailTaskLink(task, event)}
+                        >
                             <Icon name={'envelope-open'} size={12} color={colors.Text03} />
                             <Text style={localStyles.gmailTagText}>Email</Text>
                         </TouchableOpacity>

@@ -8,7 +8,9 @@ const GmailTag = ({ gmailData, propStyles }) => {
     const resolvedGmailData = getGmailTaskData(gmailData)
     if (!resolvedGmailData) return null
 
-    const openLink = () => {
+    const openLink = event => {
+        event?.stopPropagation?.()
+        event?.preventDefault?.()
         const webUrl = getGmailTaskWebUrl(resolvedGmailData)
         if (webUrl) return window.open(webUrl, '_blank')
     }

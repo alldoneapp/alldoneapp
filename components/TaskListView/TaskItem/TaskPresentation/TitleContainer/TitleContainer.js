@@ -6,7 +6,9 @@ import SocialText from '../../../../UIControls/SocialText/SocialText'
 import Icon from '../../../../Icon'
 import { getGmailTaskWebUrl, isGmailLabelFollowUpTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 
-function openGmailTaskLink(task) {
+function openGmailTaskLink(task, event) {
+    event?.stopPropagation?.()
+    event?.preventDefault?.()
     const webUrl = getGmailTaskWebUrl(task)
     if (webUrl) return window.open(webUrl, '_blank')
 }
@@ -25,7 +27,7 @@ export default function TitleContainer({
     showVerticalEllipsisInByTime,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
-        <TouchableOpacity style={localStyles.gmailTag} onPress={() => openGmailTaskLink(task)}>
+        <TouchableOpacity style={localStyles.gmailTag} onPress={event => openGmailTaskLink(task, event)}>
             <Icon name={'envelope-open'} size={12} color={colors.Text03} />
             <View style={localStyles.gmailTagSpacer} />
             <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>
