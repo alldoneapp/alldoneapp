@@ -134,10 +134,7 @@ describe('FocusTaskService general task priority', () => {
         jest.clearAllMocks()
         ProjectService.mockImplementation(() => ({
             initialize: jest.fn().mockResolvedValue(),
-            getUserProjects: jest.fn().mockResolvedValue([
-                { id: currentProjectId },
-                { id: otherProjectId },
-            ]),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: currentProjectId }, { id: otherProjectId }]),
         }))
     })
 
@@ -268,6 +265,41 @@ describe('FocusTaskService general task priority', () => {
             userId,
             otherProjectId,
             expect.objectContaining({ id: 'other-general' })
+        )
+    })
+
+    test('starting in a new project still prefers the highest goal task over general tasks', async () => {
+        const service = createService({
+            docs: {
+                [`projects/${currentProjectId}`]: {
+                    id: currentProjectId,
+                    sortIndexByUser: { [userId]: 10 },
+                },
+                [`goals/${currentProjectId}/items/goal-a`]: {
+                    id: 'goal-a',
+                    sortIndexByMilestone: { milestoneA: 100 },
+                },
+                [`goals/${currentProjectId}/items/goal-b`]: {
+                    id: 'goal-b',
+                    sortIndexByMilestone: { milestoneA: 50 },
+                },
+            },
+            collections: {
+                [`items/${currentProjectId}/tasks`]: [
+                    { id: 'general-1', ...baseTask, sortIndex: 500 },
+                    { id: 'goal-top', ...baseTask, parentGoalId: 'goal-a', sortIndex: 300 },
+                    { id: 'goal-lower', ...baseTask, parentGoalId: 'goal-b', sortIndex: 200 },
+                ],
+            },
+        })
+
+        const result = await service.findAndSetNewFocusTask(userId, null, null, null, null, 'milestoneA')
+
+        expect(result.id).toBe('goal-top')
+        expect(service.setNewFocusTask).toHaveBeenCalledWith(
+            userId,
+            currentProjectId,
+            expect.objectContaining({ id: 'goal-top' })
         )
     })
 })
