@@ -21,7 +21,11 @@ const GmailTag = ({ gmailData, propStyles }) => {
             : ''
 
     return (
-        <TouchableOpacity style={[localStyles.tag, propStyles]} onPress={openLink}>
+        <TouchableOpacity
+            style={[localStyles.tag, propStyles]}
+            onPress={openLink}
+            accessibilityLabel={'social-text-block'}
+        >
             <View style={localStyles.icon}>
                 <Icon name={'envelope-open'} size={16} color={colors.Text03} />
             </View>

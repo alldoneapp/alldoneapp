@@ -27,7 +27,11 @@ export default function TitleContainer({
     showVerticalEllipsisInByTime,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
-        <TouchableOpacity style={localStyles.gmailTag} onPress={event => openGmailTaskLink(task, event)}>
+        <TouchableOpacity
+            style={localStyles.gmailTag}
+            onPress={event => openGmailTaskLink(task, event)}
+            accessibilityLabel={'social-text-block'}
+        >
             <Icon name={'envelope-open'} size={12} color={colors.Text03} />
             <View style={localStyles.gmailTagSpacer} />
             <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>

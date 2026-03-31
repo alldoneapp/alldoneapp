@@ -95,6 +95,7 @@ class TaskTitle extends Component {
                         <TouchableOpacity
                             style={localStyles.gmailTag}
                             onPress={event => openGmailTaskLink(task, event)}
+                            accessibilityLabel={'social-text-block'}
                         >
                             <Icon name={'envelope-open'} size={12} color={colors.Text03} />
                             <Text style={localStyles.gmailTagText}>Email</Text>

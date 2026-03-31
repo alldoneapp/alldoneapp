@@ -1627,7 +1627,10 @@ export const shouldOnPressInput = (event, blockOpen) => {
         }
     })
     if (shouldOnPress) {
-        const label = target.getAttribute('aria-label')
+        const labelElement =
+            target?.closest?.('[aria-label="social-text-block"]') ||
+            (target?.getAttribute?.('aria-label') === 'social-text-block' ? target : null)
+        const label = labelElement?.getAttribute?.('aria-label') || target?.getAttribute?.('aria-label')
         shouldOnPress = label == null || label === '' || label !== 'social-text-block'
     }
     return !blockOpen && shouldOnPress
