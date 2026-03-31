@@ -107,6 +107,11 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                         <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
                     ) : (
                         <View style={localStyles.headerActions}>
+                            <MarkAsRead
+                                projectId={project.id}
+                                userId={loggedUser.uid}
+                                containerStyle={localStyles.markAsReadInline}
+                            />
                             <ChatsMoreButton
                                 projectId={project.id}
                                 userId={loggedUser.uid}
@@ -118,13 +123,6 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                     )
                 }
             />
-            {inSelectedProject && (
-                <>
-                    <View style={localStyles.markAsReadRow}>
-                        <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
-                    </View>
-                </>
-            )}
 
             <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />
 
@@ -186,11 +184,8 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    markAsReadRow: {
-        alignItems: 'flex-start',
-        paddingLeft: 12,
-        marginTop: -8,
-        marginBottom: 8,
+    markAsReadInline: {
+        marginRight: 8,
     },
     moreButtonWrapper: {
         marginTop: 3,
