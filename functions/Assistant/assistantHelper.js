@@ -120,6 +120,47 @@ function getCachedEnvFunctions() {
     return cachedEnvFunctions
 }
 
+function normalizeRecentHours(value) {
+    if (value === null || value === undefined || value === '') return null
+
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) return null
+    if (numericValue <= 0 || numericValue > 24 * 30) return null
+
+    return numericValue
+}
+
+function filterTasksByRecentHours(tasks, recentHours, now = Date.now()) {
+    const normalizedRecentHours = normalizeRecentHours(recentHours)
+    if (normalizedRecentHours === null) return Array.isArray(tasks) ? tasks : []
+
+    const cutoff = now - normalizedRecentHours * 60 * 60 * 1000
+
+    return (Array.isArray(tasks) ? tasks : []).filter(task => {
+        const completedAt = Number(task?.completed)
+        return Number.isFinite(completedAt) && completedAt >= cutoff
+    })
+}
+
+function mapAssistantTaskForToolResponse(task) {
+    const completedAt = Number(task?.completed)
+    const dueDate = Number(task?.dueDate)
+
+    return {
+        id: task?.documentId || task?.id,
+        name: task?.name,
+        completed: !!task?.done,
+        completedAt: Number.isFinite(completedAt) ? completedAt : null,
+        projectName: task?.projectName,
+        dueDate: Number.isFinite(dueDate) ? dueDate : null,
+        humanReadableId: task?.humanReadableId || null,
+        sortIndex: task?.sortIndex || 0,
+        parentGoal: task?.parentGoal || null,
+        calendarTime: task?.calendarTime || null,
+        isFocus: task?.isFocus || false,
+    }
+}
+
 function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetProjectId = '') {
     const gmailContext = toolRuntimeContext?.gmailContext
     if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return null
@@ -3252,10 +3293,21 @@ async function executeToolNatively(
             })
 
             const effectiveStatus = toolArgs.status || 'open'
+            const recentHoursWasProvided = toolArgs.recentHours !== undefined && toolArgs.recentHours !== null
+            const recentHours = normalizeRecentHours(toolArgs.recentHours)
+
+            if (recentHoursWasProvided && recentHours === null) {
+                throw new Error('recentHours must be a positive number of hours up to 720')
+            }
+
             if (toolArgs.date && effectiveStatus === 'all') {
                 throw new Error(
                     'Date filtering is not supported when status is "all". Please specify status "open" to filter by due date, or "done" to filter by completion date.'
                 )
+            }
+
+            if (recentHours !== null && effectiveStatus !== 'done') {
+                throw new Error('recentHours is only supported when status is "done"')
             }
 
             await projectService.initialize()
@@ -3279,14 +3331,15 @@ async function executeToolNatively(
             // If allProjects is true, get tasks from all projects
             // Limit: default 1000, max 1000
             const taskLimit = Math.min(toolArgs.limit || 1000, 1000)
+            const effectiveDate = recentHours !== null ? null : toolArgs.date || null
             let tasks = []
             if (toolArgs.allProjects) {
                 const projectIds = projectsData.map(p => p.id)
                 const result = await retrievalService.getTasksFromMultipleProjects(
                     {
                         userId: creatorId,
-                        status: toolArgs.status || 'open',
-                        date: toolArgs.date || null,
+                        status: effectiveStatus,
+                        date: effectiveDate,
                         limit: taskLimit,
                         perProjectLimit: taskLimit,
                         selectMinimalFields: true,
@@ -3298,14 +3351,14 @@ async function executeToolNatively(
                         return acc
                     }, {})
                 )
-                tasks = (result.tasks || []).slice(0, taskLimit)
+                tasks = result.tasks || []
             } else {
                 // Get tasks from single project
                 const result = await retrievalService.getTasks({
                     projectId: projectId,
                     userId: creatorId,
-                    status: toolArgs.status || 'open',
-                    date: toolArgs.date || null,
+                    status: effectiveStatus,
+                    date: effectiveDate,
                     limit: taskLimit,
                     selectMinimalFields: true,
                     timezoneOffset,
@@ -3313,25 +3366,22 @@ async function executeToolNatively(
                 tasks = result.tasks || []
             }
 
+            if (recentHours !== null) {
+                tasks = filterTasksByRecentHours(tasks, recentHours)
+            }
+
+            tasks = tasks.slice(0, taskLimit)
+
             console.log('📋 GET_TASKS TOOL: Results', {
                 tasksReturned: tasks.length,
                 limit: taskLimit,
+                recentHours: recentHours || null,
             })
 
             return {
-                tasks: tasks.map(t => ({
-                    id: t.documentId || t.id,
-                    name: t.name,
-                    completed: !!t.done,
-                    projectName: t.projectName,
-                    dueDate: t.dueDate,
-                    humanReadableId: t.humanReadableId || null,
-                    sortIndex: t.sortIndex || 0,
-                    parentGoal: t.parentGoal || null,
-                    calendarTime: t.calendarTime || null,
-                    isFocus: t.isFocus || false,
-                })),
+                tasks: tasks.map(mapAssistantTaskForToolResponse),
                 count: tasks.length,
+                recentHours: recentHours || null,
             }
         }
 
@@ -7160,4 +7210,7 @@ module.exports = {
     buildUserMessageContentFromComment,
     addTimestampToContextContent,
     formatContextMessageTimestamp,
+    normalizeRecentHours,
+    filterTasksByRecentHours,
+    mapAssistantTaskForToolResponse,
 }

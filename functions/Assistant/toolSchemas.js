@@ -92,7 +92,7 @@ const toolSchemas = {
         function: {
             name: 'get_tasks',
             description:
-                'Retrieves and shows tasks from the current project or across all projects. Use this when the user asks to see, show, list, or check their tasks. Can filter by status (open/done), date (today, yesterday, specific date), and project scope. IMPORTANT: Use this tool (not search) when asking for done/completed tasks from a specific date like "what did I complete yesterday" or "show done tasks from last week".',
+                'Retrieves and shows tasks from the current project or across all projects. Use this when the user asks to see, show, list, or check their tasks. Can filter by status (open/done), date (today, yesterday, specific date), recent done hours, and project scope. IMPORTANT: Use this tool (not search) when asking for done/completed tasks from a specific date like "what did I complete yesterday" or "show done tasks from last week". For hour-based recency requests like "what did I do in the last 2 hours", use status "done" together with recentHours. Done task results include completedAt as a Unix timestamp in milliseconds.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -106,6 +106,11 @@ const toolSchemas = {
                         type: 'string',
                         description:
                             'Filter tasks by date. Use "today" for today\'s tasks, YYYY-MM-DD for a single day, or "YYYY-MM-DD to YYYY-MM-DD" for a date range. Also supports keywords like "yesterday", "this week", "last month", "last 7 days".',
+                    },
+                    recentHours: {
+                        type: 'number',
+                        description:
+                            'Optional: for done tasks only, return tasks completed within the last N hours. Use this for questions like "what did I finish in the last 2 hours?". When this is provided, prefer it over a day-based date filter.',
                     },
                     allProjects: {
                         type: 'boolean',

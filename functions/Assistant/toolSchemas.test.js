@@ -81,6 +81,19 @@ describe('User memory assistant tool schemas', () => {
     })
 })
 
+describe('Get tasks assistant tool schema', () => {
+    test('documents hour-based recency filters for done tasks', () => {
+        expect(toolSchemas.get_tasks.function.parameters.properties.recentHours).toEqual({
+            type: 'number',
+            description:
+                'Optional: for done tasks only, return tasks completed within the last N hours. Use this for questions like "what did I finish in the last 2 hours?". When this is provided, prefer it over a day-based date filter.',
+        })
+
+        expect(toolSchemas.get_tasks.function.description).toContain('recentHours')
+        expect(toolSchemas.get_tasks.function.description).toContain('completedAt')
+    })
+})
+
 describe('Update note assistant tool schema', () => {
     test('supports contact-targeted note updates', () => {
         expect(toolSchemas.update_note.function.parameters.properties.contactId.type).toBe('string')

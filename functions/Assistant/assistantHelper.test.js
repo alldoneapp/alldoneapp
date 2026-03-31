@@ -89,6 +89,9 @@ const {
     buildUserMessageContentFromComment,
     addTimestampToContextContent,
     formatContextMessageTimestamp,
+    normalizeRecentHours,
+    filterTasksByRecentHours,
+    mapAssistantTaskForToolResponse,
 } = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
@@ -118,6 +121,59 @@ describe('assistant attachment handoff helpers', () => {
             },
             { type: 'image_url', image_url: { url: 'https://cdn.example.com/image.png' } },
         ])
+    })
+
+    test('normalizes recentHours values for assistant task queries', () => {
+        expect(normalizeRecentHours(2)).toBe(2)
+        expect(normalizeRecentHours('2')).toBe(2)
+        expect(normalizeRecentHours(0)).toBeNull()
+        expect(normalizeRecentHours('nope')).toBeNull()
+    })
+
+    test('filters done tasks by the requested recent hour window', () => {
+        const now = Date.UTC(2026, 2, 31, 16, 0, 0)
+
+        expect(
+            filterTasksByRecentHours(
+                [
+                    { id: 'recent', completed: now - 30 * 60 * 1000 },
+                    { id: 'old', completed: now - 3 * 60 * 60 * 1000 },
+                    { id: 'missing', completed: null },
+                ],
+                2,
+                now
+            )
+        ).toEqual([{ id: 'recent', completed: now - 30 * 60 * 1000 }])
+    })
+
+    test('maps assistant task tool responses with completedAt preserved', () => {
+        expect(
+            mapAssistantTaskForToolResponse({
+                documentId: 'task-1',
+                name: 'Follow up',
+                done: true,
+                completed: 1774970400000,
+                projectName: 'Alldone',
+                dueDate: 1774974000000,
+                humanReadableId: 'AT-1',
+                sortIndex: 5,
+                parentGoal: 'goal-1',
+                calendarTime: '10:00',
+                isFocus: true,
+            })
+        ).toEqual({
+            id: 'task-1',
+            name: 'Follow up',
+            completed: true,
+            completedAt: 1774970400000,
+            projectName: 'Alldone',
+            dueDate: 1774974000000,
+            humanReadableId: 'AT-1',
+            sortIndex: 5,
+            parentGoal: 'goal-1',
+            calendarTime: '10:00',
+            isFocus: true,
+        })
     })
 
     test('redacts attachment base64 from conversation-safe tool results', () => {
