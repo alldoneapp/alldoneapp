@@ -11,8 +11,18 @@
  */
 
 const moment = require('moment')
-const { generateSortIndex } = require('../Utils/HelperFunctionsCloud')
+const {
+    generateSortIndex,
+    FEED_PUBLIC_FOR_ALL,
+    BACKLOG_DATE_NUMERIC,
+    DYNAMIC_PERCENT,
+    BACKLOG_MILESTONE_ID,
+} = require('../Utils/HelperFunctionsCloud')
+const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ProjectService } = require('./ProjectService')
+
+const ALL_USERS = 'ALL_USERS'
+const NOT_PARENT_GOAL_INDEX = '0'
 
 class FocusTaskService {
     constructor(options = {}) {
@@ -98,6 +108,235 @@ class FocusTaskService {
         const candidateTasks = nonWorkflowGeneralTasks.length > 0 ? nonWorkflowGeneralTasks : generalTasks
 
         return this.pickPreferredTask(candidateTasks, excludeTaskId)
+    }
+
+    getGoalsOwnerId(project, assigneeId) {
+        const isGuide = !!project?.parentTemplateId
+        return isGuide ? assigneeId || ALL_USERS : ALL_USERS
+    }
+
+    async getGoalsOrderingDataForProject(projectId, assigneeId) {
+        try {
+            const projectDoc = await this.options.database.collection('projects').doc(projectId).get()
+            const project = projectDoc.exists ? projectDoc.data() : null
+            const ownerId = this.getGoalsOwnerId(project, assigneeId)
+            const allowUserIds = [FEED_PUBLIC_FOR_ALL, assigneeId].filter(
+                value => value !== undefined && value !== null
+            )
+
+            const goalsSnapshot = await this.options.database
+                .collection(`goals/${projectId}/items`)
+                .where('isPublicFor', 'array-contains-any', allowUserIds)
+                .where('ownerId', '==', ownerId)
+                .get()
+
+            const goalsById = {}
+            goalsSnapshot.docs.forEach(doc => {
+                goalsById[doc.id] = mapGoalData(doc.id, doc.data())
+            })
+
+            const milestonesSnapshot = await this.options.database
+                .collection(`goalsMilestones/${projectId}/milestonesItems`)
+                .where('ownerId', '==', ownerId)
+                .orderBy('date', 'asc')
+                .get()
+
+            const openMilestones = []
+            let doneMilestones = []
+
+            milestonesSnapshot.docs.forEach(doc => {
+                const milestone = mapMilestoneData(doc.id, doc.data())
+                milestone.done ? doneMilestones.push(milestone) : openMilestones.push(milestone)
+            })
+
+            doneMilestones = doneMilestones.sort((a, b) => (b.doneDate || 0) - (a.doneDate || 0))
+
+            return {
+                openMilestones,
+                doneMilestones,
+                goalsById,
+                source: 'firestore',
+            }
+        } catch (error) {
+            console.warn(`FocusTaskService: Failed to load goal ordering for project ${projectId}:`, error.message)
+            return {
+                openMilestones: [],
+                doneMilestones: [],
+                goalsById: null,
+                source: 'none',
+            }
+        }
+    }
+
+    sortGoalTaskGroups(projectId, openMilestones, doneMilestones, goalsById, assigneeId, taskGroups) {
+        if (!(openMilestones && doneMilestones && goalsById)) return null
+
+        const milestones = [
+            ...openMilestones,
+            { id: `${BACKLOG_MILESTONE_ID}${projectId}`, date: BACKLOG_DATE_NUMERIC, done: false },
+            ...doneMilestones,
+        ]
+
+        const checkedGoalsById = {}
+        let sortedGoals = []
+
+        milestones.forEach(milestone => {
+            const { date: milestoneDate, id: milestoneId, done } = milestone
+            const milestoneGoals = []
+
+            taskGroups.forEach(([goalId]) => {
+                const goal = goalsById[goalId]
+                if (!goal) return
+
+                const {
+                    startingMilestoneDate,
+                    completionMilestoneDate,
+                    parentDoneMilestoneIds,
+                    progress,
+                    dynamicProgress,
+                } = goal
+
+                if (
+                    !checkedGoalsById[goalId] &&
+                    ((done && parentDoneMilestoneIds.includes(milestoneId)) ||
+                        (startingMilestoneDate <= milestoneDate &&
+                            completionMilestoneDate >= milestoneDate &&
+                            (milestoneDate !== BACKLOG_DATE_NUMERIC ||
+                                (progress !== 100 && (progress !== DYNAMIC_PERCENT || dynamicProgress !== 100)))))
+                ) {
+                    milestoneGoals.push(goal)
+                    checkedGoalsById[goalId] = goal
+                }
+            })
+
+            milestoneGoals.sort((a, b) => {
+                const aSort = a.sortIndexByMilestone?.[milestoneId] ?? Number.MAX_SAFE_INTEGER
+                const bSort = b.sortIndexByMilestone?.[milestoneId] ?? Number.MAX_SAFE_INTEGER
+                return bSort - aSort
+            })
+
+            sortedGoals = [...sortedGoals, ...milestoneGoals]
+        })
+
+        const assigneeGoals = sortedGoals.filter(goal => goal.assigneesIds?.includes(assigneeId))
+        const otherGoals = sortedGoals.filter(goal => !goal.assigneesIds?.includes(assigneeId))
+        sortedGoals = [...assigneeGoals, ...otherGoals]
+
+        const goalsPositionId = { [NOT_PARENT_GOAL_INDEX]: sortedGoals.length }
+        sortedGoals.forEach((goal, index) => {
+            goalsPositionId[goal.id] = index
+        })
+
+        return goalsPositionId
+    }
+
+    sortTasksByDisplayOrder(projectId, assigneeId, tasks, openMilestones, doneMilestones, goalsById) {
+        if (!tasks || tasks.length === 0) return []
+
+        const tasksByGoalId = {}
+        tasks.forEach(task => {
+            const goalId = task.parentGoalId || NOT_PARENT_GOAL_INDEX
+            if (!tasksByGoalId[goalId]) tasksByGoalId[goalId] = []
+            tasksByGoalId[goalId].push(task)
+        })
+
+        Object.keys(tasksByGoalId).forEach(goalId => {
+            tasksByGoalId[goalId].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+        })
+
+        const taskGroups = Object.keys(tasksByGoalId).map(goalId => [goalId, tasksByGoalId[goalId]])
+        let goalsPositionId = this.sortGoalTaskGroups(
+            projectId,
+            openMilestones,
+            doneMilestones,
+            goalsById,
+            assigneeId,
+            taskGroups
+        )
+
+        if (!goalsPositionId) {
+            const goalIds = taskGroups.map(([goalId]) => goalId).filter(goalId => goalId !== NOT_PARENT_GOAL_INDEX)
+            const sortedGoalIds = [...goalIds].sort((a, b) => {
+                const aSort = tasksByGoalId[a]?.[0]?.sortIndex || 0
+                const bSort = tasksByGoalId[b]?.[0]?.sortIndex || 0
+                return bSort - aSort
+            })
+
+            goalsPositionId = {}
+            sortedGoalIds.forEach((goalId, index) => {
+                goalsPositionId[goalId] = index
+            })
+            goalsPositionId[NOT_PARENT_GOAL_INDEX] = sortedGoalIds.length
+        }
+
+        const generalTasks = []
+        const validGroups = []
+        taskGroups.forEach(([goalId, groupTasks]) => {
+            if (goalsPositionId[goalId] === undefined) {
+                generalTasks.push(...groupTasks)
+            } else {
+                validGroups.push([goalId, groupTasks])
+            }
+        })
+
+        if (generalTasks.length > 0) {
+            const existingGeneralIndex = validGroups.findIndex(([goalId]) => goalId === NOT_PARENT_GOAL_INDEX)
+            const sortedGeneralTasks = [...generalTasks].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+
+            if (existingGeneralIndex >= 0) {
+                validGroups[existingGeneralIndex][1] = [
+                    ...validGroups[existingGeneralIndex][1],
+                    ...sortedGeneralTasks,
+                ].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+            } else {
+                validGroups.push([NOT_PARENT_GOAL_INDEX, sortedGeneralTasks])
+            }
+
+            if (goalsPositionId[NOT_PARENT_GOAL_INDEX] === undefined) {
+                goalsPositionId[NOT_PARENT_GOAL_INDEX] = Object.keys(goalsPositionId).length
+            }
+        }
+
+        validGroups.sort((a, b) => {
+            const aPos = goalsPositionId[a[0]] ?? Number.MAX_SAFE_INTEGER
+            const bPos = goalsPositionId[b[0]] ?? Number.MAX_SAFE_INTEGER
+            return aPos - bPos
+        })
+
+        return validGroups.flatMap(([, groupTasks]) => groupTasks)
+    }
+
+    async pickNextFocusTaskByDisplayOrder(projectId, userId, tasks, excludeTaskId = null) {
+        if (!tasks || tasks.length === 0) return null
+
+        const nonWorkflowTasks = tasks.filter(task => task.userIds?.length === 1)
+        const workflowTasks = tasks.filter(task => !task.userIds || task.userIds.length !== 1)
+        const { openMilestones, doneMilestones, goalsById } = await this.getGoalsOrderingDataForProject(
+            projectId,
+            userId
+        )
+
+        const orderedNonWorkflow = this.sortTasksByDisplayOrder(
+            projectId,
+            userId,
+            nonWorkflowTasks,
+            openMilestones,
+            doneMilestones,
+            goalsById
+        )
+        const pickedNonWorkflow = this.pickPreferredTask(orderedNonWorkflow, excludeTaskId)
+        if (pickedNonWorkflow) return pickedNonWorkflow
+
+        const orderedWorkflow = this.sortTasksByDisplayOrder(
+            projectId,
+            userId,
+            workflowTasks,
+            openMilestones,
+            doneMilestones,
+            goalsById
+        )
+
+        return this.pickPreferredTask(orderedWorkflow, excludeTaskId)
     }
 
     /**
@@ -379,86 +618,14 @@ class FocusTaskService {
                     // which will find non-workflow tasks in other goals first
                 }
 
-                // Fallback to any available task, prioritizing by goal order
+                // Fallback to frontend-style display order within this project
                 if (!newFocusedTask) {
-                    const nonWorkflowTasks = allFetchedTasks.filter(task => task.userIds.length === 1)
-                    const candidateTasks = nonWorkflowTasks.length > 0 ? nonWorkflowTasks : allFetchedTasks
-
-                    if (candidateTasks.length > 0) {
-                        // Separate tasks with goals from tasks without goals (tasks without goals are lowest priority)
-                        const tasksWithGoals = candidateTasks.filter(task => task.parentGoalId)
-                        const tasksWithoutGoals = candidateTasks.filter(task => !task.parentGoalId)
-
-                        // Try goal-order-aware selection if we have milestone context and tasks with goals
-                        if (tasksWithGoals.length > 0 && previousTaskMilestoneId) {
-                            // Group tasks by parentGoalId
-                            const tasksByGoal = {}
-                            for (const task of tasksWithGoals) {
-                                if (!tasksByGoal[task.parentGoalId]) {
-                                    tasksByGoal[task.parentGoalId] = []
-                                }
-                                tasksByGoal[task.parentGoalId].push(task)
-                            }
-
-                            const goalIds = Object.keys(tasksByGoal)
-
-                            try {
-                                // Fetch goal documents to get sortIndexByMilestone
-                                const goalDocs = await Promise.all(
-                                    goalIds.map(goalId =>
-                                        this.options.database.doc(`goals/${searchProjectId}/items/${goalId}`).get()
-                                    )
-                                )
-
-                                // Build goals with their sort indices for the milestone
-                                const goalsWithSort = goalDocs
-                                    .filter(doc => doc.exists)
-                                    .map(doc => ({
-                                        id: doc.id,
-                                        sortIndex: doc.data().sortIndexByMilestone?.[previousTaskMilestoneId] || 0,
-                                    }))
-                                    .sort((a, b) => b.sortIndex - a.sortIndex) // Higher = first (top of list)
-
-                                // Select task from highest-priority goal
-                                for (const goal of goalsWithSort) {
-                                    const tasksInGoal = tasksByGoal[goal.id]
-                                    if (tasksInGoal && tasksInGoal.length > 0) {
-                                        newFocusedTask = this.pickPreferredTask(tasksInGoal, excludeTaskId)
-                                        break
-                                    }
-                                }
-
-                                console.log(
-                                    `FocusTaskService: Goal-order selection used ${goalsWithSort.length} goals, milestone: ${previousTaskMilestoneId}`
-                                )
-                            } catch (goalFetchError) {
-                                console.warn(
-                                    'FocusTaskService: Failed to fetch goals for ordering, using default selection:',
-                                    goalFetchError.message
-                                )
-                            }
-                        }
-
-                        // Fallback if goal-order selection didn't find a task
-                        // Priority: tasks with goals > tasks without goals
-                        if (!newFocusedTask) {
-                            const fallbackTasks =
-                                tasksWithGoals.length > 0
-                                    ? tasksWithGoals
-                                    : tasksWithoutGoals.length > 0
-                                    ? tasksWithoutGoals
-                                    : candidateTasks
-                            newFocusedTask = this.pickPreferredTask(fallbackTasks, excludeTaskId)
-                        }
-                    }
-                }
-
-                // Last resort: if no non-workflow task was found, allow workflow tasks
-                if (!newFocusedTask && allFetchedTasks.length > 0) {
-                    const workflowTasks = allFetchedTasks.filter(task => task.userIds.length > 1)
-                    if (workflowTasks.length > 0) {
-                        newFocusedTask = this.pickPreferredTask(workflowTasks, excludeTaskId)
-                    }
+                    newFocusedTask = await this.pickNextFocusTaskByDisplayOrder(
+                        searchProjectId,
+                        userId,
+                        allFetchedTasks,
+                        excludeTaskId
+                    )
                 }
             }
 
@@ -541,20 +708,15 @@ class FocusTaskService {
                                 )
 
                             if (tasksFromOtherProject.length > 0) {
-                                // Prioritize non-workflow tasks first (matching main app logic)
-                                const nonWorkflowTasks = tasksFromOtherProject.filter(task => task.userIds.length === 1)
+                                const selectedTask = await this.pickNextFocusTaskByDisplayOrder(
+                                    projectId,
+                                    userId,
+                                    tasksFromOtherProject,
+                                    excludeTaskId
+                                )
 
-                                let selectedTask
-                                if (excludeTaskId) {
-                                    // Force new: select random from top 10 candidates
-                                    const candidates =
-                                        nonWorkflowTasks.length > 0 ? nonWorkflowTasks : tasksFromOtherProject
-                                    const topCandidates = candidates.slice(0, 10)
-                                    selectedTask = topCandidates[Math.floor(Math.random() * topCandidates.length)]
-                                } else {
-                                    // Normal: select first task
-                                    selectedTask =
-                                        nonWorkflowTasks.length > 0 ? nonWorkflowTasks[0] : tasksFromOtherProject[0]
+                                if (!selectedTask) {
+                                    continue
                                 }
 
                                 await this.setNewFocusTask(userId, projectId, selectedTask)

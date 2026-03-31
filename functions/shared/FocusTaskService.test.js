@@ -7,6 +7,23 @@ jest.mock('./ProjectService', () => ({
 
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     generateSortIndex: jest.fn(() => 123456789),
+    FEED_PUBLIC_FOR_ALL: 0,
+    BACKLOG_DATE_NUMERIC: Number.MAX_SAFE_INTEGER,
+    DYNAMIC_PERCENT: 'DYNAMIC_PERCENT',
+    BACKLOG_MILESTONE_ID: 'BACKLOG',
+    DEFAULT_WORKSTREAM_ID: 'default-workstream',
+    CAPACITY_NONE: 0,
+    CURRENT_DAY_VERSION_ID: 'current-day',
+    RECURRENCE_NEVER: 'never',
+    OPEN_STEP: 'open',
+    ESTIMATION_0_MIN: 0,
+    ALL_USERS: 'ALL_USERS',
+    TASK_ASSIGNEE_USER_TYPE: 'USER',
+    PROJECT_COLOR_DEFAULT: '#000000',
+    ESTIMATION_TYPE_TIME: 'time',
+    PROJECT_PUBLIC: 'public',
+    generateNegativeSortIndex: jest.fn(() => -1),
+    getTaskNameWithoutMeta: jest.fn(value => value),
 }))
 
 const moment = require('moment')
@@ -62,6 +79,12 @@ const createMockDatabase = ({ docs = {}, collections = {} }) => {
                         switch (filter.operator) {
                             case '==':
                                 return fieldValue === filter.value
+                            case 'array-contains-any':
+                                return (
+                                    Array.isArray(fieldValue) &&
+                                    Array.isArray(filter.value) &&
+                                    fieldValue.some(value => filter.value.includes(value))
+                                )
                             case '>=':
                                 return fieldValue >= filter.value
                             case '<':
@@ -244,27 +267,44 @@ describe('FocusTaskService general task priority', () => {
         expect(result.id).toBe('general-workflow')
     })
 
-    test('falls back to other projects when current project has no general or goal tasks due today', async () => {
+    test('falls back to other projects and prefers goal tasks there over general tasks', async () => {
         const service = createService({
             docs: {
                 [`projects/${otherProjectId}`]: {
                     id: otherProjectId,
                     sortIndexByUser: { [userId]: 10 },
                 },
+                [`goals/${otherProjectId}/items/goal-b`]: {
+                    id: 'goal-b',
+                    ownerId: 'ALL_USERS',
+                    isPublicFor: [0, userId],
+                    sortIndexByMilestone: {},
+                },
             },
             collections: {
                 [`items/${currentProjectId}/tasks`]: [],
-                [`items/${otherProjectId}/tasks`]: [{ id: 'other-general', ...baseTask, sortIndex: 250 }],
+                [`items/${otherProjectId}/tasks`]: [
+                    { id: 'other-general', ...baseTask, sortIndex: 250 },
+                    { id: 'other-goal', ...baseTask, parentGoalId: 'goal-b', sortIndex: 200 },
+                ],
+                [`goals/${otherProjectId}/items`]: [
+                    {
+                        id: 'goal-b',
+                        ownerId: 'ALL_USERS',
+                        isPublicFor: [0, userId],
+                        sortIndexByMilestone: {},
+                    },
+                ],
             },
         })
 
         const result = await service.findAndSetNewFocusTask(userId, currentProjectId, null, null, null, null)
 
-        expect(result.id).toBe('other-general')
+        expect(result.id).toBe('other-goal')
         expect(service.setNewFocusTask).toHaveBeenCalledWith(
             userId,
             otherProjectId,
-            expect.objectContaining({ id: 'other-general' })
+            expect.objectContaining({ id: 'other-goal' })
         )
     })
 
@@ -277,10 +317,14 @@ describe('FocusTaskService general task priority', () => {
                 },
                 [`goals/${currentProjectId}/items/goal-a`]: {
                     id: 'goal-a',
+                    ownerId: 'ALL_USERS',
+                    isPublicFor: [0, userId],
                     sortIndexByMilestone: { milestoneA: 100 },
                 },
                 [`goals/${currentProjectId}/items/goal-b`]: {
                     id: 'goal-b',
+                    ownerId: 'ALL_USERS',
+                    isPublicFor: [0, userId],
                     sortIndexByMilestone: { milestoneA: 50 },
                 },
             },
@@ -289,6 +333,28 @@ describe('FocusTaskService general task priority', () => {
                     { id: 'general-1', ...baseTask, sortIndex: 500 },
                     { id: 'goal-top', ...baseTask, parentGoalId: 'goal-a', sortIndex: 300 },
                     { id: 'goal-lower', ...baseTask, parentGoalId: 'goal-b', sortIndex: 200 },
+                ],
+                [`goals/${currentProjectId}/items`]: [
+                    {
+                        id: 'goal-a',
+                        ownerId: 'ALL_USERS',
+                        isPublicFor: [0, userId],
+                        sortIndexByMilestone: { milestoneA: 100 },
+                    },
+                    {
+                        id: 'goal-b',
+                        ownerId: 'ALL_USERS',
+                        isPublicFor: [0, userId],
+                        sortIndexByMilestone: { milestoneA: 50 },
+                    },
+                ],
+                [`goalsMilestones/${currentProjectId}/milestonesItems`]: [
+                    {
+                        id: 'milestoneA',
+                        ownerId: 'ALL_USERS',
+                        date: dueToday,
+                        done: false,
+                    },
                 ],
             },
         })
