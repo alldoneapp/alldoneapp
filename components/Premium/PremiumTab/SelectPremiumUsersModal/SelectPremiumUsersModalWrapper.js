@@ -53,7 +53,7 @@ export default function SelectPremiumUsersModalWrapper({
             <Button
                 title={translate('Edit users')}
                 type={'ghost'}
-                icon={'edit'}
+                icon={'edit-2'}
                 buttonStyle={localStyles.button}
                 onPress={openModal}
             />

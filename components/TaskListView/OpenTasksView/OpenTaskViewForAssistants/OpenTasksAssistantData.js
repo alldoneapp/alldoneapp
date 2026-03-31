@@ -101,7 +101,7 @@ export default function OpenTasksAssistantData({ projectId }) {
             {(isNormalAssistantAndCanBeEdited || isGlobalAssistantAndCanBeEdited) && (
                 <Button
                     type={'ghost'}
-                    icon={'edit'}
+                    icon={'edit-2'}
                     onPress={navigateToDv}
                     title={translate('Edit')}
                     buttonStyle={{ marginTop: 16 }}
@@ -113,7 +113,7 @@ export default function OpenTasksAssistantData({ projectId }) {
             {canBeCopiedToEdit && (
                 <Button
                     type={'ghost'}
-                    icon={'edit'}
+                    icon={'edit-2'}
                     onPress={copyToEdit}
                     title={translate('Copy to edit')}
                     buttonStyle={{ marginTop: 16 }}

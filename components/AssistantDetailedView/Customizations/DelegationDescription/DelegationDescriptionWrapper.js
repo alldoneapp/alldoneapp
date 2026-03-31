@@ -62,7 +62,7 @@ export default function DelegationDescriptionWrapper({ disabled, projectId, assi
                 <Button
                     ref={ref => (this.btnRef = ref)}
                     type={'ghost'}
-                    icon={'edit'}
+                    icon={'edit-2'}
                     onPress={openModal}
                     disabled={isOpen || disabled}
                     shortcutText={'K'}

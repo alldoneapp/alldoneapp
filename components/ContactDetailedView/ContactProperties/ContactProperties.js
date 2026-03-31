@@ -363,7 +363,7 @@ class ContactProperties extends Component {
                             contentLocation={mobile ? null : undefined}
                         >
                             <Button
-                                icon={'edit'}
+                                icon={'edit-2'}
                                 type={'ghost'}
                                 onPress={() => this.showModal('showInfoModal')}
                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
@@ -429,7 +429,7 @@ class ContactProperties extends Component {
                                             contentLocation={mobile ? null : undefined}
                                         >
                                             <Button
-                                                icon={'edit'}
+                                                icon={'edit-2'}
                                                 type={'ghost'}
                                                 onPress={() => this.showModal('showLinkedInModal')}
                                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
@@ -554,7 +554,7 @@ class ContactProperties extends Component {
                                         contentLocation={mobile ? null : undefined}
                                     >
                                         <Button
-                                            icon={'edit'}
+                                            icon={'edit-2'}
                                             type={'ghost'}
                                             onPress={() => this.showModal('showPhoneModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
@@ -656,7 +656,7 @@ class ContactProperties extends Component {
                                         contentLocation={mobile ? null : undefined}
                                     >
                                         <Button
-                                            icon={'edit'}
+                                            icon={'edit-2'}
                                             type={'ghost'}
                                             onPress={() => this.showModal('showEmailModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}

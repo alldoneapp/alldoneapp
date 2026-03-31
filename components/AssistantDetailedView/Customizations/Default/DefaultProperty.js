@@ -33,7 +33,7 @@ export default function DefaultProperty({ disabled, assistant, projectId }) {
                     <Button
                         ref={ref => (this.btnRef = ref)}
                         type={'ghost'}
-                        icon={'edit'}
+                        icon={'edit-2'}
                         onPress={setLikeDefault}
                         disabled={disabled || isDefault}
                         shortcutText={'A'}

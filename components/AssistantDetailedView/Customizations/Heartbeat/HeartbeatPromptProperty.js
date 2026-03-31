@@ -75,7 +75,7 @@ export default function HeartbeatPromptProperty({ disabled, projectId, assistant
                     isOpen={isOpen}
                     contentLocation={null}
                 >
-                    <Button type={'ghost'} icon={'edit'} onPress={openModal} disabled={isOpen || disabled} />
+                    <Button type={'ghost'} icon={'edit-2'} onPress={openModal} disabled={isOpen || disabled} />
                 </Popover>
             </View>
         </View>

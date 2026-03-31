@@ -82,7 +82,7 @@ export default function TemperatureWrapper({ disabled, projectId, assistant }) {
                 <Button
                     ref={ref => (this.btnRef = ref)}
                     type={'ghost'}
-                    icon={'edit'}
+                    icon={'edit-2'}
                     onPress={openModal}
                     disabled={isOpen || disabled}
                     shortcutText={'T'}

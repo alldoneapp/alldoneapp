@@ -111,7 +111,7 @@ export default function UserInfo({ projectId, projectIndex, user, accessGranted 
                     align={'end'}
                     contentLocation={smallScreen ? null : undefined}
                 >
-                    <Button icon={'edit'} type={'ghost'} onPress={showModal} disabled={!accessGranted} />
+                    <Button icon={'edit-2'} type={'ghost'} onPress={showModal} disabled={!accessGranted} />
                 </Popover>
             </View>
         </View>

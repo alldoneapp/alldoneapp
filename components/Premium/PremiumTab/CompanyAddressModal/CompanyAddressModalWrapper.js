@@ -40,7 +40,7 @@ export default function CompanyAddressModalWrapper({ usePersistentSave, companyD
             <Button
                 type={'ghost'}
                 title={translate('Edit address')}
-                icon={'edit'}
+                icon={'edit-2'}
                 buttonStyle={{ marginTop: 8 }}
                 onPress={openModal}
             />
