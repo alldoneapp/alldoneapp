@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { Keyboard, StyleSheet, View } from 'react-native'
+import { Keyboard, StyleSheet, TextInput, View } from 'react-native'
 import Popover from 'react-tiny-popover'
 
 import Button from '../../../UIControls/Button'
@@ -8,7 +8,6 @@ import store from '../../../../redux/store'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import ColorPickerModal from '../../../UIComponents/FloatModals/ColorPickerModal'
 import { PROJECT_COLOR_BLUE } from '../../../../Themes/Modern/ProjectColors'
 import {
@@ -170,40 +169,37 @@ class EditContactStatus extends Component {
                             <View style={[localStyles.colorDot, { backgroundColor: color }]} />
                         </View>
                     )}
-                    <CustomTextInput3
+                    <TextInput
                         ref={this.textInput}
-                        initialTextExtended={status !== undefined ? status.name : ''}
                         returnKeyType={'done'}
                         placeholder={translate('Type status name')}
-                        containerStyle={[
+                        style={[
                             localStyles.input,
                             formType === 'edit' ? localStyles.inputEdit : null,
                             isMiddleScreen ? localStyles.inputUnderBreakpoint : undefined,
                             isMiddleScreen && formType === 'edit' ? localStyles.inputEditUnderBreakpoint : null,
                         ]}
                         autoFocus={true}
-                        multiline={false}
+                        value={name}
                         onChangeText={this.onChangeInputText}
                         placeholderTextColor={colors.Text03}
-                        disabledTags={true}
                         selection={mounted ? undefined : { start: name.length, end: name.length }}
-                        forceTriggerEnterActionForBreakLines={this.enterKeyAction}
+                        onSubmitEditing={this.enterKeyAction}
                     />
                 </View>
                 <View style={localStyles.followUpContainer}>
-                    <CustomTextInput3
-                        initialTextExtended={followUpDays}
+                    <TextInput
+                        value={followUpDays}
                         returnKeyType={'done'}
                         placeholder={translate('Follow-up after (days)')}
-                        containerStyle={[
+                        style={[
                             localStyles.followUpInput,
                             isMiddleScreen ? localStyles.followUpInputUnderBreakpoint : undefined,
                         ]}
-                        multiline={false}
                         onChangeText={this.onChangeFollowUpDays}
                         placeholderTextColor={colors.Text03}
-                        disabledTags={true}
                         keyboardType={'numeric'}
+                        onSubmitEditing={this.enterKeyAction}
                     />
                 </View>
                 <View style={localStyles.buttonContainer}>
