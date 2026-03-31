@@ -110,6 +110,16 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId) {
     }
 
     await chatRef.set(chatData)
+
+    // Create follower documents so the topic is navigable in the UI
+    const userFollowingRef = admin.firestore().doc(`usersFollowing/${projectId}/entries/${userId}`)
+    const followersRef = admin.firestore().doc(`followers/${projectId}/topics/${chatId}`)
+
+    await Promise.all([
+        userFollowingRef.set({ topics: { [chatId]: true } }, { merge: true }),
+        followersRef.set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+    ])
+
     return { chatId, isNew: true }
 }
 
@@ -350,7 +360,9 @@ async function checkAndExecuteHeartbeats() {
                         sendWhatsApp: shouldSendWhatsApp,
                         name: 'Heartbeat',
                         recurrence: 'never',
-                    }
+                    },
+                    null, // functionEntryTime
+                    'topics' // objectType - heartbeat uses topic chats, not task chats
                 )
 
                 console.log('Heartbeat: Executed successfully:', {

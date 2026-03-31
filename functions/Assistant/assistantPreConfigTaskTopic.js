@@ -38,7 +38,8 @@ async function generatePreConfigTaskResult(
     language,
     aiSettings,
     taskMetadata = null,
-    functionEntryTime = null // Optional entry time from HTTP function entry point
+    functionEntryTime = null, // Optional entry time from HTTP function entry point
+    objectType = 'tasks' // 'tasks' for pre-config tasks, 'topics' for heartbeat topics
 ) {
     const functionStartTime = Date.now()
     // Use entry time if provided, otherwise use function start time
@@ -294,7 +295,7 @@ async function generatePreConfigTaskResult(
 
         console.log('KW Special Calling storeBotAnswerStream with parameters:', {
             projectId,
-            objectType: 'tasks',
+            objectType,
             objectId: objectId,
             streamPresent: !!stream,
             userIdsToNotifyCount: userIdsToNotify?.length,
@@ -311,7 +312,7 @@ async function generatePreConfigTaskResult(
         const step4Start = Date.now()
         const aiCommentText = await storeBotAnswerStream(
             projectId,
-            'tasks',
+            objectType,
             objectId,
             stream,
             userIdsToNotify,
