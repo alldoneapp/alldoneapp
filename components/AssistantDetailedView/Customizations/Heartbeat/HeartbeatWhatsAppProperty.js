@@ -30,8 +30,9 @@ export default function HeartbeatWhatsAppProperty({ disabled, projectId, assista
                     style={[localStyles.checkboxContainer, sendWhatsApp && localStyles.checkboxActive]}
                     onPress={toggleWhatsApp}
                     disabled={disabled}
+                    activeOpacity={0.8}
                 >
-                    {sendWhatsApp && <Icon name="check" size={16} color={colors.Primary500} />}
+                    {sendWhatsApp && <Icon name="check" size={14} color={colors.Primary200} />}
                 </TouchableOpacity>
             </View>
         </View>
@@ -60,14 +61,14 @@ const localStyles = StyleSheet.create({
         width: 24,
         height: 24,
         borderRadius: 4,
-        borderWidth: 2,
-        borderColor: colors.Text03,
-        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
     },
     checkboxActive: {
-        backgroundColor: colors.Secondary300,
-        borderColor: colors.Primary500,
+        backgroundColor: colors.Grey100,
+        borderColor: colors.Primary200,
     },
 })
