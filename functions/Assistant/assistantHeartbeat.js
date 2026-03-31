@@ -12,6 +12,42 @@ const DEFAULT_PROMPT =
     'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
 
 /**
+ * Fetch recent conversation history from a topic for context.
+ *
+ * @param {string} projectId
+ * @param {string} chatId
+ * @param {number} limit - Max messages to fetch
+ * @returns {Promise<Array<[string, string]>>} Array of [role, content] tuples
+ */
+async function getTopicConversationHistory(projectId, chatId, limit = 10) {
+    try {
+        const snapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+            .orderBy('created', 'desc')
+            .limit(limit)
+            .get()
+
+        const messages = []
+        for (const doc of snapshot.docs.reverse()) {
+            const data = doc.data()
+            if (data.commentText) {
+                const role = data.fromAssistant ? 'assistant' : 'user'
+                messages.push([role, data.commentText])
+            }
+        }
+        return messages
+    } catch (error) {
+        console.warn('Heartbeat: Failed to fetch conversation history:', {
+            projectId,
+            chatId,
+            error: error.message,
+        })
+        return []
+    }
+}
+
+/**
  * Get or create a dedicated heartbeat topic for a user.
  *
  * @param {string} userId
@@ -276,7 +312,21 @@ async function checkAndExecuteHeartbeats() {
                     chatId = result.chatId
                 }
 
-                const prompt = assistant.heartbeatPrompt ?? DEFAULT_PROMPT
+                const basePrompt = assistant.heartbeatPrompt ?? DEFAULT_PROMPT
+
+                // Fetch chat history from the topic for context
+                const chatHistory = await getTopicConversationHistory(projectId, chatId)
+                let prompt = basePrompt
+                if (chatHistory.length > 0) {
+                    const historyText = chatHistory
+                        .map(([role, content]) => {
+                            const label = role === 'assistant' ? 'Assistant' : 'User'
+                            const text = typeof content === 'string' ? content : JSON.stringify(content)
+                            return `${label}: ${text}`
+                        })
+                        .join('\n')
+                    prompt = `Here is the recent chat history from this conversation:\n---\n${historyText}\n---\n\n${basePrompt}`
+                }
 
                 await generatePreConfigTaskResult(
                     userId,
