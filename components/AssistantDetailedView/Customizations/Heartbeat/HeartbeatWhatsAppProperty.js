@@ -1,5 +1,6 @@
 import React from 'react'
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
@@ -7,7 +8,8 @@ import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Ass
 import { translate } from '../../../../i18n/TranslationService'
 
 export default function HeartbeatWhatsAppProperty({ disabled, projectId, assistant }) {
-    const sendWhatsApp = assistant.heartbeatSendWhatsApp ?? false
+    const userHasPhone = useSelector(state => !!state.loggedUser.phone)
+    const sendWhatsApp = assistant.heartbeatSendWhatsApp ?? userHasPhone
 
     const toggleWhatsApp = () => {
         if (!disabled) {

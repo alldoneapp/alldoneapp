@@ -298,7 +298,11 @@ async function checkAndExecuteHeartbeats() {
                     [`heartbeatLastExecutedByUser.${userId}`]: Date.now(),
                 })
 
-                const sendWhatsApp = assistant.heartbeatSendWhatsApp === true
+                // If heartbeatSendWhatsApp is not explicitly set, default to true when user has a phone number
+                const sendWhatsApp =
+                    assistant.heartbeatSendWhatsApp !== undefined && assistant.heartbeatSendWhatsApp !== null
+                        ? assistant.heartbeatSendWhatsApp === true
+                        : !!userData.phone
                 const userPhone = userData.phone
                 const shouldSendWhatsApp = sendWhatsApp && !!userPhone
 
