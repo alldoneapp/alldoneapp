@@ -10,6 +10,7 @@ const {
 } = require('./assistantHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
+const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 
 async function generateBotWelcomeMessageForGuideUser(
     projectId,
@@ -30,16 +31,7 @@ async function generateBotWelcomeMessageForGuideUser(
     const { model, temperature, instructions, displayName, allowedTools } = assistant
 
     // Extract user's timezone offset (in minutes) from user data
-    let userTimezoneOffset = null
-    if (typeof user.timezone === 'number') {
-        userTimezoneOffset = user.timezone
-    } else if (typeof user.timezoneOffset === 'number') {
-        userTimezoneOffset = user.timezoneOffset
-    } else if (typeof user.timezoneMinutes === 'number') {
-        userTimezoneOffset = user.timezoneMinutes
-    } else if (typeof user.preferredTimezone === 'number') {
-        userTimezoneOffset = user.preferredTimezone
-    }
+    const userTimezoneOffset = resolveUserTimezoneOffset(user)
 
     const linkToTasks = `${taskListUrlOrigin}/projects/${projectId}/user/${userId}/tasks/open`
     const template = parseTextForUseLiKePrompt(

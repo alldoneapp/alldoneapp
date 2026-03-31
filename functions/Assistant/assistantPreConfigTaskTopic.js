@@ -11,6 +11,7 @@ const {
 } = require('./assistantHelper')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
+const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
 // Pre-load tiktoken at module load (performance optimization)
@@ -261,16 +262,7 @@ async function generatePreConfigTaskResult(
 
         // Extract user's timezone offset (in minutes) from user data
         // Priority: timezone > timezoneOffset > timezoneMinutes > preferredTimezone
-        let userTimezoneOffset = null
-        if (typeof user.timezone === 'number') {
-            userTimezoneOffset = user.timezone
-        } else if (typeof user.timezoneOffset === 'number') {
-            userTimezoneOffset = user.timezoneOffset
-        } else if (typeof user.timezoneMinutes === 'number') {
-            userTimezoneOffset = user.timezoneMinutes
-        } else if (typeof user.preferredTimezone === 'number') {
-            userTimezoneOffset = user.preferredTimezone
-        }
+        const userTimezoneOffset = resolveUserTimezoneOffset(user)
 
         // fetch mentioned notes context
         const { fetchMentionedNotesContext } = require('./noteContextHelper')

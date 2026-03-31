@@ -81,14 +81,45 @@ jest.mock(
 const { ProjectService } = require('../shared/ProjectService')
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
+const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const {
     getChatAttachmentForAssistantRequest,
     listRecentChatMediaForAssistantRequest,
     normalizeCommentMediaContext,
     buildUserMessageContentFromComment,
+    addTimestampToContextContent,
+    formatContextMessageTimestamp,
 } = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
+    test('normalizes hour-based user timezone values into minutes', () => {
+        expect(resolveUserTimezoneOffset({ timezone: 1 })).toBe(60)
+        expect(resolveUserTimezoneOffset({ timezoneOffset: 'UTC+02:30' })).toBe(150)
+    })
+
+    test('formats context message timestamps in the user timezone', () => {
+        expect(formatContextMessageTimestamp(Date.UTC(2026, 2, 31, 8, 15, 0), 120)).toBe('2026-03-31 10:15:00 UTC+2')
+    })
+
+    test('adds timestamps to multimodal context content without dropping images', () => {
+        expect(
+            addTimestampToContextContent(
+                [
+                    { type: 'text', text: 'Please review this image' },
+                    { type: 'image_url', image_url: { url: 'https://cdn.example.com/image.png' } },
+                ],
+                Date.UTC(2026, 2, 31, 8, 15, 0),
+                60
+            )
+        ).toEqual([
+            {
+                type: 'text',
+                text: '[Sent at 2026-03-31 09:15:00 UTC+1]\nPlease review this image',
+            },
+            { type: 'image_url', image_url: { url: 'https://cdn.example.com/image.png' } },
+        ])
+    })
+
     test('redacts attachment base64 from conversation-safe tool results', () => {
         const toolResult = {
             success: true,

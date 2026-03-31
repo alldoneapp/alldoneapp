@@ -8,6 +8,7 @@ const {
 } = require('./assistantHelper')
 const { FEED_PUBLIC_FOR_ALL, getFirstName, sortProjects } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
+const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 
 const MAX_TASKS_TO_SUMMARIZE = 50
 const MAX_CHARACTER_IN_TASKS = 100
@@ -161,16 +162,7 @@ async function generateBotDailyTopicFirstComment(
     const { model, temperature, instructions, displayName, allowedTools } = assistant
 
     // Extract user's timezone offset (in minutes) from user data
-    let userTimezoneOffset = null
-    if (typeof user.timezone === 'number') {
-        userTimezoneOffset = user.timezone
-    } else if (typeof user.timezoneOffset === 'number') {
-        userTimezoneOffset = user.timezoneOffset
-    } else if (typeof user.timezoneMinutes === 'number') {
-        userTimezoneOffset = user.timezoneMinutes
-    } else if (typeof user.preferredTimezone === 'number') {
-        userTimezoneOffset = user.preferredTimezone
-    }
+    const userTimezoneOffset = resolveUserTimezoneOffset(user)
 
     const tasksByProjectsData = extractTasksToSummarizeByProject(projects, tasksByProjects)
     const totalTasks = getTotalTasks(tasksByProjects)

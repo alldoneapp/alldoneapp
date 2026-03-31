@@ -3,6 +3,7 @@ const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { inferMimeTypeFromFileName } = require('../Utils/parseTextUtils')
+const { addTimestampToContextContent } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+$/
@@ -284,7 +285,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
  * @param {number} limit - Max messages to fetch
  * @returns {Promise<Array<[string, string]>>} Array of [role, content] tuples
  */
-async function getConversationHistory(projectId, chatId, limit = 10) {
+async function getConversationHistory(projectId, chatId, limit = 10, userTimezoneOffset = null) {
     const snapshot = await admin
         .firestore()
         .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
@@ -296,6 +297,7 @@ async function getConversationHistory(projectId, chatId, limit = 10) {
     let multimodalUserMessages = 0
     for (const doc of snapshot.docs.reverse()) {
         const data = doc.data()
+        const messageTimestamp = Number(data.created || data.lastChangeDate || 0)
         if (data.commentText) {
             const role = data.fromAssistant ? 'assistant' : 'user'
             if (role === 'user') {
@@ -317,13 +319,23 @@ async function getConversationHistory(projectId, chatId, limit = 10) {
                 const textWithFileContext = appendFileContext(stripImageTokens(data.commentText), fileContext)
                 if (imageUrls.length > 0) {
                     multimodalUserMessages++
-                    messages.push([role, buildMultimodalUserContent(textWithFileContext, imageUrls)])
+                    messages.push([
+                        role,
+                        addTimestampToContextContent(
+                            buildMultimodalUserContent(textWithFileContext, imageUrls),
+                            messageTimestamp,
+                            userTimezoneOffset
+                        ),
+                    ])
                     continue
                 }
-                messages.push([role, textWithFileContext])
+                messages.push([
+                    role,
+                    addTimestampToContextContent(textWithFileContext, messageTimestamp, userTimezoneOffset),
+                ])
                 continue
             }
-            messages.push([role, data.commentText])
+            messages.push([role, addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset)])
         }
     }
 

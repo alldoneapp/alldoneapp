@@ -12,6 +12,7 @@ const {
     isToolAllowedForExecution,
     reduceGoldWhenChatWithAI,
 } = require('../Assistant/assistantHelper')
+const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('../WhatsApp/whatsAppToolErrorUtils')
 const { getConversationHistory, storeEmailAssistantMessageInTopic } = require('./emailDailyTopic')
@@ -36,8 +37,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
 
     const allowedTools = getEmailSafeAllowedTools(assistant.allowedTools)
     const messages = []
-    const userTimezoneOffset =
-        user.timezone ?? user.timezoneOffset ?? user.timezoneMinutes ?? user.preferredTimezone ?? null
+    const userTimezoneOffset = resolveUserTimezoneOffset(user)
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
@@ -66,7 +66,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
 
-    const history = await getConversationHistory(projectId, chatId, 10)
+    const history = await getConversationHistory(projectId, chatId, 10, userTimezoneOffset)
     history.forEach(([role, content]) => messages.push([role, content]))
     if (!options.skipCurrentMessageAppend && String(messageText || '').trim()) {
         messages.push(['user', messageText])

@@ -12,6 +12,7 @@ const {
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
 } = require('../Assistant/assistantHelper')
+const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
 const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('./whatsAppToolErrorUtils')
@@ -90,12 +91,11 @@ async function processWhatsAppAssistantMessage(
     }
 
     // Extract user timezone
-    const userTimezoneOffset =
-        user.timezone ?? user.timezoneOffset ?? user.timezoneMinutes ?? user.preferredTimezone ?? null
+    const userTimezoneOffset = resolveUserTimezoneOffset(user)
 
     // Fetch conversation history from the daily topic
     const historyStart = Date.now()
-    const history = await getConversationHistory(projectId, chatId, 10)
+    const history = await getConversationHistory(projectId, chatId, 10, userTimezoneOffset)
     markStage('getConversationHistory', historyStart, { historyCount: history.length })
 
     // Build messages array

@@ -57,6 +57,7 @@ const {
     injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
+const { addTimestampToContextContent, formatContextMessageTimestamp } = require('./contextTimestampHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -6891,11 +6892,26 @@ async function getOptimizedContextMessages(
 
             if (commentText) {
                 const role = fromAssistant ? 'assistant' : 'user'
+                const messageTimestamp = Number(messageData.created || messageData.lastChangeDate || 0)
                 if (!fromAssistant) {
                     const mediaContext = await enrichCommentMediaContext(commentDocs[i].ref, messageData)
-                    messages.push([role, buildUserMessageContentFromComment(commentText, mediaContext)])
+                    messages.push([
+                        role,
+                        addTimestampToContextContent(
+                            buildUserMessageContentFromComment(commentText, mediaContext),
+                            messageTimestamp,
+                            userTimezoneOffset
+                        ),
+                    ])
                 } else {
-                    messages.push([role, parseTextForUseLiKePrompt(commentText)])
+                    messages.push([
+                        role,
+                        addTimestampToContextContent(
+                            parseTextForUseLiKePrompt(commentText),
+                            messageTimestamp,
+                            userTimezoneOffset
+                        ),
+                    ])
                 }
             }
             amountOfCommentsInContext++
@@ -7142,4 +7158,6 @@ module.exports = {
     listRecentChatMediaForAssistantRequest,
     normalizeCommentMediaContext,
     buildUserMessageContentFromComment,
+    addTimestampToContextContent,
+    formatContextMessageTimestamp,
 }

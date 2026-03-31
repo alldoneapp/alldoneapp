@@ -12,6 +12,7 @@ const {
     ENCODE_MESSAGE_GAP,
     getMessageTextForTokenCounting,
 } = require('./assistantHelper')
+const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
 
 const { getUserData } = require('../Users/usersFirestore')
@@ -92,8 +93,7 @@ async function askToOpenAIBotOptimized(
         const { model, temperature, instructions, displayName } = assistant
 
         // Extract user timezone
-        const userTimezoneOffset =
-            user.timezone ?? user.timezoneOffset ?? user.timezoneMinutes ?? user.preferredTimezone ?? null
+        const userTimezoneOffset = resolveUserTimezoneOffset(user)
 
         // Step 2: Parallel fetch context messages and common data
         const step2Start = Date.now()

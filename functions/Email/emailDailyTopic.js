@@ -5,6 +5,7 @@ const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
+const { addTimestampToContextContent } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { buildAttachmentSummaryForComment, buildDailyEmailTitle } = require('./emailChannelHelpers')
 
@@ -166,7 +167,7 @@ async function updateLastAssistantCommentData(projectId, chatId, assistantId, us
         })
 }
 
-async function getConversationHistory(projectId, chatId, limit = 10) {
+async function getConversationHistory(projectId, chatId, limit = 10, userTimezoneOffset = null) {
     const snapshot = await admin
         .firestore()
         .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
@@ -177,16 +178,20 @@ async function getConversationHistory(projectId, chatId, limit = 10) {
     const messages = []
     snapshot.docs.reverse().forEach(doc => {
         const data = doc.data() || {}
+        const messageTimestamp = Number(data.created || data.lastChangeDate || 0)
         if (!data.commentText) return
 
         if (data.fromAssistant) {
-            messages.push(['assistant', data.commentText])
+            messages.push([
+                'assistant',
+                addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset),
+            ])
             return
         }
 
         const fileContext = buildFileContextForAssistant(data.emailAttachments)
         const text = fileContext ? `${data.commentText}\n\n${fileContext}` : data.commentText
-        messages.push(['user', text])
+        messages.push(['user', addTimestampToContextContent(text, messageTimestamp, userTimezoneOffset)])
     })
 
     return messages

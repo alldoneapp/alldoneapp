@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+const { addTimestampToContextContent, resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -19,7 +20,7 @@ const DEFAULT_PROMPT =
  * @param {number} limit - Max messages to fetch
  * @returns {Promise<Array<[string, string]>>} Array of [role, content] tuples
  */
-async function getTopicConversationHistory(projectId, chatId, limit = 10) {
+async function getTopicConversationHistory(projectId, chatId, limit = 10, userTimezoneOffset = null) {
     try {
         const snapshot = await admin
             .firestore()
@@ -33,7 +34,14 @@ async function getTopicConversationHistory(projectId, chatId, limit = 10) {
             const data = doc.data()
             if (data.commentText) {
                 const role = data.fromAssistant ? 'assistant' : 'user'
-                messages.push([role, data.commentText])
+                messages.push([
+                    role,
+                    addTimestampToContextContent(
+                        data.commentText,
+                        Number(data.created || data.lastChangeDate || 0),
+                        userTimezoneOffset
+                    ),
+                ])
             }
         }
         return messages
@@ -260,7 +268,8 @@ async function checkAndExecuteHeartbeats() {
                         if (chancePercent <= 0) continue
 
                         // Check awake window
-                        const timezoneOffsetMinutes = normalizeTimezone(userData.timezone)
+                        const timezoneOffsetMinutes =
+                            resolveUserTimezoneOffset(userData) ?? normalizeTimezone(userData.timezone)
                         if (!isWithinAwakeWindow(assistant, timezoneOffsetMinutes)) {
                             continue
                         }
@@ -329,7 +338,12 @@ async function checkAndExecuteHeartbeats() {
                 const basePrompt = assistant.heartbeatPrompt ?? DEFAULT_PROMPT
 
                 // Fetch chat history from the topic for context
-                const chatHistory = await getTopicConversationHistory(projectId, chatId)
+                const chatHistory = await getTopicConversationHistory(
+                    projectId,
+                    chatId,
+                    10,
+                    resolveUserTimezoneOffset(userData) ?? normalizeTimezone(userData.timezone)
+                )
                 let prompt = basePrompt
                 if (chatHistory.length > 0) {
                     const historyText = chatHistory
