@@ -39,7 +39,7 @@ const Customizations = () => {
         <View style={localStyles.container}>
             <Header />
             <View style={[localStyles.userSettings, mobile ? localStyles.userSettingsMobile : undefined]}>
-                <View style={{ flex: 1, marginRight: mobile ? 0 : 72 }}>
+                <View style={localStyles.settingsColumn}>
                     <MaxNumberTasksToday userId={loggedUser.uid} numberTodayTasks={loggedUser.numberTodayTasks} />
                     <MaxUsersInSidebar userId={loggedUser.uid} numberUsersSidebar={loggedUser.numberUsersSidebar} />
                     <MaxNumberGoals userId={loggedUser.uid} numberGoalsAllTeams={loggedUser.numberGoalsAllTeams} />
@@ -51,9 +51,12 @@ const Customizations = () => {
                     />
                     <GlobalKarmaPoints />
                     <DateFormat userId={loggedUser.uid} dateFormat={loggedUser.dateFormat} />
+                    <Notifications />
                 </View>
 
-                <View style={{ flex: 1 }}>
+                {!mobile && <View style={localStyles.columnsSpacer} />}
+
+                <View style={localStyles.settingsColumn}>
                     <Theme userId={loggedUser.uid} themeName={loggedUser.themeName} />
                     <SidebarNavigation
                         userId={loggedUser.uid}
@@ -66,15 +69,12 @@ const Customizations = () => {
                         email={loggedUser.email}
                         notificationEmail={loggedUser.notificationEmail}
                     />
-                    <AssistantEmail
-                        userId={loggedUser.uid}
-                        assistantEmailEnabled={loggedUser.assistantEmailEnabled === true}
-                    />
-                    <Notifications />
                     <ServerTime />
                     <UserTimezone />
                 </View>
             </View>
+
+            <AssistantEmail userId={loggedUser.uid} assistantEmailEnabled={loggedUser.assistantEmailEnabled === true} />
         </View>
     )
 }
@@ -84,11 +84,21 @@ export default Customizations
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
+        width: '100%',
     },
     userSettings: {
         flexDirection: 'row',
+        width: '100%',
+        alignSelf: 'stretch',
     },
     userSettingsMobile: {
         flexDirection: 'column',
+    },
+    settingsColumn: {
+        flex: 1,
+        minWidth: 0,
+    },
+    columnsSpacer: {
+        width: 72,
     },
 })

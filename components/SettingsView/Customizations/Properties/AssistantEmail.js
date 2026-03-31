@@ -25,7 +25,7 @@ export default function AssistantEmail({ userId, assistantEmailEnabled }) {
                             Anna email
                         </Text>
                     ) : (
-                        <View>
+                        <View style={localStyles.titleBlock}>
                             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>Anna email</Text>
                             <Text style={[styles.caption1, { color: colors.Text03 }]}>{ANNA_EMAIL_ADDRESS}</Text>
                         </View>
@@ -53,28 +53,42 @@ export default function AssistantEmail({ userId, assistantEmailEnabled }) {
 const localStyles = StyleSheet.create({
     wrapper: {
         marginTop: 8,
+        minWidth: 0,
+        width: '100%',
     },
     settingRow: {
         minHeight: 56,
         justifyContent: 'space-between',
         alignItems: 'center',
         flexDirection: 'row',
+        minWidth: 0,
+        width: '100%',
     },
     settingRowSection: {
         flexDirection: 'row',
         alignItems: 'center',
+        minWidth: 0,
     },
     settingRowLeft: {
         flex: 1,
         justifyContent: 'flex-start',
+        minWidth: 0,
+        flexShrink: 1,
     },
     settingRowRight: {
         justifyContent: 'flex-end',
+    },
+    titleBlock: {
+        minWidth: 0,
+        flexShrink: 1,
     },
     infoText: {
         ...styles.caption1,
         color: colors.Text03,
         marginHorizontal: 8,
         marginTop: 4,
+        minWidth: 0,
+        width: '100%',
+        flexShrink: 1,
     },
 })
