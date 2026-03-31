@@ -27,6 +27,7 @@ import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
 import Button from '../../UIControls/Button'
 import { translate } from '../../../i18n/TranslationService'
 import HeartbeatAwakeTimeProperty from './Heartbeat/HeartbeatAwakeTimeProperty'
+import HeartbeatIntervalProperty from './Heartbeat/HeartbeatIntervalProperty'
 import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
@@ -166,6 +167,11 @@ export default function AssistantCustomizations({
             <View style={[localStyles.properties, smallScreen ? localStyles.propertiesMobile : undefined]}>
                 <View style={{ flex: 1, marginRight: smallScreen ? 0 : 72, width: smallScreen ? '100%' : '50%' }}>
                     <HeartbeatAwakeTimeProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
+                    <HeartbeatIntervalProperty
                         disabled={!canEditAssitant}
                         projectId={projectId}
                         assistant={assistant}

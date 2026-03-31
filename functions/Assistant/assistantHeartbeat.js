@@ -6,7 +6,10 @@ const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
 
-const HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
+const HEARTBEAT_INTERVAL_STEP_MS = 5 * 60 * 1000
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000
+const MIN_HEARTBEAT_INTERVAL_MS = HEARTBEAT_INTERVAL_STEP_MS
+const MAX_HEARTBEAT_INTERVAL_MS = 60 * 60 * 1000
 const DEFAULT_AWAKE_START = 28800000 // 8:00 AM
 const DEFAULT_AWAKE_END = 79200000 // 10:00 PM
 const DEFAULT_PROMPT =
@@ -161,6 +164,21 @@ function getEffectiveChancePercent(assistant, projectId, userData) {
     return 0
 }
 
+function getEffectiveHeartbeatIntervalMs(assistant) {
+    const parsedValue = Number(assistant.heartbeatIntervalMs)
+
+    if (!Number.isFinite(parsedValue)) {
+        return DEFAULT_HEARTBEAT_INTERVAL_MS
+    }
+
+    const roundedValue = Math.round(parsedValue / HEARTBEAT_INTERVAL_STEP_MS) * HEARTBEAT_INTERVAL_STEP_MS
+    return Math.min(MAX_HEARTBEAT_INTERVAL_MS, Math.max(MIN_HEARTBEAT_INTERVAL_MS, roundedValue))
+}
+
+function getCurrentHeartbeatWindowStart(now, intervalMs) {
+    return Math.floor(now / intervalMs) * intervalMs
+}
+
 /**
  * Normalize timezone offset from user data.
  * User timezone can be stored as a number (offset in minutes or hours) or a string.
@@ -253,7 +271,9 @@ async function checkAndExecuteHeartbeats() {
 
                 for (const doc of assistantsSnapshot.docs) {
                     const assistant = { uid: doc.id, ...doc.data() }
+                    const assistantRef = admin.firestore().doc(`assistants/${projectId}/items/${assistant.uid}`)
                     const prompt = assistant.heartbeatPrompt ?? DEFAULT_PROMPT
+                    const processedWindowUpdates = {}
 
                     if (!prompt || prompt.trim().length === 0) continue
 
@@ -274,11 +294,21 @@ async function checkAndExecuteHeartbeats() {
                             continue
                         }
 
-                        // Check timing (30-minute interval)
+                        const intervalMs = getEffectiveHeartbeatIntervalMs(assistant)
+                        const currentWindowStart = getCurrentHeartbeatWindowStart(Date.now(), intervalMs)
+                        const lastProcessedWindow = assistant.heartbeatLastProcessedWindowByUser?.[userId]
                         const lastExecuted = assistant.heartbeatLastExecutedByUser?.[userId]
-                        if (lastExecuted && Date.now() - lastExecuted < HEARTBEAT_INTERVAL_MS) {
+
+                        if (lastExecuted && Date.now() - lastExecuted < intervalMs) {
                             continue
                         }
+
+                        // Only evaluate one heartbeat chance per configured interval window.
+                        if (lastProcessedWindow && lastProcessedWindow >= currentWindowStart) {
+                            continue
+                        }
+
+                        processedWindowUpdates[`heartbeatLastProcessedWindowByUser.${userId}`] = currentWindowStart
 
                         // Roll dice
                         if (Math.random() * 100 >= chancePercent) {
@@ -296,9 +326,14 @@ async function checkAndExecuteHeartbeats() {
                             assistantId: assistant.uid,
                             userId,
                             chancePercent,
+                            intervalMs,
                         })
 
                         heartbeatsToExecute.push({ projectId, assistant, userId, userData })
+                    }
+
+                    if (Object.keys(processedWindowUpdates).length > 0) {
+                        await assistantRef.update(processedWindowUpdates)
                     }
                 }
             } catch (error) {

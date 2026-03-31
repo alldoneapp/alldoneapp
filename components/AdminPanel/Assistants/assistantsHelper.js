@@ -56,6 +56,7 @@ export function getNewDefaultAssistant() {
         commentsData: null,
         heartbeatAwakeStart: 28800000,
         heartbeatAwakeEnd: 79200000,
+        heartbeatIntervalMs: 1800000,
         heartbeatChancePercent: 0,
         heartbeatSendWhatsApp: false,
         heartbeatPrompt:

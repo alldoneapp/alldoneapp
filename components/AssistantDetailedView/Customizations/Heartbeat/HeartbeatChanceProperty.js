@@ -9,6 +9,7 @@ import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
+import { formatHeartbeatInterval, getHeartbeatIntervalMs } from './heartbeatIntervalHelper'
 
 export default function HeartbeatChanceProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -18,6 +19,7 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
 
     const isDefaultAssistantInDefaultProject = assistant.isDefault && projectId === defaultProjectId
     const chancePercent = assistant.heartbeatChancePercent ?? (isDefaultAssistantInDefaultProject ? 10 : 0)
+    const intervalLabel = formatHeartbeatInterval(getHeartbeatIntervalMs(assistant.heartbeatIntervalMs))
 
     const changeData = percent => {
         const value = percent > 100 ? 100 : percent < 0 ? 0 : percent
@@ -49,7 +51,8 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                         <ChangeNumberTodayTasks
                             customTitle={translate('Heartbeat execution chance')}
                             customSubtitle={translate(
-                                'Percent chance the heartbeat prompt will execute each 30-minute interval'
+                                'Percent chance the heartbeat prompt will execute each heartbeat interval (%{interval})',
+                                { interval: intervalLabel }
                             )}
                             closePopover={() => setOpen(false)}
                             onSaveData={changeData}
