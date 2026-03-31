@@ -54,6 +54,12 @@ export function getNewDefaultAssistant() {
         isDefault: false,
         noteIdsByProject: {},
         commentsData: null,
+        heartbeatAwakeStart: 28800000,
+        heartbeatAwakeEnd: 79200000,
+        heartbeatChancePercent: 0,
+        heartbeatSendWhatsApp: false,
+        heartbeatPrompt:
+            'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.',
     }
 }
 

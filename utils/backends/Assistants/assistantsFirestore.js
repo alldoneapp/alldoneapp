@@ -364,6 +364,10 @@ export function updateAssistantInstructions(projectId, assistant, instructions) 
         assistantInstructionsChangedUpdatesChain(projectId, assistant, assistant.instructions, instructions)
 }
 
+export function updateAssistantHeartbeatSettings(projectId, assistant, data) {
+    updateAssistantData(projectId, assistant.uid, data, null)
+}
+
 export function updateAssistantDelegationDescriptionManual(projectId, assistant, manualText) {
     const delegationToolDescriptionManual = typeof manualText === 'string' ? manualText.trim() : ''
     updateAssistantData(projectId, assistant.uid, { delegationToolDescriptionManual }, null)

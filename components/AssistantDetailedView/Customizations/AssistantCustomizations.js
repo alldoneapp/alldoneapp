@@ -26,6 +26,10 @@ import CopyAssistant from './CopyAssistant/CopyAssistant'
 import { GLOBAL_PROJECT_ID } from '../../AdminPanel/Assistants/assistantsHelper'
 import Button from '../../UIControls/Button'
 import { translate } from '../../../i18n/TranslationService'
+import HeartbeatAwakeTimeProperty from './Heartbeat/HeartbeatAwakeTimeProperty'
+import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
+import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
+import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
 
 export default function AssistantCustomizations({
     projectId,
@@ -156,6 +160,25 @@ export default function AssistantCustomizations({
                         projectId={projectId}
                         assistant={assistant}
                     />
+                </View>
+            </View>
+            <CustomizationsHeader text="Assistant heartbeat" />
+            <View style={[localStyles.properties, smallScreen ? localStyles.propertiesMobile : undefined]}>
+                <View style={{ flex: 1, marginRight: smallScreen ? 0 : 72, width: smallScreen ? '100%' : '50%' }}>
+                    <HeartbeatAwakeTimeProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
+                    <HeartbeatChanceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <HeartbeatWhatsAppProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
+                </View>
+                <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
+                    <HeartbeatPromptProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                 </View>
             </View>
             <CustomizationsHeader text="Assistant tasks" rightContent={canEditAssitant && renderOrganizeButton()} />

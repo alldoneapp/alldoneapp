@@ -2635,6 +2635,20 @@ exports.checkRecurringAssistantTasks = onSchedule(
     }
 )
 
+// ASSISTANT HEARTBEAT
+exports.checkAssistantHeartbeats = onSchedule(
+    {
+        schedule: '*/5 * * * *',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { checkAndExecuteHeartbeats } = require('./Assistant/assistantHeartbeat')
+        await checkAndExecuteHeartbeats()
+    }
+)
+
 exports.pollGmailLabelingSecondGen = onSchedule(
     {
         schedule: '*/5 * * * *',
