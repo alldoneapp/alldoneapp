@@ -27,6 +27,50 @@ function getEncoder() {
     return encoder
 }
 
+/**
+ * Check if the user has sent a message in the given topic within the last 24 hours.
+ * Used to determine whether to send a plain WhatsApp message or a template.
+ */
+async function hasUserMessageInLast24Hours(projectId, chatId, userId) {
+    try {
+        const admin = require('firebase-admin')
+        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
+
+        // Check in topics collection (for heartbeat and WhatsApp daily topics)
+        const snapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+            .where('creatorId', '==', userId)
+            .where('created', '>=', twentyFourHoursAgo)
+            .orderBy('created', 'desc')
+            .limit(1)
+            .get()
+
+        if (!snapshot.empty) return true
+
+        // Also check in tasks collection (for pre-config task chats)
+        const tasksSnapshot = await admin
+            .firestore()
+            .collection(`chatComments/${projectId}/tasks/${chatId}/comments`)
+            .where('creatorId', '==', userId)
+            .where('created', '>=', twentyFourHoursAgo)
+            .orderBy('created', 'desc')
+            .limit(1)
+            .get()
+
+        return !tasksSnapshot.empty
+    } catch (error) {
+        console.warn('Error checking for recent user messages:', {
+            projectId,
+            chatId,
+            userId,
+            error: error.message,
+        })
+        // Default to template on error (safer)
+        return false
+    }
+}
+
 async function generatePreConfigTaskResult(
     userId,
     projectId,
@@ -394,24 +438,39 @@ async function generatePreConfigTaskResult(
                     const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
                     const whatsappService = new TwilioWhatsAppService()
 
-                    const whatsappResult = await whatsappService.sendTaskCompletionNotification(
-                        userPhone,
-                        userId,
-                        projectId,
-                        objectId,
-                        displayName,
-                        {
-                            name: taskMetadata.name || 'Task',
-                            recurrence: taskMetadata.recurrence || 'never',
-                            type: 'one-time',
-                        },
-                        aiCommentText || 'Task completed successfully by Alldone Assistant.'
-                    )
+                    // Check if user has sent a message in the WhatsApp daily topic within 24 hours
+                    // If so, we can send a plain message instead of the template
+                    const hasRecentUserMessage = await hasUserMessageInLast24Hours(projectId, objectId, userId)
+
+                    let whatsappResult
+                    if (hasRecentUserMessage) {
+                        console.log('User has recent message in topic, sending plain WhatsApp message')
+                        whatsappResult = await whatsappService.sendWhatsAppMessage(
+                            userPhone,
+                            aiCommentText || 'Task completed successfully by Alldone Assistant.'
+                        )
+                    } else {
+                        console.log('No recent user message in topic, sending WhatsApp template')
+                        whatsappResult = await whatsappService.sendTaskCompletionNotification(
+                            userPhone,
+                            userId,
+                            projectId,
+                            objectId,
+                            displayName,
+                            {
+                                name: taskMetadata.name || 'Task',
+                                recurrence: taskMetadata.recurrence || 'never',
+                                type: 'one-time',
+                            },
+                            aiCommentText || 'Task completed successfully by Alldone Assistant.'
+                        )
+                    }
 
                     console.log('WhatsApp notification sent:', {
                         taskName: taskMetadata.name,
                         userId,
                         success: whatsappResult.success,
+                        usedTemplate: !hasRecentUserMessage,
                     })
                 } else {
                     console.log('No phone number found for WhatsApp notification:', { userId })
