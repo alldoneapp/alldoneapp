@@ -1155,7 +1155,7 @@
     "Reconnect required": "Reconnect required",
     "Gmail labeling": "Gmail labeling",
     "GmailLabelingDescription": "Incoming inbox emails are classified by the prompt below. Matching labels can optionally auto-archive by removing the Inbox label.",
-    "GmailLabelingGoldCostDescription": "Each email that is actually labeled costs 1 Gold. Emails with no matching rule do not cost Gold.",
+    "GmailLabelingGoldCostDescription": "Email labeling will cost Gold based on the actual token usage.",
     "GmailLabelingReconnectDescription": "This Gmail connection is missing modify permissions. Reconnect Gmail to enable label application and auto-archive.",
     "Premium required": "Premium required",
     "GmailLabelingPremiumOnlyDescription": "Gmail labeling is available for premium users only.",

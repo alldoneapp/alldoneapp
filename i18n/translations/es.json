@@ -1153,7 +1153,7 @@
     "Reconnect required": "Se requiere reconectar",
     "Gmail labeling": "Etiquetado de Gmail",
     "GmailLabelingDescription": "Los correos entrantes de la bandeja de entrada se clasifican según la instrucción de abajo. Las etiquetas coincidentes pueden archivarse automáticamente quitando la etiqueta de Bandeja de entrada.",
-    "GmailLabelingGoldCostDescription": "Cada correo que realmente se etiqueta cuesta 1 Gold. Los correos sin una regla coincidente no consumen Gold.",
+    "GmailLabelingGoldCostDescription": "El etiquetado de correos costará Gold según el uso real de tokens.",
     "GmailLabelingReconnectDescription": "A esta conexión de Gmail le faltan permisos de modificación. Vuelve a conectar Gmail para habilitar la aplicación de etiquetas y el archivado automático.",
     "Premium required": "Se requiere Premium",
     "GmailLabelingPremiumOnlyDescription": "El etiquetado de Gmail solo está disponible para usuarios premium.",

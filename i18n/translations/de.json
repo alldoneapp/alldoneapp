@@ -1159,7 +1159,7 @@
     "Reconnect required": "Erneute Verbindung erforderlich",
     "Gmail labeling": "Gmail-Kennzeichnung",
     "GmailLabelingDescription": "Eingehende Posteingangs-E-Mails werden anhand des folgenden Prompts klassifiziert. Passende Labels können optional automatisch archiviert werden, indem das Posteingangs-Label entfernt wird.",
-    "GmailLabelingGoldCostDescription": "Jede E-Mail, die tatsächlich markiert wird, kostet 1 Gold. Für E-Mails ohne passende Regel wird kein Gold berechnet.",
+    "GmailLabelingGoldCostDescription": "Die E-Mail-Kennzeichnung kostet Gold basierend auf dem tatsächlichen Token-Verbrauch.",
     "GmailLabelingReconnectDescription": "Dieser Gmail-Zugang hat keine Änderungsberechtigungen. Verbinden Sie Gmail erneut, um Labels und automatisches Archivieren zu aktivieren.",
     "Premium required": "Premium erforderlich",
     "GmailLabelingPremiumOnlyDescription": "Die Gmail-Kennzeichnung ist nur für Premium-Nutzer verfügbar.",
