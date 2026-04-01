@@ -3,9 +3,32 @@ jest.mock('firebase-admin', () => {
     const doc = jest.fn(path => ({
         path,
         get: jest.fn(),
+        set: jest.fn(),
+        collection: jest.fn(() => ({
+            doc: jest.fn(() => ({
+                get: jest.fn(),
+                set: jest.fn(),
+                collection: jest.fn(() => ({
+                    doc: jest.fn(() => ({
+                        get: jest.fn(),
+                        set: jest.fn(),
+                    })),
+                })),
+            })),
+        })),
     }))
     const collection = jest.fn(path => ({
         path,
+        doc: jest.fn(() => ({
+            get: jest.fn(),
+            set: jest.fn(),
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn(),
+                    set: jest.fn(),
+                })),
+            })),
+        })),
         limit: jest.fn(() => ({
             get: jest.fn(),
         })),
@@ -74,12 +97,15 @@ const admin = require('firebase-admin')
 const assistantHelper = require('../Assistant/assistantHelper')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
 const { deductGold } = require('../Gold/goldHelper')
+const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const {
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
     executePostLabelPrompt,
     getDefaultAssistantIdForProject,
+    getExternalRecipientEmails,
+    processSingleMessage,
 } = require('./serverSideGmailLabelingSync')
 
 describe('serverSideGmailLabelingSync helpers', () => {
@@ -121,6 +147,19 @@ describe('serverSideGmailLabelingSync helpers', () => {
             direction: 'incoming',
             targetContactEmail: '',
         })
+    })
+
+    test('collects outgoing recipient emails from To only', () => {
+        expect(
+            getExternalRecipientEmails(
+                {
+                    to: 'Me@example.com, alice@example.com, alice@example.com, Bob@example.com',
+                    cc: 'carol@example.com',
+                    bcc: 'dave@example.com',
+                },
+                'me@example.com'
+            )
+        ).toEqual(['alice@example.com', 'bob@example.com'])
     })
 
     test('prefers project assistant when resolving default assistant id', async () => {
@@ -303,5 +342,176 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(result.status).toBe('blocked')
         expect(result.error).toContain('Tool not permitted')
         expect(result.goldSpent).toBe(0)
+    })
+
+    test('outgoing processing runs follow-up only for external To recipients and stores them in audit', async () => {
+        const auditSet = jest.fn().mockResolvedValue(undefined)
+        admin.firestore.mockImplementation(() => ({
+            getAll: admin.__mock.getAll,
+            doc: admin.__mock.doc,
+            collection: jest.fn(path => {
+                if (path === 'users') {
+                    return {
+                        doc: jest.fn(() => ({
+                            collection: jest.fn(collectionName => {
+                                if (collectionName !== 'private') return { doc: jest.fn() }
+
+                                return {
+                                    doc: jest.fn(() => ({
+                                        collection: jest.fn(nestedCollectionName => {
+                                            if (nestedCollectionName !== 'messages') return { doc: jest.fn() }
+
+                                            return {
+                                                doc: jest.fn(() => ({
+                                                    get: jest.fn().mockResolvedValue({ exists: false }),
+                                                    set: auditSet,
+                                                })),
+                                            }
+                                        }),
+                                    })),
+                                }
+                            }),
+                        })),
+                    }
+                }
+
+                return {
+                    limit: () => ({
+                        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+                    }),
+                }
+            }),
+        }))
+        admin.__mock.doc.mockImplementation(path => {
+            if (path === 'projects/default-project') {
+                return {
+                    get: jest.fn().mockResolvedValue({
+                        exists: true,
+                        data: () => ({ assistantId: 'assistant-project' }),
+                    }),
+                }
+            }
+
+            return {
+                path,
+                get: jest.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+            }
+        })
+        admin.__mock.getAll.mockResolvedValue([{ exists: true }, { exists: false }])
+        classifyGmailMessage.mockResolvedValue({
+            matched: true,
+            labelKey: 'urgent',
+            confidence: 0.95,
+            reasoning: 'Matched outgoing follow-up',
+            usage: { totalTokens: 100 },
+        })
+        assistantHelper.getAssistantForChat.mockResolvedValue({
+            model: 'MODEL_GPT5_4',
+            temperature: 'TEMPERATURE_NORMAL',
+            instructions: 'Be useful',
+            allowedTools: ['create_task'],
+            displayName: 'Default Assistant',
+        })
+        assistantHelper.interactWithChatStream.mockResolvedValue({})
+        assistantHelper.collectAssistantTextWithToolCalls.mockResolvedValue({
+            assistantResponse: 'Created a task with the email link.',
+            executedToolCallsCount: 1,
+            executedToolNames: ['create_task'],
+            finalConversation: [{ role: 'user', content: 'context' }],
+        })
+        assistantHelper.calculateTokens.mockReturnValue(420)
+        assistantHelper.calculateGoldCostFromTokens.mockReturnValue(2)
+
+        const gmail = {
+            users: {
+                messages: {
+                    modify: jest.fn().mockResolvedValue({}),
+                },
+                labels: {
+                    create: jest.fn().mockResolvedValue({ data: { id: 'label-1' } }),
+                },
+            },
+        }
+
+        const result = await processSingleMessage({
+            gmail,
+            labelMap: new Map(),
+            config: {
+                model: 'MODEL_GPT5_4',
+                labelDefinitions: [
+                    {
+                        key: 'urgent',
+                        gmailLabelName: 'Alldone/Urgent',
+                        autoArchive: true,
+                        directionScope: 'outgoing',
+                        postLabelPrompt: 'Create a task for this email',
+                    },
+                ],
+                updatedAt: 'prompt-version',
+            },
+            userId: 'user-1',
+            userData: { defaultProjectId: 'default-project' },
+            projectId: 'project-1',
+            gmailEmail: 'me@example.com',
+            rawMessage: {
+                id: 'message-1',
+                threadId: 'thread-1',
+                internalDate: '1710000000000',
+                labelIds: ['SENT'],
+                payload: {
+                    headers: [
+                        { name: 'From', value: 'Me <me@example.com>' },
+                        {
+                            name: 'To',
+                            value:
+                                'Me <me@example.com>, Alice <alice@example.com>, Bob <bob@example.com>, Alice <alice@example.com>',
+                        },
+                        { name: 'Cc', value: 'Carol <carol@example.com>' },
+                        { name: 'Bcc', value: 'Dave <dave@example.com>' },
+                        { name: 'Subject', value: 'Follow up' },
+                        { name: 'Date', value: 'Tue, 11 Mar 2026 10:00:00 +0100' },
+                    ],
+                    mimeType: 'text/plain',
+                    body: { data: Buffer.from('Please handle this').toString('base64url') },
+                },
+                snippet: 'Please handle this',
+            },
+            syncRunId: 'sync-1',
+        })
+
+        expect(result.labeled).toBe(1)
+        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledTimes(2)
+        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({
+                toolRuntimeContext: expect.objectContaining({
+                    gmailContext: expect.objectContaining({
+                        direction: 'outgoing',
+                        targetContactEmail: 'alice@example.com',
+                    }),
+                }),
+            })
+        )
+        expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({
+                toolRuntimeContext: expect.objectContaining({
+                    gmailContext: expect.objectContaining({
+                        direction: 'outgoing',
+                        targetContactEmail: 'bob@example.com',
+                    }),
+                }),
+            })
+        )
+        expect(auditSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                recipientEmails: ['alice@example.com', 'bob@example.com'],
+                postLabelActions: expect.arrayContaining([
+                    expect.objectContaining({ status: 'completed' }),
+                    expect.objectContaining({ status: 'completed' }),
+                ]),
+            }),
+            { merge: true }
+        )
     })
 })

@@ -571,11 +571,7 @@ function getEligibleLabelDefinitions(labelDefinitions = [], direction = GMAIL_DI
 
 function getExternalRecipientEmails(normalizedMessage = {}, gmailEmail = '') {
     const connectedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
-    const recipients = [
-        ...extractEmailAddresses(normalizedMessage.to),
-        ...extractEmailAddresses(normalizedMessage.cc),
-        ...extractEmailAddresses(normalizedMessage.bcc),
-    ]
+    const recipients = extractEmailAddresses(normalizedMessage.to)
 
     return Array.from(new Set(recipients.filter(email => email && email !== connectedEmail)))
 }
@@ -1464,7 +1460,9 @@ module.exports = {
     executePostLabelPrompt,
     getGmailLabelingConfigWithState,
     getDefaultAssistantIdForProject,
+    getExternalRecipientEmails,
     processEnabledGmailLabelingConfigs,
+    processSingleMessage,
     resolvePostLabelAssistantContext,
     syncGmailLabeling,
     upsertGmailLabelingConfig,
