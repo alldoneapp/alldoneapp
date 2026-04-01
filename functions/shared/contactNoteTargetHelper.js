@@ -4,12 +4,21 @@ const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { ProjectService } = require('./ProjectService')
 
+const MIN_FUZZY_NAME_SIMILARITY = 0.8
+
 function normalizeText(value = '') {
     return String(value || '').trim()
 }
 
 function normalizeName(value = '') {
     return normalizeText(value).toLowerCase()
+}
+
+function normalizeNameForComparison(value = '') {
+    return normalizeName(value)
+        .replace(/[._-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
 }
 
 function mapContactDoc(doc) {
@@ -32,6 +41,73 @@ function buildContactDisplayName({ contactName, contactEmail }) {
 async function loadProjectContacts(db, projectId) {
     const snapshot = await db.collection(`projectsContacts/${projectId}/contacts`).get()
     return snapshot.docs.map(mapContactDoc)
+}
+
+function getContactSortDate(contact) {
+    return Number(contact?.lastEditionDate || 0)
+}
+
+function sortContactsDeterministically(left, right) {
+    const dateDifference = getContactSortDate(right) - getContactSortDate(left)
+    if (dateDifference !== 0) return dateDifference
+    return String(left?.uid || '').localeCompare(String(right?.uid || ''))
+}
+
+function levenshteinDistance(str1, str2) {
+    const matrix = []
+
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i]
+    }
+
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j
+    }
+
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1]
+            } else {
+                matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+            }
+        }
+    }
+
+    return matrix[str2.length][str1.length]
+}
+
+function calculateSimilarity(str1, str2) {
+    const longer = str1.length > str2.length ? str1 : str2
+    const shorter = str1.length > str2.length ? str2 : str1
+
+    if (longer.length === 0) return 1
+
+    const distance = levenshteinDistance(longer, shorter)
+    return (longer.length - distance) / longer.length
+}
+
+function getFuzzyNameMatches(contacts, normalizedName) {
+    if (!normalizedName || normalizedName.length < 3) return []
+
+    return contacts
+        .map(contact => {
+            const candidateName = normalizeNameForComparison(contact.displayName)
+            if (!candidateName || candidateName.length < 3) return null
+
+            const similarity = calculateSimilarity(candidateName, normalizedName)
+            if (similarity <= MIN_FUZZY_NAME_SIMILARITY) return null
+
+            return {
+                ...contact,
+                matchScore: similarity,
+            }
+        })
+        .filter(Boolean)
+        .sort((left, right) => {
+            if (right.matchScore !== left.matchScore) return right.matchScore - left.matchScore
+            return sortContactsDeterministically(left, right)
+        })
 }
 
 async function resolveProjectForContactNote({ db, userId, projectId = '', projectName = '' }) {
@@ -86,21 +162,69 @@ function findMatchingContacts(contacts, { contactId = '', contactEmail = '', con
     const normalizedContactId = normalizeText(contactId)
     const normalizedEmail = normalizeEmailAddress(contactEmail)
     const normalizedName = normalizeName(contactName)
+    const normalizedComparableName = normalizeNameForComparison(contactName)
 
     if (normalizedContactId) {
-        return contacts.filter(contact => contact.uid === normalizedContactId)
+        const matches = contacts.filter(contact => contact.uid === normalizedContactId)
+        return {
+            selectedContact: matches.slice().sort(sortContactsDeterministically)[0] || null,
+            matches: matches.slice().sort(sortContactsDeterministically),
+            matchType: matches.length > 0 ? 'contact_id' : null,
+            matchScore: null,
+            autoPicked: matches.length > 1,
+        }
     }
 
     if (normalizedEmail) {
-        const emailMatches = contacts.filter(contact => normalizeEmailAddress(contact.email) === normalizedEmail)
-        if (emailMatches.length > 0) return emailMatches
+        const emailMatches = contacts
+            .filter(contact => normalizeEmailAddress(contact.email) === normalizedEmail)
+            .sort(sortContactsDeterministically)
+        if (emailMatches.length > 0) {
+            return {
+                selectedContact: emailMatches[0],
+                matches: emailMatches,
+                matchType: 'email',
+                matchScore: null,
+                autoPicked: emailMatches.length > 1,
+            }
+        }
     }
 
     if (normalizedName) {
-        return contacts.filter(contact => normalizeName(contact.displayName) === normalizedName)
+        const exactNameMatches = contacts
+            .filter(contact => normalizeName(contact.displayName) === normalizedName)
+            .sort(sortContactsDeterministically)
+        if (exactNameMatches.length > 0) {
+            return {
+                selectedContact: exactNameMatches[0],
+                matches: exactNameMatches,
+                matchType: 'exact_name',
+                matchScore: null,
+                autoPicked: exactNameMatches.length > 1,
+            }
+        }
     }
 
-    return []
+    if (normalizedEmail && normalizedComparableName) {
+        const fuzzyMatches = getFuzzyNameMatches(contacts, normalizedComparableName)
+        if (fuzzyMatches.length > 0) {
+            return {
+                selectedContact: fuzzyMatches[0],
+                matches: fuzzyMatches,
+                matchType: 'fuzzy_name',
+                matchScore: fuzzyMatches[0].matchScore,
+                autoPicked: fuzzyMatches.length > 1,
+            }
+        }
+    }
+
+    return {
+        selectedContact: null,
+        matches: [],
+        matchType: null,
+        matchScore: null,
+        autoPicked: false,
+    }
 }
 
 async function createContactRecord({ db, projectId, userId, contactName = '', contactEmail = '' }) {
@@ -197,37 +321,23 @@ async function ensureContactNote({ db, noteService, feedUser, userId, projectId,
     }
 }
 
-async function resolveContactNoteTarget({
+async function resolveContactTarget({
     db,
-    noteService,
-    feedUser,
-    userId,
     projectId,
+    userId,
     contactId = '',
     contactName = '',
     contactEmail = '',
     createIfMissing = true,
 }) {
     const contacts = await loadProjectContacts(db, projectId)
-    const matches = findMatchingContacts(contacts, { contactId, contactName, contactEmail })
+    const resolution = findMatchingContacts(contacts, { contactId, contactName, contactEmail })
 
-    if (matches.length > 1) {
-        return {
-            success: false,
-            error: 'MULTIPLE_CONTACT_MATCHES',
-            message: `Found ${matches.length} matching contacts. Please provide a more specific contact email or ID.`,
-            matches: matches.map(contact => ({
-                contactId: contact.uid,
-                displayName: contact.displayName || '',
-                email: contact.email || '',
-                noteId: contact.noteId || null,
-            })),
-            totalMatches: matches.length,
-        }
-    }
-
-    let contact = matches[0] || null
+    let contact = resolution.selectedContact || null
     let contactCreated = false
+    let matchType = resolution.matchType
+    let matchScore = resolution.matchScore
+    let autoPicked = resolution.autoPicked
 
     if (!contact) {
         if (!createIfMissing) {
@@ -248,7 +358,51 @@ async function resolveContactNoteTarget({
             contactEmail,
         })
         contactCreated = true
+        matchType = 'created'
+        matchScore = null
+        autoPicked = false
     }
+
+    return {
+        success: true,
+        contact,
+        projectId,
+        contactCreated,
+        matchType,
+        matchScore,
+        autoPicked,
+        matches: resolution.matches.map(match => ({
+            contactId: match.uid,
+            displayName: match.displayName || '',
+            email: match.email || '',
+            noteId: match.noteId || null,
+            matchScore: typeof match.matchScore === 'number' ? match.matchScore : null,
+        })),
+        totalMatches: resolution.matches.length,
+    }
+}
+
+async function resolveContactNoteTarget({
+    db,
+    noteService,
+    feedUser,
+    userId,
+    projectId,
+    contactId = '',
+    contactName = '',
+    contactEmail = '',
+    createIfMissing = true,
+}) {
+    const contactResolution = await resolveContactTarget({
+        db,
+        projectId,
+        userId,
+        contactId,
+        contactName,
+        contactEmail,
+        createIfMissing,
+    })
+    if (!contactResolution.success) return contactResolution
 
     const noteResult = await ensureContactNote({
         db,
@@ -256,22 +410,31 @@ async function resolveContactNoteTarget({
         feedUser,
         userId,
         projectId,
-        contact,
+        contact: contactResolution.contact,
     })
 
     return {
         success: true,
-        contact,
+        contact: contactResolution.contact,
         note: noteResult.note,
         projectId,
-        contactCreated,
+        contactCreated: contactResolution.contactCreated,
         noteCreated: noteResult.noteCreated,
+        matchType: contactResolution.matchType,
+        matchScore: contactResolution.matchScore,
+        autoPicked: contactResolution.autoPicked,
+        matches: contactResolution.matches,
+        totalMatches: contactResolution.totalMatches,
     }
 }
 
 module.exports = {
     buildContactDisplayName,
+    calculateSimilarity,
     findMatchingContacts,
+    MIN_FUZZY_NAME_SIMILARITY,
+    resolveContactTarget,
     resolveContactNoteTarget,
     resolveProjectForContactNote,
+    sortContactsDeterministically,
 }

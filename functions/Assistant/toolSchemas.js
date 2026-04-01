@@ -350,6 +350,53 @@ const toolSchemas = {
         },
     },
 
+    update_contact: {
+        type: 'function',
+        function: {
+            name: 'update_contact',
+            description:
+                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when an inbound email is available. Supports updating the contact email and can optionally create a missing contact.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    contactId: {
+                        type: 'string',
+                        description: 'Optional: target this contact ID directly.',
+                    },
+                    contactName: {
+                        type: 'string',
+                        description:
+                            'Optional: target a contact by exact or fuzzy display name. Fuzzy matching is only attempted when contactEmail is also provided.',
+                    },
+                    contactEmail: {
+                        type: 'string',
+                        description:
+                            'Optional: target a contact by exact email, or provide the inbound email used to find a same-project contact by name and update its email.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            "Optional: search for the contact within a specific project by project name. IMPORTANT: Use the exact project name as shown in the user's project list.",
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'Optional: search for the contact within a specific project by project ID.',
+                    },
+                    email: {
+                        type: 'string',
+                        description: 'New email address to store on the matched contact.',
+                    },
+                    createIfMissing: {
+                        type: 'boolean',
+                        description:
+                            'Optional: when true, auto-create the contact if no existing contact matches. Defaults to false for update_contact.',
+                    },
+                },
+                required: ['email'],
+            },
+        },
+    },
+
     update_user_memory: {
         type: 'function',
         function: {

@@ -1489,6 +1489,8 @@ class AlldoneSimpleMCPServer {
                 resolveContactNoteTarget,
                 resolveProjectForContactNote,
             } = require('../shared/contactNoteTargetHelper')
+            const { updateContactFields } = require('../shared/contactUpdateHelper')
+            const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
             const resolvedProject = await resolveProjectForContactNote({
                 db,
                 userId,
@@ -1516,7 +1518,7 @@ class AlldoneSimpleMCPServer {
                 await this.noteService.initialize()
             }
 
-            contactResolution = await resolveContactNoteTarget({
+            const resolvedContactNote = await resolveContactNoteTarget({
                 db,
                 noteService: this.noteService,
                 feedUser,
@@ -1528,6 +1530,7 @@ class AlldoneSimpleMCPServer {
                 createIfMissing: args.createIfMissing !== false,
             })
 
+            contactResolution = resolvedContactNote
             if (!contactResolution.success) {
                 if (
                     contactResolution.error === 'MULTIPLE_CONTACT_MATCHES' ||
@@ -1541,6 +1544,26 @@ class AlldoneSimpleMCPServer {
                     }
                 }
                 throw new Error(contactResolution.message)
+            }
+
+            const shouldBackfillEmail =
+                ['exact_name', 'fuzzy_name'].includes(contactResolution.matchType) &&
+                !!normalizeEmailAddress(contactEmail) &&
+                !normalizeEmailAddress(contactResolution.contact?.email)
+            if (shouldBackfillEmail) {
+                const updateResult = await updateContactFields({
+                    db,
+                    projectId,
+                    contact: contactResolution.contact,
+                    userId,
+                    feedUser,
+                    updates: { email: contactEmail },
+                })
+                contactResolution = {
+                    ...contactResolution,
+                    contact: updateResult.contact,
+                    emailBackfilled: updateResult.updated,
+                }
             }
 
             currentNote = contactResolution.note
@@ -1608,10 +1631,90 @@ class AlldoneSimpleMCPServer {
                 email: contactResolution.contact.email || '',
                 created: !!contactResolution.contactCreated,
                 noteCreated: !!contactResolution.noteCreated,
+                matchType: contactResolution.matchType || null,
+                matchScore: typeof contactResolution.matchScore === 'number' ? contactResolution.matchScore : null,
+                autoPicked: !!contactResolution.autoPicked,
+                emailBackfilled: !!contactResolution.emailBackfilled,
             }
         }
 
         return updateResult
+    }
+
+    async updateContact(args, request) {
+        const contactId = typeof args.contactId === 'string' ? args.contactId.trim() : ''
+        const contactName = typeof args.contactName === 'string' ? args.contactName.trim() : ''
+        const contactEmail = typeof args.contactEmail === 'string' ? args.contactEmail.trim() : ''
+        const nextEmail = typeof args.email === 'string' ? args.email.trim() : ''
+
+        if (!nextEmail) {
+            throw new Error('email is required for update_contact.')
+        }
+
+        const userId = await this.getAuthenticatedUserForClient(request)
+        const db = admin.firestore()
+        const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
+        const { updateContactFields } = require('../shared/contactUpdateHelper')
+        const resolvedProject = await resolveProjectForContactNote({
+            db,
+            userId,
+            projectId: args.projectId || '',
+            projectName: args.projectName || '',
+        })
+        const projectId = resolvedProject?.id || (await this.getUserDefaultProject(userId))
+        const projectName = resolvedProject?.name || projectId
+        if (!projectId) {
+            throw new Error('projectId is required for contact updates when no default project exists.')
+        }
+
+        const contactResolution = await resolveContactTarget({
+            db,
+            projectId,
+            userId,
+            contactId,
+            contactName,
+            contactEmail,
+            createIfMissing: args.createIfMissing === true,
+        })
+
+        if (!contactResolution.success) {
+            return {
+                success: false,
+                message: contactResolution.message,
+                matches: contactResolution.matches || [],
+                totalMatches: contactResolution.totalMatches || 0,
+            }
+        }
+
+        const { UserHelper } = require('../shared/UserHelper')
+        const feedUser = await UserHelper.getFeedUserData(db, userId)
+        const updateResult = await updateContactFields({
+            db,
+            projectId,
+            contact: contactResolution.contact,
+            userId,
+            feedUser,
+            updates: { email: nextEmail },
+        })
+
+        return {
+            success: true,
+            message: `Contact "${
+                updateResult.contact.displayName || 'Untitled'
+            }" updated successfully in project "${projectName}"`,
+            project: { id: projectId, name: projectName },
+            changes: updateResult.changes,
+            contact: {
+                contactId: updateResult.contact.uid,
+                displayName: updateResult.contact.displayName || '',
+                email: updateResult.contact.email || '',
+                created: !!contactResolution.contactCreated,
+                updated: !!updateResult.updated,
+                matchType: contactResolution.matchType || null,
+                matchScore: typeof contactResolution.matchScore === 'number' ? contactResolution.matchScore : null,
+                autoPicked: !!contactResolution.autoPicked,
+            },
+        }
     }
 
     /**
@@ -2818,6 +2921,47 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
+                            name: 'update_contact',
+                            description:
+                                'Update an existing contact by ID, email, or name within a project. Uses the same resolution logic as contact-targeted update_note, including fuzzy same-project name matching when an inbound email is present (requires OAuth 2.0 Bearer token authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    contactId: {
+                                        type: 'string',
+                                        description: 'Target this contact ID directly (optional)',
+                                    },
+                                    contactName: {
+                                        type: 'string',
+                                        description: 'Target a contact by exact or fuzzy display name (optional)',
+                                    },
+                                    contactEmail: {
+                                        type: 'string',
+                                        description:
+                                            'Target a contact by exact email or provide inbound email context (optional)',
+                                    },
+                                    projectName: {
+                                        type: 'string',
+                                        description: 'Full or partial project name to search (optional)',
+                                    },
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Project ID to search within (optional)',
+                                    },
+                                    email: {
+                                        type: 'string',
+                                        description: 'New email address to store on the matched contact',
+                                    },
+                                    createIfMissing: {
+                                        type: 'boolean',
+                                        description:
+                                            'Auto-create the contact when no match exists (optional, default false)',
+                                    },
+                                },
+                                required: ['email'],
+                            },
+                        },
+                        {
                             name: 'get_tasks',
                             description:
                                 'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
@@ -2990,6 +3134,9 @@ class AlldoneSimpleMCPServer {
                             break
                         case 'update_note':
                             result = await this.updateNote(args, httpReq)
+                            break
+                        case 'update_contact':
+                            result = await this.updateContact(args, httpReq)
                             break
                         case 'get_tasks':
                             result = await this.getTasks(args, httpReq)

@@ -3846,6 +3846,8 @@ async function executeToolNatively(
                 resolveContactNoteTarget,
                 resolveProjectForContactNote,
             } = require('../shared/contactNoteTargetHelper')
+            const { updateContactFields } = require('../shared/contactUpdateHelper')
+            const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
             const db = admin.firestore()
             const moveToProjectId = typeof toolArgs.moveToProjectId === 'string' ? toolArgs.moveToProjectId.trim() : ''
             const moveToProjectName =
@@ -4000,6 +4002,27 @@ async function executeToolNatively(
                 }
 
                 contactResolution = contactResult
+                const shouldBackfillEmail =
+                    ['exact_name', 'fuzzy_name'].includes(contactResult.matchType) &&
+                    !!normalizeEmailAddress(contactEmail) &&
+                    !normalizeEmailAddress(contactResult.contact?.email)
+
+                if (shouldBackfillEmail) {
+                    const updateResult = await updateContactFields({
+                        db,
+                        projectId: contactTargetProjectId,
+                        contact: contactResult.contact,
+                        userId: creatorId,
+                        feedUser,
+                        updates: { email: contactEmail },
+                    })
+                    contactResolution = {
+                        ...contactResolution,
+                        contact: updateResult.contact,
+                        emailBackfilled: updateResult.updated,
+                    }
+                }
+
                 currentNote = contactResult.note
                 currentProjectId = contactResult.projectId
                 currentProjectName = contactTargetProjectName
@@ -4171,12 +4194,100 @@ async function executeToolNatively(
                                   email: contactResolution.contact.email || '',
                                   created: !!contactResolution.contactCreated,
                                   noteCreated: !!contactResolution.noteCreated,
+                                  matchType: contactResolution.matchType || null,
+                                  matchScore:
+                                      typeof contactResolution.matchScore === 'number'
+                                          ? contactResolution.matchScore
+                                          : null,
+                                  autoPicked: !!contactResolution.autoPicked,
+                                  emailBackfilled: !!contactResolution.emailBackfilled,
                               }
                             : undefined,
                 }
             } catch (error) {
                 console.error('NoteService update failed:', error)
                 throw new Error(`Failed to update note: ${error.message}`)
+            }
+        }
+
+        case 'update_contact': {
+            const { UserHelper } = require('../shared/UserHelper')
+            const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
+            const { updateContactFields } = require('../shared/contactUpdateHelper')
+            const db = admin.firestore()
+            const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
+            const contactName = typeof toolArgs.contactName === 'string' ? toolArgs.contactName.trim() : ''
+            const contactEmail = typeof toolArgs.contactEmail === 'string' ? toolArgs.contactEmail.trim() : ''
+            const targetEmail = typeof toolArgs.email === 'string' ? toolArgs.email.trim() : ''
+
+            if (!targetEmail) {
+                throw new Error('email is required for update_contact.')
+            }
+
+            const targetProject = await resolveProjectForContactNote({
+                db,
+                userId: creatorId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+            })
+            const targetProjectId = targetProject?.id || projectId
+            const targetProjectName = targetProject?.name || targetProjectId
+
+            if (!targetProjectId) {
+                throw new Error('projectId is required when updating a contact.')
+            }
+
+            const contactResolution = await resolveContactTarget({
+                db,
+                projectId: targetProjectId,
+                userId: creatorId,
+                contactId,
+                contactName,
+                contactEmail,
+                createIfMissing: toolArgs.createIfMissing === true,
+            })
+
+            if (!contactResolution.success) {
+                return {
+                    success: false,
+                    message: contactResolution.message,
+                    matches: contactResolution.matches || [],
+                    totalMatches: contactResolution.totalMatches || 0,
+                }
+            }
+
+            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+            const updateResult = await updateContactFields({
+                db,
+                projectId: targetProjectId,
+                contact: contactResolution.contact,
+                userId: creatorId,
+                feedUser,
+                updates: { email: targetEmail },
+            })
+
+            const finalContact = updateResult.contact
+            let message = `Contact "${finalContact.displayName || 'Untitled'}" updated successfully`
+            if (updateResult.changes.length > 0) {
+                message += ` (${updateResult.changes.join(', ')})`
+            }
+            message += ` in project "${targetProjectName}"`
+
+            return {
+                success: true,
+                message,
+                project: { id: targetProjectId, name: targetProjectName },
+                changes: updateResult.changes,
+                contact: {
+                    contactId: finalContact.uid,
+                    displayName: finalContact.displayName || '',
+                    email: finalContact.email || '',
+                    created: !!contactResolution.contactCreated,
+                    updated: !!updateResult.updated,
+                    matchType: contactResolution.matchType || null,
+                    matchScore: typeof contactResolution.matchScore === 'number' ? contactResolution.matchScore : null,
+                    autoPicked: !!contactResolution.autoPicked,
+                },
             }
         }
 

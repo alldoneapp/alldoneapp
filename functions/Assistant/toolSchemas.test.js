@@ -108,3 +108,13 @@ describe('Update note assistant tool schema', () => {
         expect(toolSchemas.update_note.function.parameters.properties.createIfMissing.type).toBe('boolean')
     })
 })
+
+describe('Update contact assistant tool schema', () => {
+    test('supports contact-targeted updates with email writes', () => {
+        expect(toolSchemas.update_contact.function.parameters.required).toEqual(['email'])
+        expect(toolSchemas.update_contact.function.parameters.properties.contactId.type).toBe('string')
+        expect(toolSchemas.update_contact.function.parameters.properties.contactName.type).toBe('string')
+        expect(toolSchemas.update_contact.function.parameters.properties.contactEmail.type).toBe('string')
+        expect(toolSchemas.update_contact.function.parameters.properties.email.type).toBe('string')
+    })
+})
