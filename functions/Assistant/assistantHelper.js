@@ -3300,12 +3300,6 @@ async function executeToolNatively(
                 throw new Error('recentHours must be a positive number of hours up to 720')
             }
 
-            if (toolArgs.date && effectiveStatus === 'all') {
-                throw new Error(
-                    'Date filtering is not supported when status is "all". Please specify status "open" to filter by due date, or "done" to filter by completion date.'
-                )
-            }
-
             if (recentHours !== null && effectiveStatus !== 'done') {
                 throw new Error('recentHours is only supported when status is "done"')
             }

@@ -92,6 +92,12 @@ describe('Get tasks assistant tool schema', () => {
         expect(toolSchemas.get_tasks.function.description).toContain('recentHours')
         expect(toolSchemas.get_tasks.function.description).toContain('completedAt')
     })
+
+    test('documents date-filter behavior for status all', () => {
+        expect(toolSchemas.get_tasks.function.parameters.properties.status.description).toContain(
+            'status "all" returns open tasks filtered by due date plus done tasks filtered by completion date'
+        )
+    })
 })
 
 describe('Update note assistant tool schema', () => {

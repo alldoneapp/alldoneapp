@@ -119,6 +119,150 @@ class TaskRetrievalService {
         }
     }
 
+    hasDateFilter(date) {
+        return typeof date === 'string' && date.trim().length > 0
+    }
+
+    getRelevantTaskTimestamp(task) {
+        const done = !!task?.done
+        const primaryValue = Number(done ? task?.completed : task?.dueDate)
+        if (Number.isFinite(primaryValue)) return primaryValue
+
+        const secondaryValue = Number(done ? task?.dueDate : task?.completed)
+        if (Number.isFinite(secondaryValue)) return secondaryValue
+
+        return 0
+    }
+
+    sortTasksForStatus(tasks, status) {
+        const normalizedTasks = Array.isArray(tasks) ? [...tasks] : []
+
+        if (status === 'done') {
+            normalizedTasks.sort((a, b) => {
+                const aCompleted = Number(a?.completed) || 0
+                const bCompleted = Number(b?.completed) || 0
+                if (aCompleted !== bCompleted) {
+                    return bCompleted - aCompleted
+                }
+
+                const aSortIndex = Number(a?.sortIndex) || 0
+                const bSortIndex = Number(b?.sortIndex) || 0
+                return bSortIndex - aSortIndex
+            })
+
+            return normalizedTasks
+        }
+
+        if (status === 'all') {
+            normalizedTasks.sort((a, b) => {
+                const aRelevantTimestamp = this.getRelevantTaskTimestamp(a)
+                const bRelevantTimestamp = this.getRelevantTaskTimestamp(b)
+                if (aRelevantTimestamp !== bRelevantTimestamp) {
+                    return bRelevantTimestamp - aRelevantTimestamp
+                }
+
+                if (!!a?.done !== !!b?.done) {
+                    return a?.done ? 1 : -1
+                }
+
+                const aSortIndex = Number(a?.sortIndex) || 0
+                const bSortIndex = Number(b?.sortIndex) || 0
+                return bSortIndex - aSortIndex
+            })
+
+            return normalizedTasks
+        }
+
+        normalizedTasks.sort((a, b) => {
+            const aSortIndex = Number(a?.sortIndex) || 0
+            const bSortIndex = Number(b?.sortIndex) || 0
+            return bSortIndex - aSortIndex
+        })
+
+        return normalizedTasks
+    }
+
+    describeMergedAllStatusDateFilter(date) {
+        if (!this.hasDateFilter(date)) {
+            return 'all tasks'
+        }
+
+        return `all tasks matching "${date}" (open tasks use due date, done tasks use completion date)`
+    }
+
+    mergeAllStatusTaskResults(openResult, doneResult, status, date, limit) {
+        const mergedTasks = this.sortTasksForStatus(
+            [...(openResult?.tasks || []), ...(doneResult?.tasks || [])],
+            status
+        )
+        const cappedTasks = typeof limit === 'number' && limit > 0 ? mergedTasks.slice(0, limit) : mergedTasks
+        const mergedSubtasksByParent = {
+            ...(openResult?.subtasksByParent || {}),
+            ...(doneResult?.subtasksByParent || {}),
+        }
+
+        const focusTask =
+            (openResult?.focusTaskInResults && openResult?.focusTask) ||
+            (doneResult?.focusTaskInResults && doneResult?.focusTask) ||
+            openResult?.focusTask ||
+            doneResult?.focusTask ||
+            null
+
+        const focusTaskId = focusTask?.documentId || focusTask?.id || null
+        const focusTaskIndex =
+            focusTaskId !== null
+                ? cappedTasks.findIndex(task => (task?.documentId || task?.id || null) === focusTaskId)
+                : -1
+        const focusTaskInResults = focusTaskIndex > -1
+
+        return {
+            success: true,
+            tasks: cappedTasks,
+            subtasksByParent: mergedSubtasksByParent,
+            count: cappedTasks.length,
+            status,
+            dateFilter: this.describeMergedAllStatusDateFilter(date),
+            summary: focusTask
+                ? focusTaskInResults
+                    ? `Focus task is included at position ${focusTaskIndex + 1}`
+                    : 'Focus task is not included'
+                : '',
+            includeSubtasks: openResult?.includeSubtasks || doneResult?.includeSubtasks || false,
+            parentId: openResult?.parentId || doneResult?.parentId || null,
+            query: {
+                perProjectLimit: openResult?.query?.perProjectLimit ?? doneResult?.query?.perProjectLimit ?? undefined,
+                hasMore: !!(
+                    openResult?.query?.hasMore ||
+                    doneResult?.query?.hasMore ||
+                    mergedTasks.length > cappedTasks.length
+                ),
+            },
+            focusTask,
+            focusTaskInResults,
+            focusTaskIndex: focusTaskInResults ? focusTaskIndex : null,
+            timezoneOffset: openResult?.timezoneOffset ?? doneResult?.timezoneOffset ?? null,
+        }
+    }
+
+    mergeProjectSummaries(openSummary = {}, doneSummary = {}) {
+        const projectIds = new Set([...Object.keys(openSummary), ...Object.keys(doneSummary)])
+        const merged = {}
+
+        projectIds.forEach(projectId => {
+            const openProject = openSummary[projectId] || {}
+            const doneProject = doneSummary[projectId] || {}
+
+            merged[projectId] = {
+                projectName: openProject.projectName || doneProject.projectName || projectId,
+                taskCount: (openProject.taskCount || 0) + (doneProject.taskCount || 0),
+                success: openProject.success !== false && doneProject.success !== false,
+                error: openProject.error || doneProject.error,
+            }
+        })
+
+        return merged
+    }
+
     /**
      * Build Firestore query for tasks based on parameters
      * @param {Object} params - Query parameters
@@ -477,6 +621,18 @@ class TaskRetrievalService {
         } = params
 
         try {
+            if (status === 'all' && this.hasDateFilter(date)) {
+                const [openResult, doneResult] = await Promise.all([
+                    this.getTasks({ ...params, status: 'open' }),
+                    this.getTasks({ ...params, status: 'done' }),
+                ])
+
+                return {
+                    ...this.mergeAllStatusTaskResults(openResult, doneResult, status, date, limit),
+                    projectId,
+                }
+            }
+
             // Build and execute query
             const query = this.buildTaskQuery({ ...params, timezoneOffset: normalizedTimezoneOffset })
             const snapshot = await query.get()
@@ -656,7 +812,7 @@ class TaskRetrievalService {
 
             return {
                 success: true,
-                tasks: projectedTasks,
+                tasks: this.sortTasksForStatus(projectedTasks, status),
                 subtasksByParent,
                 count: projectedTasks.length,
                 projectId,
@@ -796,6 +952,24 @@ class TaskRetrievalService {
         const effectiveDate = date || (status === 'open' ? 'today' : null)
 
         try {
+            if (status === 'all' && this.hasDateFilter(date)) {
+                const [openResult, doneResult] = await Promise.all([
+                    this.getTasksFromMultipleProjects({ ...params, status: 'open' }, projectIds, projectsData),
+                    this.getTasksFromMultipleProjects({ ...params, status: 'done' }, projectIds, projectsData),
+                ])
+
+                return {
+                    ...this.mergeAllStatusTaskResults(openResult, doneResult, status, date, limit),
+                    totalAcrossProjects:
+                        (openResult?.totalAcrossProjects || 0) + (doneResult?.totalAcrossProjects || 0),
+                    projectSummary: this.mergeProjectSummaries(
+                        openResult?.projectSummary || {},
+                        doneResult?.projectSummary || {}
+                    ),
+                    queriedProjects: openResult?.queriedProjects || doneResult?.queriedProjects || [],
+                }
+            }
+
             console.log(`🔍 Multi-project task query for ${projectIds.length} projects:`, projectIds.slice(0, 5))
 
             // Execute queries in parallel for all projects
@@ -908,26 +1082,7 @@ class TaskRetrievalService {
             }
 
             // Sort all tasks globally (matches existing sort patterns)
-            if (status === 'done') {
-                // For done tasks: order by completion date first, then sortIndex
-                allTasks.sort((a, b) => {
-                    const aCompleted = a.completed || 0
-                    const bCompleted = b.completed || 0
-                    if (aCompleted !== bCompleted) {
-                        return bCompleted - aCompleted // Desc
-                    }
-                    const aSortIndex = a.sortIndex || 0
-                    const bSortIndex = b.sortIndex || 0
-                    return bSortIndex - aSortIndex // Desc
-                })
-            } else {
-                // For open tasks: order by sortIndex (creation/priority order)
-                allTasks.sort((a, b) => {
-                    const aSortIndex = a.sortIndex || 0
-                    const bSortIndex = b.sortIndex || 0
-                    return bSortIndex - aSortIndex // Desc
-                })
-            }
+            allTasks = this.sortTasksForStatus(allTasks, status)
 
             // Determine the effective date filter for the response
             const dateFilterDescription = this.describeDateFilter(effectiveDate, status)
