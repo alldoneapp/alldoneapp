@@ -355,7 +355,7 @@ const toolSchemas = {
         function: {
             name: 'update_contact',
             description:
-                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when an inbound email is available. Supports updating the contact email and can optionally create a missing contact.',
+                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Supports updating the contact email and can optionally create a missing contact.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -366,12 +366,12 @@ const toolSchemas = {
                     contactName: {
                         type: 'string',
                         description:
-                            'Optional: target a contact by exact or fuzzy display name. Fuzzy matching is only attempted when contactEmail is also provided.',
+                            'Optional: target a contact by exact or fuzzy display name within the resolved project.',
                     },
                     contactEmail: {
                         type: 'string',
                         description:
-                            'Optional: target a contact by exact email, or provide the inbound email used to find a same-project contact by name and update its email.',
+                            'Optional: target a contact by exact email, or provide an email to backfill onto a same-project name match when the matched contact has no email yet.',
                     },
                     projectName: {
                         type: 'string',

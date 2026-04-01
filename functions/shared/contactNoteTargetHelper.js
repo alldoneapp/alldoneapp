@@ -205,7 +205,7 @@ function findMatchingContacts(contacts, { contactId = '', contactEmail = '', con
         }
     }
 
-    if (normalizedEmail && normalizedComparableName) {
+    if (normalizedComparableName) {
         const fuzzyMatches = getFuzzyNameMatches(contacts, normalizedComparableName)
         if (fuzzyMatches.length > 0) {
             return {

@@ -95,20 +95,15 @@ describe('contactNoteTargetHelper matching', () => {
         expect(result.matchType).toBe('exact_name')
     })
 
-    test('fuzzy name matching only runs when inbound email is available', () => {
+    test('fuzzy name matching also runs without inbound email', () => {
         const contacts = [{ uid: '1', displayName: 'Jon Smith', email: '', lastEditionDate: 10 }]
 
         const resultWithoutEmail = findMatchingContacts(contacts, {
             contactName: 'John Smith',
         })
-        const resultWithEmail = findMatchingContacts(contacts, {
-            contactName: 'John Smith',
-            contactEmail: 'john@example.com',
-        })
 
-        expect(resultWithoutEmail.selectedContact).toBeNull()
-        expect(resultWithEmail.selectedContact.uid).toBe('1')
-        expect(resultWithEmail.matchType).toBe('fuzzy_name')
+        expect(resultWithoutEmail.selectedContact.uid).toBe('1')
+        expect(resultWithoutEmail.matchType).toBe('fuzzy_name')
     })
 
     test('fuzzy name below threshold does not match', () => {

@@ -2923,7 +2923,7 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'update_contact',
                             description:
-                                'Update an existing contact by ID, email, or name within a project. Uses the same resolution logic as contact-targeted update_note, including fuzzy same-project name matching when an inbound email is present (requires OAuth 2.0 Bearer token authentication)',
+                                'Update an existing contact by ID, email, or name within a project. Uses the same resolution logic as contact-targeted update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
@@ -2933,12 +2933,13 @@ class AlldoneSimpleMCPServer {
                                     },
                                     contactName: {
                                         type: 'string',
-                                        description: 'Target a contact by exact or fuzzy display name (optional)',
+                                        description:
+                                            'Target a contact by exact or fuzzy display name within the resolved project (optional)',
                                     },
                                     contactEmail: {
                                         type: 'string',
                                         description:
-                                            'Target a contact by exact email or provide inbound email context (optional)',
+                                            'Target a contact by exact email or provide an email to backfill onto a same-project name match when the matched contact has no email yet (optional)',
                                     },
                                     projectName: {
                                         type: 'string',
