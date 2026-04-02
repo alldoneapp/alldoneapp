@@ -1,3 +1,11 @@
+jest.mock('firebase-admin', () => ({
+    firestore: {
+        FieldValue: {
+            arrayUnion: (...values) => ({ __op: 'arrayUnion', values }),
+        },
+    },
+}))
+
 jest.mock('../Email/emailChannelHelpers', () => ({
     normalizeEmailAddress: value => {
         const normalized = String(value || '').trim()
@@ -13,12 +21,7 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'public',
 }))
 
-jest.mock('../Followers/followerHelper', () => ({
-    tryAddFollower: jest.fn().mockResolvedValue(undefined),
-}))
-
 const { findMatchingContacts, resolveContactNoteTarget, resolveContactTarget } = require('./contactNoteTargetHelper')
-const { tryAddFollower } = require('../Followers/followerHelper')
 
 function createDb(initialDocs = {}) {
     const docs = { ...initialDocs }
@@ -61,7 +64,7 @@ function createDb(initialDocs = {}) {
                     docs[path] = { ...(docs[path] || {}), ...updateData }
                 },
                 async set(value) {
-                    docs[path] = value
+                    docs[path] = { ...(docs[path] || {}), ...value }
                 },
             }
         },
@@ -120,6 +123,17 @@ describe('contactNoteTargetHelper matching', () => {
         expect(commaResult.matchType).toBe('exact_name')
         expect(swappedResult.selectedContact.uid).toBe('1')
         expect(swappedResult.matchType).toBe('exact_name')
+    })
+
+    test('name matching ignores email-style header noise and case', () => {
+        const contacts = [{ uid: '1', displayName: 'Steffen Krause', email: '', lastEditionDate: 10 }]
+
+        const result = findMatchingContacts(contacts, {
+            contactName: '"STEFFEN KRAUSE" <steffen@example.com>',
+        })
+
+        expect(result.selectedContact.uid).toBe('1')
+        expect(result.matchType).toBe('exact_name')
     })
 
     test('fuzzy name matching also runs without inbound email', () => {
@@ -296,28 +310,19 @@ describe('contactNoteTargetHelper resolution', () => {
         expect(result.success).toBe(true)
         expect(result.noteCreated).toBe(true)
         expect(result.contact.noteId).toBe('note-2')
-        expect(tryAddFollower).toHaveBeenCalledTimes(2)
-        expect(tryAddFollower).toHaveBeenNthCalledWith(
-            1,
-            'project-1',
-            expect.objectContaining({
-                followObjectsType: 'contacts',
-                followObjectId: 'contact-1',
-                feedUser: { uid: 'user-1', displayName: 'User' },
-            }),
-            null,
-            false
-        )
-        expect(tryAddFollower).toHaveBeenNthCalledWith(
-            2,
-            'project-1',
-            expect.objectContaining({
-                followObjectsType: 'notes',
-                followObjectId: 'note-2',
-                feedUser: { uid: 'user-1', displayName: 'User' },
-            }),
-            null,
-            false
-        )
+        expect(db.docs['usersFollowing/project-1/entries/user-1']).toEqual({
+            contacts: { 'contact-1': true },
+            notes: { 'note-2': true },
+        })
+        expect(db.docs['followers/project-1/contacts/contact-1']).toEqual({
+            usersFollowing: { __op: 'arrayUnion', values: ['user-1'] },
+        })
+        expect(db.docs['followers/project-1/notes/note-2']).toEqual({
+            usersFollowing: { __op: 'arrayUnion', values: ['user-1'] },
+        })
+        expect(db.docs['noteItems/project-1/notes/note-2']).toEqual({
+            followersIds: { __op: 'arrayUnion', values: ['user-1'] },
+            isVisibleInFollowedFor: { __op: 'arrayUnion', values: ['user-1'] },
+        })
     })
 })

@@ -1,9 +1,8 @@
 'use strict'
 
+const admin = require('firebase-admin')
 const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
 const { buildContactEmailFields, getContactEmails } = require('./contactEmailHelper')
-const { FOLLOWER_CONTACTS_TYPE, FOLLOWER_NOTES_TYPE } = require('../Followers/FollowerConstants')
-const { tryAddFollower } = require('../Followers/followerHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { ProjectService } = require('./ProjectService')
 
@@ -19,6 +18,9 @@ function normalizeName(value = '') {
 
 function normalizeNameForComparison(value = '') {
     return normalizeName(value)
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\b\S+@\S+\b/g, ' ')
+        .replace(/[()"']/g, ' ')
         .replace(/[._-]+/g, ' ')
         .replace(/,/g, ' ')
         .replace(/\s+/g, ' ')
@@ -310,34 +312,51 @@ async function loadNoteById(db, projectId, noteId) {
     }
 }
 
-async function ensureCurrentUserFollowsContactAndNote({ projectId, contact, note, feedUser }) {
-    if (!feedUser?.uid || !contact?.uid || !note?.id) return
+async function addDirectFollow({ db, projectId, userId, objectType, objectId }) {
+    if (!userId || !objectId) return
 
-    await tryAddFollower(
-        projectId,
+    await db.doc(`usersFollowing/${projectId}/entries/${userId}`).set(
         {
-            followObjectsType: FOLLOWER_CONTACTS_TYPE,
-            followObjectId: contact.uid,
-            followObject: {
-                ...contact,
-                noteId: note.id,
+            [objectType]: {
+                [objectId]: true,
             },
-            feedUser,
         },
-        null,
-        false
+        { merge: true }
     )
 
-    await tryAddFollower(
-        projectId,
+    await db.doc(`followers/${projectId}/${objectType}/${objectId}`).set(
         {
-            followObjectsType: FOLLOWER_NOTES_TYPE,
-            followObjectId: note.id,
-            followObject: note,
-            feedUser,
+            usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
         },
-        null,
-        false
+        { merge: true }
+    )
+}
+
+async function ensureCurrentUserFollowsContactAndNote({ db, projectId, contact, note, feedUser }) {
+    if (!feedUser?.uid || !contact?.uid || !note?.id) return
+
+    await addDirectFollow({
+        db,
+        projectId,
+        userId: feedUser.uid,
+        objectType: 'contacts',
+        objectId: contact.uid,
+    })
+
+    await addDirectFollow({
+        db,
+        projectId,
+        userId: feedUser.uid,
+        objectType: 'notes',
+        objectId: note.id,
+    })
+
+    await db.doc(`noteItems/${projectId}/notes/${note.id}`).set(
+        {
+            followersIds: admin.firestore.FieldValue.arrayUnion(feedUser.uid),
+            isVisibleInFollowedFor: admin.firestore.FieldValue.arrayUnion(feedUser.uid),
+        },
+        { merge: true }
     )
 }
 
@@ -390,6 +409,7 @@ async function ensureContactNote({ db, noteService, feedUser, userId, projectId,
     }
 
     await ensureCurrentUserFollowsContactAndNote({
+        db,
         projectId,
         contact: updatedContact,
         note: result.note,

@@ -1,6 +1,6 @@
 'use strict'
 
-const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
+const { normalizeEmailAddress, parseEmailHeaderAddresses } = require('../Email/emailChannelHelpers')
 
 function decodeBase64Url(input = '') {
     if (!input || typeof input !== 'string') return ''
@@ -125,9 +125,8 @@ function normalizeGmailMessage(message = {}, maxBodyLength = 8000) {
 }
 
 function extractEmailAddresses(value = '') {
-    return String(value || '')
-        .split(',')
-        .map(entry => normalizeEmailAddress(entry))
+    return parseEmailHeaderAddresses(value)
+        .map(entry => normalizeEmailAddress(entry.email))
         .filter(Boolean)
 }
 
@@ -142,5 +141,6 @@ module.exports = {
     extractEmailAddresses,
     getGmailMessageDirection,
     normalizeGmailMessage,
+    parseEmailHeaderAddresses,
     stripHtml,
 }

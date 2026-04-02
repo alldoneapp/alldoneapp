@@ -146,6 +146,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             archiveOnComplete: true,
             direction: 'incoming',
             targetContactEmail: '',
+            targetContactName: '',
         })
     })
 
@@ -260,7 +261,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             normalizedMessage: {
                 messageId: 'message-1',
                 threadId: 'thread-1',
-                from: 'sender@example.com',
+                from: '"Eva-Maria Würz" <sender@example.com>',
                 to: 'me@example.com',
                 cc: '',
                 date: 'Tue, 11 Mar 2026 10:00:00 +0100',
@@ -290,10 +291,25 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
                         archiveOnComplete: true,
                         direction: 'incoming',
-                        targetContactEmail: '',
+                        targetContactEmail: 'sender@example.com',
+                        targetContactName: 'Eva-Maria Würz',
                     },
                 }),
             })
+        )
+        expect(assistantHelper.interactWithChatStream).toHaveBeenCalledWith(
+            expect.arrayContaining([
+                expect.arrayContaining([
+                    'user',
+                    expect.stringContaining(
+                        'Target contact email: sender@example.com\nTarget contact name: Eva-Maria Würz'
+                    ),
+                ]),
+            ]),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything()
         )
     })
 
@@ -488,6 +504,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                     gmailContext: expect.objectContaining({
                         direction: 'outgoing',
                         targetContactEmail: 'alice@example.com',
+                        targetContactName: 'Alice',
                     }),
                 }),
             })
@@ -499,6 +516,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                     gmailContext: expect.objectContaining({
                         direction: 'outgoing',
                         targetContactEmail: 'bob@example.com',
+                        targetContactName: 'Bob',
                     }),
                 }),
             })

@@ -21,6 +21,75 @@ function normalizeEmailAddress(value = '') {
         .toLowerCase()
 }
 
+function splitEmailHeaderEntries(value = '') {
+    const input = String(value || '').trim()
+    if (!input) return []
+
+    const entries = []
+    let current = ''
+    let insideQuotes = false
+    let angleDepth = 0
+
+    for (let index = 0; index < input.length; index += 1) {
+        const char = input[index]
+
+        if (char === '"' && input[index - 1] !== '\\') {
+            insideQuotes = !insideQuotes
+            current += char
+            continue
+        }
+
+        if (!insideQuotes) {
+            if (char === '<') {
+                angleDepth += 1
+            } else if (char === '>' && angleDepth > 0) {
+                angleDepth -= 1
+            } else if (char === ',' && angleDepth === 0) {
+                const normalizedEntry = current.trim()
+                if (normalizedEntry) entries.push(normalizedEntry)
+                current = ''
+                continue
+            }
+        }
+
+        current += char
+    }
+
+    const normalizedEntry = current.trim()
+    if (normalizedEntry) entries.push(normalizedEntry)
+
+    return entries
+}
+
+function normalizeEmailDisplayName(value = '') {
+    const normalized = String(value || '')
+        .trim()
+        .replace(/^"(.*)"$/, '$1')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    if (!normalized) return ''
+    if (/^[^@\s]+@[^@\s]+$/.test(normalized)) return ''
+    return normalized
+}
+
+function parseEmailHeaderEntry(value = '') {
+    const raw = String(value || '').trim()
+    if (!raw) return null
+
+    const email = normalizeEmailAddress(raw)
+    if (!email) return null
+
+    const angleMatch = raw.match(/^(.*?)<[^>]+>\s*$/)
+    const displayName = normalizeEmailDisplayName(angleMatch?.[1] || '')
+
+    return { raw, email, displayName }
+}
+
+function parseEmailHeaderAddresses(value = '') {
+    return splitEmailHeaderEntries(value).map(parseEmailHeaderEntry).filter(Boolean)
+}
+
 function getEmailSafeAllowedTools(rawTools = []) {
     if (!Array.isArray(rawTools)) return []
 
@@ -307,8 +376,11 @@ module.exports = {
     computeWebhookSignature,
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
+    normalizeEmailDisplayName,
+    parseEmailHeaderAddresses,
     pickActionableAttachment,
     looksLikeForwardedEmail,
+    splitEmailHeaderEntries,
     stripHtmlToText,
     trimQuotedReplyText,
     summarizeAttachments,

@@ -180,6 +180,22 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
     }
 }
 
+function buildGmailContactTargetFromRuntimeContext(toolRuntimeContext = null) {
+    const gmailContext = toolRuntimeContext?.gmailContext
+    if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return null
+
+    const contactName = typeof gmailContext.targetContactName === 'string' ? gmailContext.targetContactName.trim() : ''
+    const contactEmail =
+        typeof gmailContext.targetContactEmail === 'string' ? gmailContext.targetContactEmail.trim().toLowerCase() : ''
+
+    if (!contactName && !contactEmail) return null
+
+    return {
+        contactName,
+        contactEmail,
+    }
+}
+
 // Cache OpenAI clients (performance optimization)
 const openAIClients = new Map()
 const externalToolUserIdentityCache = new Map()
@@ -3855,9 +3871,16 @@ async function executeToolNatively(
             const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
             const hasContentUpdate = toolArgs.content !== undefined
             const hasTitleUpdate = toolArgs.title !== undefined
+            const gmailContactTarget = buildGmailContactTargetFromRuntimeContext(toolRuntimeContext)
             const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
-            const contactName = typeof toolArgs.contactName === 'string' ? toolArgs.contactName.trim() : ''
-            const contactEmail = typeof toolArgs.contactEmail === 'string' ? toolArgs.contactEmail.trim() : ''
+            const contactName =
+                typeof toolArgs.contactName === 'string' && toolArgs.contactName.trim()
+                    ? toolArgs.contactName.trim()
+                    : gmailContactTarget?.contactName || ''
+            const contactEmail =
+                typeof toolArgs.contactEmail === 'string' && toolArgs.contactEmail.trim()
+                    ? toolArgs.contactEmail.trim()
+                    : gmailContactTarget?.contactEmail || ''
             const hasContactTarget = !!(contactId || contactName || contactEmail)
 
             // Initialize or reuse SearchService instance (performance optimization)
@@ -7380,4 +7403,5 @@ module.exports = {
     normalizeRecentHours,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
+    buildGmailContactTargetFromRuntimeContext,
 }

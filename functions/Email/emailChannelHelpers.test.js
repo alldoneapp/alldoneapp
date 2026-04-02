@@ -7,6 +7,7 @@ const {
     getEmailSafeAllowedTools,
     looksLikeForwardedEmail,
     normalizeEmailAddress,
+    parseEmailHeaderAddresses,
     pickActionableAttachment,
     stripHtmlToText,
     trimQuotedReplyText,
@@ -17,6 +18,33 @@ const { normalizeInboundEmailPayload } = require('./emailIncomingHandler')
 describe('emailChannelHelpers', () => {
     test('normalizes email addresses', () => {
         expect(normalizeEmailAddress('  User@Example.COM ')).toBe('user@example.com')
+    })
+
+    test('parses display names from email header entries', () => {
+        expect(parseEmailHeaderAddresses('"Eva-Maria Würz" <Eva-Maria.Wuerz@jtl-software.com>')).toEqual([
+            {
+                raw: '"Eva-Maria Würz" <Eva-Maria.Wuerz@jtl-software.com>',
+                email: 'eva-maria.wuerz@jtl-software.com',
+                displayName: 'Eva-Maria Würz',
+            },
+        ])
+    })
+
+    test('keeps commas inside quoted display names when splitting email headers', () => {
+        expect(
+            parseEmailHeaderAddresses('"Krause, Steffen" <steffen@example.com>, "Eva-Maria Würz" <eva@example.com>')
+        ).toEqual([
+            {
+                raw: '"Krause, Steffen" <steffen@example.com>',
+                email: 'steffen@example.com',
+                displayName: 'Krause, Steffen',
+            },
+            {
+                raw: '"Eva-Maria Würz" <eva@example.com>',
+                email: 'eva@example.com',
+                displayName: 'Eva-Maria Würz',
+            },
+        ])
     })
 
     test('limits email-safe tools to the approved action-only email set', () => {

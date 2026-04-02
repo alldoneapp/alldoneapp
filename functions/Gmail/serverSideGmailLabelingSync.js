@@ -28,7 +28,12 @@ const {
     getGmailLabelingConfigRef,
     getGmailLabelingStateRef,
 } = require('./gmailLabelingConfig')
-const { extractEmailAddresses, getGmailMessageDirection, normalizeGmailMessage } = require('./gmailMessageParser')
+const {
+    extractEmailAddresses,
+    getGmailMessageDirection,
+    normalizeGmailMessage,
+    parseEmailHeaderAddresses,
+} = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 
 const MAX_HISTORY_PAGES = 5
@@ -576,6 +581,42 @@ function getExternalRecipientEmails(normalizedMessage = {}, gmailEmail = '') {
     return Array.from(new Set(recipients.filter(email => email && email !== connectedEmail)))
 }
 
+function getTargetContactName(
+    normalizedMessage = {},
+    direction = GMAIL_DIRECTION_SCOPE_INCOMING,
+    targetContactEmail = ''
+) {
+    if (direction === GMAIL_DIRECTION_SCOPE_OUTGOING) {
+        const normalizedTargetEmail =
+            typeof targetContactEmail === 'string' ? targetContactEmail.trim().toLowerCase() : ''
+        if (!normalizedTargetEmail) return ''
+
+        const outgoingCandidates = [
+            ...parseEmailHeaderAddresses(normalizedMessage.to),
+            ...parseEmailHeaderAddresses(normalizedMessage.cc),
+            ...parseEmailHeaderAddresses(normalizedMessage.bcc),
+        ]
+        const match = outgoingCandidates.find(entry => entry.email === normalizedTargetEmail)
+        return match?.displayName || ''
+    }
+
+    const incomingSender = parseEmailHeaderAddresses(normalizedMessage.from)[0]
+    return incomingSender?.displayName || ''
+}
+
+function getTargetContactEmail(
+    normalizedMessage = {},
+    direction = GMAIL_DIRECTION_SCOPE_INCOMING,
+    targetContactEmail = ''
+) {
+    if (direction === GMAIL_DIRECTION_SCOPE_OUTGOING) {
+        return typeof targetContactEmail === 'string' ? targetContactEmail.trim().toLowerCase() : ''
+    }
+
+    const incomingSender = parseEmailHeaderAddresses(normalizedMessage.from)[0]
+    return incomingSender?.email || ''
+}
+
 function buildPostLabelAssistantMessages({
     prompt,
     normalizedMessage,
@@ -583,8 +624,10 @@ function buildPostLabelAssistantMessages({
     gmailEmail,
     direction = GMAIL_DIRECTION_SCOPE_INCOMING,
     targetContactEmail = '',
+    targetContactName = '',
 }) {
     const gmailWebUrl = buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId)
+    const resolvedTargetContactEmail = getTargetContactEmail(normalizedMessage, direction, targetContactEmail)
     return [
         [
             'system',
@@ -604,7 +647,8 @@ function buildPostLabelAssistantMessages({
                     `From: ${normalizedMessage.from || ''}`,
                     `To: ${normalizedMessage.to || ''}`,
                     `Cc: ${normalizedMessage.cc || ''}`,
-                    `Target contact email: ${targetContactEmail || ''}`,
+                    `Target contact email: ${resolvedTargetContactEmail || ''}`,
+                    `Target contact name: ${targetContactName || ''}`,
                     `Date: ${normalizedMessage.date || ''}`,
                     `Subject: ${normalizedMessage.subject || ''}`,
                     `Snippet: ${normalizedMessage.snippet || ''}`,
@@ -623,10 +667,12 @@ function buildPostLabelGmailContext({
     assistantProjectId,
     direction = GMAIL_DIRECTION_SCOPE_INCOMING,
     targetContactEmail = '',
+    targetContactName = '',
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
     const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
+    const resolvedTargetContactEmail = getTargetContactEmail(normalizedMessage, direction, targetContactEmail)
 
     return {
         origin: 'gmail_label_follow_up',
@@ -637,7 +683,8 @@ function buildPostLabelGmailContext({
         webUrl: buildGmailMessageUrl(normalizedEmail, messageId),
         archiveOnComplete: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : true,
         direction,
-        targetContactEmail: typeof targetContactEmail === 'string' ? targetContactEmail.trim().toLowerCase() : '',
+        targetContactEmail: resolvedTargetContactEmail,
+        targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
     }
 }
 
@@ -686,6 +733,7 @@ async function executePostLabelPrompt({
 
     const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
     const messages = []
+    const targetContactName = getTargetContactName(normalizedMessage, direction, targetContactEmail)
 
     await addBaseInstructions(
         messages,
@@ -707,6 +755,7 @@ async function executePostLabelPrompt({
             gmailEmail,
             direction,
             targetContactEmail,
+            targetContactName,
         })
     )
 
@@ -717,6 +766,7 @@ async function executePostLabelPrompt({
             assistantProjectId,
             direction,
             targetContactEmail,
+            targetContactName,
         })
         const stream = await interactWithChatStream(messages, assistant.model, assistant.temperature, allowedTools, {
             projectId: assistantProjectId,
