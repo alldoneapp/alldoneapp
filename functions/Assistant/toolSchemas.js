@@ -754,6 +754,64 @@ const toolSchemas = {
         },
     },
 
+    update_gmail_email: {
+        type: 'function',
+        function: {
+            name: 'update_gmail_email',
+            description:
+                'Update Gmail message properties for an exact messageId. Use this when the user wants to archive or unarchive an email, mark it read or unread, star or unstar it, mark it important or not important, or add or remove Gmail labels. Gmail archive is performed by removing the INBOX label.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    messageId: {
+                        type: 'string',
+                        description: 'The exact Gmail message ID to update.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional project ID to prefer a specific connected Gmail account when multiple accounts are available.',
+                    },
+                    addLabelIds: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description:
+                            'Optional Gmail label IDs or exact label names to add. Use INBOX to unarchive, UNREAD to mark unread, STARRED to star, and IMPORTANT to mark important.',
+                    },
+                    removeLabelIds: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description:
+                            'Optional Gmail label IDs or exact label names to remove. Use INBOX to archive, UNREAD to mark read, STARRED to unstar, and IMPORTANT to remove importance.',
+                    },
+                    markUnread: {
+                        type: 'boolean',
+                        description: 'Optional convenience flag. True adds UNREAD, false removes UNREAD.',
+                    },
+                    starred: {
+                        type: 'boolean',
+                        description: 'Optional convenience flag. True adds STARRED, false removes STARRED.',
+                    },
+                    important: {
+                        type: 'boolean',
+                        description: 'Optional convenience flag. True adds IMPORTANT, false removes IMPORTANT.',
+                    },
+                },
+                required: ['messageId'],
+            },
+        },
+    },
+
     search_calendar_events: {
         type: 'function',
         function: {

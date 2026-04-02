@@ -4846,6 +4846,62 @@ async function executeToolNatively(
             }
         }
 
+        case 'update_gmail_email': {
+            console.log('📧 UPDATE_GMAIL_EMAIL TOOL: Starting Gmail email update', {
+                messageId: toolArgs.messageId,
+                projectId: toolArgs.projectId || null,
+                addLabelIds: toolArgs.addLabelIds || null,
+                removeLabelIds: toolArgs.removeLabelIds || null,
+                markUnread: toolArgs.markUnread,
+                starred: toolArgs.starred,
+                important: toolArgs.important,
+                requestUserId: requestUserId || null,
+            })
+
+            const targetUserId = requestUserId || creatorId
+            if (!targetUserId) {
+                return {
+                    success: false,
+                    message: 'Gmail email update requires a valid requesting user.',
+                }
+            }
+
+            try {
+                const { updateGmailEmailForAssistantRequest } = require('../Gmail/assistantGmailMutations')
+                const result = await updateGmailEmailForAssistantRequest({
+                    userId: targetUserId,
+                    messageId: toolArgs.messageId,
+                    projectId: toolArgs.projectId,
+                    addLabelIds: toolArgs.addLabelIds,
+                    removeLabelIds: toolArgs.removeLabelIds,
+                    markUnread: toolArgs.markUnread,
+                    starred: toolArgs.starred,
+                    important: toolArgs.important,
+                })
+
+                console.log('📧 UPDATE_GMAIL_EMAIL TOOL: Completed', {
+                    success: result.success,
+                    gmailEmail: result.gmailEmail || null,
+                    projectId: result.projectId || null,
+                    messageId: result.messageId || toolArgs.messageId || null,
+                    archived: result.archived,
+                })
+
+                return result
+            } catch (error) {
+                console.error('📧 UPDATE_GMAIL_EMAIL TOOL: Failed', {
+                    error: error.message,
+                    requestUserId: targetUserId,
+                    messageId: toolArgs.messageId,
+                    projectId: toolArgs.projectId || null,
+                })
+                return {
+                    success: false,
+                    message: `Gmail email update failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'search_calendar_events': {
             console.log('📅 SEARCH_CALENDAR_EVENTS TOOL: Starting Calendar search', {
                 query: toolArgs.query,
@@ -6262,6 +6318,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. Draft emails only; do not claim you sent anything.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('update_gmail_email')) {
+        messages.push([
+            'system',
+            'When the user asks you to archive or unarchive an email, mark it read or unread, star or unstar it, mark it important, or change Gmail labels on a specific email, use update_gmail_email with the exact Gmail messageId. Prefer search_gmail first if you need to locate the right message. Gmail archive is done by removing the INBOX label.',
         ])
     }
     if (

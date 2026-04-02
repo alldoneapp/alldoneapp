@@ -25,13 +25,14 @@ describe('Calendar assistant tool schemas', () => {
 })
 
 describe('Gmail assistant tool schemas', () => {
-    test('exposes Gmail search, attachment, and draft tools when allowed', () => {
+    test('exposes Gmail search, attachment, draft, and update tools when allowed', () => {
         const schemas = getToolSchemas([
             'search_gmail',
             'get_gmail_attachment',
             'create_gmail_reply_draft',
             'create_gmail_draft',
             'update_gmail_draft',
+            'update_gmail_email',
         ])
 
         expect(schemas.map(schema => schema.function.name)).toEqual([
@@ -40,6 +41,7 @@ describe('Gmail assistant tool schemas', () => {
             'create_gmail_reply_draft',
             'create_gmail_draft',
             'update_gmail_draft',
+            'update_gmail_email',
         ])
     })
 
@@ -47,6 +49,7 @@ describe('Gmail assistant tool schemas', () => {
         expect(toolSchemas.create_gmail_draft.function.parameters.required).toEqual(['to', 'subject', 'body'])
         expect(toolSchemas.create_gmail_reply_draft.function.parameters.required).toEqual([])
         expect(toolSchemas.update_gmail_draft.function.parameters.required).toEqual(['draftId'])
+        expect(toolSchemas.update_gmail_email.function.parameters.required).toEqual(['messageId'])
     })
 
     test('defines required fields for Gmail attachment fetch', () => {
