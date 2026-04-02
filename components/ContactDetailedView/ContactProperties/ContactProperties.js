@@ -31,6 +31,7 @@ import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantMod
 import ProjectPicker from '../../TaskDetailedView/Properties/ProjectPicker'
 import {
     setProjectContactEmail,
+    setProjectContactEmails,
     setProjectContactPhone,
     setProjectContactPicture,
     setProjectContactLinkedInUrl,
@@ -51,6 +52,7 @@ class ContactProperties extends Component {
             showInfoModal: false,
             showPictureModal: false,
             showEmailModal: false,
+            showEmailsModal: false,
             showPhoneModal: false,
             showLinkedInModal: false,
             isEnriching: false,
@@ -119,6 +121,9 @@ class ContactProperties extends Component {
             case 'email':
                 setProjectContactEmail(projectId, contact, user.uid, value.trim(), contact.email)
                 break
+            case 'emails':
+                setProjectContactEmails(projectId, contact, user.uid, value, contact.email)
+                break
             case 'phone':
                 setProjectContactPhone(projectId, contact, user.uid, value.trim(), contact.phone)
                 break
@@ -148,6 +153,20 @@ class ContactProperties extends Component {
 
     validateEmail = email => {
         return email === '' || HelperFunctions.isValidEmail(email)
+    }
+
+    validateEmails = emailList => {
+        const emails = String(emailList || '')
+            .split('\n')
+            .map(email => email.trim())
+            .filter(Boolean)
+        return emails.every(email => HelperFunctions.isValidEmail(email))
+    }
+
+    getEmailsText = user => {
+        const emails =
+            Array.isArray(user.emails) && user.emails.length > 0 ? user.emails : user.email ? [user.email] : []
+        return emails.join('\n')
     }
 
     enrichContact = async () => {
@@ -234,6 +253,7 @@ class ContactProperties extends Component {
             showInfoModal,
             showPictureModal,
             showEmailModal,
+            showEmailsModal,
             showPhoneModal,
             showLinkedInModal,
             isEnriching,
@@ -620,36 +640,44 @@ class ContactProperties extends Component {
                                     />
                                     {mobileNav ? (
                                         <Text style={[styles.body1]} numberOfLines={1}>
-                                            {user.email === '' ? 'Email unknown' : user.email}
+                                            {this.getEmailsText(user) === ''
+                                                ? translate('Email unknown')
+                                                : this.getEmailsText(user)}
                                         </Text>
                                     ) : (
                                         <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
-                                            {translate('Email')}
+                                            {translate('Email addresses')}
                                         </Text>
                                     )}
                                 </View>
                                 <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
                                     {!mobileNav && (
-                                        <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
-                                            {user.email === '' ? translate('Email unknown') : user.email}
+                                        <Text style={[styles.body1, { marginRight: 8, textAlign: 'right' }]}>
+                                            {this.getEmailsText(user) === ''
+                                                ? translate('Email unknown')
+                                                : this.getEmailsText(user)}
                                         </Text>
                                     )}
 
                                     <Popover
                                         content={
                                             <ChangeTextFieldModal
-                                                header={'Edit email'}
-                                                subheader={'Type the email of this person'}
-                                                label={'Email'}
-                                                placeholder={'Type the email address'}
-                                                closePopover={() => this.hideModal('showEmailModal')}
-                                                onSaveData={value => this.changePropertyValue('email', value)}
-                                                currentValue={user.email}
-                                                validateFunction={this.validateEmail}
+                                                header={'Edit email addresses'}
+                                                subheader={
+                                                    'Type one email address per line. The first line is the primary email.'
+                                                }
+                                                label={'Email addresses'}
+                                                placeholder={'Type one email address per line'}
+                                                closePopover={() => this.hideModal('showEmailsModal')}
+                                                onSaveData={value => this.changePropertyValue('emails', value)}
+                                                currentValue={this.getEmailsText(user)}
+                                                validateFunction={this.validateEmails}
+                                                multiline={true}
+                                                numberOfLines={5}
                                             />
                                         }
-                                        onClickOutside={() => this.hideModal('showEmailModal')}
-                                        isOpen={showEmailModal}
+                                        onClickOutside={() => this.hideModal('showEmailsModal')}
+                                        isOpen={showEmailsModal}
                                         position={['bottom', 'left', 'right', 'top']}
                                         padding={4}
                                         align={'end'}
@@ -658,7 +686,7 @@ class ContactProperties extends Component {
                                         <Button
                                             icon={'edit-2'}
                                             type={'ghost'}
-                                            onPress={() => this.showModal('showEmailModal')}
+                                            onPress={() => this.showModal('showEmailsModal')}
                                             disabled={!accessGranted || !loggedUserCanUpdateObject}
                                         />
                                     </Popover>

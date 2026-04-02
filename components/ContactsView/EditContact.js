@@ -271,7 +271,16 @@ export default class EditContact extends Component {
     }
 
     setEmailBeforeSave = email => {
-        this.updateContactField('email', email)
+        const emails = Array.from(
+            new Set(
+                String(email || '')
+                    .split('\n')
+                    .map(item => item.trim().toLowerCase())
+                    .filter(Boolean)
+            )
+        )
+        this.updateContactField('email', emails[0] || '')
+        this.updateContactField('emails', emails)
     }
 
     showInfoModal = () => {

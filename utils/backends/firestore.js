@@ -3552,6 +3552,9 @@ export function mapUserData(userId, user) {
 }
 
 export function mapContactData(contactId, contact) {
+    const emails = Array.from(
+        new Set([...(Array.isArray(contact.emails) ? contact.emails : []), ...(contact.email ? [contact.email] : [])])
+    ).filter(Boolean)
     return {
         uid: contactId,
         displayName: contact.displayName ? contact.displayName : '',
@@ -3570,7 +3573,8 @@ export function mapContactData(contactId, contact) {
         isPrivate: contact.isPrivate ? contact.isPrivate : false,
         isPublicFor: contact.isPublicFor ? contact.isPublicFor : [FEED_PUBLIC_FOR_ALL, contact.recorderUserId],
         recorderUserId: contact.recorderUserId ? contact.recorderUserId : '',
-        email: contact.email ? contact.email : '',
+        email: contact.email ? contact.email : emails[0] || '',
+        emails,
         phone: contact.phone ? contact.phone : '',
         lastEditorId: contact.lastEditorId ? contact.lastEditorId : '',
         lastEditionDate: contact.lastEditionDate ? contact.lastEditionDate : Date.now(),

@@ -51,6 +51,47 @@ import {
 } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 
+const normalizeContactEmail = value =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+
+const getContactEmails = contact => {
+    const emails = [
+        ...(Array.isArray(contact?.emails) ? contact.emails : []),
+        ...(contact?.email ? [contact.email] : []),
+    ]
+    return Array.from(new Set(emails.map(normalizeContactEmail).filter(Boolean)))
+}
+
+const buildContactEmailFields = (contact, nextEmail, replacePrimary = true) => {
+    const normalizedNextEmail = normalizeContactEmail(nextEmail)
+    const emails = Array.from(
+        new Set([...getContactEmails(contact), ...(normalizedNextEmail ? [normalizedNextEmail] : [])])
+    )
+    let email = normalizeContactEmail(contact?.email)
+
+    if (!email && normalizedNextEmail) email = normalizedNextEmail
+    else if (replacePrimary && normalizedNextEmail) email = normalizedNextEmail
+
+    return { email, emails }
+}
+
+const buildContactEmailFieldsFromList = emailList => {
+    const emails = Array.from(
+        new Set(
+            String(emailList || '')
+                .split('\n')
+                .map(normalizeContactEmail)
+                .filter(Boolean)
+        )
+    )
+    return {
+        email: emails[0] || '',
+        emails,
+    }
+}
+
 //ACCESS FUNCTIONS
 
 export async function watchProjectContacts(projectId, callback, watcherKey) {
@@ -131,7 +172,7 @@ export async function addContactToProject(projectId, contact, onComplete) {
 
     const contactId = getId()
 
-    const contactToStore = { ...contact }
+    const contactToStore = { ...contact, ...buildContactEmailFields(contact, contact.email, false) }
     let feedPhotoUrl = contact.photoURL
 
     if (contact.photoURL) {
@@ -182,7 +223,7 @@ export async function copyContactToProject(targetProjectId, sourceContact, onCom
         role: fullContact.role || '',
         description: fullContact.description || '',
         extendedDescription: fullContact.extendedDescription || '',
-        email: fullContact.email || '',
+        ...buildContactEmailFields(fullContact, fullContact.email, false),
         phone: fullContact.phone || '',
         linkedInUrl: fullContact.linkedInUrl || '',
         // Default values for new contact in target project
@@ -229,7 +270,7 @@ export async function setContactProject(currentProject, newProject, contact) {
         role: contact.role || '',
         description: contact.description || '',
         extendedDescription: contact.extendedDescription || '',
-        email: contact.email || '',
+        ...buildContactEmailFields(contact, contact.email, false),
         phone: contact.phone || '',
         hasStar: contact.hasStar || '#FFFFFF',
         isPrivate: contact.isPrivate || false,
@@ -456,10 +497,28 @@ export async function setProjectContactPhone(projectId, contact, contactId, newP
 }
 
 export async function setProjectContactEmail(projectId, contact, contactId, newEmail, oldEmail) {
-    await updateContactData(projectId, contactId, { email: newEmail }, null)
+    await updateContactData(projectId, contactId, buildContactEmailFields(contact, newEmail, true), null)
 
     const batch = new BatchWrapper(getDb())
     await createContactEmailChangedFeed(projectId, contact, contactId, newEmail, oldEmail, batch)
+    const followContactData = {
+        followObjectsType: FOLLOWER_CONTACTS_TYPE,
+        followObjectId: contactId,
+        followObject: contact,
+        feedCreator: store.getState().loggedUser,
+    }
+    await tryAddFollower(projectId, followContactData, batch)
+    batch.commit()
+}
+
+export async function setProjectContactEmails(projectId, contact, contactId, emailList, oldEmail) {
+    const emailFields = buildContactEmailFieldsFromList(emailList)
+    await updateContactData(projectId, contactId, emailFields, null)
+
+    const batch = new BatchWrapper(getDb())
+    if (emailFields.email !== oldEmail) {
+        await createContactEmailChangedFeed(projectId, contact, contactId, emailFields.email, oldEmail, batch)
+    }
     const followContactData = {
         followObjectsType: FOLLOWER_CONTACTS_TYPE,
         followObjectId: contactId,

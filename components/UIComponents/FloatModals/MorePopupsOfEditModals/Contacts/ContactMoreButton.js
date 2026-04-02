@@ -22,8 +22,10 @@ import CopyLinkModalItem from '../Common/CopyLinkModalItem'
 import { getDvMainTabLink } from '../../../../../utils/LinkingHelper'
 import {
     setProjectContactEmail,
+    setProjectContactEmails,
     setProjectContactPhone,
 } from '../../../../../utils/backends/Contacts/contactsFirestore'
+import HelperFunctions from '../../../../../utils/HelperFunctions'
 
 export default function ContactMoreButton({
     formType,
@@ -45,7 +47,26 @@ export default function ContactMoreButton({
     const [showPrivacy, setShowPrivacy] = useState(false)
     const [showPhone, setShowPhone] = useState(false)
     const [showEmail, setShowEmail] = useState(false)
+    const [showEmails, setShowEmails] = useState(false)
     const modalRef = useRef()
+
+    const getEmailsText = () => {
+        const emails =
+            Array.isArray(contact.emails) && contact.emails.length > 0
+                ? contact.emails
+                : contact.email
+                ? [contact.email]
+                : []
+        return emails.join('\n')
+    }
+
+    const validateEmails = emailList => {
+        const emails = String(emailList || '')
+            .split('\n')
+            .map(email => email.trim())
+            .filter(Boolean)
+        return emails.every(email => HelperFunctions.isValidEmail(email))
+    }
 
     const link = `${window.location.origin}${getDvMainTabLink(projectId, contact.uid, isMember ? 'users' : 'contacts')}`
 
@@ -108,12 +129,27 @@ export default function ContactMoreButton({
         }
     }
 
+    const saveEmails = emailList => {
+        if (formType === FORM_TYPE_NEW) {
+            saveEmailBeforeSaveContact?.(emailList)
+            dismissModal()
+        } else {
+            setProjectContactEmails(projectId, contact, contact.uid, emailList, contact.email)
+            dismissModal()
+            dismissEditMode?.()
+        }
+    }
+
     const hidePhonePopup = () => {
         hidePopups(setShowPhone, TEXT_FIELD_MODAL_ID)
     }
 
     const hideEmailPopup = () => {
         hidePopups(setShowEmail, TEXT_FIELD_MODAL_ID)
+    }
+
+    const hideEmailsPopup = () => {
+        hidePopups(setShowEmails, TEXT_FIELD_MODAL_ID)
     }
 
     const onCloseMainModal = () => {
@@ -130,6 +166,10 @@ export default function ContactMoreButton({
         }
         if (showEmail) {
             setShowEmail(false)
+            removeModal(TEXT_FIELD_MODAL_ID)
+        }
+        if (showEmails) {
+            setShowEmails(false)
             removeModal(TEXT_FIELD_MODAL_ID)
         }
     }
@@ -195,10 +235,10 @@ export default function ContactMoreButton({
             list.push(shortcut => {
                 return (
                     <GenericModalItem
-                        key={'mbtn-email'}
+                        key={'mbtn-emails'}
                         icon={'mail'}
-                        text={'Email'}
-                        visibilityData={{ openPopup, constant: TEXT_FIELD_MODAL_ID, visibilityFn: setShowEmail }}
+                        text={'Email addresses'}
+                        visibilityData={{ openPopup, constant: TEXT_FIELD_MODAL_ID, visibilityFn: setShowEmails }}
                         shortcut={shortcut}
                     />
                 )
@@ -278,6 +318,19 @@ export default function ContactMoreButton({
                         onSaveData={savePhone}
                         currentValue={contact.phone}
                     />
+                ) : showEmails ? (
+                    <ChangeTextFieldModal
+                        header={'Edit email addresses'}
+                        subheader={'Type one email address per line. The first line is the primary email.'}
+                        label={'Email addresses'}
+                        placeholder={'Type one email address per line'}
+                        closePopover={hideEmailsPopup}
+                        onSaveData={saveEmails}
+                        currentValue={getEmailsText()}
+                        validateFunction={validateEmails}
+                        multiline={true}
+                        numberOfLines={5}
+                    />
                 ) : showEmail ? (
                     <ChangeTextFieldModal
                         header={'Edit email'}
@@ -287,7 +340,7 @@ export default function ContactMoreButton({
                         closePopover={hideEmailPopup}
                         onSaveData={saveEmail}
                         currentValue={contact.email}
-                        validateFunction={this.validateEmail}
+                        validateFunction={email => email === '' || HelperFunctions.isValidEmail(email)}
                     />
                 ) : null
             }

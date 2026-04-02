@@ -3,6 +3,7 @@ const admin = require('firebase-admin')
 const { mapContactData } = require('../Utils/MapDataFuncions')
 const { addContactFeedsChain } = require('../Feeds/contactsFeedsChains')
 const { logEvent } = require('../GAnalytics/GAnalytics')
+const { buildContactEmailFields } = require('../shared/contactEmailHelper')
 
 const getContactData = async (db, projectId, contactId) => {
     const contact = (await db.doc(`/projectsContacts/${projectId}/contacts/${contactId}`).get()).data()
@@ -19,7 +20,7 @@ async function getProjectContacts(projectId) {
 }
 
 async function uploadNewContact(projectId, contact) {
-    const contactCopy = { ...contact }
+    const contactCopy = { ...contact, ...buildContactEmailFields(contact, contact.email, false) }
     delete contactCopy.uid
 
     const promises = []

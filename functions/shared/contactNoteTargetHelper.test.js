@@ -72,7 +72,13 @@ describe('contactNoteTargetHelper matching', () => {
     test('exact email match beats exact and fuzzy name matches', () => {
         const contacts = [
             { uid: '1', displayName: 'Alice Example', email: 'other@example.com', lastEditionDate: 10 },
-            { uid: '2', displayName: 'Alicia Example', email: 'alice@example.com', lastEditionDate: 20 },
+            {
+                uid: '2',
+                displayName: 'Alicia Example',
+                email: 'primary@example.com',
+                emails: ['primary@example.com', 'alice@example.com'],
+                lastEditionDate: 20,
+            },
         ]
 
         const result = findMatchingContacts(contacts, {

@@ -5,6 +5,7 @@ const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
 const { createContactEmailChangedFeed } = require('../Feeds/contactsFeeds')
 const { FOLLOWER_CONTACTS_TYPE } = require('../Followers/FollowerConstants')
 const { tryAddFollower } = require('../Followers/followerHelper')
+const { buildContactEmailFields } = require('./contactEmailHelper')
 
 function normalizeContactUpdateValue(field, value) {
     if (field === 'email') return normalizeEmailAddress(value)
@@ -30,14 +31,23 @@ async function updateContactFields({ db, projectId, contact, userId, feedUser, u
     Object.entries(updates).forEach(([field, rawValue]) => {
         if (rawValue === undefined) return
 
-        const nextValue = normalizeContactUpdateValue(field, rawValue)
-        const currentValue = normalizeContactUpdateValue(field, contact[field])
-        if (nextValue === currentValue) return
-
-        normalizedUpdates[field] = nextValue
         if (field === 'email') {
-            changes.push(`email to "${nextValue}"`)
+            const emailFields = buildContactEmailFields(contact, rawValue, { replacePrimary: true })
+            const currentPrimaryEmail = normalizeEmailAddress(contact.email)
+            const emailsChanged =
+                JSON.stringify(emailFields.emails) !==
+                JSON.stringify(Array.isArray(contact.emails) ? contact.emails : [])
+            if (emailFields.email === currentPrimaryEmail && !emailsChanged) return
+
+            normalizedUpdates.email = emailFields.email
+            normalizedUpdates.emails = emailFields.emails
+            changes.push(`email to "${emailFields.email}"`)
         } else {
+            const nextValue = normalizeContactUpdateValue(field, rawValue)
+            const currentValue = normalizeContactUpdateValue(field, contact[field])
+            if (nextValue === currentValue) return
+
+            normalizedUpdates[field] = nextValue
             changes.push(`${field} updated`)
         }
     })

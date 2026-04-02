@@ -1,6 +1,7 @@
 'use strict'
 
 const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
+const { buildContactEmailFields, getContactEmails } = require('./contactEmailHelper')
 const { FOLLOWER_CONTACTS_TYPE, FOLLOWER_NOTES_TYPE } = require('../Followers/FollowerConstants')
 const { tryAddFollower } = require('../Followers/followerHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
@@ -204,7 +205,7 @@ function findMatchingContacts(contacts, { contactId = '', contactEmail = '', con
 
     if (normalizedEmail) {
         const emailMatches = contacts
-            .filter(contact => normalizeEmailAddress(contact.email) === normalizedEmail)
+            .filter(contact => getContactEmails(contact).includes(normalizedEmail))
             .sort(sortContactsDeterministically)
         if (emailMatches.length > 0) {
             return {
@@ -264,6 +265,7 @@ function findMatchingContacts(contacts, { contactId = '', contactEmail = '', con
 async function createContactRecord({ db, projectId, userId, contactName = '', contactEmail = '' }) {
     const contactId = db.collection('_').doc().id
     const email = normalizeEmailAddress(contactEmail)
+    const emailFields = buildContactEmailFields({}, email)
     const displayName = buildContactDisplayName({ contactName, contactEmail: email })
     const now = Date.now()
     const contact = {
@@ -279,7 +281,8 @@ async function createContactRecord({ db, projectId, userId, contactName = '', co
         isPrivate: false,
         isPublicFor: [FEED_PUBLIC_FOR_ALL, userId],
         recorderUserId: userId,
-        email,
+        email: emailFields.email,
+        emails: emailFields.emails,
         phone: '',
         lastEditorId: userId,
         lastEditionDate: now,

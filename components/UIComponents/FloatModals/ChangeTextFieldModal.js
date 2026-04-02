@@ -31,7 +31,7 @@ class ChangeTextFieldModal extends Component {
     }
 
     onPressEnter = event => {
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' && !this.props.multiline) {
             this.onPressSaveButton()
         } else if (event.key === 'Escape') {
             event?.preventDefault()
@@ -52,7 +52,16 @@ class ChangeTextFieldModal extends Component {
 
     render() {
         const { currentValue } = this.state
-        const { header, subheader, label, placeholder, validateFunction, windowSize } = this.props
+        const {
+            header,
+            subheader,
+            label,
+            placeholder,
+            validateFunction,
+            windowSize,
+            multiline,
+            numberOfLines,
+        } = this.props
 
         return (
             <View
@@ -77,8 +86,9 @@ class ChangeTextFieldModal extends Component {
                             value={currentValue}
                             placeholder={placeholder}
                             placeholderTextColor={colors.Text03}
-                            multiline={false}
-                            numberOfLines={1}
+                            multiline={!!multiline}
+                            numberOfLines={multiline ? numberOfLines || 4 : 1}
+                            textAlignVertical={multiline ? 'top' : 'center'}
                             onChangeText={text => {
                                 this.setState({ currentValue: text })
                             }}
@@ -162,6 +172,8 @@ ChangeTextFieldModal.propTypes = {
     closePopover: PropTypes.func,
     onSaveData: PropTypes.func,
     validateFunction: PropTypes.func,
+    multiline: PropTypes.bool,
+    numberOfLines: PropTypes.number,
 }
 
 export default withWindowSizeHook(ChangeTextFieldModal)
