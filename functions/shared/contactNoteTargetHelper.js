@@ -1,6 +1,8 @@
 'use strict'
 
 const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
+const { FOLLOWER_CONTACTS_TYPE, FOLLOWER_NOTES_TYPE } = require('../Followers/FollowerConstants')
+const { tryAddFollower } = require('../Followers/followerHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { ProjectService } = require('./ProjectService')
 
@@ -17,8 +19,21 @@ function normalizeName(value = '') {
 function normalizeNameForComparison(value = '') {
     return normalizeName(value)
         .replace(/[._-]+/g, ' ')
+        .replace(/,/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
+}
+
+function buildNameVariants(value = '') {
+    const normalized = normalizeNameForComparison(value)
+    if (!normalized) return []
+
+    const tokens = normalized.split(' ').filter(Boolean)
+    if (tokens.length <= 1) return [normalized]
+
+    const variants = new Set([normalized])
+    variants.add(tokens.slice().reverse().join(' '))
+    return Array.from(variants)
 }
 
 function mapContactDoc(doc) {
@@ -90,12 +105,23 @@ function calculateSimilarity(str1, str2) {
 function getFuzzyNameMatches(contacts, normalizedName) {
     if (!normalizedName || normalizedName.length < 3) return []
 
+    const searchVariants = buildNameVariants(normalizedName)
+
     return contacts
         .map(contact => {
-            const candidateName = normalizeNameForComparison(contact.displayName)
-            if (!candidateName || candidateName.length < 3) return null
+            const candidateVariants = buildNameVariants(contact.displayName)
+            if (candidateVariants.length === 0) return null
 
-            const similarity = calculateSimilarity(candidateName, normalizedName)
+            let similarity = 0
+            candidateVariants.forEach(candidateName => {
+                searchVariants.forEach(searchVariant => {
+                    if (!candidateName || candidateName.length < 3 || !searchVariant || searchVariant.length < 3) return
+                    similarity = Math.max(similarity, calculateSimilarity(candidateName, searchVariant))
+                })
+            })
+
+            const candidateName = candidateVariants[0]
+            if (!candidateName || candidateName.length < 3) return null
             if (similarity <= MIN_FUZZY_NAME_SIMILARITY) return null
 
             return {
@@ -163,6 +189,7 @@ function findMatchingContacts(contacts, { contactId = '', contactEmail = '', con
     const normalizedEmail = normalizeEmailAddress(contactEmail)
     const normalizedName = normalizeName(contactName)
     const normalizedComparableName = normalizeNameForComparison(contactName)
+    const normalizedNameVariants = buildNameVariants(contactName)
 
     if (normalizedContactId) {
         const matches = contacts.filter(contact => contact.uid === normalizedContactId)
@@ -192,7 +219,14 @@ function findMatchingContacts(contacts, { contactId = '', contactEmail = '', con
 
     if (normalizedName) {
         const exactNameMatches = contacts
-            .filter(contact => normalizeName(contact.displayName) === normalizedName)
+            .filter(contact => {
+                const exactName = normalizeName(contact.displayName)
+                const comparableVariants = buildNameVariants(contact.displayName)
+                return (
+                    exactName === normalizedName ||
+                    comparableVariants.some(variant => normalizedNameVariants.includes(variant))
+                )
+            })
             .sort(sortContactsDeterministically)
         if (exactNameMatches.length > 0) {
             return {
@@ -273,6 +307,37 @@ async function loadNoteById(db, projectId, noteId) {
     }
 }
 
+async function ensureCurrentUserFollowsContactAndNote({ projectId, contact, note, feedUser }) {
+    if (!feedUser?.uid || !contact?.uid || !note?.id) return
+
+    await tryAddFollower(
+        projectId,
+        {
+            followObjectsType: FOLLOWER_CONTACTS_TYPE,
+            followObjectId: contact.uid,
+            followObject: {
+                ...contact,
+                noteId: note.id,
+            },
+            feedUser,
+        },
+        null,
+        false
+    )
+
+    await tryAddFollower(
+        projectId,
+        {
+            followObjectsType: FOLLOWER_NOTES_TYPE,
+            followObjectId: note.id,
+            followObject: note,
+            feedUser,
+        },
+        null,
+        false
+    )
+}
+
 async function ensureContactNote({ db, noteService, feedUser, userId, projectId, contact }) {
     if (contact.noteId) {
         const existingNote = await loadNoteById(db, projectId, contact.noteId)
@@ -314,10 +379,25 @@ async function ensureContactNote({ db, noteService, feedUser, userId, projectId,
         lastEditorId: userId,
     })
 
+    const updatedContact = {
+        ...contact,
+        noteId: result.noteId,
+        lastEditionDate: Date.now(),
+        lastEditorId: userId,
+    }
+
+    await ensureCurrentUserFollowsContactAndNote({
+        projectId,
+        contact: updatedContact,
+        note: result.note,
+        feedUser,
+    })
+
     return {
         note: result.note,
         noteCreated: true,
         contactUpdated: true,
+        contact: updatedContact,
     }
 }
 
@@ -415,7 +495,6 @@ async function resolveContactNoteTarget({
 
     return {
         success: true,
-        contact: contactResolution.contact,
         note: noteResult.note,
         projectId,
         contactCreated: contactResolution.contactCreated,
@@ -425,6 +504,7 @@ async function resolveContactNoteTarget({
         autoPicked: contactResolution.autoPicked,
         matches: contactResolution.matches,
         totalMatches: contactResolution.totalMatches,
+        contact: noteResult.contact || contactResolution.contact,
     }
 }
 

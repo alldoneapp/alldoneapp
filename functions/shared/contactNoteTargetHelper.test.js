@@ -13,7 +13,12 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'public',
 }))
 
+jest.mock('../Followers/followerHelper', () => ({
+    tryAddFollower: jest.fn().mockResolvedValue(undefined),
+}))
+
 const { findMatchingContacts, resolveContactNoteTarget, resolveContactTarget } = require('./contactNoteTargetHelper')
+const { tryAddFollower } = require('../Followers/followerHelper')
 
 function createDb(initialDocs = {}) {
     const docs = { ...initialDocs }
@@ -95,6 +100,22 @@ describe('contactNoteTargetHelper matching', () => {
         expect(result.matchType).toBe('exact_name')
     })
 
+    test('reversed first and last name counts as exact name match', () => {
+        const contacts = [{ uid: '1', displayName: 'Steffen Krause', email: '', lastEditionDate: 10 }]
+
+        const commaResult = findMatchingContacts(contacts, {
+            contactName: 'Krause, Steffen',
+        })
+        const swappedResult = findMatchingContacts(contacts, {
+            contactName: 'Krause Steffen',
+        })
+
+        expect(commaResult.selectedContact.uid).toBe('1')
+        expect(commaResult.matchType).toBe('exact_name')
+        expect(swappedResult.selectedContact.uid).toBe('1')
+        expect(swappedResult.matchType).toBe('exact_name')
+    })
+
     test('fuzzy name matching also runs without inbound email', () => {
         const contacts = [{ uid: '1', displayName: 'Jon Smith', email: '', lastEditionDate: 10 }]
 
@@ -153,6 +174,10 @@ describe('contactNoteTargetHelper matching', () => {
 })
 
 describe('contactNoteTargetHelper resolution', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
     test('resolveContactTarget creates contact when missing and createIfMissing is true', async () => {
         const db = createDb()
 
@@ -226,5 +251,67 @@ describe('contactNoteTargetHelper resolution', () => {
         expect(result.noteCreated).toBe(false)
         expect(result.matchType).toBe('fuzzy_name')
         expect(noteService.createAndPersistNote).not.toHaveBeenCalled()
+    })
+
+    test('resolveContactNoteTarget follows contact and note when a new note is created', async () => {
+        const db = createDb({
+            'projectsContacts/project-1/contacts/contact-1': {
+                displayName: 'Jane Doe',
+                email: '',
+                noteId: null,
+                isPrivate: false,
+                isPublicFor: ['public', 'user-1'],
+                recorderUserId: 'user-1',
+                lastEditionDate: 100,
+            },
+        })
+
+        const noteService = {
+            createAndPersistNote: jest.fn(async () => ({
+                noteId: 'note-2',
+                note: {
+                    id: 'note-2',
+                    title: 'Jane Doe',
+                    isPublicFor: ['public', 'user-1'],
+                },
+            })),
+        }
+
+        const result = await resolveContactNoteTarget({
+            db,
+            noteService,
+            feedUser: { uid: 'user-1', displayName: 'User' },
+            userId: 'user-1',
+            projectId: 'project-1',
+            contactName: 'Jane Doe',
+            createIfMissing: true,
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.noteCreated).toBe(true)
+        expect(result.contact.noteId).toBe('note-2')
+        expect(tryAddFollower).toHaveBeenCalledTimes(2)
+        expect(tryAddFollower).toHaveBeenNthCalledWith(
+            1,
+            'project-1',
+            expect.objectContaining({
+                followObjectsType: 'contacts',
+                followObjectId: 'contact-1',
+                feedUser: { uid: 'user-1', displayName: 'User' },
+            }),
+            null,
+            false
+        )
+        expect(tryAddFollower).toHaveBeenNthCalledWith(
+            2,
+            'project-1',
+            expect.objectContaining({
+                followObjectsType: 'notes',
+                followObjectId: 'note-2',
+                feedUser: { uid: 'user-1', displayName: 'User' },
+            }),
+            null,
+            false
+        )
     })
 })
