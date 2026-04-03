@@ -598,8 +598,14 @@ class FocusTaskService {
 
                 const previousTaskWasGeneral =
                     previousTaskParentGoalId === null || previousTaskParentGoalId === undefined
+                const previousFocusProjectId = userData.inFocusTaskProjectId || null
+                const previousFocusWasInSearchProject =
+                    !previousFocusProjectId || previousFocusProjectId === searchProjectId
                 const shouldPrioritizeGeneralTasksInProject =
-                    previousTaskWasGeneral && !!currentProjectId && searchProjectId === currentProjectId
+                    previousTaskWasGeneral &&
+                    !!currentProjectId &&
+                    searchProjectId === currentProjectId &&
+                    previousFocusWasInSearchProject
 
                 if (shouldPrioritizeGeneralTasksInProject) {
                     newFocusedTask = this.pickGeneralTask(allFetchedTasks, excludeTaskId)

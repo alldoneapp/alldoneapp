@@ -3304,12 +3304,7 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
 
     // Get all candidate tasks due today; selection logic below still prefers non-workflow first
     const candidateTasks = Object.values(projectTasks).filter(
-        t =>
-            t.id !== completedTask.id &&
-            !t.done &&
-            !t.isSubtask &&
-            !t.calendarData &&
-            t.dueDate <= endOfToday
+        t => t.id !== completedTask.id && !t.done && !t.isSubtask && !t.calendarData && t.dueDate <= endOfToday
     )
 
     console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
@@ -3511,8 +3506,11 @@ async function findAndSetNewFocusedTask(
             )
 
             const wasGeneralTask = !previousTaskParentGoalId
+            const previousFocusProjectId = loggedUser.inFocusTaskProjectId || null
+            const previousFocusWasInCurrentProject =
+                !previousFocusProjectId || previousFocusProjectId === currentProjectId
 
-            if (wasGeneralTask) {
+            if (wasGeneralTask && previousFocusWasInCurrentProject) {
                 newFocusedTask = pickNextGeneralFocusTask({
                     projectId: currentProjectId,
                     userId,

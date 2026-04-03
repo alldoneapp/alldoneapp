@@ -368,4 +368,58 @@ describe('FocusTaskService general task priority', () => {
             expect.objectContaining({ id: 'goal-top' })
         )
     })
+
+    test('explicitly switching to a different project does not keep general-task priority from the previous project', async () => {
+        const service = createService({
+            docs: {
+                [`users/${userId}`]: {
+                    id: userId,
+                    defaultProjectId: otherProjectId,
+                    inFocusTaskId: 'previous-general',
+                    inFocusTaskProjectId: otherProjectId,
+                },
+                [`projects/${currentProjectId}`]: {
+                    id: currentProjectId,
+                    sortIndexByUser: { [userId]: 10 },
+                },
+                [`goals/${currentProjectId}/items/goal-a`]: {
+                    id: 'goal-a',
+                    ownerId: 'ALL_USERS',
+                    isPublicFor: [0, userId],
+                    sortIndexByMilestone: { milestoneA: 100 },
+                },
+            },
+            collections: {
+                [`items/${currentProjectId}/tasks`]: [
+                    { id: 'general-1', ...baseTask, sortIndex: 500 },
+                    { id: 'goal-top', ...baseTask, parentGoalId: 'goal-a', sortIndex: 300 },
+                ],
+                [`goals/${currentProjectId}/items`]: [
+                    {
+                        id: 'goal-a',
+                        ownerId: 'ALL_USERS',
+                        isPublicFor: [0, userId],
+                        sortIndexByMilestone: { milestoneA: 100 },
+                    },
+                ],
+                [`goalsMilestones/${currentProjectId}/milestonesItems`]: [
+                    {
+                        id: 'milestoneA',
+                        ownerId: 'ALL_USERS',
+                        date: dueToday,
+                        done: false,
+                    },
+                ],
+            },
+        })
+
+        const result = await service.findAndSetNewFocusTask(userId, currentProjectId, null, null, null, null)
+
+        expect(result.id).toBe('goal-top')
+        expect(service.setNewFocusTask).toHaveBeenCalledWith(
+            userId,
+            currentProjectId,
+            expect.objectContaining({ id: 'goal-top' })
+        )
+    })
 })
