@@ -17,6 +17,7 @@ import ServerTime from './Properties/ServerTime'
 import UserTimezone from './Properties/UserTimezone'
 import Theme from './Properties/Theme'
 import Language from './Properties/Language'
+import AutoPostponeAfterDaysOverdue from './Properties/AutoPostponeAfterDaysOverdue'
 import { useTranslator } from '../../../i18n/TranslationService'
 import Header from './Header'
 import DefaultProject from './Properties/DefaultProject/DefaultProject'
@@ -58,6 +59,10 @@ const Customizations = () => {
 
                 <View style={localStyles.settingsColumn}>
                     <Theme userId={loggedUser.uid} themeName={loggedUser.themeName} />
+                    <AutoPostponeAfterDaysOverdue
+                        userId={loggedUser.uid}
+                        autoPostponeAfterDaysOverdue={loggedUser.autoPostponeAfterDaysOverdue}
+                    />
                     <SidebarNavigation
                         userId={loggedUser.uid}
                         sidebarNavigationMode={loggedUser.sidebarNavigationMode}

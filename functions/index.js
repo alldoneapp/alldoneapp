@@ -2649,6 +2649,19 @@ exports.checkAssistantHeartbeats = onSchedule(
     }
 )
 
+exports.autoPostponeOverdueTasksSecondGen = onSchedule(
+    {
+        schedule: '0 * * * *',
+        timeoutSeconds: 900,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { checkAndAutoPostponeTasks } = require('./Tasks/autoPostponeTasksCloud')
+        return await checkAndAutoPostponeTasks()
+    }
+)
+
 exports.pollGmailLabelingSecondGen = onSchedule(
     {
         schedule: '*/5 * * * *',

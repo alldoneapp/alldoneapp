@@ -819,6 +819,10 @@ export async function setUserThemeName(userId, themeName) {
     getDb().doc(`users/${userId}`).update({ themeName })
 }
 
+export async function setUserAutoPostponeAfterDaysOverdue(userId, autoPostponeAfterDaysOverdue) {
+    getDb().doc(`users/${userId}`).update({ autoPostponeAfterDaysOverdue })
+}
+
 export async function setUserSidebarNavigationMode(userId, sidebarNavigationMode) {
     getDb().doc(`users/${userId}`).update({ sidebarNavigationMode })
 }

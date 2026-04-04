@@ -124,6 +124,7 @@ import {
 
 import { firebase } from '@firebase/app'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
+import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
 import { COLOR_KEY_4 } from '../../components/NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import { processRestoredNote } from '../../components/NotesView/NotesDV/EditorView/notesHelper'
 import { CURRENT_DAY_VERSION_ID } from '../../components/UIComponents/FloatModals/RevisionHistoryModal/RevisionHistoryModal'
@@ -3511,6 +3512,10 @@ export function mapUserData(userId, user) {
         pushNotificationsStatus: user.pushNotificationsStatus ? user.pushNotificationsStatus : false,
         workstreams: user.workstreams ? user.workstreams : {},
         themeName: user.themeName ? user.themeName : COLORS_THEME_MODERN,
+        autoPostponeAfterDaysOverdue:
+            user.autoPostponeAfterDaysOverdue != null
+                ? user.autoPostponeAfterDaysOverdue
+                : AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT,
         sidebarNavigationMode: user.sidebarNavigationMode || SIDEBAR_NAVIGATION_SIMPLE,
         sidebarExpanded: user.sidebarExpanded ? user.sidebarExpanded : SIDEBAR_COLLAPSED,
         gold: user.gold ? user.gold : 0,
