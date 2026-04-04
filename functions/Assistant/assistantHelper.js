@@ -211,7 +211,7 @@ const DYNAMIC_TOOL_SCHEMAS_CACHE_TTL = 5 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_CACHE_MAX_ENTRIES = 200
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_TTL = 30 * 24 * 60 * 60 * 1000
 const DYNAMIC_TOOL_SCHEMAS_PERSISTED_CACHE_COLLECTION = 'runtimeCaches/dynamicToolSchemas/items'
-const MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES = 5 * 1024 * 1024
+const MAX_EXTERNAL_TOOL_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const MAX_CHAT_MEDIA_CONTEXT_LIMIT = 20
 const MAX_CHAT_MEDIA_EXTRACTION_FILE_SIZE_BYTES = 20 * 1024 * 1024
 const MAX_CHAT_MEDIA_EXTRACTED_TEXT_LENGTH = 8000
@@ -6486,7 +6486,7 @@ async function fetchBinaryFileAsBase64(fileUrl, fileName = '', maxSizeBytes = MA
     const arrayBuffer = await response.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
     if (buffer.length > maxSizeBytes) {
-        throw new Error(`File exceeds the 5 MB limit (${buffer.length} bytes)`)
+        throw new Error(`File exceeds the ${Math.round(maxSizeBytes / 1024 / 1024)} MB limit (${buffer.length} bytes)`)
     }
 
     const headerMimeType = response.headers?.get('content-type') || ''

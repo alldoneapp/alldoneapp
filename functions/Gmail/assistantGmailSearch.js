@@ -356,7 +356,7 @@ async function getGmailAttachmentForAssistantRequest({
     fileName = '',
     attachmentId,
     projectId = '',
-    maxSizeBytes = 5 * 1024 * 1024,
+    maxSizeBytes = 10 * 1024 * 1024,
 }) {
     const normalizedUserId = typeof userId === 'string' ? userId.trim() : ''
     const normalizedMessageId = typeof messageId === 'string' ? messageId.trim() : ''
@@ -412,7 +412,11 @@ async function getGmailAttachmentForAssistantRequest({
 
             const sizeBytes = Number(attachmentMeta.sizeBytes || 0)
             if (sizeBytes > maxSizeBytes) {
-                throw new Error(`Gmail attachment exceeds the 5 MB limit (${sizeBytes} bytes)`)
+                throw new Error(
+                    `Gmail attachment exceeds the ${Math.round(
+                        maxSizeBytes / 1024 / 1024
+                    )} MB limit (${sizeBytes} bytes)`
+                )
             }
 
             const attachmentPart = attachmentParts.find(part => {
@@ -442,7 +446,11 @@ async function getGmailAttachmentForAssistantRequest({
             }
 
             if (buffer.length > maxSizeBytes) {
-                throw new Error(`Gmail attachment exceeds the 5 MB limit (${buffer.length} bytes)`)
+                throw new Error(
+                    `Gmail attachment exceeds the ${Math.round(maxSizeBytes / 1024 / 1024)} MB limit (${
+                        buffer.length
+                    } bytes)`
+                )
             }
 
             return {

@@ -565,6 +565,45 @@ describe('assistant chat media helpers', () => {
         })
     })
 
+    test('allows chat attachments larger than 5 MB up to the new 10 MB limit', async () => {
+        const buffer = Buffer.alloc(6 * 1024 * 1024, 1)
+
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                fromAssistant: false,
+                commentText: 'invoice',
+                mediaContext: [
+                    {
+                        kind: 'file',
+                        fileName: 'invoice.pdf',
+                        mimeType: 'application/pdf',
+                        storageUrl: 'https://cdn.example.com/file.pdf',
+                    },
+                ],
+            }),
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => buffer,
+            headers: { get: jest.fn(() => 'application/pdf') },
+        })
+
+        const result = await getChatAttachmentForAssistantRequest({
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            messageId: 'message-1',
+            expectedFileName: 'invoice.pdf',
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.fileName).toBe('invoice.pdf')
+        expect(result.fileMimeType).toBe('application/pdf')
+        expect(result.fileSizeBytes).toBe(buffer.length)
+        expect(result.fileBase64).toBe(buffer.toString('base64'))
+    })
+
     test('falls back to a recent matching attachment when the current message has no file', async () => {
         mockDocGet.mockResolvedValue({
             exists: true,
