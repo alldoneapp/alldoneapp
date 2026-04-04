@@ -3,7 +3,7 @@ const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { inferMimeTypeFromFileName } = require('../Utils/parseTextUtils')
-const { addTimestampToContextContent } = require('../Assistant/contextTimestampHelper')
+const { addTimestampToContextContent, getUserLocalDateContext } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+$/
@@ -15,10 +15,13 @@ const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1Q
  * @param {string} userId
  * @param {string} projectId - User's default project ID
  * @param {string} assistantId
+ * @param {Object|null} userData
  * @returns {Promise<{ chatId: string, isNew: boolean }>}
  */
-async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
-    const today = moment().format('YYYYMMDD')
+async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId, userData = null) {
+    const user = userData || (await getUserData(userId))
+    const { dateKey, dateLabel } = getUserLocalDateContext(user)
+    const today = dateKey
     const chatId = `BotChat${today}${userId}`
     console.log('WhatsApp DailyTopic: Checking topic', { chatId, projectId, userId })
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
@@ -49,11 +52,8 @@ async function getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId) {
     }
     console.log('WhatsApp DailyTopic: Creating new topic')
 
-    // Fetch user name for topic title
-    const user = await getUserData(userId)
     const firstName = getFirstName(user?.displayName || 'User')
-    const dateStr = moment().format('DD MMM YYYY')
-    const title = `Daily Whatsapp <> ${firstName} ${dateStr}`
+    const title = `Daily Whatsapp <> ${firstName} ${dateLabel}`
 
     const now = Date.now()
     const chatData = {
@@ -454,4 +454,7 @@ module.exports = {
     storeUserMessageInTopic,
     storeAssistantMessageInTopic,
     getConversationHistory,
+    __private__: {
+        getUserLocalDateContext,
+    },
 }

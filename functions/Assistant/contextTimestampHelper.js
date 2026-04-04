@@ -22,6 +22,18 @@ function resolveUserTimezoneOffset(userData = {}) {
     return null
 }
 
+function getUserLocalDateContext(userData = {}, timestamp = Date.now()) {
+    const normalizedOffset = normalizeContextTimezoneOffset(resolveUserTimezoneOffset(userData))
+    const momentValue =
+        normalizedOffset !== null ? moment.utc(timestamp).utcOffset(normalizedOffset) : moment.utc(timestamp)
+
+    return {
+        dateKey: momentValue.format('YYYYMMDD'),
+        dateLabel: momentValue.format('DD MMM YYYY'),
+        timezoneOffsetMinutes: normalizedOffset,
+    }
+}
+
 function formatUserTimezoneLabel(userTimezoneOffset = null) {
     const normalizedOffset = normalizeContextTimezoneOffset(userTimezoneOffset)
     if (normalizedOffset === null) return 'UTC'
@@ -84,4 +96,5 @@ module.exports = {
     formatContextMessageTimestamp,
     normalizeContextTimezoneOffset,
     resolveUserTimezoneOffset,
+    getUserLocalDateContext,
 }

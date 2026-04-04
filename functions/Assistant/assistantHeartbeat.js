@@ -1,7 +1,11 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
-const { addTimestampToContextContent, resolveUserTimezoneOffset } = require('./contextTimestampHelper')
+const {
+    addTimestampToContextContent,
+    resolveUserTimezoneOffset,
+    getUserLocalDateContext,
+} = require('./contextTimestampHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -64,10 +68,13 @@ async function getTopicConversationHistory(projectId, chatId, limit = 10, userTi
  * @param {string} userId
  * @param {string} projectId
  * @param {string} assistantId
+ * @param {Object|null} userData
  * @returns {Promise<{ chatId: string, isNew: boolean }>}
  */
-async function getOrCreateHeartbeatTopic(userId, projectId, assistantId) {
-    const today = moment().format('YYYYMMDD')
+async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userData = null) {
+    const user = userData || (await getUserData(userId))
+    const { dateKey, dateLabel } = getUserLocalDateContext(user)
+    const today = dateKey
     const chatId = `Heartbeat${today}${userId}`
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
 
@@ -91,10 +98,8 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId) {
         return { chatId, isNew: false }
     }
 
-    const user = await getUserData(userId)
     const firstName = getFirstName(user?.displayName || 'User')
-    const dateStr = moment().format('DD MMM YYYY')
-    const title = `Heartbeat <> ${firstName} ${dateStr}`
+    const title = `Heartbeat <> ${firstName} ${dateLabel}`
 
     const now = Date.now()
     const chatData = {
@@ -363,10 +368,10 @@ async function checkAndExecuteHeartbeats() {
                 let chatId
                 if (shouldSendWhatsApp) {
                     const { getOrCreateWhatsAppDailyTopic } = require('../WhatsApp/whatsAppDailyTopic')
-                    const result = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistant.uid)
+                    const result = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistant.uid, userData)
                     chatId = result.chatId
                 } else {
-                    const result = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid)
+                    const result = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid, userData)
                     chatId = result.chatId
                 }
 
