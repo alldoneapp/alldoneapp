@@ -34,6 +34,11 @@ function getBaseUrl() {
     return 'https://my.alldone.app'
 }
 
+function buildConversationUrl(baseUrl, projectId, objectId, objectType = 'tasks') {
+    const normalizedObjectType = objectType === 'topics' ? 'chats' : 'tasks'
+    return `${baseUrl}/projects/${projectId}/${normalizedObjectType}/${objectId}/chat`
+}
+
 // Emoji detection helpers to keep WhatsApp content within safe limits
 const EMOJI_CODEPOINT_RANGES = [
     [0x1f300, 0x1f5ff],
@@ -558,7 +563,7 @@ class TwilioWhatsAppService {
 
             // {{5}}: Conversation Link
             const baseUrl = getBaseUrl()
-            const conversationUrl = `${baseUrl}/projects/${projectId}/tasks/${taskId}/chat`
+            const conversationUrl = buildConversationUrl(baseUrl, projectId, taskId, taskData?.objectType)
 
             // {{6}}: Total open tasks count across all projects
             const openTasksCount = await this._countUserOpenTasks(userId)
@@ -847,3 +852,7 @@ Powered by Alldone Assistant 🚀`
 }
 
 module.exports = TwilioWhatsAppService
+module.exports.__private__ = {
+    getBaseUrl,
+    buildConversationUrl,
+}

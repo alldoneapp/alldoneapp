@@ -453,6 +453,7 @@ async function generatePreConfigTaskResult(
                                 name: taskMetadata.name || 'Task',
                                 recurrence: taskMetadata.recurrence || 'never',
                                 type: 'one-time',
+                                objectType,
                             },
                             aiCommentText || 'Task completed successfully by Alldone Assistant.'
                         )
