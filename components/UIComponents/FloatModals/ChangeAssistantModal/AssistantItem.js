@@ -39,19 +39,21 @@ export default function AssistantItem({
     const selectOption = () => {
         // If it's the default project option, resolve the actual assistant ID from default project
         const assistantIdToSet = isDefaultProjectOption ? assistant.uid : uid
+        const shouldUpdate = isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId
 
         console.log('[AssistantItem] Selecting assistant:', {
             isDefaultProjectOption,
             assistantName: displayName,
             assistantIdToSet,
             previousAssistantId: currentAssistantId,
-            willUpdate: isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId,
+            willUpdate: shouldUpdate,
         })
 
-        if (isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId) {
+        if (shouldUpdate) {
             updateAssistant(assistantIdToSet)
+        } else {
+            closeModal()
         }
-        closeModal()
     }
 
     return (

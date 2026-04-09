@@ -29,6 +29,29 @@ import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFires
 import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actions'
 import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 
+const normalizeAssistantObjectType = objectType => {
+    switch (objectType) {
+        case 'task':
+            return 'tasks'
+        case 'chat':
+            return 'chats'
+        case 'topic':
+            return 'topics'
+        case 'note':
+            return 'notes'
+        case 'contact':
+            return 'contacts'
+        case 'user':
+            return 'users'
+        case 'skill':
+            return 'skills'
+        case 'goal':
+            return 'goals'
+        default:
+            return objectType
+    }
+}
+
 export default function BotOptionsModal({
     objectType,
     objectId,
@@ -46,16 +69,17 @@ export default function BotOptionsModal({
     const [selectedTask, setSelectedTask] = useState(null)
     const [showAssistants, setShowAssistants] = useState(false)
     const [width, height] = useWindowSize()
+    const normalizedObjectType = normalizeAssistantObjectType(objectType)
 
     const assistant = getAssistantInProjectObject(projectId, assistantId)
 
     const setAssistantEnabledForObject = isEnabled => {
-        setObjectAssistantEnabled(projectId, objectId, objectType, isEnabled)
+        setObjectAssistantEnabled(projectId, objectId, normalizedObjectType, isEnabled)
         if (parentObject) {
             const updatedObject = { ...parentObject, isAssistantEnabled: isEnabled }
-            if (objectType === 'tasks') {
+            if (normalizedObjectType === 'tasks') {
                 dispatch(setTaskInDetailView(updatedObject))
-            } else if (objectType === 'notes') {
+            } else if (normalizedObjectType === 'notes') {
                 dispatch(setSelectedNote(updatedObject))
             }
             if (updateObjectState) {
@@ -66,30 +90,39 @@ export default function BotOptionsModal({
     }
 
     const updateAssistant = selectedAssistantId => {
-        closeModal()
+        console.log('[BotOptionsModal] updateAssistant called:', {
+            objectType,
+            normalizedObjectType,
+            projectId,
+            objectId,
+            previousAssistantId: assistantId,
+            selectedAssistantId,
+        })
+
         setAssistantId?.(selectedAssistantId)
-        if (objectType === 'tasks') {
+
+        if (normalizedObjectType === 'tasks') {
             setTaskAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (objectType === 'chats' || objectType === 'topics') {
+        } else if (normalizedObjectType === 'chats' || normalizedObjectType === 'topics') {
             updateChatAssistant(projectId, objectId, selectedAssistantId)
-        } else if (objectType === 'notes') {
+        } else if (normalizedObjectType === 'notes') {
             setNoteAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (objectType === 'contacts') {
+        } else if (normalizedObjectType === 'contacts') {
             setContactAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (objectType === 'users') {
+        } else if (normalizedObjectType === 'users') {
             setUserAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (objectType === 'skills') {
+        } else if (normalizedObjectType === 'skills') {
             setSkillAssistant(projectId, objectId, selectedAssistantId, true)
-        } else if (objectType === 'goals') {
+        } else if (normalizedObjectType === 'goals') {
             setGoalAssistant(projectId, objectId, selectedAssistantId, true)
         }
 
         // Optimistic update for UI
         if (parentObject) {
             const updatedObject = { ...parentObject, assistantId: selectedAssistantId }
-            if (objectType === 'tasks') {
+            if (normalizedObjectType === 'tasks') {
                 dispatch(setTaskInDetailView(updatedObject))
-            } else if (objectType === 'notes') {
+            } else if (normalizedObjectType === 'notes') {
                 dispatch(setSelectedNote(updatedObject))
             }
         }
@@ -102,6 +135,7 @@ export default function BotOptionsModal({
 
         dispatch(setAssistantEnabled(true))
         onSelectBotOption()
+        closeModal()
     }
 
     const enableAssistantForObject = () => {
@@ -135,7 +169,7 @@ export default function BotOptionsModal({
                     }}
                     projectId={projectId}
                     updateAssistant={updateAssistant}
-                    currentAssistantId={assistant.uid}
+                    currentAssistantId={assistantId || assistant?.uid}
                 />
             ) : selectedTask ? (
                 <PreConfigTaskGeneratorModal
@@ -158,7 +192,7 @@ export default function BotOptionsModal({
                             ? {
                                   name: parentObject.title || parentObject.name,
                                   id: parentObject.noteId || parentObject.id || parentObject.uid,
-                                  type: parentObject.noteId ? 'note' : objectType,
+                                  type: parentObject.noteId ? 'note' : normalizedObjectType,
                               }
                             : null
                     }
@@ -171,7 +205,7 @@ export default function BotOptionsModal({
                         description={translate('Using the Alldone Assistant will cost gold based on how much you chat')}
                         description2={translate('Select from the options below')}
                     />
-                    {objectType !== 'assistants' && (
+                    {normalizedObjectType !== 'assistants' && (
                         <>
                             <SelectAssistantsOption setShowAssistants={setShowAssistants} />
                             <Line style={{ marginVertical: 4 }} />

@@ -43,6 +43,7 @@ export default function ChatInput({
     setWaitingForBotAnswer,
     creatorData,
     assistantId,
+    setAssistantId,
     objectType,
     setAmountOfNewCommentsToHighligth,
     onMessageSent,
@@ -377,6 +378,7 @@ export default function ChatInput({
                 showRunOutGoalModal={showRunOutGoalModal}
                 creatorData={creatorData}
                 assistantId={assistantId}
+                setAssistantId={setAssistantId}
                 objectId={chat.id}
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}

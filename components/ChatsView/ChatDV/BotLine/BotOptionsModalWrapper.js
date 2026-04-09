@@ -11,7 +11,14 @@ import { setAssistantEnabled, setShowNotificationAboutTheBotBehavior } from '../
 import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
-export default function BotOptionsModalWrapper({ objectId, objectType, assistantId, projectId, parentObject }) {
+export default function BotOptionsModalWrapper({
+    objectId,
+    objectType,
+    assistantId,
+    setAssistantId,
+    projectId,
+    parentObject,
+}) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const mainChatEditor = useSelector(state => state.mainChatEditor)
@@ -57,6 +64,7 @@ export default function BotOptionsModalWrapper({ objectId, objectType, assistant
                         closeModal={closeModal}
                         onSelectBotOption={onSelectBotOption}
                         assistantId={assistantId}
+                        setAssistantId={setAssistantId}
                         projectId={projectId}
                         objectId={objectId}
                         objectType={objectType}

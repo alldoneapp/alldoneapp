@@ -63,6 +63,8 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
             // For projects, assistantId can be null/empty to use default project's assistant
             setProjectAssistant(projectId, assistantId || '', !!currentAssistantId)
         }
+
+        closeModal()
     }
 
     return (

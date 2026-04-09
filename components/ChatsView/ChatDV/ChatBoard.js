@@ -38,7 +38,16 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 
-export default function ChatBoard({ projectId, chat, parentObject, assistantId, chatTitle, members, objectType }) {
+export default function ChatBoard({
+    projectId,
+    chat,
+    parentObject,
+    assistantId,
+    setAssistantId,
+    chatTitle,
+    members,
+    objectType,
+}) {
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -267,6 +276,7 @@ export default function ChatBoard({ projectId, chat, parentObject, assistantId, 
                     members={members}
                     setWaitingForBotAnswer={setWaitingForBotAnswer}
                     assistantId={assistantId}
+                    setAssistantId={setAssistantId}
                     objectType={objectType}
                     setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
                     onMessageSent={onMessageSent}

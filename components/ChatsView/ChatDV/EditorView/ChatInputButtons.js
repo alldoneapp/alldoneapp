@@ -35,6 +35,7 @@ export default function ChatInputButtons({
     showRunOutGoalModal,
     creatorData,
     assistantId,
+    setAssistantId,
     objectId,
     objectType,
     assistantEnabled,
@@ -126,6 +127,7 @@ export default function ChatInputButtons({
                         objectId={objectId}
                         projectId={projectId}
                         assistantId={assistantId}
+                        setAssistantId={setAssistantId}
                         objectType={objectType}
                         assistantEnabled={assistantEnabled}
                     />

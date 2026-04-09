@@ -10,7 +10,7 @@ import { DV_TAB_CHAT_BOARD, DV_TAB_CHAT_NOTE } from '../../../utils/TabNavigatio
 import styles, { colors } from '../../styles/global'
 import SharedHelper from '../../../utils/SharedHelper'
 
-const Header = ({ projectId, chat, isFullscreen, setFullscreen }) => {
+const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, setFullscreen }) => {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -72,7 +72,8 @@ const Header = ({ projectId, chat, isFullscreen, setFullscreen }) => {
                     <BotLine
                         setFullscreen={setFullscreen}
                         objectId={chat.id}
-                        assistantId={chat.assistantId}
+                        assistantId={assistantId}
+                        setAssistantId={setAssistantId}
                         projectId={projectId}
                         objectType={'chats'}
                         parentObject={null}

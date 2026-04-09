@@ -46,6 +46,7 @@ const ChatDetailedView = ({ navigation }) => {
     const projectId = navigation.getParam('projectId', {})
     const [chat, setChat] = useState(navigation.getParam('chat', {}))
     const [isFullscreen, setFullscreen] = useState(false)
+    const [assistantId, setAssistantId] = useState(chat?.assistantId || '')
     const CustomView = selectedTab === DV_TAB_CHAT_BOARD || selectedTab === DV_TAB_CHAT_NOTE ? View : CustomScrollView
     const scrollRef = useRef()
     usePrivateProject(projectId)
@@ -74,7 +75,12 @@ const ChatDetailedView = ({ navigation }) => {
     const updateChat = chatUpdated => {
         if (chatUpdated) {
             const isPrivateForUser = checkIfIsPrivateChat(chatUpdated.isPublicFor)
-            isPrivateForUser ? redirectOut(true) : setChat(chatUpdated)
+            if (isPrivateForUser) {
+                redirectOut(true)
+            } else {
+                setChat(chatUpdated)
+                setAssistantId(chatUpdated.assistantId || '')
+            }
         } else {
             redirectOut(false)
         }
@@ -131,6 +137,8 @@ const ChatDetailedView = ({ navigation }) => {
                         navigation={navigation}
                         projectId={projectId}
                         chat={chat}
+                        assistantId={assistantId}
+                        setAssistantId={setAssistantId}
                         isFullscreen={isFullscreen}
                         setFullscreen={setFullscreen}
                     />
@@ -151,7 +159,8 @@ const ChatDetailedView = ({ navigation }) => {
                                             projectId={projectId}
                                             chatTitle={chat?.title}
                                             members={chat?.usersFollowing}
-                                            assistantId={chat.assistantId}
+                                            assistantId={assistantId}
+                                            setAssistantId={setAssistantId}
                                             objectType={'chats'}
                                         />
                                     )

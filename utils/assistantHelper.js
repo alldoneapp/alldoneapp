@@ -37,8 +37,20 @@ export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 export const setObjectAssistantEnabled = async (projectId, objectId, objectType, isAssistantEnabled) => {
     if (!objectId || !objectType) return
 
+    const normalizedObjectType =
+        {
+            task: 'tasks',
+            chat: 'chats',
+            topic: 'topics',
+            note: 'notes',
+            contact: 'contacts',
+            user: 'users',
+            skill: 'skills',
+            goal: 'goals',
+        }[objectType] || objectType
+
     let collectionPath = ''
-    switch (objectType) {
+    switch (normalizedObjectType) {
         case 'tasks':
             collectionPath = `items/${projectId}/tasks`
             break
@@ -67,7 +79,7 @@ export const setObjectAssistantEnabled = async (projectId, objectId, objectType,
     }
 
     const docPath =
-        objectType === 'users' || objectType === 'assistants'
+        normalizedObjectType === 'users' || normalizedObjectType === 'assistants'
             ? `${collectionPath}/${objectId}`
             : `${collectionPath}/${objectId}`
     try {
