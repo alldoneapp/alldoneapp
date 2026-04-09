@@ -39,6 +39,42 @@ function buildConversationUrl(baseUrl, projectId, objectId, objectType = 'tasks'
     return `${baseUrl}/projects/${projectId}/${normalizedObjectType}/${objectId}/chat`
 }
 
+const MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH = 1400
+const READ_FULL_MESSAGE_PREFIX = '\n\nRead full message: '
+
+function truncateMessageWithConversationLink(message, conversationUrl) {
+    const normalizedMessage = typeof message === 'string' ? message : String(message ?? '')
+
+    if (normalizedMessage.length <= MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH) {
+        return {
+            message: normalizedMessage,
+            truncated: false,
+        }
+    }
+
+    if (!conversationUrl) {
+        return {
+            message: `${normalizedMessage.slice(0, MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH - 3).trimEnd()}...`,
+            truncated: true,
+        }
+    }
+
+    const suffix = `${READ_FULL_MESSAGE_PREFIX}${conversationUrl}`
+    const maxMessageLength = MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH - suffix.length - 3
+
+    if (maxMessageLength <= 0) {
+        return {
+            message: `${conversationUrl}`.slice(0, MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH),
+            truncated: true,
+        }
+    }
+
+    return {
+        message: `${normalizedMessage.slice(0, maxMessageLength).trimEnd()}...${suffix}`,
+        truncated: true,
+    }
+}
+
 // Emoji detection helpers to keep WhatsApp content within safe limits
 const EMOJI_CODEPOINT_RANGES = [
     [0x1f300, 0x1f5ff],
@@ -400,22 +436,38 @@ class TwilioWhatsAppService {
      * @param {string} message - Message content
      * @returns {Promise<Object>} - Twilio message response
      */
-    async sendWhatsAppMessage(to, message) {
+    async sendWhatsAppMessage(to, message, { projectId, objectId, objectType = 'tasks' } = {}) {
         try {
             const client = this._initializeTwilioClient()
             const formattedTo = this._formatWhatsAppNumber(to)
+            const baseUrl = getBaseUrl()
+            const conversationUrl =
+                projectId && objectId ? buildConversationUrl(baseUrl, projectId, objectId, objectType) : undefined
+            const preparedMessage = truncateMessageWithConversationLink(message, conversationUrl)
+
+            if (preparedMessage.truncated) {
+                console.log('WhatsApp plain message truncated before send:', {
+                    projectId,
+                    objectId,
+                    objectType,
+                    originalLength: typeof message === 'string' ? message.length : String(message ?? '').length,
+                    truncatedLength: preparedMessage.message.length,
+                    hasConversationUrl: !!conversationUrl,
+                    conversationUrl,
+                })
+            }
 
             console.log('Sending WhatsApp message:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                messageLength: message.length,
+                messageLength: preparedMessage.message.length,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                body: message,
+                body: preparedMessage.message,
             })
 
             console.log('WhatsApp message sent successfully:', {
@@ -451,6 +503,20 @@ class TwilioWhatsAppService {
                 message: 'Failed to send WhatsApp message',
             }
         }
+    }
+
+    /**
+     * Send a plain WhatsApp message, truncating oversized content and appending a conversation link.
+     * @param {string} to - Recipient phone number
+     * @param {string} message - Message content
+     * @param {Object} options
+     * @param {string} options.projectId - Project ID for the conversation URL
+     * @param {string} options.objectId - Task/topic ID for the conversation URL
+     * @param {string} [options.objectType='tasks'] - Conversation object type
+     * @returns {Promise<Object>} - Twilio message response
+     */
+    async sendWhatsAppMessageWithConversationLink(to, message, { projectId, objectId, objectType = 'tasks' } = {}) {
+        return await this.sendWhatsAppMessage(to, message, { projectId, objectId, objectType })
     }
 
     /**
@@ -855,4 +921,6 @@ module.exports = TwilioWhatsAppService
 module.exports.__private__ = {
     getBaseUrl,
     buildConversationUrl,
+    truncateMessageWithConversationLink,
+    MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH,
 }

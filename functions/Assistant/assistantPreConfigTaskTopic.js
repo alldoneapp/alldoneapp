@@ -437,9 +437,14 @@ async function generatePreConfigTaskResult(
                     let whatsappResult
                     if (hasRecentUserMessage) {
                         console.log('User has recent message in topic, sending plain WhatsApp message')
-                        whatsappResult = await whatsappService.sendWhatsAppMessage(
+                        whatsappResult = await whatsappService.sendWhatsAppMessageWithConversationLink(
                             userPhone,
-                            aiCommentText || 'Task completed successfully by Alldone Assistant.'
+                            aiCommentText || 'Task completed successfully by Alldone Assistant.',
+                            {
+                                projectId,
+                                objectId,
+                                objectType,
+                            }
                         )
                     } else {
                         console.log('No recent user message in topic, sending WhatsApp template')
