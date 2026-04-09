@@ -520,6 +520,35 @@ function CustomTextInput3(
         }
     }
 
+    const notifyTextChange = (
+        extendedText,
+        linkedNotesUrls,
+        linkedTasksUrls,
+        linkedContactsUrls,
+        linkedProjectsUrls,
+        linkedGoalsUrls,
+        linkedSkillsUrls,
+        linkedAssistantUrls
+    ) => {
+        if (!onChangeText) return
+
+        if (onChangeText.length <= 1) {
+            onChangeText(extendedText)
+            return
+        }
+
+        onChangeText(
+            extendedText,
+            linkedNotesUrls,
+            linkedTasksUrls,
+            linkedContactsUrls,
+            linkedProjectsUrls,
+            linkedGoalsUrls,
+            linkedSkillsUrls,
+            linkedAssistantUrls
+        )
+    }
+
     const updateText = (htmlContent, delta) => {
         setHtml(htmlContent)
         const newDelta = onChangeDelta?.(delta, quillRef, editorId, userEditingTagsId) || delta
@@ -586,7 +615,7 @@ function CustomTextInput3(
                 linkedSkillsUrls,
                 linkedAssistantUrls,
             } = getFinalText()
-            onChangeText(
+            notifyTextChange(
                 extendedText,
                 linkedNotesUrls,
                 linkedTasksUrls,
