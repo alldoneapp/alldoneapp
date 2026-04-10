@@ -103,7 +103,7 @@ export async function updateChatAssistant(projectId, chatId, assistantId) {
         chatId,
         assistantId,
     })
-    updateChatData(projectId, chatId, { assistantId }, null)
+    await updateChatData(projectId, chatId, { assistantId }, null)
 }
 
 export async function updateChatTitleWithoutFeeds(projectId, chatId, newChatTitle, externalBatch) {
@@ -120,7 +120,7 @@ export async function updateChatAssistantWithoutFeeds(projectId, chatId, assista
     if (doc.exists) {
         const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
         updateChatData(projectId, chatId, { assistantId }, batch)
-        !externalBatch && batch.commit()
+        if (!externalBatch) await batch.commit()
     }
 }
 

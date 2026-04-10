@@ -244,8 +244,8 @@ export const setNoteAssistant = async (projectId, noteId, assistantId, needGener
     const batch = new BatchWrapper(getDb())
     await updateNoteData(projectId, noteId, { assistantId }, batch)
     await updateChatAssistantWithoutFeeds(projectId, noteId, assistantId, batch)
-    batch.commit()
-    if (needGenerateUpdate) createNoteAssistantChangedFeed(projectId, assistantId, noteId, null, null)
+    await batch.commit()
+    if (needGenerateUpdate) await createNoteAssistantChangedFeed(projectId, assistantId, noteId, null, null)
 }
 
 export async function updateNoteStickyData(projectId, noteId, stickyData) {

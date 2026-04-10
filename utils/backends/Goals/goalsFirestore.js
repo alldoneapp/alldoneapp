@@ -804,8 +804,8 @@ export const setGoalAssistant = async (projectId, goalId, assistantId, needGener
     const batch = new BatchWrapper(getDb())
     updateGoalData(projectId, goalId, { assistantId }, batch)
     await updateChatAssistantWithoutFeeds(projectId, goalId, assistantId, batch)
-    batch.commit()
-    if (needGenerateUpdate) createGoalAssistantChangedFeed(projectId, assistantId, goalId, null, null)
+    await batch.commit()
+    if (needGenerateUpdate) await createGoalAssistantChangedFeed(projectId, assistantId, goalId, null, null)
 }
 
 export async function updateGoalAssigneesIds(

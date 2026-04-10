@@ -252,8 +252,8 @@ export const setUserAssistant = async (projectId, userId, assistantId, needGener
     const batch = new BatchWrapper(getDb())
     updateUserData(userId, { assistantId }, batch)
     await updateChatAssistantWithoutFeeds(projectId, userId, assistantId, batch)
-    batch.commit()
-    if (needGenerateUpdate) createUserAssistantChangedFeed(projectId, assistantId, userId, null, null)
+    await batch.commit()
+    if (needGenerateUpdate) await createUserAssistantChangedFeed(projectId, assistantId, userId, null, null)
 }
 
 export const setUserNote = async (projectId, userId, noteId) => {

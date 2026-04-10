@@ -261,8 +261,8 @@ export const setSkillAssistant = async (projectId, skillId, assistantId, needGen
     const batch = new BatchWrapper(getDb())
     updateSkillData(projectId, skillId, { assistantId }, batch)
     await updateChatAssistantWithoutFeeds(projectId, skillId, assistantId, batch)
-    batch.commit()
-    if (needGenerateUpdate) createSkillAssistantChangedFeed(projectId, assistantId, skillId, null)
+    await batch.commit()
+    if (needGenerateUpdate) await createSkillAssistantChangedFeed(projectId, assistantId, skillId, null)
 }
 
 export function updateSkillPrivacy(projectId, skill, isPublicFor) {

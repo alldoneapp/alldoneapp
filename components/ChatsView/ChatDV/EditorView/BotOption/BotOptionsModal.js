@@ -89,7 +89,7 @@ export default function BotOptionsModal({
         dispatch(setAssistantEnabled(isEnabled))
     }
 
-    const updateAssistant = selectedAssistantId => {
+    const updateAssistant = async selectedAssistantId => {
         console.log('[BotOptionsModal] updateAssistant called:', {
             objectType,
             normalizedObjectType,
@@ -102,19 +102,19 @@ export default function BotOptionsModal({
         setAssistantId?.(selectedAssistantId)
 
         if (normalizedObjectType === 'tasks') {
-            setTaskAssistant(projectId, objectId, selectedAssistantId, true)
+            await setTaskAssistant(projectId, objectId, selectedAssistantId, true)
         } else if (normalizedObjectType === 'chats' || normalizedObjectType === 'topics') {
-            updateChatAssistant(projectId, objectId, selectedAssistantId)
+            await updateChatAssistant(projectId, objectId, selectedAssistantId)
         } else if (normalizedObjectType === 'notes') {
-            setNoteAssistant(projectId, objectId, selectedAssistantId, true)
+            await setNoteAssistant(projectId, objectId, selectedAssistantId, true)
         } else if (normalizedObjectType === 'contacts') {
-            setContactAssistant(projectId, objectId, selectedAssistantId, true)
+            await setContactAssistant(projectId, objectId, selectedAssistantId, true)
         } else if (normalizedObjectType === 'users') {
-            setUserAssistant(projectId, objectId, selectedAssistantId, true)
+            await setUserAssistant(projectId, objectId, selectedAssistantId, true)
         } else if (normalizedObjectType === 'skills') {
-            setSkillAssistant(projectId, objectId, selectedAssistantId, true)
+            await setSkillAssistant(projectId, objectId, selectedAssistantId, true)
         } else if (normalizedObjectType === 'goals') {
-            setGoalAssistant(projectId, objectId, selectedAssistantId, true)
+            await setGoalAssistant(projectId, objectId, selectedAssistantId, true)
         }
 
         // Optimistic update for UI
