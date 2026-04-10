@@ -133,8 +133,6 @@ export default function BotOptionsModal({
             updateObjectState(updatedObject)
         }
 
-        dispatch(setAssistantEnabled(true))
-        onSelectBotOption()
         closeModal()
     }
 
