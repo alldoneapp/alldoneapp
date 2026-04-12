@@ -1,0 +1,169 @@
+const mockInteractWithChatStream = jest.fn()
+const mockStoreBotAnswerStream = jest.fn()
+const mockAddBaseInstructions = jest.fn(async () => {})
+const mockReduceGoldWhenChatWithAI = jest.fn(async () => {})
+const mockGetCommonData = jest.fn()
+const mockGetUserDataOptimized = jest.fn()
+const mockRemoveSingleChatNotification = jest.fn(async () => {})
+const mockSendTaskCompletionNotification = jest.fn()
+const mockSendWhatsAppMessageWithConversationLink = jest.fn()
+
+const mockBuildEmptyQuerySnapshot = () => ({ empty: true })
+
+global.crypto = require('crypto').webcrypto
+
+jest.mock('./assistantHelper', () => ({
+    interactWithChatStream: (...args) => mockInteractWithChatStream(...args),
+    storeBotAnswerStream: (...args) => mockStoreBotAnswerStream(...args),
+    addBaseInstructions: (...args) => mockAddBaseInstructions(...args),
+    parseTextForUseLiKePrompt: jest.fn(text => text),
+    reduceGoldWhenChatWithAI: (...args) => mockReduceGoldWhenChatWithAI(...args),
+    getTaskOrAssistantSettings: jest.fn(),
+    getAssistantForChat: jest.fn(),
+    getCommonData: (...args) => mockGetCommonData(...args),
+    normalizeModelKey: jest.fn(model => model),
+}))
+
+jest.mock('./firestoreOptimized', () => ({
+    getUserDataOptimized: (...args) => mockGetUserDataOptimized(...args),
+}))
+
+jest.mock('./assistantStatusHelper', () => ({
+    createInitialStatusMessage: jest.fn(),
+}))
+
+jest.mock('./contextTimestampHelper', () => ({
+    resolveUserTimezoneOffset: jest.fn(() => null),
+}))
+
+jest.mock('./noteContextHelper', () => ({
+    fetchMentionedNotesContext: jest.fn(async () => ''),
+}))
+
+jest.mock('../Chats/chatsFirestoreCloud', () => ({
+    removeSingleChatNotification: (...args) => mockRemoveSingleChatNotification(...args),
+}))
+
+jest.mock('../Services/TwilioWhatsAppService', () =>
+    jest.fn().mockImplementation(() => ({
+        sendTaskCompletionNotification: (...args) => mockSendTaskCompletionNotification(...args),
+        sendWhatsAppMessageWithConversationLink: (...args) => mockSendWhatsAppMessageWithConversationLink(...args),
+    }))
+)
+
+jest.mock('firebase-admin', () => {
+    const docGet = jest.fn(async path => ({
+        data: () => (path === 'users/user-1' ? { phone: '+1234567890' } : {}),
+    }))
+
+    const query = {
+        where: jest.fn(() => query),
+        orderBy: jest.fn(() => query),
+        limit: jest.fn(() => query),
+        get: jest.fn(async () => mockBuildEmptyQuerySnapshot()),
+    }
+
+    return {
+        firestore: jest.fn(() => ({
+            doc: jest.fn(path => ({
+                get: jest.fn(async () => docGet(path)),
+            })),
+            collection: jest.fn(() => query),
+        })),
+    }
+})
+
+jest.mock(
+    '@dqbd/tiktoken/lite',
+    () => ({
+        Tiktoken: jest.fn().mockImplementation(() => ({})),
+    }),
+    { virtual: true }
+)
+
+jest.mock(
+    '@dqbd/tiktoken/encoders/cl100k_base.json',
+    () => ({
+        bpe_ranks: {},
+        special_tokens: {},
+        pat_str: '',
+    }),
+    { virtual: true }
+)
+
+const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+
+describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
+    const aiSettings = {
+        model: 'MODEL_GPT5_4',
+        temperature: 'TEMPERATURE_NORMAL',
+        systemMessage: 'Be helpful',
+        assistantDisplayName: 'Anna',
+        assistantUid: 'assistant-1',
+        allowedTools: [],
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+
+        mockGetUserDataOptimized.mockResolvedValue({ gold: 10, uid: 'user-1' })
+        mockInteractWithChatStream.mockResolvedValue({})
+        mockGetCommonData.mockResolvedValue({
+            project: { id: 'project-1', name: 'Project A' },
+            chat: { title: 'Heartbeat' },
+            chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
+        })
+        mockStoreBotAnswerStream.mockImplementation(async (...args) => {
+            const streamOutput = args[args.length - 1]
+            if (streamOutput && typeof streamOutput === 'object') {
+                streamOutput.commentId = 'comment-1'
+            }
+            return 'AI reply'
+        })
+        mockReduceGoldWhenChatWithAI.mockResolvedValue(undefined)
+        mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true })
+    })
+
+    test('marks assistant message as read after successful direct WhatsApp delivery', async () => {
+        mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
+
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Heartbeat prompt',
+            'en',
+            aiSettings,
+            { sendWhatsApp: true, name: 'Heartbeat' },
+            null,
+            'topics'
+        )
+
+        expect(mockSendTaskCompletionNotification).toHaveBeenCalled()
+        expect(mockRemoveSingleChatNotification).toHaveBeenCalledWith('project-1', 'user-1', 'comment-1')
+    })
+
+    test('keeps assistant message unread when direct WhatsApp delivery does not succeed', async () => {
+        mockSendTaskCompletionNotification.mockResolvedValue({ success: false })
+
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Heartbeat prompt',
+            'en',
+            aiSettings,
+            { sendWhatsApp: true, name: 'Heartbeat' },
+            null,
+            'topics'
+        )
+
+        expect(mockRemoveSingleChatNotification).not.toHaveBeenCalled()
+    })
+})

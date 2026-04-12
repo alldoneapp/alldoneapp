@@ -5273,7 +5273,8 @@ async function storeChunks(
     modelKey = null,
     temperatureKey = null,
     allowedTools = [],
-    toolRuntimeContext = null
+    toolRuntimeContext = null,
+    streamOutput = null
 ) {
     const chunksStartTime = Date.now()
     console.log('🔄 [TIMING] storeChunks START', {
@@ -5292,6 +5293,9 @@ async function storeChunks(
         const { commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId)
         comment.isLoading = true
         comment.isThinking = false
+        if (streamOutput && typeof streamOutput === 'object') {
+            streamOutput.commentId = commentId
+        }
 
         let promises = []
         promises.push(getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor))
@@ -6076,7 +6080,8 @@ async function storeBotAnswerStream(
     allowedTools = [],
     commonData = null, // Optional pre-fetched common data to reduce time-to-first-token
     functionStartTime = null, // Optional function start time for time-to-first-token tracking
-    toolRuntimeContext = null
+    toolRuntimeContext = null,
+    streamOutput = null
 ) {
     const streamProcessStart = Date.now()
     // Store function start time globally for time-to-first-token tracking
@@ -6131,7 +6136,8 @@ async function storeBotAnswerStream(
                   modelKey,
                   temperatureKey,
                   allowedTools,
-                  toolRuntimeContext
+                  toolRuntimeContext,
+                  streamOutput
               )
             : ''
         const storeChunksDuration = Date.now() - storeChunksStart

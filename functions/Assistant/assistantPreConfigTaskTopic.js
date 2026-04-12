@@ -12,6 +12,7 @@ const {
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
+const { removeSingleChatNotification } = require('../Chats/chatsFirestoreCloud')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
 // Pre-load tiktoken at module load (performance optimization)
@@ -346,6 +347,7 @@ async function generatePreConfigTaskResult(
 
         // Step 4: Process stream
         const step4Start = Date.now()
+        const streamOutput = {}
         const aiCommentText = await storeBotAnswerStream(
             projectId,
             objectType,
@@ -365,7 +367,8 @@ async function generatePreConfigTaskResult(
             allowedTools,
             commonData, // Pass pre-fetched common data
             timeToFirstTokenStart, // Pass entry time for accurate time-to-first-token tracking
-            toolRuntimeContext
+            toolRuntimeContext,
+            streamOutput
         )
         const step4Duration = Date.now() - step4Start
 
@@ -470,6 +473,10 @@ async function generatePreConfigTaskResult(
                         success: whatsappResult.success,
                         usedTemplate: !hasRecentUserMessage,
                     })
+
+                    if (whatsappResult.success && streamOutput.commentId) {
+                        await removeSingleChatNotification(projectId, userId, streamOutput.commentId)
+                    }
                 } else {
                     console.log('No phone number found for WhatsApp notification:', { userId })
                 }

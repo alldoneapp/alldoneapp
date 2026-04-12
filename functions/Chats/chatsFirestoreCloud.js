@@ -47,6 +47,12 @@ const deleteChatNotifcation = (projectId, userId, commentId, batch) => {
     batch.delete(admin.firestore().doc(`chatNotifications/${projectId}/${userId}/${commentId}`))
 }
 
+const removeSingleChatNotification = async (projectId, userId, commentId) => {
+    if (!projectId || !userId || !commentId) return
+
+    await admin.firestore().doc(`chatNotifications/${projectId}/${userId}/${commentId}`).delete()
+}
+
 const deleteChatNotifications = async (projectId, userId, chatId) => {
     const promises = []
     promises.push(getChatNotifcations(projectId, userId, chatId, true))
@@ -95,6 +101,7 @@ module.exports = {
     getChat,
     updateChatEditionData,
     deleteChatNotifications,
+    removeSingleChatNotification,
     getChatPushNotifications,
     removeChatPushNotifications,
 }

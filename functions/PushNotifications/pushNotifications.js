@@ -2,7 +2,11 @@ const admin = require('firebase-admin')
 const { uniq } = require('lodash')
 
 const { removeUserFcmTokens, getUserData } = require('../Users/usersFirestore')
-const { getChatPushNotifications, removeChatPushNotifications } = require('../Chats/chatsFirestoreCloud')
+const {
+    getChatPushNotifications,
+    removeChatPushNotifications,
+    removeSingleChatNotification,
+} = require('../Chats/chatsFirestoreCloud')
 const { divideArrayIntoSubgroups } = require('../Utils/HelperFunctionsCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
@@ -136,6 +140,7 @@ const sendWhatsAppForNotifications = async (notifications, usersMap) => {
     notifications.forEach(notification => {
         const { userIds, body, link, chatId, projectId } = notification
         const { projectName: parsedProjectName, objectName: parsedObjectName, updateText } = parsePushBody(body)
+        const commentId = notification.id
 
         const initiatorId = notification.initiatorId || null
 
@@ -170,6 +175,8 @@ const sendWhatsAppForNotifications = async (notifications, usersMap) => {
                                 updateText,
                                 link
                             )
+
+                            await removeSingleChatNotification(projectId, user.uid, commentId)
                         } catch (e) {
                             console.error('WhatsApp send failed for user', {
                                 userId,
