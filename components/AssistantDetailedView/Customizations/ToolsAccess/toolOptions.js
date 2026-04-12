@@ -5,6 +5,7 @@ export const TOOL_OPTIONS = [
     { key: 'update_note', labelKey: 'Update note' },
     { key: 'update_contact', labelKey: 'Update contact' },
     { key: 'update_user_memory', labelKey: 'Update user memory' },
+    { key: 'update_heartbeat_settings', labelKey: 'Update heartbeat settings' },
     { key: 'get_tasks', labelKey: 'Get tasks' },
     { key: 'get_focus_task', labelKey: 'Get focus task' },
     { key: 'get_user_projects', labelKey: 'Get user projects' },

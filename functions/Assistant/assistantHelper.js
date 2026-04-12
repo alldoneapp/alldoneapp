@@ -56,6 +56,13 @@ const {
     extractImageUrlsFromMessageContent,
     injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
+const {
+    normalizeHeartbeatIntervalMs,
+    normalizeHeartbeatChancePercent,
+    parseHeartbeatTimeString,
+    getNormalizedHeartbeatSettings,
+    buildHeartbeatSettingsContextMessage,
+} = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const { addTimestampToContextContent, formatContextMessageTimestamp } = require('./contextTimestampHelper')
 
@@ -92,6 +99,7 @@ const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
 const ALLOWED_DELEGATION_TARGET_KEYS_FIELD = 'allowedDelegationTargetKeys'
 const EXTERNAL_TOOLS_KEY = 'external_tools'
+const UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY = 'update_heartbeat_settings'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
@@ -4327,6 +4335,115 @@ async function executeToolNatively(
             })
         }
 
+        case UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY: {
+            const hasOwn = key => Object.prototype.hasOwnProperty.call(toolArgs || {}, key)
+            const resolvedAssistant = await resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId)
+
+            if (!resolvedAssistant) {
+                throw new Error('Assistant not found for heartbeat settings update.')
+            }
+
+            const currentAssistant = resolvedAssistant.assistant || {}
+            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
+            if (!allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {
+                throw new Error(`Tool not permitted: ${UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY}`)
+            }
+
+            const patch = {}
+            const updatedFields = []
+
+            if (hasOwn('intervalMinutes')) {
+                const numericIntervalMinutes = Number(toolArgs.intervalMinutes)
+                if (!Number.isFinite(numericIntervalMinutes)) {
+                    throw new Error('intervalMinutes must be a number.')
+                }
+
+                patch.heartbeatIntervalMs = normalizeHeartbeatIntervalMs(numericIntervalMinutes * 60 * 1000)
+                updatedFields.push('intervalMinutes')
+            }
+
+            if (hasOwn('chancePercent')) {
+                const numericChancePercent = Number(toolArgs.chancePercent)
+                if (!Number.isFinite(numericChancePercent)) {
+                    throw new Error('chancePercent must be a number.')
+                }
+
+                patch.heartbeatChancePercent = normalizeHeartbeatChancePercent(numericChancePercent, 0)
+                updatedFields.push('chancePercent')
+            }
+
+            if (hasOwn('awakeStartTime')) {
+                const awakeStartMs = parseHeartbeatTimeString(toolArgs.awakeStartTime)
+                if (awakeStartMs === null) {
+                    throw new Error('awakeStartTime must use HH:mm format.')
+                }
+
+                patch.heartbeatAwakeStart = awakeStartMs
+                updatedFields.push('awakeStartTime')
+            }
+
+            if (hasOwn('awakeEndTime')) {
+                const awakeEndMs = parseHeartbeatTimeString(toolArgs.awakeEndTime)
+                if (awakeEndMs === null) {
+                    throw new Error('awakeEndTime must use HH:mm format.')
+                }
+
+                patch.heartbeatAwakeEnd = awakeEndMs
+                updatedFields.push('awakeEndTime')
+            }
+
+            if (hasOwn('sendWhatsApp')) {
+                if (typeof toolArgs.sendWhatsApp !== 'boolean') {
+                    throw new Error('sendWhatsApp must be a boolean.')
+                }
+
+                patch.heartbeatSendWhatsApp = toolArgs.sendWhatsApp
+                updatedFields.push('sendWhatsApp')
+            }
+
+            if (hasOwn('prompt')) {
+                if (typeof toolArgs.prompt !== 'string') {
+                    throw new Error('prompt must be a string.')
+                }
+
+                patch.heartbeatPrompt = toolArgs.prompt.trim()
+                updatedFields.push('prompt')
+            }
+
+            if (updatedFields.length === 0) {
+                throw new Error(
+                    'update_heartbeat_settings requires at least one of intervalMinutes, chancePercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
+                )
+            }
+
+            await resolvedAssistant.assistantRef.update(patch)
+
+            let userData = null
+            if (requestUserId) {
+                const userDoc = await admin
+                    .firestore()
+                    .doc(`users/${requestUserId}`)
+                    .get()
+                    .catch(() => null)
+                if (userDoc?.exists) userData = userDoc.data() || {}
+            }
+
+            const updatedAssistant = { ...currentAssistant, ...patch }
+            const heartbeatSettings = getNormalizedHeartbeatSettings(updatedAssistant, {
+                projectId,
+                userData,
+            })
+
+            return {
+                success: true,
+                assistantId: updatedAssistant.uid || assistantId,
+                updatedFields,
+                heartbeatSettings,
+                heartbeatPrompt: heartbeatSettings.prompt,
+                message: `Updated heartbeat settings: ${updatedFields.join(', ')}`,
+            }
+        }
+
         case 'search': {
             // Only use projectId if explicitly provided by the LLM in toolArgs
             // Do NOT default to current project - this allows searching across all user's projects
@@ -6260,6 +6377,57 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     return settings
 }
 
+async function resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId) {
+    if (!projectId || !assistantId) return null
+
+    const db = admin.firestore()
+    const projectAssistantRef = db.doc(`assistants/${projectId}/items/${assistantId}`)
+    const globalAssistantRef = db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`)
+
+    const [projectAssistantDoc, globalAssistantDoc] = await Promise.all([
+        projectAssistantRef.get().catch(() => null),
+        projectId === GLOBAL_PROJECT_ID ? Promise.resolve(null) : globalAssistantRef.get().catch(() => null),
+    ])
+
+    if (projectAssistantDoc?.exists) {
+        return {
+            assistant: { ...projectAssistantDoc.data(), uid: assistantId },
+            assistantRef: projectAssistantRef,
+            source: 'project',
+        }
+    }
+
+    if (globalAssistantDoc?.exists) {
+        return {
+            assistant: { ...globalAssistantDoc.data(), uid: assistantId },
+            assistantRef: globalAssistantRef,
+            source: 'global',
+        }
+    }
+
+    return null
+}
+
+async function getHeartbeatSettingsContextMessage(projectId, assistantId, requestUserId = null) {
+    const resolvedAssistant = await resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId)
+    if (!resolvedAssistant) return ''
+
+    let userData = null
+    if (requestUserId) {
+        const userDoc = await admin
+            .firestore()
+            .doc(`users/${requestUserId}`)
+            .get()
+            .catch(() => null)
+        if (userDoc?.exists) userData = userDoc.data() || {}
+    }
+
+    return buildHeartbeatSettingsContextMessage(resolvedAssistant.assistant, {
+        projectId,
+        userData,
+    })
+}
+
 async function addBaseInstructions(
     messages,
     name,
@@ -6390,6 +6558,30 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When you call create_task based on the current user message and that message includes images, include those exact image URLs in create_task.images. Use only URLs from the current triggering user message; do not invent, transform, or omit them.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {
+        try {
+            const heartbeatContextMessage = await getHeartbeatSettingsContextMessage(
+                assistantContext?.projectId,
+                assistantContext?.assistantId,
+                assistantContext?.requestUserId
+            )
+
+            if (heartbeatContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(heartbeatContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load heartbeat settings context', {
+                projectId: assistantContext?.projectId,
+                assistantId: assistantContext?.assistantId,
+                error: error.message,
+            })
+        }
+
+        messages.push([
+            'system',
+            'When the user asks to change heartbeat settings, use update_heartbeat_settings. When editing the heartbeat prompt, treat the current heartbeat prompt as the base text, preserve its existing intent unless the user clearly asks for a rewrite, and only replace the full prompt when the user explicitly wants a full replacement.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
@@ -7404,4 +7596,5 @@ module.exports = {
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
+    getHeartbeatSettingsContextMessage,
 }

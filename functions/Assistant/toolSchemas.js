@@ -425,6 +425,47 @@ const toolSchemas = {
         },
     },
 
+    update_heartbeat_settings: {
+        type: 'function',
+        function: {
+            name: 'update_heartbeat_settings',
+            description:
+                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat interval, execution chance, awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    intervalMinutes: {
+                        type: 'number',
+                        description:
+                            'Optional: new heartbeat interval in minutes. Rounded to the nearest 5-minute step and clamped between 5 and 60 minutes.',
+                    },
+                    chancePercent: {
+                        type: 'number',
+                        description: 'Optional: heartbeat execution chance percent. Clamped between 0 and 100.',
+                    },
+                    awakeStartTime: {
+                        type: 'string',
+                        description: 'Optional: awake-window start time in HH:mm 24-hour format, for example "08:00".',
+                    },
+                    awakeEndTime: {
+                        type: 'string',
+                        description: 'Optional: awake-window end time in HH:mm 24-hour format, for example "22:00".',
+                    },
+                    sendWhatsApp: {
+                        type: 'boolean',
+                        description: 'Optional: enable or disable WhatsApp delivery for heartbeat messages.',
+                    },
+                    prompt: {
+                        type: 'string',
+                        description:
+                            'Optional: updated heartbeat prompt text. For small edits, modify the current prompt instead of replacing it completely unless the user clearly asks for a rewrite.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     search: {
         type: 'function',
         function: {

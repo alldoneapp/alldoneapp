@@ -529,6 +529,7 @@
     "All tools enabled": "Todas las herramientas activadas",
     "No tools enabled": "Ninguna herramienta activada",
     "Use external app tools": "Usar herramientas externas de apps",
+    "Update heartbeat settings": "Actualizar configuración del heartbeat",
     "Delegation tool description": "Descripción de herramienta de delegación",
     "Delegation description stale hint": "La información/tareas del asistente cambiaron. Se recomienda regenerar.",
     "Delegation description modal helper": "Define cómo se debe describir este asistente cuando otros asistentes deciden si delegar trabajo.",

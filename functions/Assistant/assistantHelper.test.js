@@ -25,6 +25,7 @@ jest.mock('../GAnalytics/GAnalytics', () => ({
 
 const mockDocGet = jest.fn()
 const mockDocSet = jest.fn(async () => {})
+const mockDocUpdate = jest.fn(async () => {})
 const mockCollectionGet = jest.fn()
 
 jest.mock('firebase-admin', () => ({
@@ -32,8 +33,16 @@ jest.mock('firebase-admin', () => ({
         doc: jest.fn(() => ({
             get: mockDocGet,
             set: mockDocSet,
+            update: mockDocUpdate,
         })),
         collection: jest.fn(() => ({
+            doc: jest.fn(() => ({
+                get: mockDocGet,
+            })),
+            get: mockCollectionGet,
+            where: jest.fn(() => ({
+                get: mockCollectionGet,
+            })),
             orderBy: jest.fn(() => ({
                 limit: jest.fn(() => ({
                     get: mockCollectionGet,
@@ -92,6 +101,10 @@ const {
     normalizeRecentHours,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
+    addBaseInstructions,
+    executeToolNatively,
+    isToolAllowedForExecution,
+    getHeartbeatSettingsContextMessage,
 } = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
@@ -788,5 +801,193 @@ describe('resolveCreateTaskTargetProject', () => {
             includeArchived: false,
             includeCommunity: false,
         })
+    })
+})
+
+describe('assistant heartbeat settings tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    test('builds heartbeat settings context with the current prompt', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    isDefault: true,
+                    heartbeatIntervalMs: 20 * 60 * 1000,
+                    heartbeatChancePercent: 25,
+                    heartbeatAwakeStart: 9 * 60 * 60 * 1000,
+                    heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
+                    heartbeatSendWhatsApp: true,
+                    heartbeatPrompt: 'Current heartbeat prompt.',
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(getHeartbeatSettingsContextMessage('project-1', 'assistant-1')).resolves.toContain(
+            'Current heartbeat prompt.'
+        )
+    })
+
+    test('injects current heartbeat settings and prompt-edit guidance into base instructions', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    heartbeatIntervalMs: 20 * 60 * 1000,
+                    heartbeatChancePercent: 45,
+                    heartbeatAwakeStart: 9 * 60 * 60 * 1000,
+                    heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
+                    heartbeatSendWhatsApp: false,
+                    heartbeatPrompt: 'Check progress and mention the focus task.',
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        const messages = []
+        await addBaseInstructions(messages, 'Heartbeat Bot', 'en', 'Be helpful.', ['update_heartbeat_settings'], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('Current heartbeat settings for this assistant:')
+        expect(systemMessages).toContain('Check progress and mention the focus task.')
+        expect(systemMessages).toContain('treat the current heartbeat prompt as the base text')
+    })
+
+    test('denies heartbeat settings tool execution when not allowed', async () => {
+        expect(await isToolAllowedForExecution([], 'update_heartbeat_settings')).toBe(false)
+        expect(await isToolAllowedForExecution(['update_heartbeat_settings'], 'update_heartbeat_settings')).toBe(true)
+    })
+
+    test('updates heartbeat settings with normalized values', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_heartbeat_settings'],
+                    heartbeatPrompt: 'Old prompt',
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-1',
+                    phone: '+49123456',
+                }),
+            })
+
+        const result = await executeToolNatively(
+            'update_heartbeat_settings',
+            {
+                intervalMinutes: 17,
+                chancePercent: 120,
+                awakeStartTime: '09:15',
+                awakeEndTime: '18:45',
+                sendWhatsApp: false,
+                prompt: '  New prompt for heartbeat  ',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockDocUpdate).toHaveBeenCalledWith({
+            heartbeatIntervalMs: 15 * 60 * 1000,
+            heartbeatChancePercent: 100,
+            heartbeatAwakeStart: (9 * 60 + 15) * 60 * 1000,
+            heartbeatAwakeEnd: (18 * 60 + 45) * 60 * 1000,
+            heartbeatSendWhatsApp: false,
+            heartbeatPrompt: 'New prompt for heartbeat',
+        })
+        expect(result).toMatchObject({
+            success: true,
+            assistantId: 'assistant-1',
+            updatedFields: [
+                'intervalMinutes',
+                'chancePercent',
+                'awakeStartTime',
+                'awakeEndTime',
+                'sendWhatsApp',
+                'prompt',
+            ],
+            heartbeatPrompt: 'New prompt for heartbeat',
+        })
+        expect(result.heartbeatSettings).toMatchObject({
+            intervalMinutes: 15,
+            chancePercent: 100,
+            awakeStartTime: '09:15',
+            awakeEndTime: '18:45',
+            sendWhatsApp: false,
+            prompt: 'New prompt for heartbeat',
+        })
+    })
+
+    test('rejects heartbeat settings updates without writable fields', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    allowedTools: ['update_heartbeat_settings'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively('update_heartbeat_settings', {}, 'project-1', 'assistant-1', 'user-1', null)
+        ).rejects.toThrow('update_heartbeat_settings requires at least one')
+    })
+
+    test('rejects invalid heartbeat time strings', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    allowedTools: ['update_heartbeat_settings'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_heartbeat_settings',
+                { awakeStartTime: '9am' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('awakeStartTime must use HH:mm format.')
+    })
+
+    test('rejects direct heartbeat settings execution when the tool is not permitted', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    allowedTools: [],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_heartbeat_settings',
+                { chancePercent: 40 },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Tool not permitted: update_heartbeat_settings')
     })
 })

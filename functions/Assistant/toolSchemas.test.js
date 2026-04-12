@@ -66,6 +66,13 @@ describe('User memory assistant tool schemas', () => {
         expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
     })
 
+    test('exposes update_heartbeat_settings only when allowed', () => {
+        expect(getToolSchemas(['update_heartbeat_settings']).map(schema => schema.function.name)).toEqual([
+            'update_heartbeat_settings',
+        ])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
     test('defines required fields for update_user_memory', () => {
         expect(toolSchemas.update_user_memory.function.parameters.required).toEqual(['fact'])
         expect(toolSchemas.update_user_memory.function.parameters.properties.category.type).toBe('string')
@@ -81,6 +88,16 @@ describe('User memory assistant tool schemas', () => {
             description:
                 'Optional: image URLs to embed in the task description. Use exact URLs from the current user message when the task should include attached images.',
         })
+    })
+
+    test('documents heartbeat settings update fields', () => {
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.required).toEqual([])
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.type).toBe('number')
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeStartTime.type).toBe('string')
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeEndTime.type).toBe('string')
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.sendWhatsApp.type).toBe('boolean')
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.prompt.type).toBe('string')
     })
 })
 

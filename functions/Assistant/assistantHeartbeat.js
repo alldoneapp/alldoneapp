@@ -6,18 +6,18 @@ const {
     resolveUserTimezoneOffset,
     getUserLocalDateContext,
 } = require('./contextTimestampHelper')
+const {
+    DEFAULT_AWAKE_START,
+    DEFAULT_AWAKE_END,
+    DEFAULT_PROMPT,
+    normalizeHeartbeatIntervalMs,
+    normalizeHeartbeatTimeMs,
+    getEffectiveHeartbeatChancePercent,
+    getEffectiveHeartbeatSendWhatsApp,
+} = require('./heartbeatSettingsHelper')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
-
-const HEARTBEAT_INTERVAL_STEP_MS = 5 * 60 * 1000
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000
-const MIN_HEARTBEAT_INTERVAL_MS = HEARTBEAT_INTERVAL_STEP_MS
-const MAX_HEARTBEAT_INTERVAL_MS = 60 * 60 * 1000
-const DEFAULT_AWAKE_START = 28800000 // 8:00 AM
-const DEFAULT_AWAKE_END = 79200000 // 10:00 PM
-const DEFAULT_PROMPT =
-    'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
 
 /**
  * Fetch recent conversation history from a topic for context.
@@ -145,8 +145,8 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userDat
 function isWithinAwakeWindow(assistant, timezoneOffsetMinutes) {
     const now = moment.utc().utcOffset(timezoneOffsetMinutes)
     const currentMs = (now.hours() * 60 + now.minutes()) * 60 * 1000
-    const start = assistant.heartbeatAwakeStart ?? DEFAULT_AWAKE_START
-    const end = assistant.heartbeatAwakeEnd ?? DEFAULT_AWAKE_END
+    const start = normalizeHeartbeatTimeMs(assistant.heartbeatAwakeStart, DEFAULT_AWAKE_START)
+    const end = normalizeHeartbeatTimeMs(assistant.heartbeatAwakeEnd, DEFAULT_AWAKE_END)
 
     if (start <= end) {
         return currentMs >= start && currentMs <= end
@@ -159,25 +159,11 @@ function isWithinAwakeWindow(assistant, timezoneOffsetMinutes) {
  * Get the effective heartbeat chance percent, considering defaults.
  */
 function getEffectiveChancePercent(assistant, projectId, userData) {
-    if (assistant.heartbeatChancePercent !== undefined && assistant.heartbeatChancePercent !== null) {
-        return assistant.heartbeatChancePercent
-    }
-    // Default: 10% for default assistant of user's default project, 0% otherwise
-    if (assistant.isDefault && userData.defaultProjectId === projectId) {
-        return 10
-    }
-    return 0
+    return getEffectiveHeartbeatChancePercent(assistant, projectId, userData)
 }
 
 function getEffectiveHeartbeatIntervalMs(assistant) {
-    const parsedValue = Number(assistant.heartbeatIntervalMs)
-
-    if (!Number.isFinite(parsedValue)) {
-        return DEFAULT_HEARTBEAT_INTERVAL_MS
-    }
-
-    const roundedValue = Math.round(parsedValue / HEARTBEAT_INTERVAL_STEP_MS) * HEARTBEAT_INTERVAL_STEP_MS
-    return Math.min(MAX_HEARTBEAT_INTERVAL_MS, Math.max(MIN_HEARTBEAT_INTERVAL_MS, roundedValue))
+    return normalizeHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
 }
 
 function getCurrentHeartbeatWindowStart(now, intervalMs) {
@@ -358,10 +344,7 @@ async function checkAndExecuteHeartbeats() {
                 })
 
                 // If heartbeatSendWhatsApp is not explicitly set, default to true when user has a phone number
-                const sendWhatsApp =
-                    assistant.heartbeatSendWhatsApp !== undefined && assistant.heartbeatSendWhatsApp !== null
-                        ? assistant.heartbeatSendWhatsApp === true
-                        : !!userData.phone
+                const sendWhatsApp = getEffectiveHeartbeatSendWhatsApp(assistant, userData)
                 const userPhone = userData.phone
                 const shouldSendWhatsApp = sendWhatsApp && !!userPhone
 

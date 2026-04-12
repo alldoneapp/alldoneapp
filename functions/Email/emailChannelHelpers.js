@@ -8,6 +8,7 @@ const EMAIL_CREATE_TASK_KEY = 'create_task'
 const EMAIL_CREATE_CALENDAR_EVENT_KEY = 'create_calendar_event'
 const EMAIL_CREATE_NOTE_KEY = 'create_note'
 const EMAIL_UPDATE_NOTE_KEY = 'update_note'
+const EMAIL_UPDATE_HEARTBEAT_SETTINGS_KEY = 'update_heartbeat_settings'
 const EMAIL_CREATE_GMAIL_DRAFT_KEY = 'create_gmail_draft'
 const EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY = 'create_gmail_reply_draft'
 const MAX_EMAIL_EXTRACTED_TEXT_LENGTH = 8000
@@ -98,6 +99,9 @@ function getEmailSafeAllowedTools(rawTools = []) {
     if (rawTools.includes(EMAIL_CREATE_CALENDAR_EVENT_KEY)) allowed.push(EMAIL_CREATE_CALENDAR_EVENT_KEY)
     if (rawTools.includes(EMAIL_CREATE_NOTE_KEY)) allowed.push(EMAIL_CREATE_NOTE_KEY)
     if (rawTools.includes(EMAIL_UPDATE_NOTE_KEY)) allowed.push(EMAIL_UPDATE_NOTE_KEY)
+    if (rawTools.includes(EMAIL_UPDATE_HEARTBEAT_SETTINGS_KEY)) {
+        allowed.push(EMAIL_UPDATE_HEARTBEAT_SETTINGS_KEY)
+    }
     if (rawTools.includes(EMAIL_CREATE_GMAIL_DRAFT_KEY)) allowed.push(EMAIL_CREATE_GMAIL_DRAFT_KEY)
     if (rawTools.includes(EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY)) {
         allowed.push(EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY)

@@ -531,6 +531,7 @@
     "All tools enabled": "All tools enabled",
     "No tools enabled": "No tools enabled",
     "Use external app tools": "Use external app tools",
+    "Update heartbeat settings": "Update heartbeat settings",
     "Delegation tool description": "Delegation tool description",
     "Delegation description stale hint": "Assistant info/tasks changed. Regenerate recommended.",
     "Delegation description modal helper": "Define how this assistant should be described when other assistants decide whether to delegate work.",
