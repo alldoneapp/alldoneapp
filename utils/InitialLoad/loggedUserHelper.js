@@ -207,6 +207,7 @@ const getDataForUpdateUser = async loggedUser => {
     }
 
     userData.timezone = parseInt(momentTz().format('Z'))
+    userData.preferredTimezone = momentTz.tz.guess()
     userData.lastLogin = Date.now()
 
     return userData

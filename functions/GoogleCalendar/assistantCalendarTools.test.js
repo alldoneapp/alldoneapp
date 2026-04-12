@@ -226,6 +226,64 @@ describe('assistantCalendarTools', () => {
         })
     })
 
+    test('falls back to the user IANA timezone for timed events without an explicit offset', async () => {
+        setUser('user-1', {
+            projectIds: ['p1'],
+            preferredTimezone: 'Europe/Berlin',
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        })
+
+        const client = setCalendarClient('p1')
+        client.events.insert.mockResolvedValue({
+            data: {
+                id: 'evt-iana',
+                summary: 'Local Time Event',
+                start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
+            },
+        })
+
+        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            summary: 'Local Time Event',
+            start: '2026-03-11T09:00:00',
+            end: '2026-03-11T10:00:00',
+        })
+
+        expect(result.success).toBe(true)
+        expect(client.events.insert).toHaveBeenCalledWith({
+            calendarId: 'primary',
+            requestBody: {
+                summary: 'Local Time Event',
+                start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
+                end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
+            },
+        })
+    })
+
+    test('rejects timed events without offset when no IANA timezone is available', async () => {
+        setUser('user-1', {
+            projectIds: ['p1'],
+            timezone: 60,
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        })
+
+        setCalendarClient('p1')
+
+        await expect(
+            assistantCalendarTools.createCalendarEventForAssistantRequest({
+                userId: 'user-1',
+                summary: 'Missing Timezone',
+                start: '2026-03-11T09:00:00',
+                end: '2026-03-11T10:00:00',
+            })
+        ).rejects.toThrow('missing timezone information')
+    })
+
     test('updates calendar events with patch semantics', async () => {
         setUser('user-1', {
             projectIds: ['p1'],

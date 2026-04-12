@@ -60,6 +60,29 @@ function isValidIsoDateTime(value) {
     return moment.parseZone(value, moment.ISO_8601, true).isValid()
 }
 
+function hasExplicitDateTimeTimezone(value) {
+    if (typeof value !== 'string') return false
+    return /([zZ]|[+-]\d{2}:?\d{2})$/.test(value.trim())
+}
+
+function resolveUserIanaTimeZone(userData = {}) {
+    const candidates = [
+        userData?.timezone,
+        userData?.preferredTimezone,
+        userData?.timezoneOffset,
+        userData?.timezoneMinutes,
+    ]
+
+    for (const candidate of candidates) {
+        const trimmed = safeTrim(candidate)
+        if (trimmed && moment.tz.zone(trimmed)) {
+            return trimmed
+        }
+    }
+
+    return ''
+}
+
 function normalizeAttendees(attendees) {
     if (!Array.isArray(attendees)) return []
 
@@ -104,6 +127,12 @@ function normalizeEventDateTimeInput(value, fallbackTimeZone) {
             throw new Error(`Invalid event time "${trimmed}". Use ISO 8601 strings only.`)
         }
 
+        if (!hasExplicitDateTimeTimezone(trimmed) && !fallbackTimeZone) {
+            throw new Error(
+                `Timed event "${trimmed}" is missing timezone information. Provide an offset like +02:00 or an IANA timeZone such as "Europe/Berlin".`
+            )
+        }
+
         const normalized = { dateTime: trimmed }
         if (fallbackTimeZone) normalized.timeZone = fallbackTimeZone
         return normalized
@@ -127,6 +156,11 @@ function normalizeEventDateTimeInput(value, fallbackTimeZone) {
 
         const normalized = { dateTime }
         const timeZone = safeTrim(value.timeZone) || fallbackTimeZone
+        if (!hasExplicitDateTimeTimezone(dateTime) && !timeZone) {
+            throw new Error(
+                `Timed event "${dateTime}" is missing timezone information. Provide an offset like +02:00 or an IANA timeZone such as "Europe/Berlin".`
+            )
+        }
         if (timeZone) normalized.timeZone = timeZone
         return normalized
     }
@@ -194,6 +228,13 @@ async function getConnectedCalendarAccounts(userId) {
     })
 
     return accounts
+}
+
+async function getUserDefaultTimeZone(userId) {
+    const userDoc = await admin.firestore().collection('users').doc(userId).get()
+    if (!userDoc.exists) return ''
+
+    return resolveUserIanaTimeZone(userDoc.data() || {})
 }
 
 function normalizeCalendarEvent(event, account, calendarId, includeDescription = true) {
@@ -586,6 +627,7 @@ async function createCalendarEventForAssistantRequest({
         }
     }
 
+    const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
     const resolution = await resolveCalendarAccountForWrite({ userId, calendarId })
     if (!resolution.success) {
         return {
@@ -602,7 +644,7 @@ async function createCalendarEventForAssistantRequest({
             description,
             start,
             end,
-            timeZone,
+            timeZone: resolvedTimeZone,
             location,
             attendees,
         },
@@ -645,6 +687,7 @@ async function updateCalendarEventForAssistantRequest({
         }
     }
 
+    const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
     if (!resolution.success) {
         return {
@@ -661,7 +704,7 @@ async function updateCalendarEventForAssistantRequest({
             description,
             start,
             end,
-            timeZone,
+            timeZone: resolvedTimeZone,
             location,
             attendees,
         },
@@ -738,9 +781,12 @@ module.exports = {
         normalizeEventDateTimeInput,
         validateEventRange,
         getConnectedCalendarAccounts,
+        getUserDefaultTimeZone,
         resolveCalendarAccountForWrite,
         resolveEventTargetForWrite,
         normalizeCalendarEvent,
         buildEventPayload,
+        hasExplicitDateTimeTimezone,
+        resolveUserIanaTimeZone,
     },
 }

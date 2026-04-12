@@ -6476,6 +6476,12 @@ async function addBaseInstructions(
             'dddd, MMMM Do YYYY, h:mm:ss a'
         )} (${timezoneInfo}).`,
     ])
+    if (assistantContext?.userTimezoneName) {
+        messages.push([
+            'system',
+            `The user's IANA timezone is ${assistantContext.userTimezoneName}. Use this timezone when creating calendar events that do not already include an explicit offset.`,
+        ])
+    }
 
     if (assistantContext?.projectId && assistantContext?.requestUserId) {
         try {

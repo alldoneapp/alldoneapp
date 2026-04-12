@@ -1,4 +1,4 @@
-const moment = require('moment')
+const moment = require('moment-timezone')
 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
 
 function normalizeContextTimezoneOffset(userTimezoneOffset = null) {
@@ -17,6 +17,22 @@ function resolveUserTimezoneOffset(userData = {}) {
     for (const candidate of candidates) {
         const normalized = normalizeContextTimezoneOffset(candidate)
         if (normalized !== null) return normalized
+    }
+
+    return null
+}
+
+function resolveUserTimezoneName(userData = {}) {
+    const candidates = [
+        userData?.timezone,
+        userData?.preferredTimezone,
+        userData?.timezoneOffset,
+        userData?.timezoneMinutes,
+    ]
+
+    for (const candidate of candidates) {
+        const trimmed = typeof candidate === 'string' ? candidate.trim() : ''
+        if (trimmed && moment.tz.zone(trimmed)) return trimmed
     }
 
     return null
@@ -96,5 +112,6 @@ module.exports = {
     formatContextMessageTimestamp,
     normalizeContextTimezoneOffset,
     resolveUserTimezoneOffset,
+    resolveUserTimezoneName,
     getUserLocalDateContext,
 }

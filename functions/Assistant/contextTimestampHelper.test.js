@@ -1,4 +1,4 @@
-const { getUserLocalDateContext } = require('./contextTimestampHelper')
+const { getUserLocalDateContext, resolveUserTimezoneName } = require('./contextTimestampHelper')
 
 describe('contextTimestampHelper user-local date context', () => {
     test('uses the user timezone when the local day is ahead of UTC', () => {
@@ -29,5 +29,9 @@ describe('contextTimestampHelper user-local date context', () => {
             dateLabel: '04 Apr 2026',
             timezoneOffsetMinutes: null,
         })
+    })
+
+    test('returns the user IANA timezone when available', () => {
+        expect(resolveUserTimezoneName({ preferredTimezone: 'Europe/Berlin', timezone: 120 })).toBe('Europe/Berlin')
     })
 })

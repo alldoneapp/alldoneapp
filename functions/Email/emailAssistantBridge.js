@@ -13,7 +13,7 @@ const {
     reduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
-const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
+const { resolveUserTimezoneOffset, resolveUserTimezoneName } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('../WhatsApp/whatsAppToolErrorUtils')
 const { getConversationHistory, storeEmailAssistantMessageInTopic } = require('./emailDailyTopic')
@@ -39,12 +39,14 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
     const allowedTools = getEmailSafeAllowedTools(assistant.allowedTools)
     const messages = []
     const userTimezoneOffset = resolveUserTimezoneOffset(user)
+    const userTimezoneName = resolveUserTimezoneName(user)
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
         channel: 'email',
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
+        userTimezoneName,
     }
 
     await addBaseInstructions(

@@ -539,4 +539,5 @@ export const ANONYMOUS_USER_DATA = {
     sidebarExpanded: SIDEBAR_COLLAPSED,
     language: getDeviceLanguage(),
     timezone: parseInt(momentTz().format('Z')),
+    preferredTimezone: momentTz.tz.guess(),
 }
