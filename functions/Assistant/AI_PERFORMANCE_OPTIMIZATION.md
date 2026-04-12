@@ -83,8 +83,7 @@ const [messages, commonData] = await Promise.all([
 
 ### 4. Optimized Context Loading
 
--   Reduced message fetch from 50 to 10
--   Reduced context messages from all to 5 most recent
+-   Thread context now loads up to 50 recent messages across assistant channels
 -   Pre-initialized tiktoken encoder
 
 ## Implementation Steps

@@ -11,6 +11,7 @@ const {
     interactWithChatStream,
     isToolAllowedForExecution,
     reduceGoldWhenChatWithAI,
+    THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
 const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
@@ -66,7 +67,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
 
-    const history = await getConversationHistory(projectId, chatId, 10, userTimezoneOffset)
+    const history = await getConversationHistory(projectId, chatId, THREAD_CONTEXT_MESSAGE_LIMIT, userTimezoneOffset)
     history.forEach(([role, content]) => messages.push([role, content]))
     if (!options.skipCurrentMessageAppend && String(messageText || '').trim()) {
         messages.push(['user', messageText])

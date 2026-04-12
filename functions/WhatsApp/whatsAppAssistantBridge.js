@@ -11,6 +11,7 @@ const {
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
+    THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
 const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
@@ -95,7 +96,7 @@ async function processWhatsAppAssistantMessage(
 
     // Fetch conversation history from the daily topic
     const historyStart = Date.now()
-    const history = await getConversationHistory(projectId, chatId, 10, userTimezoneOffset)
+    const history = await getConversationHistory(projectId, chatId, THREAD_CONTEXT_MESSAGE_LIMIT, userTimezoneOffset)
     markStage('getConversationHistory', historyStart, { historyCount: history.length })
 
     // Build messages array

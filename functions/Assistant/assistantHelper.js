@@ -65,6 +65,7 @@ const {
 } = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const { addTimestampToContextContent, formatContextMessageTimestamp } = require('./contextTimestampHelper')
+const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -7278,7 +7279,7 @@ async function getOptimizedContextMessages(
             .firestore()
             .collection(`chatComments/${projectId}/${objectType}/${objectId}/comments`)
             .orderBy('lastChangeDate', 'desc')
-            .limit(10) // Reduced from 50 to improve speed
+            .limit(THREAD_CONTEXT_MESSAGE_LIMIT)
             .get()
             .then(snapshot => snapshot.docs),
         // Fetch chat/object data to get the topic name
@@ -7347,7 +7348,7 @@ async function getOptimizedContextMessages(
                 }
             }
             amountOfCommentsInContext++
-            if (amountOfCommentsInContext === 5) break
+            if (amountOfCommentsInContext === THREAD_CONTEXT_MESSAGE_LIMIT) break
         }
     }
 
@@ -7574,6 +7575,7 @@ module.exports = {
     getOptimizedContextMessages,
     getMaxTokensForModel,
     getMessageTextForTokenCounting,
+    THREAD_CONTEXT_MESSAGE_LIMIT,
     calculateTokens,
     buildMultimodalUserContent,
     normalizeCreateTaskImageUrls,

@@ -15,6 +15,7 @@ const {
     getEffectiveHeartbeatChancePercent,
     getEffectiveHeartbeatSendWhatsApp,
 } = require('./heartbeatSettingsHelper')
+const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -27,7 +28,12 @@ const { getUserData } = require('../Users/usersFirestore')
  * @param {number} limit - Max messages to fetch
  * @returns {Promise<Array<[string, string]>>} Array of [role, content] tuples
  */
-async function getTopicConversationHistory(projectId, chatId, limit = 10, userTimezoneOffset = null) {
+async function getTopicConversationHistory(
+    projectId,
+    chatId,
+    limit = THREAD_CONTEXT_MESSAGE_LIMIT,
+    userTimezoneOffset = null
+) {
     try {
         const snapshot = await admin
             .firestore()
@@ -364,7 +370,7 @@ async function checkAndExecuteHeartbeats() {
                 const chatHistory = await getTopicConversationHistory(
                     projectId,
                     chatId,
-                    10,
+                    THREAD_CONTEXT_MESSAGE_LIMIT,
                     resolveUserTimezoneOffset(userData) ?? normalizeTimezone(userData.timezone)
                 )
                 let prompt = basePrompt

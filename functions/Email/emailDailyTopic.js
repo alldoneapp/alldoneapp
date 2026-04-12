@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid')
 
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { addTimestampToContextContent } = require('../Assistant/contextTimestampHelper')
+const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
 const { getUserData } = require('../Users/usersFirestore')
 const { buildAttachmentSummaryForComment, buildDailyEmailTitle } = require('./emailChannelHelpers')
 
@@ -167,7 +168,12 @@ async function updateLastAssistantCommentData(projectId, chatId, assistantId, us
         })
 }
 
-async function getConversationHistory(projectId, chatId, limit = 10, userTimezoneOffset = null) {
+async function getConversationHistory(
+    projectId,
+    chatId,
+    limit = THREAD_CONTEXT_MESSAGE_LIMIT,
+    userTimezoneOffset = null
+) {
     const snapshot = await admin
         .firestore()
         .collection(`chatComments/${projectId}/topics/${chatId}/comments`)

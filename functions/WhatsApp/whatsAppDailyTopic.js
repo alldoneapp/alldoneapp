@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { inferMimeTypeFromFileName } = require('../Utils/parseTextUtils')
 const { addTimestampToContextContent, getUserLocalDateContext } = require('../Assistant/contextTimestampHelper')
+const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
 const { getUserData } = require('../Users/usersFirestore')
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+$/
@@ -285,7 +286,12 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
  * @param {number} limit - Max messages to fetch
  * @returns {Promise<Array<[string, string]>>} Array of [role, content] tuples
  */
-async function getConversationHistory(projectId, chatId, limit = 10, userTimezoneOffset = null) {
+async function getConversationHistory(
+    projectId,
+    chatId,
+    limit = THREAD_CONTEXT_MESSAGE_LIMIT,
+    userTimezoneOffset = null
+) {
     const snapshot = await admin
         .firestore()
         .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
