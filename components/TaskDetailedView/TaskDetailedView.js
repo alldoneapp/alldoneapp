@@ -68,6 +68,7 @@ const TaskDetailedView = ({ navigation }) => {
     const taskInDetailView = useSelector(state => state.taskInDetailView)
     const [isFullscreen, setFullscreen] = useState(false)
     const [task, setTask] = useState(navigation.getParam('task', undefined))
+    const [assistantId, setAssistantId] = useState(task?.assistantId || '')
     usePrivateProject(projectId)
     const scrollRef = useRef()
     const isAssistant = task?.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
@@ -124,6 +125,10 @@ const TaskDetailedView = ({ navigation }) => {
     useEffect(() => {
         setFullscreen(assistantEnabled)
     }, [assistantEnabled])
+
+    useEffect(() => {
+        setAssistantId(task?.assistantId || '')
+    }, [task?.assistantId])
 
     useEffect(() => {
         dispatch(setNavigationRoute('TaskDetailedView'))
@@ -265,6 +270,8 @@ const TaskDetailedView = ({ navigation }) => {
                                 <Header
                                     projectId={projectId}
                                     task={task}
+                                    assistantId={assistantId}
+                                    setAssistantId={setAssistantId}
                                     navigation={navigation}
                                     isFullscreen={isFullscreen}
                                     setFullscreen={setFullscreen}
@@ -314,7 +321,8 @@ const TaskDetailedView = ({ navigation }) => {
                                         chat={{ id: task.id, type: 'tasks' }}
                                         projectId={projectId}
                                         chatTitle={task.name}
-                                        assistantId={task.assistantId}
+                                        assistantId={assistantId}
+                                        setAssistantId={setAssistantId}
                                         objectType={'tasks'}
                                         parentObject={task}
                                     />

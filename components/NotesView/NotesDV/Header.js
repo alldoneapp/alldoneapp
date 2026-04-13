@@ -55,7 +55,16 @@ export default class Header extends Component {
     }
 
     render() {
-        const { projectId, note, navigation, isFullscreen, disabled, setFullscreen } = this.props
+        const {
+            projectId,
+            note,
+            assistantId,
+            setAssistantId,
+            navigation,
+            isFullscreen,
+            disabled,
+            setFullscreen,
+        } = this.props
         const { mobile, isMiddleScreen, loggedUser, editionMode, selectedTab, showEllipsis } = this.state
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
         const maxHeight = this.getMaxHeight()
@@ -125,6 +134,8 @@ export default class Header extends Component {
                         <TagList
                             projectId={projectId}
                             note={this.props.note}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
                             disabled={disabled}
                             updateObjectState={this.props.updateObjectState}
                         />
@@ -135,7 +146,8 @@ export default class Header extends Component {
                         <BotLine
                             setFullscreen={setFullscreen}
                             objectId={note.id}
-                            assistantId={note.assistantId}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
                             projectId={projectId}
                             objectType={'notes'}
                         />

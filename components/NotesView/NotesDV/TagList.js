@@ -16,7 +16,7 @@ import { DV_TAB_NOTE_CHAT } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
 import DvSearchButton from '../../UIControls/DvSearchButton'
 
-export default function TagList({ projectId, note, disabled, updateObjectState }) {
+export default function TagList({ projectId, note, assistantId, setAssistantId, disabled, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreenNoteDV)
@@ -57,7 +57,8 @@ export default function TagList({ projectId, note, disabled, updateObjectState }
                     style={{ top: -5 }}
                     navItem={DV_TAB_NOTE_CHAT}
                     projectId={projectId}
-                    assistantId={note.assistantId}
+                    assistantId={assistantId}
+                    setAssistantId={setAssistantId}
                     objectId={note.id}
                     objectType={FEED_NOTE_OBJECT_TYPE}
                     parentObject={note}

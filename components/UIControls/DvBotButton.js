@@ -22,6 +22,7 @@ export default function DvBotButton({
     navItem,
     projectId,
     assistantId,
+    setAssistantId,
     objectId,
     objectType,
     parentObject,
@@ -43,6 +44,11 @@ export default function DvBotButton({
 
     const effectiveAssistantId = optimisticAssistantId || assistantId
     const { photoURL50 } = getAssistantInProjectObject(projectId, effectiveAssistantId)
+
+    const updateAssistantId = newAssistantId => {
+        setOptimisticAssistantId(newAssistantId)
+        setAssistantId?.(newAssistantId)
+    }
 
     const navigateToChat = () => {
         dispatch(setSelectedNavItem(navItem))
@@ -91,7 +97,7 @@ export default function DvBotButton({
                         closeModal={closeModal}
                         onSelectBotOption={onSelectBotOption}
                         assistantId={effectiveAssistantId}
-                        setAssistantId={setOptimisticAssistantId}
+                        setAssistantId={updateAssistantId}
                         parentObject={parentObject}
                         projectId={projectId}
                         objectId={objectId}

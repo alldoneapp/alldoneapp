@@ -17,7 +17,7 @@ import DvBotButton from '../../UIControls/DvBotButton'
 import DvSearchButton from '../../UIControls/DvSearchButton'
 import CalendarTag from '../../Tags/CalendarTag'
 
-export default function TagList({ projectId, task, updateObjectState }) {
+export default function TagList({ projectId, task, assistantId, setAssistantId, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const tablet = useSelector(state => state.isMiddleScreen)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -96,7 +96,8 @@ export default function TagList({ projectId, task, updateObjectState }) {
                     style={{ top: -5 }}
                     navItem={DV_TAB_TASK_CHAT}
                     projectId={projectId}
-                    assistantId={task.assistantId}
+                    assistantId={assistantId}
+                    setAssistantId={setAssistantId}
                     objectId={task.id}
                     objectType={FEED_TASK_OBJECT_TYPE}
                     parentObject={task}

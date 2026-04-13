@@ -29,6 +29,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [isFullscreen, setFullscreen] = useState(false)
+    const [assistantId, setAssistantId] = useState(note?.assistantId || '')
 
     const [followState, updateFollowState] = useFollowingDataListener(projectId, FOLLOWER_NOTES_TYPE, note.id)
 
@@ -51,11 +52,17 @@ export default function Sections({ projectId, note, project, navigation, updateO
         setFullscreen(assistantEnabled)
     }, [assistantEnabled])
 
+    useEffect(() => {
+        setAssistantId(note?.assistantId || '')
+    }, [note?.assistantId])
+
     return (
         <View style={{ flexDirection: 'column', backgroundColor: 'white', flex: 1 }}>
             <Header
                 projectId={projectId}
                 note={note}
+                assistantId={assistantId}
+                setAssistantId={setAssistantId}
                 navigation={navigation}
                 isFullscreen={isFullscreen}
                 disabled={
@@ -123,7 +130,8 @@ export default function Sections({ projectId, note, project, navigation, updateO
                                             projectId={projectId}
                                             parentObject={note}
                                             chatTitle={note.title}
-                                            assistantId={note.assistantId}
+                                            assistantId={assistantId}
+                                            setAssistantId={setAssistantId}
                                             objectType={'notes'}
                                         />
                                     </View>

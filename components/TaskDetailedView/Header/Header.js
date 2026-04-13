@@ -14,7 +14,16 @@ import { useSelector } from 'react-redux'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
-const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, updateObjectState }) => {
+const Header = ({
+    projectId,
+    task,
+    assistantId,
+    setAssistantId,
+    navigation,
+    isFullscreen,
+    setFullscreen,
+    updateObjectState,
+}) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const photoURL = useSelector(state => state.assignee.photoURL)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -60,7 +69,13 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, upda
                             <SVGGenericUser width={24} height={24} svgid={`ci_p_task_h_${projectId}`} />
                         </View>
                     )}
-                    <TagList projectId={projectId} task={task} updateObjectState={updateObjectState} />
+                    <TagList
+                        projectId={projectId}
+                        task={task}
+                        assistantId={assistantId}
+                        setAssistantId={setAssistantId}
+                        updateObjectState={updateObjectState}
+                    />
                 </View>
             )}
             {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && (
@@ -68,7 +83,8 @@ const Header = ({ projectId, task, navigation, isFullscreen, setFullscreen, upda
                     <BotLine
                         setFullscreen={setFullscreen}
                         objectId={task.id}
-                        assistantId={task.assistantId}
+                        assistantId={assistantId}
+                        setAssistantId={setAssistantId}
                         projectId={projectId}
                         objectType={'tasks'}
                         parentObject={task}
