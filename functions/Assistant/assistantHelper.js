@@ -7270,6 +7270,36 @@ async function getOpenTasksForAllProjects(userId, userTimezoneOffset = null) {
     }
 }
 
+function buildOpenTasksSummaryMessage(openTasksData) {
+    if (!openTasksData || !openTasksData.projects) return null
+
+    const { projects, totalCount } = openTasksData
+    let taskSummary = `The user has ${projects.length} active project${projects.length !== 1 ? 's' : ''}. `
+    taskSummary += `Today (including overdue) the user has ${totalCount} open task${
+        totalCount !== 1 ? 's' : ''
+    } in total.`
+
+    if (projects.length > 0 && totalCount > 0) {
+        taskSummary += ` Open tasks per project (in sidebar order): `
+        taskSummary += projects.map(p => `"${p.name}": ${p.openTaskCount}`).join(', ')
+        taskSummary += '.'
+    }
+
+    return taskSummary
+}
+
+async function getOpenTasksContextMessage(userId, userTimezoneOffset = null) {
+    if (!userId) return null
+
+    const openTasksData = await getOpenTasksForAllProjects(userId, userTimezoneOffset)
+    if (!openTasksData || !openTasksData.projects) return null
+
+    return {
+        message: buildOpenTasksSummaryMessage(openTasksData),
+        openTasksData,
+    }
+}
+
 // Optimized context fetching with parallel operations
 async function getOptimizedContextMessages(
     messageId,
@@ -7319,7 +7349,7 @@ async function getOptimizedContextMessages(
 
     // Fetch open task counts for all projects (including overdue) in parallel
     if (userId) {
-        parallelPromises.push(getOpenTasksForAllProjects(userId, userTimezoneOffset))
+        parallelPromises.push(getOpenTasksContextMessage(userId, userTimezoneOffset))
     } else {
         parallelPromises.push(Promise.resolve(null))
     }
@@ -7381,28 +7411,15 @@ async function getOptimizedContextMessages(
     }
 
     // Add open task counts context if available
-    if (openTasksData && openTasksData.projects) {
-        const { projects, totalCount } = openTasksData
+    if (openTasksData?.openTasksData?.projects && openTasksData?.message) {
+        const { projects, totalCount } = openTasksData.openTasksData
         console.log('📋 [ASSISTANT CONTEXT] Open tasks for today (including overdue):', {
             userId,
             totalCount,
             projectCount: projects.length,
             projects: projects.map(p => ({ name: p.name, count: p.openTaskCount })),
         })
-
-        // Build the task summary message
-        let taskSummary = `The user has ${projects.length} active project${projects.length !== 1 ? 's' : ''}. `
-        taskSummary += `Today (including overdue) the user has ${totalCount} open task${
-            totalCount !== 1 ? 's' : ''
-        } in total.`
-
-        if (projects.length > 0 && totalCount > 0) {
-            taskSummary += ` Open tasks per project (in sidebar order): `
-            taskSummary += projects.map(p => `"${p.name}": ${p.openTaskCount}`).join(', ')
-            taskSummary += '.'
-        }
-
-        messages.push(['system', taskSummary])
+        messages.push(['system', openTasksData.message])
     }
 
     const reversedMessages = messages.reverse()
@@ -7611,4 +7628,5 @@ module.exports = {
     mapAssistantTaskForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
     getHeartbeatSettingsContextMessage,
+    getOpenTasksContextMessage,
 }

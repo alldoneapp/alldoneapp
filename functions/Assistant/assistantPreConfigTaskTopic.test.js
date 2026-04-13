@@ -4,6 +4,7 @@ const mockAddBaseInstructions = jest.fn(async () => {})
 const mockReduceGoldWhenChatWithAI = jest.fn(async () => {})
 const mockGetCommonData = jest.fn()
 const mockGetUserDataOptimized = jest.fn()
+const mockGetOpenTasksContextMessage = jest.fn()
 const mockRemoveSingleChatNotification = jest.fn(async () => {})
 const mockSendTaskCompletionNotification = jest.fn()
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
@@ -22,6 +23,7 @@ jest.mock('./assistantHelper', () => ({
     getAssistantForChat: jest.fn(),
     getCommonData: (...args) => mockGetCommonData(...args),
     normalizeModelKey: jest.fn(model => model),
+    getOpenTasksContextMessage: (...args) => mockGetOpenTasksContextMessage(...args),
 }))
 
 jest.mock('./firestoreOptimized', () => ({
@@ -107,6 +109,7 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         jest.clearAllMocks()
 
         mockGetUserDataOptimized.mockResolvedValue({ gold: 10, uid: 'user-1' })
+        mockGetOpenTasksContextMessage.mockResolvedValue(null)
         mockInteractWithChatStream.mockResolvedValue({})
         mockGetCommonData.mockResolvedValue({
             project: { id: 'project-1', name: 'Project A' },
@@ -165,5 +168,75 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
 
         expect(mockRemoveSingleChatNotification).not.toHaveBeenCalled()
+    })
+
+    test('injects optional open tasks context before the prompt', async () => {
+        mockGetOpenTasksContextMessage.mockResolvedValue({
+            message: 'Today (including overdue) the user has 4 open tasks in total.',
+            openTasksData: { projects: [{ name: 'Project A', openTaskCount: 4 }], totalCount: 4 },
+        })
+
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Heartbeat prompt',
+            'en',
+            aiSettings,
+            { sendWhatsApp: false, name: 'Heartbeat' },
+            null,
+            'topics',
+            { includeOpenTasksContext: true }
+        )
+
+        expect(mockGetOpenTasksContextMessage).toHaveBeenCalledWith('user-1', null)
+        expect(mockInteractWithChatStream).toHaveBeenCalledWith(
+            expect.arrayContaining([
+                ['system', 'Today (including overdue) the user has 4 open tasks in total.'],
+                ['user', 'Heartbeat prompt'],
+            ]),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything()
+        )
+    })
+
+    test('preserves additional assistant and user turns before the latest prompt', async () => {
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Check in with the user',
+            'en',
+            aiSettings,
+            { sendWhatsApp: false, name: 'Heartbeat' },
+            null,
+            'topics',
+            {
+                additionalContextMessages: [
+                    ['assistant', '[Monday, April 13th 2026, 8:00:00 am]: Did you make progress?'],
+                    ['user', '[Monday, April 13th 2026, 8:05:00 am]: Yes, partly.'],
+                ],
+            }
+        )
+
+        expect(mockInteractWithChatStream).toHaveBeenCalledWith(
+            expect.arrayContaining([
+                ['assistant', '[Monday, April 13th 2026, 8:00:00 am]: Did you make progress?'],
+                ['user', '[Monday, April 13th 2026, 8:05:00 am]: Yes, partly.'],
+                ['user', 'Check in with the user'],
+            ]),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything()
+        )
     })
 })

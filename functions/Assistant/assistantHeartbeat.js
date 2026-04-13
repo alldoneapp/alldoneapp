@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+const { getOpenTasksContextMessage, parseTextForUseLiKePrompt } = require('./assistantHelper')
 const {
     addTimestampToContextContent,
     resolveUserTimezoneOffset,
@@ -65,6 +66,23 @@ async function getTopicConversationHistory(
             error: error.message,
         })
         return []
+    }
+}
+
+async function getTopicTitle(projectId, chatId) {
+    try {
+        const chatDoc = await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).get()
+        if (!chatDoc.exists) return null
+
+        const title = chatDoc.data()?.title
+        return typeof title === 'string' && title.trim() ? title : null
+    } catch (error) {
+        console.warn('Heartbeat: Failed to fetch topic title:', {
+            projectId,
+            chatId,
+            error: error.message,
+        })
+        return null
     }
 }
 
@@ -366,24 +384,35 @@ async function checkAndExecuteHeartbeats() {
 
                 const basePrompt = assistant.heartbeatPrompt ?? DEFAULT_PROMPT
 
-                // Fetch chat history from the topic for context
-                const chatHistory = await getTopicConversationHistory(
-                    projectId,
-                    chatId,
-                    THREAD_CONTEXT_MESSAGE_LIMIT,
+                const [chatHistory, topicTitle] = await Promise.all([
+                    getTopicConversationHistory(
+                        projectId,
+                        chatId,
+                        THREAD_CONTEXT_MESSAGE_LIMIT,
+                        resolveUserTimezoneOffset(userData) ?? normalizeTimezone(userData.timezone)
+                    ),
+                    getTopicTitle(projectId, chatId),
+                ])
+                const prompt = basePrompt
+
+                const openTasksContext = await getOpenTasksContextMessage(
+                    userId,
                     resolveUserTimezoneOffset(userData) ?? normalizeTimezone(userData.timezone)
                 )
-                let prompt = basePrompt
-                if (chatHistory.length > 0) {
-                    const historyText = chatHistory
-                        .map(([role, content]) => {
-                            const label = role === 'assistant' ? 'Assistant' : 'User'
-                            const text = typeof content === 'string' ? content : JSON.stringify(content)
-                            return `${label}: ${text}`
-                        })
-                        .join('\n')
-                    prompt = `Here is the recent chat history from this conversation:\n---\n${historyText}\n---\n\n${basePrompt}`
-                }
+                const additionalContextMessages = [
+                    ...(topicTitle
+                        ? [
+                              [
+                                  'system',
+                                  `This conversation is about a chat titled: "${parseTextForUseLiKePrompt(
+                                      topicTitle
+                                  )}"`,
+                              ],
+                          ]
+                        : []),
+                    ...(openTasksContext?.message ? [['system', openTasksContext.message]] : []),
+                    ...chatHistory,
+                ]
 
                 await generatePreConfigTaskResult(
                     userId,
@@ -405,7 +434,8 @@ async function checkAndExecuteHeartbeats() {
                         recurrence: 'never',
                     },
                     null, // functionEntryTime
-                    'topics' // objectType - heartbeat uses topic chats, not task chats
+                    'topics', // objectType - heartbeat uses topic chats, not task chats
+                    { additionalContextMessages }
                 )
 
                 console.log('Heartbeat: Executed successfully:', {

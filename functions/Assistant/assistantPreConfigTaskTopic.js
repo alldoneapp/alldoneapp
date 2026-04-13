@@ -8,6 +8,7 @@ const {
     getAssistantForChat,
     getCommonData, // For parallel fetching to reduce time-to-first-token
     normalizeModelKey, // For model normalization and backward compatibility
+    getOpenTasksContextMessage,
 } = require('./assistantHelper')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
@@ -85,7 +86,8 @@ async function generatePreConfigTaskResult(
     aiSettings,
     taskMetadata = null,
     functionEntryTime = null, // Optional entry time from HTTP function entry point
-    objectType = 'tasks' // 'tasks' for pre-config tasks, 'topics' for heartbeat topics
+    objectType = 'tasks', // 'tasks' for pre-config tasks, 'topics' for heartbeat topics
+    options = {}
 ) {
     const functionStartTime = Date.now()
     // Use entry time if provided, otherwise use function start time
@@ -275,6 +277,22 @@ async function generatePreConfigTaskResult(
             finalPrompt += notesContext
         }
 
+        let additionalContextMessages = Array.isArray(options?.additionalContextMessages)
+            ? options.additionalContextMessages.filter(msg => {
+                  const validRoles = ['system', 'user', 'assistant']
+                  return (
+                      Array.isArray(msg) && validRoles.includes(msg[0]) && typeof msg[1] === 'string' && msg[1].trim()
+                  )
+              })
+            : []
+
+        if (options?.includeOpenTasksContext === true) {
+            const openTasksContext = await getOpenTasksContextMessage(userId, userTimezoneOffset)
+            if (openTasksContext?.message) {
+                additionalContextMessages = [...additionalContextMessages, ['system', openTasksContext.message]]
+            }
+        }
+
         // Step 2: Prepare context messages
         const step2Start = Date.now()
         await addBaseInstructions(
@@ -290,6 +308,9 @@ async function generatePreConfigTaskResult(
                 requestUserId: userId,
             }
         )
+        additionalContextMessages.forEach(message => {
+            contextMessages.push([message[0], parseTextForUseLiKePrompt(message[1])])
+        })
         contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
         const step2Duration = Date.now() - step2Start
 
