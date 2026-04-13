@@ -59,7 +59,7 @@ export const setObjectAssistantEnabled = async (projectId, objectId, objectType,
             collectionPath = `chatObjects/${projectId}/chats`
             break
         case 'notes':
-            collectionPath = `notesObjects/${projectId}/notes`
+            collectionPath = `noteItems/${projectId}/notes`
             break
         case 'contacts':
             collectionPath = `contactsObjects/${projectId}/contacts`
