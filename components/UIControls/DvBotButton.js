@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
 import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
@@ -35,8 +35,14 @@ export default function DvBotButton({
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const [isOpen, setIsOpen] = useState(false)
+    const [optimisticAssistantId, setOptimisticAssistantId] = useState(assistantId)
 
-    const { photoURL50 } = getAssistantInProjectObject(projectId, assistantId)
+    useEffect(() => {
+        setOptimisticAssistantId(assistantId)
+    }, [assistantId])
+
+    const effectiveAssistantId = optimisticAssistantId || assistantId
+    const { photoURL50 } = getAssistantInProjectObject(projectId, effectiveAssistantId)
 
     const navigateToChat = () => {
         dispatch(setSelectedNavItem(navItem))
@@ -45,7 +51,11 @@ export default function DvBotButton({
     const onSelectBotOption = async optionText => {
         await setObjectAssistantEnabled(projectId, objectId, objectType, true)
         if (parentObject && updateObjectState) {
-            updateObjectState({ ...parentObject, isAssistantEnabled: true })
+            updateObjectState({
+                ...parentObject,
+                assistantId: effectiveAssistantId,
+                isAssistantEnabled: true,
+            })
         }
 
         navigateToChat()
@@ -80,7 +90,8 @@ export default function DvBotButton({
                     <BotOptionsModal
                         closeModal={closeModal}
                         onSelectBotOption={onSelectBotOption}
-                        assistantId={assistantId}
+                        assistantId={effectiveAssistantId}
+                        setAssistantId={setOptimisticAssistantId}
                         parentObject={parentObject}
                         projectId={projectId}
                         objectId={objectId}
@@ -99,7 +110,7 @@ export default function DvBotButton({
             contentLocation={smallScreenNavigation ? null : undefined}
         >
             <TouchableOpacity style={[localStyles.container, style]} onPress={openModal}>
-                <AssistantAvatar photoURL={photoURL50} assistantId={assistantId} size={24} />
+                <AssistantAvatar photoURL={photoURL50} assistantId={effectiveAssistantId} size={24} />
             </TouchableOpacity>
         </Popover>
     )
