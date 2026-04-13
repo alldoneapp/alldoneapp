@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
 import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
@@ -37,15 +37,18 @@ export default function DvBotButton({
 
     const [isOpen, setIsOpen] = useState(false)
     const [optimisticAssistantId, setOptimisticAssistantId] = useState(assistantId)
+    const latestAssistantIdRef = useRef(assistantId)
 
     useEffect(() => {
         setOptimisticAssistantId(assistantId)
+        latestAssistantIdRef.current = assistantId
     }, [assistantId])
 
     const effectiveAssistantId = optimisticAssistantId || assistantId
     const { photoURL50 } = getAssistantInProjectObject(projectId, effectiveAssistantId)
 
     const updateAssistantId = newAssistantId => {
+        latestAssistantIdRef.current = newAssistantId
         setOptimisticAssistantId(newAssistantId)
         setAssistantId?.(newAssistantId)
     }
@@ -55,11 +58,13 @@ export default function DvBotButton({
     }
 
     const onSelectBotOption = async optionText => {
+        const selectedAssistantId = latestAssistantIdRef.current || effectiveAssistantId
+
         await setObjectAssistantEnabled(projectId, objectId, objectType, true)
         if (parentObject && updateObjectState) {
             updateObjectState({
                 ...parentObject,
-                assistantId: effectiveAssistantId,
+                assistantId: selectedAssistantId,
                 isAssistantEnabled: true,
             })
         }
