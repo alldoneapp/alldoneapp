@@ -25,15 +25,12 @@ export default function UserInfo({ projectId, projectIndex, user, accessGranted 
         userId,
         description,
         extendedDescription,
-        false
+        true
     )
 
-    const userInfo =
-        !userRole && !userCompany
-            ? userDescription
-                ? userDescription
-                : ''
-            : `${userRole ? userRole : ''}${userRole && userCompany ? ' • ' : ''}${userCompany ? userCompany : ''}`
+    const userInfo = `${userRole ? userRole : ''}${userRole && userCompany ? ' • ' : ''}${
+        userCompany ? userCompany : ''
+    }`
 
     const showModal = () => {
         setShowInfoModal(true)
@@ -51,7 +48,7 @@ export default function UserInfo({ projectId, projectIndex, user, accessGranted 
                 userId,
                 value.company.trim(),
                 value.role.trim(),
-                value.description.trim()
+                userDescription
             )
         }
     }
@@ -101,6 +98,7 @@ export default function UserInfo({ projectId, projectIndex, user, accessGranted 
                             currentRole={userRole ? userRole : ''}
                             currentCompany={userCompany ? userCompany : ''}
                             currentDescription={userDescription ? userDescription : ''}
+                            hideDescription={true}
                             disabled={!loggedUserCanUpdateObject}
                         />
                     }

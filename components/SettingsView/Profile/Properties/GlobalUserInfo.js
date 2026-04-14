@@ -15,15 +15,10 @@ export default function GlobalUserInfo({ userId, role, company, description }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [open, setOpen] = useState(false)
 
-    const userInfo =
-        !role && !company
-            ? description
-                ? description
-                : ''
-            : `${role ? role : ''}${role && company ? ' • ' : ''}${company ? company : ''}`
+    const userInfo = `${role ? role : ''}${role && company ? ' • ' : ''}${company ? company : ''}`
 
     const changeData = async info => {
-        await ProjectHelper.setUserInfoGlobally(userId, info.role, info.company, info.description)
+        await ProjectHelper.setUserInfoGlobally(userId, info.role, info.company, description)
     }
 
     return (
@@ -66,6 +61,7 @@ export default function GlobalUserInfo({ userId, role, company, description }) {
                             currentRole={role}
                             currentCompany={company}
                             currentDescription={description}
+                            hideDescription={true}
                         />
                     }
                     onClickOutside={() => setOpen(false)}

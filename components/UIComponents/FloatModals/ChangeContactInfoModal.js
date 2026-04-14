@@ -27,6 +27,7 @@ export default function ChangeContactInfoModal({
     onSaveData,
     projectId,
     disabled,
+    hideDescription = false,
 }) {
     const [role, setRole] = useState(currentRole ? currentRole : '')
     const [company, setCompany] = useState(currentCompany ? currentCompany : '')
@@ -97,8 +98,12 @@ export default function ChangeContactInfoModal({
             if (roleInputRef.current.isFocused()) {
                 companyInputRef.current.focus()
             } else if (companyInputRef.current.isFocused()) {
-                descriptionInputRef.current.focus()
-            } else if (descriptionInputRef.current.isFocused()) {
+                if (hideDescription) {
+                    roleInputRef.current.focus()
+                } else {
+                    descriptionInputRef.current.focus()
+                }
+            } else if (!hideDescription && descriptionInputRef.current.isFocused()) {
                 roleInputRef.current.focus()
             }
         }
@@ -167,29 +172,31 @@ export default function ChangeContactInfoModal({
                         characterLimit={50}
                     />
                 </View>
-                <View style={[localStyles.section, { marginTop: 12 }]}>
-                    <Text style={localStyles.roleLabel}>{translate('Description')}</Text>
-                    <CustomTextInput3
-                        ref={descriptionInputRef}
-                        containerStyle={[localStyles.roleInput, localStyles.textarea]}
-                        initialTextExtended={description}
-                        placeholder={translate('Short description')}
-                        placeholderTextColor={colors.Text03}
-                        multiline={true}
-                        numberOfLines={1}
-                        onChangeText={setDescription}
-                        styleTheme={NEW_TOPIC_MODAL_THEME}
-                        projectId={projectId}
-                        projectIndex={projectIndex >= 0 && projectIndex}
-                        setMentionsModalActive={setMentionsModalActive}
-                        disabledMentions={projectId == null}
-                        disabledTabKey={true}
-                        forceTriggerEnterActionForBreakLines={enterKeyAction}
-                        disabledEdition={disabled}
-                        characterLimit={300}
-                        onMentionSelected={onMentionSelected}
-                    />
-                </View>
+                {!hideDescription && (
+                    <View style={[localStyles.section, { marginTop: 12 }]}>
+                        <Text style={localStyles.roleLabel}>{translate('Description')}</Text>
+                        <CustomTextInput3
+                            ref={descriptionInputRef}
+                            containerStyle={[localStyles.roleInput, localStyles.textarea]}
+                            initialTextExtended={description}
+                            placeholder={translate('Short description')}
+                            placeholderTextColor={colors.Text03}
+                            multiline={true}
+                            numberOfLines={1}
+                            onChangeText={setDescription}
+                            styleTheme={NEW_TOPIC_MODAL_THEME}
+                            projectId={projectId}
+                            projectIndex={projectIndex >= 0 && projectIndex}
+                            setMentionsModalActive={setMentionsModalActive}
+                            disabledMentions={projectId == null}
+                            disabledTabKey={true}
+                            forceTriggerEnterActionForBreakLines={enterKeyAction}
+                            disabledEdition={disabled}
+                            characterLimit={300}
+                            onMentionSelected={onMentionSelected}
+                        />
+                    </View>
+                )}
                 {showCopyContactModal && contactToCopy && (
                     <View style={localStyles.copyModalOverlay}>
                         <View style={localStyles.copyModalContainer}>
