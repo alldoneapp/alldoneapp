@@ -152,6 +152,31 @@ describe('Get tasks assistant tool schema', () => {
     })
 })
 
+describe('Get chats assistant tool schema', () => {
+    test('exposes get_chats only when allowed', () => {
+        expect(getToolSchemas(['get_chats']).map(schema => schema.function.name)).toEqual(['get_chats'])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('documents chat type, date, limit, and project filters', () => {
+        expect(toolSchemas.get_chats.function.parameters.properties.types).toEqual({
+            type: 'array',
+            items: {
+                type: 'string',
+                enum: ['topics', 'tasks', 'notes', 'contacts', 'goals', 'skills', 'assistants'],
+            },
+            description:
+                'Optional: chat types to include. Defaults to ["topics"]. Use this to include task chats or other object chat types.',
+        })
+
+        expect(toolSchemas.get_chats.function.parameters.properties.date.type).toBe('string')
+        expect(toolSchemas.get_chats.function.parameters.properties.limit.type).toBe('number')
+        expect(toolSchemas.get_chats.function.parameters.properties.projectId.type).toBe('string')
+        expect(toolSchemas.get_chats.function.parameters.properties.projectName.type).toBe('string')
+        expect(toolSchemas.get_chats.function.description).toContain('topic chats only')
+    })
+})
+
 describe('Update note assistant tool schema', () => {
     test('supports contact-targeted note updates', () => {
         expect(toolSchemas.update_note.function.parameters.properties.contactId.type).toBe('string')

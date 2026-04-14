@@ -138,6 +138,50 @@ const toolSchemas = {
         },
     },
 
+    get_chats: {
+        type: 'function',
+        function: {
+            name: 'get_chats',
+            description:
+                'Retrieves recent chat threads across accessible projects. Use this when the user asks to list, show, or review chats/topics by timeframe, project, or chat type without relying on keyword search. Defaults to topic chats only and returns each matched thread with recent message history.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    types: {
+                        type: 'array',
+                        items: {
+                            type: 'string',
+                            enum: ['topics', 'tasks', 'notes', 'contacts', 'goals', 'skills', 'assistants'],
+                        },
+                        description:
+                            'Optional: chat types to include. Defaults to ["topics"]. Use this to include task chats or other object chat types.',
+                    },
+                    date: {
+                        type: 'string',
+                        description:
+                            'Optional: filter threads by last activity date. Supports "today", "yesterday", "last week", "last 7 days", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of chat threads to return across all matched projects. Default is 10, maximum is 100.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit chats to a specific accessible project ID. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit chats to a specific accessible project by exact or partial project name. If multiple projects match, the tool will return an ambiguity error.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     get_user_projects: {
         type: 'function',
         function: {
@@ -530,7 +574,7 @@ const toolSchemas = {
         function: {
             name: 'search',
             description:
-                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead.',
+                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats.',
             parameters: {
                 type: 'object',
                 properties: {

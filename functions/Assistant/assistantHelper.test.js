@@ -19,6 +19,22 @@ jest.mock('../shared/ProjectService', () => ({
         getUserProjects: jest.fn().mockResolvedValue([]),
     })),
 }))
+jest.mock('../shared/ChatRetrievalService', () => ({
+    ChatRetrievalService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getChats: jest.fn().mockResolvedValue({
+            chats: [],
+            count: 0,
+            appliedFilters: {
+                types: ['topics'],
+                date: null,
+                limit: 10,
+                projectId: null,
+                projectName: null,
+            },
+        }),
+    })),
+}))
 jest.mock('../shared/projectDescriptionUpdateHelper', () => ({
     updateProjectDescription: jest.fn(),
 }))
@@ -94,6 +110,7 @@ jest.mock(
 )
 
 const { ProjectService } = require('../shared/ProjectService')
+const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 global.fetch = jest.fn()
@@ -836,6 +853,90 @@ describe('resolveCreateTaskTargetProject', () => {
         expect(getUserProjects).toHaveBeenCalledWith('u-1', {
             includeArchived: false,
             includeCommunity: false,
+        })
+    })
+})
+
+describe('assistant get chats tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ChatRetrievalService.mockClear()
+    })
+
+    test('delegates chat retrieval with normalized filters and timezone', async () => {
+        const getChats = jest.fn().mockResolvedValue({
+            chats: [
+                {
+                    documentId: 'chat-1',
+                    projectId: 'project-2',
+                    projectName: 'Marketing',
+                    type: 'topics',
+                    title: 'Weekly sync',
+                    lastActivityAt: 1774970400000,
+                    createdAt: 1774960000000,
+                    lastCommentPreview: 'Need the new draft',
+                    messages: [
+                        {
+                            messageId: 'message-1',
+                            role: 'user',
+                            text: 'Need the new draft',
+                            createdAt: 1774970300000,
+                            fromAssistant: false,
+                        },
+                    ],
+                },
+            ],
+            count: 1,
+            appliedFilters: {
+                types: ['topics'],
+                date: 'last week',
+                limit: 10,
+                projectId: 'project-2',
+                projectName: 'Marketing',
+            },
+        })
+
+        ChatRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getChats,
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                timezone: 'UTC+02:00',
+            }),
+        })
+
+        const result = await executeToolNatively(
+            'get_chats',
+            {
+                projectName: 'Marketing',
+                date: 'last week',
+                limit: 10,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getChats).toHaveBeenCalledWith({
+            userId: 'user-1',
+            projectId: '',
+            projectName: 'Marketing',
+            types: undefined,
+            date: 'last week',
+            limit: 10,
+            timezoneOffset: 120,
+        })
+        expect(result).toMatchObject({
+            count: 1,
+            appliedFilters: {
+                types: ['topics'],
+                projectId: 'project-2',
+                projectName: 'Marketing',
+            },
         })
     })
 })

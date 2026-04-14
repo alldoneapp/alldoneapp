@@ -1006,6 +1006,67 @@ class AlldoneSimpleMCPServer {
         }
     }
 
+    async getChats(args, request) {
+        const userId = await this.getAuthenticatedUserForClient(request)
+        const db = admin.firestore()
+
+        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+        const userDoc = await db.collection('users').doc(userId).get()
+        if (!userDoc.exists) {
+            throw new Error('User not found')
+        }
+
+        const userData = userDoc.data()
+        const rawTz =
+            (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+            (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+            (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+            (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+        const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+        console.log('💬 MCP GET_CHATS request:', {
+            userId,
+            projectId: args.projectId || null,
+            projectName: args.projectName || null,
+            types: Array.isArray(args.types) ? args.types : null,
+            date: args.date || null,
+            limit: args.limit || null,
+            normalizedTimezoneOffset: timezoneOffset,
+        })
+
+        try {
+            if (!this.chatRetrievalService) {
+                const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
+                this.chatRetrievalService = new ChatRetrievalService({
+                    database: db,
+                    moment: moment,
+                    isCloudFunction: true,
+                })
+                await this.chatRetrievalService.initialize()
+            }
+
+            const result = await this.chatRetrievalService.getChats({
+                userId,
+                projectId: args.projectId || '',
+                projectName: args.projectName || '',
+                types: args.types,
+                date: args.date || null,
+                limit: args.limit,
+                timezoneOffset,
+            })
+
+            return {
+                success: true,
+                chats: result.chats,
+                count: result.count,
+                appliedFilters: result.appliedFilters,
+            }
+        } catch (error) {
+            console.error('Error getting chats:', error)
+            throw new Error(`Failed to get chats: ${error.message}`)
+        }
+    }
+
     async getUserProjects(args, request) {
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -1200,6 +1261,7 @@ class AlldoneSimpleMCPServer {
                         'search',
                         'get_note',
                         'get_tasks',
+                        'get_chats',
                         'get_focus_task',
                         'get_user_projects',
                         'delete_authentication_data',
@@ -3013,6 +3075,51 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
+                            name: 'get_chats',
+                            description:
+                                'Get recent chat threads across accessible projects with filters for project, chat type, and timeframe (requires authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Optional project ID to limit the chat query',
+                                    },
+                                    projectName: {
+                                        type: 'string',
+                                        description: 'Optional exact or partial project name to limit the chat query',
+                                    },
+                                    types: {
+                                        type: 'array',
+                                        items: {
+                                            type: 'string',
+                                            enum: [
+                                                'topics',
+                                                'tasks',
+                                                'notes',
+                                                'contacts',
+                                                'goals',
+                                                'skills',
+                                                'assistants',
+                                            ],
+                                        },
+                                        description: 'Optional list of chat types to include (default: ["topics"])',
+                                    },
+                                    date: {
+                                        type: 'string',
+                                        description:
+                                            'Optional last-activity timeframe such as "last week", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD"',
+                                    },
+                                    limit: {
+                                        type: 'number',
+                                        description:
+                                            'Optional global maximum number of chat threads to return (default: 10, max: 100)',
+                                    },
+                                },
+                                required: [],
+                            },
+                        },
+                        {
                             name: 'get_user_projects',
                             description:
                                 'Get list of projects accessible to authenticated user (requires OAuth 2.0 Bearer token authentication)',
@@ -3141,6 +3248,9 @@ class AlldoneSimpleMCPServer {
                             break
                         case 'get_tasks':
                             result = await this.getTasks(args, httpReq)
+                            break
+                        case 'get_chats':
+                            result = await this.getChats(args, httpReq)
                             break
                         case 'get_user_projects':
                             result = await this.getUserProjects(args, httpReq)
@@ -4536,6 +4646,7 @@ class AlldoneSimpleMCPServer {
                             'create_task',
                             'update_task',
                             'get_tasks',
+                            'get_chats',
                             'get_user_projects',
                             'get_focus_task',
                         ]

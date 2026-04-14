@@ -3531,6 +3531,59 @@ async function executeToolNatively(
             }
         }
 
+        case 'get_chats': {
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
+
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+            console.log('💬 GET_CHATS TOOL: Request params', {
+                userId: creatorId,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
+                types: Array.isArray(toolArgs.types) ? toolArgs.types : null,
+                date: toolArgs.date || null,
+                limit: toolArgs.limit || null,
+                rawTimezone: rawTz,
+                normalizedTimezoneOffset: timezoneOffset,
+            })
+
+            const retrievalService = new ChatRetrievalService({
+                database: admin.firestore(),
+                moment: require('moment'),
+                isCloudFunction: true,
+            })
+            await retrievalService.initialize()
+
+            const result = await retrievalService.getChats({
+                userId: creatorId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+                types: toolArgs.types,
+                date: toolArgs.date || null,
+                limit: toolArgs.limit,
+                timezoneOffset,
+            })
+
+            console.log('💬 GET_CHATS TOOL: Results', {
+                chatsReturned: result.count,
+                appliedFilters: result.appliedFilters,
+            })
+
+            return result
+        }
+
         case 'get_user_projects': {
             const { ProjectService } = require('../shared/ProjectService')
 

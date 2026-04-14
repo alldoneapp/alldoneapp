@@ -154,6 +154,40 @@
                     "order": "DESCENDING"
                 }
             ]
+        },
+        {
+            "__comment__": "Chats - visible chats ordered by last activity",
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Chats - visible chats filtered by type and last activity",
+            "collectionGroup": "chats",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "type",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "lastEditionDate",
+                    "order": "DESCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": [
