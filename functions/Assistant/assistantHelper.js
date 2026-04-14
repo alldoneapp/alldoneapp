@@ -71,6 +71,7 @@ const {
 } = require('./contextTimestampHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
+const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -107,6 +108,7 @@ const ALLOWED_DELEGATION_TARGET_KEYS_FIELD = 'allowedDelegationTargetKeys'
 const EXTERNAL_TOOLS_KEY = 'external_tools'
 const UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY = 'update_heartbeat_settings'
 const UPDATE_PROJECT_DESCRIPTION_TOOL_KEY = 'update_project_description'
+const UPDATE_USER_DESCRIPTION_TOOL_KEY = 'update_user_description'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
@@ -4495,6 +4497,45 @@ async function executeToolNatively(
             })
         }
 
+        case UPDATE_USER_DESCRIPTION_TOOL_KEY: {
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+
+            if (!resolvedAssistant) {
+                throw new Error('Assistant not found for user description update.')
+            }
+
+            const currentAssistant = resolvedAssistant.assistant || {}
+            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
+            if (!allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
+                throw new Error(`Tool not permitted: ${UPDATE_USER_DESCRIPTION_TOOL_KEY}`)
+            }
+
+            if (typeof toolArgs.description !== 'string' || !toolArgs.description.trim()) {
+                throw new Error('description is required for update_user_description.')
+            }
+
+            if (!requestUserId) {
+                throw new Error('User description update requires a valid requesting user.')
+            }
+
+            const db = admin.firestore()
+            const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                db,
+                requestUserId,
+                projectId,
+                toolArgs.projectId,
+                toolArgs.projectName
+            )
+
+            return await updateUserDescription({
+                db,
+                projectId: targetProject.id,
+                targetUserId: requestUserId,
+                actorUserId: requestUserId,
+                description: toolArgs.description,
+            })
+        }
+
         case UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY: {
             const hasOwn = key => Object.prototype.hasOwnProperty.call(toolArgs || {}, key)
             const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
@@ -6616,6 +6657,47 @@ async function getProjectDescriptionContextMessage(projectId) {
     ].join('\n')
 }
 
+async function getUserDescriptionContextMessage(projectId, userId) {
+    if (!projectId || !userId) return ''
+
+    const [projectDoc, userDoc] = await Promise.all([
+        admin
+            .firestore()
+            .doc(`projects/${projectId}`)
+            .get()
+            .catch(() => null),
+        admin
+            .firestore()
+            .doc(`users/${userId}`)
+            .get()
+            .catch(() => null),
+    ])
+
+    if (!userDoc?.exists) return ''
+
+    const project = projectDoc?.exists ? projectDoc.data() || {} : {}
+    const user = userDoc.data() || {}
+    const projectUserData = project?.usersData?.[userId] || {}
+    const description =
+        typeof projectUserData.extendedDescription === 'string' && projectUserData.extendedDescription.trim()
+            ? projectUserData.extendedDescription
+            : typeof user.extendedDescription === 'string' && user.extendedDescription.trim()
+            ? user.extendedDescription
+            : typeof projectUserData.description === 'string' && projectUserData.description.trim()
+            ? projectUserData.description
+            : typeof user.description === 'string'
+            ? user.description
+            : ''
+
+    return [
+        'Current user description:',
+        `- User: ${user.displayName || user.name || userId}`,
+        `- Project: ${project.name || projectId}`,
+        '- Description:',
+        description || '(empty)',
+    ].join('\n')
+}
+
 async function addBaseInstructions(
     messages,
     name,
@@ -6773,6 +6855,29 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks to update a project description, use update_project_description. When editing the project description, treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
+        try {
+            const userDescriptionContextMessage = await getUserDescriptionContextMessage(
+                assistantContext?.projectId,
+                assistantContext?.requestUserId
+            )
+
+            if (userDescriptionContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(userDescriptionContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load user description context', {
+                projectId: assistantContext?.projectId,
+                requestUserId: assistantContext?.requestUserId,
+                error: error.message,
+            })
+        }
+
+        messages.push([
+            'system',
+            'When the user asks to update their user description or profile update in this project, use update_user_description. When editing the user description, treat the current user description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update it in another project by name call get_user_projects first so you can inspect the exact project name before writing.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {

@@ -80,6 +80,13 @@ describe('User memory assistant tool schemas', () => {
         expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
     })
 
+    test('exposes update_user_description only when allowed', () => {
+        expect(getToolSchemas(['update_user_description']).map(schema => schema.function.name)).toEqual([
+            'update_user_description',
+        ])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
     test('defines required fields for update_user_memory', () => {
         expect(toolSchemas.update_user_memory.function.parameters.required).toEqual(['fact'])
         expect(toolSchemas.update_user_memory.function.parameters.properties.category.type).toBe('string')
@@ -112,6 +119,13 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_project_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectName.type).toBe('string')
+    })
+
+    test('documents user description update fields', () => {
+        expect(toolSchemas.update_user_description.function.parameters.required).toEqual(['description'])
+        expect(toolSchemas.update_user_description.function.parameters.properties.description.type).toBe('string')
+        expect(toolSchemas.update_user_description.function.parameters.properties.projectId.type).toBe('string')
+        expect(toolSchemas.update_user_description.function.parameters.properties.projectName.type).toBe('string')
     })
 })
 

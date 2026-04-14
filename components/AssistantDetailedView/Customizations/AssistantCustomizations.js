@@ -31,6 +31,7 @@ import HeartbeatIntervalProperty from './Heartbeat/HeartbeatIntervalProperty'
 import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
+import HeartbeatStatusProperty from './Heartbeat/HeartbeatStatusProperty'
 
 export default function AssistantCustomizations({
     projectId,
@@ -184,6 +185,7 @@ export default function AssistantCustomizations({
                     />
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
+                    <HeartbeatStatusProperty projectId={projectId} assistant={assistant} />
                     <HeartbeatPromptProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                 </View>
             </View>

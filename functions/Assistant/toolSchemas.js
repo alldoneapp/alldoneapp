@@ -495,6 +495,35 @@ const toolSchemas = {
         },
     },
 
+    update_user_description: {
+        type: 'function',
+        function: {
+            name: 'update_user_description',
+            description:
+                'Updates the current requesting user description in the current project by default, or in another accessible project when projectId or projectName is provided. Treat the current user description as the base text and revise it instead of casually replacing it.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    description: {
+                        type: 'string',
+                        description:
+                            'The full revised user description to persist. Treat the current user description as the base text and revise it instead of casually replacing it.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'Optional: update the current user description in this accessible project ID.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: update the current user description in another accessible project by name. Prefer calling get_user_projects first to inspect the exact project name before writing.',
+                    },
+                },
+                required: ['description'],
+            },
+        },
+    },
+
     search: {
         type: 'function',
         function: {
