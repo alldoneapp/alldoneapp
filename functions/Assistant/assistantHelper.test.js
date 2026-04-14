@@ -871,6 +871,13 @@ describe('assistant heartbeat settings tool', () => {
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
+                    name: 'Operations',
+                    description: '',
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
                     heartbeatIntervalMs: 20 * 60 * 1000,
                     heartbeatChancePercent: 45,
                     heartbeatAwakeStart: 9 * 60 * 60 * 1000,
@@ -1032,6 +1039,30 @@ describe('assistant project description tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         ProjectService.mockClear()
+    })
+
+    test('injects current project description into base instructions for all chats', async () => {
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                name: 'Operations',
+                description: 'Current project description text.',
+            }),
+        })
+
+        const messages = []
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', [], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('Current project description:')
+        expect(systemMessages).toContain('Current project description text.')
     })
 
     test('injects current project description and rewrite guidance into base instructions', async () => {
@@ -1550,5 +1581,55 @@ describe('assistant user description tool', () => {
                 null
             )
         ).rejects.toThrow('Tool not permitted: update_user_description')
+    })
+})
+
+describe('assistant shared user context', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    test('injects current user description into base instructions for general assistant chats', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    displayName: 'Anna Alldone',
+                    noteIdsByProject: {},
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    name: 'Operations',
+                    usersData: {
+                        'user-1': {
+                            extendedDescription: 'Anna is the founder and prefers concise updates.',
+                        },
+                    },
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    displayName: 'Anna Alldone',
+                    extendedDescription: 'Global profile fallback.',
+                }),
+            })
+
+        const messages = []
+        await addBaseInstructions(messages, 'General Bot', 'en', 'Be helpful.', ['create_task'], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('Current user description:')
+        expect(systemMessages).toContain('Anna is the founder and prefers concise updates.')
     })
 })

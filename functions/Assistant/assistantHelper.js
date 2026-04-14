@@ -6760,6 +6760,39 @@ async function addBaseInstructions(
                 error: error.message,
             })
         }
+
+        try {
+            const userDescriptionContextMessage = await getUserDescriptionContextMessage(
+                assistantContext.projectId,
+                assistantContext.requestUserId
+            )
+            if (userDescriptionContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(userDescriptionContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load user description context', {
+                projectId: assistantContext.projectId,
+                requestUserId: assistantContext.requestUserId,
+                error: error.message,
+            })
+        }
+    }
+
+    if (assistantContext?.projectId) {
+        try {
+            const projectDescriptionContextMessage = await getProjectDescriptionContextMessage(
+                assistantContext.projectId
+            )
+
+            if (projectDescriptionContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(projectDescriptionContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load project description context', {
+                projectId: assistantContext.projectId,
+                error: error.message,
+            })
+        }
     }
 
     // Add emphasis on immediate action for tool-enabled assistants
@@ -6837,44 +6870,12 @@ async function addBaseInstructions(
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
-        try {
-            const projectDescriptionContextMessage = await getProjectDescriptionContextMessage(
-                assistantContext?.projectId
-            )
-
-            if (projectDescriptionContextMessage) {
-                messages.push(['system', parseTextForUseLiKePrompt(projectDescriptionContextMessage)])
-            }
-        } catch (error) {
-            console.warn('ASSISTANT CONTEXT: Failed to load project description context', {
-                projectId: assistantContext?.projectId,
-                error: error.message,
-            })
-        }
-
         messages.push([
             'system',
             'When the user asks to update a project description, use update_project_description. When editing the project description, treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
-        try {
-            const userDescriptionContextMessage = await getUserDescriptionContextMessage(
-                assistantContext?.projectId,
-                assistantContext?.requestUserId
-            )
-
-            if (userDescriptionContextMessage) {
-                messages.push(['system', parseTextForUseLiKePrompt(userDescriptionContextMessage)])
-            }
-        } catch (error) {
-            console.warn('ASSISTANT CONTEXT: Failed to load user description context', {
-                projectId: assistantContext?.projectId,
-                requestUserId: assistantContext?.requestUserId,
-                error: error.message,
-            })
-        }
-
         messages.push([
             'system',
             'When the user asks to update their user description or profile update in this project, use update_user_description. When editing the user description, treat the current user description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update it in another project by name call get_user_projects first so you can inspect the exact project name before writing.',
