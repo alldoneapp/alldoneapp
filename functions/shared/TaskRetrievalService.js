@@ -15,6 +15,8 @@ const moment = require('moment-timezone')
 // Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
 const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
+const TASK_COMMENTS_LIMIT = 5
+const TASK_COMMENT_FETCH_CONCURRENCY = 20
 
 class TaskRetrievalService {
     constructor(options = {}) {
@@ -95,6 +97,87 @@ class TaskRetrievalService {
             return momentInstance.utcOffset(timezoneOffset)
         }
         return momentInstance
+    }
+
+    mapTaskComment(commentId, commentData = {}) {
+        const commentText = typeof commentData.commentText === 'string' ? commentData.commentText.trim() : ''
+        if (!commentText) return null
+
+        return {
+            id: commentId,
+            commentText,
+            created: Number(commentData.created) || 0,
+            creatorId: commentData.creatorId || '',
+            fromAssistant: !!commentData.fromAssistant,
+            commentType: commentData.commentType || null,
+            isLoading: commentData.isLoading === true,
+        }
+    }
+
+    async getRecentTaskComments(projectId, taskId, maxComments = TASK_COMMENTS_LIMIT) {
+        if (!projectId || !taskId) return []
+
+        try {
+            const snapshot = await this.options.database
+                .collection(`chatComments/${projectId}/tasks/${taskId}/comments`)
+                .orderBy('created', 'desc')
+                .limit(Math.max(1, Math.min(Number(maxComments) || TASK_COMMENTS_LIMIT, TASK_COMMENTS_LIMIT)))
+                .get()
+
+            const comments = []
+            snapshot.forEach(doc => {
+                const mappedComment = this.mapTaskComment(doc.id, doc.data() || {})
+                if (mappedComment) comments.push(mappedComment)
+            })
+
+            return comments.reverse()
+        } catch (error) {
+            console.warn(`Failed to load task comments for ${projectId}/${taskId}:`, error.message)
+            return []
+        }
+    }
+
+    async attachRecentCommentsToTasks(tasks, projectId) {
+        if (!Array.isArray(tasks) || tasks.length === 0 || !projectId) return Array.isArray(tasks) ? tasks : []
+
+        const hydratedTasks = [...tasks]
+
+        for (let start = 0; start < hydratedTasks.length; start += TASK_COMMENT_FETCH_CONCURRENCY) {
+            const slice = hydratedTasks.slice(start, start + TASK_COMMENT_FETCH_CONCURRENCY)
+
+            const hydratedSlice = await Promise.all(
+                slice.map(async task => {
+                    const existingComments = Array.isArray(task?.comments)
+                        ? task.comments
+                              .map(comment =>
+                                  comment && typeof comment === 'object'
+                                      ? this.mapTaskComment(comment.id || comment.commentId || '', comment)
+                                      : null
+                              )
+                              .filter(Boolean)
+                        : []
+
+                    if (existingComments.length > 0) {
+                        return { ...task, comments: existingComments.slice(-TASK_COMMENTS_LIMIT) }
+                    }
+
+                    const commentsCount = Number(task?.commentsData?.amount) || 0
+                    const hasCommentPreview = typeof task?.commentsData?.lastComment === 'string'
+                    if (!commentsCount && !hasCommentPreview) {
+                        return { ...task, comments: [] }
+                    }
+
+                    const comments = await this.getRecentTaskComments(projectId, task.id)
+                    return { ...task, comments }
+                })
+            )
+
+            hydratedSlice.forEach((task, index) => {
+                hydratedTasks[start + index] = task
+            })
+        }
+
+        return hydratedTasks
     }
 
     /**
@@ -643,6 +726,8 @@ class TaskRetrievalService {
                 tasks.push({ id: doc.id, ...taskData })
             })
 
+            const tasksWithComments = await this.attachRecentCommentsToTasks(tasks, projectId)
+
             // Apply minimal projection if requested
             const mapToMinimal = (task, pId, pName) => {
                 // Derive calendar time (HH:mm) for calendar tasks when a specific dateTime is present
@@ -680,13 +765,15 @@ class TaskRetrievalService {
                     sortIndex: task.sortIndex || 0,
                     parentGoal: task.parentId || null,
                     calendarTime,
+                    comments: Array.isArray(task.comments) ? task.comments : [],
+                    commentsData: task.commentsData || null,
                     isFocus,
                 }
             }
 
             const projectedTasks = selectMinimalFields
-                ? tasks.map(t => mapToMinimal(t, projectId, providedProjectName))
-                : tasks.map(t => ({
+                ? tasksWithComments.map(t => mapToMinimal(t, projectId, providedProjectName))
+                : tasksWithComments.map(t => ({
                       ...t,
                       dueDateFormatted: t.dueDate
                           ? this.applyTimezone(this.options.moment(t.dueDate), normalizedTimezoneOffset).format(

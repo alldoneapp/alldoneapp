@@ -158,6 +158,23 @@ function filterTasksByRecentHours(tasks, recentHours, now = Date.now()) {
 function mapAssistantTaskForToolResponse(task) {
     const completedAt = Number(task?.completed)
     const dueDate = Number(task?.dueDate)
+    const comments = Array.isArray(task?.comments)
+        ? task.comments
+              .map(comment => {
+                  const commentText = typeof comment?.commentText === 'string' ? comment.commentText.trim() : ''
+                  if (!commentText) return null
+
+                  return {
+                      id: comment?.id || comment?.commentId || null,
+                      commentText,
+                      created: Number(comment?.created) || 0,
+                      creatorId: comment?.creatorId || '',
+                      fromAssistant: !!comment?.fromAssistant,
+                      commentType: comment?.commentType || null,
+                  }
+              })
+              .filter(Boolean)
+        : []
 
     return {
         id: task?.documentId || task?.id,
@@ -170,6 +187,8 @@ function mapAssistantTaskForToolResponse(task) {
         sortIndex: task?.sortIndex || 0,
         parentGoal: task?.parentGoal || null,
         calendarTime: task?.calendarTime || null,
+        comments,
+        commentsData: task?.commentsData || null,
         isFocus: task?.isFocus || false,
     }
 }

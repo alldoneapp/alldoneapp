@@ -172,6 +172,20 @@ describe('assistant attachment handoff helpers', () => {
                 sortIndex: 5,
                 parentGoal: 'goal-1',
                 calendarTime: '10:00',
+                comments: [
+                    {
+                        id: 'comment-1',
+                        commentText: 'Need final approval',
+                        created: 1774970000000,
+                        creatorId: 'user-1',
+                        fromAssistant: false,
+                        commentType: 'STAYWARD_COMMENT',
+                    },
+                ],
+                commentsData: {
+                    amount: 1,
+                    lastComment: 'Need final approval',
+                },
                 isFocus: true,
             })
         ).toEqual({
@@ -185,6 +199,20 @@ describe('assistant attachment handoff helpers', () => {
             sortIndex: 5,
             parentGoal: 'goal-1',
             calendarTime: '10:00',
+            comments: [
+                {
+                    id: 'comment-1',
+                    commentText: 'Need final approval',
+                    created: 1774970000000,
+                    creatorId: 'user-1',
+                    fromAssistant: false,
+                    commentType: 'STAYWARD_COMMENT',
+                },
+            ],
+            commentsData: {
+                amount: 1,
+                lastComment: 'Need final approval',
+            },
             isFocus: true,
         })
     })

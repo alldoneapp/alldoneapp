@@ -69,3 +69,131 @@ describe('TaskRetrievalService all-status date support', () => {
         })
     })
 })
+
+describe('TaskRetrievalService task comments support', () => {
+    test('maps recent comments into minimal task results', async () => {
+        const commentsSnapshot = {
+            forEach: callback => {
+                callback({
+                    id: 'comment-2',
+                    data: () => ({
+                        commentText: 'Second update',
+                        created: 200,
+                        creatorId: 'user-2',
+                        fromAssistant: true,
+                        commentType: 'STAYWARD_COMMENT',
+                    }),
+                })
+                callback({
+                    id: 'comment-1',
+                    data: () => ({
+                        commentText: 'First update',
+                        created: 100,
+                        creatorId: 'user-1',
+                        fromAssistant: false,
+                        commentType: 'STAYWARD_COMMENT',
+                    }),
+                })
+            },
+        }
+
+        const taskSnapshot = {
+            forEach: callback => {
+                callback({
+                    id: 'task-1',
+                    data: () => ({
+                        name: 'Follow up',
+                        done: false,
+                        sortIndex: 10,
+                        commentsData: {
+                            amount: 2,
+                            lastComment: 'Second update',
+                        },
+                    }),
+                })
+            },
+        }
+
+        const taskQuery = {
+            get: jest.fn().mockResolvedValue(taskSnapshot),
+            where: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+        }
+
+        const commentsQuery = {
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(commentsSnapshot),
+        }
+
+        const database = {
+            collection: jest.fn(path => {
+                if (path === 'items/project-1/tasks') return taskQuery
+                if (path === 'chatComments/project-1/tasks/task-1/comments') return commentsQuery
+                if (path === 'users') {
+                    return {
+                        doc: () => ({
+                            get: jest.fn().mockResolvedValue({ exists: false }),
+                        }),
+                    }
+                }
+                throw new Error(`Unexpected collection path: ${path}`)
+            }),
+        }
+
+        const service = new TaskRetrievalService({ database })
+        await service.initialize()
+
+        const result = await service.getTasks({
+            projectId: 'project-1',
+            userId: 'user-1',
+            status: 'open',
+            selectMinimalFields: true,
+            date: 'today',
+            perProjectLimit: 10,
+            limit: 10,
+        })
+
+        expect(result.tasks).toEqual([
+            {
+                documentId: 'task-1',
+                projectId: 'project-1',
+                projectName: undefined,
+                name: 'Follow up',
+                done: false,
+                completed: null,
+                humanReadableId: null,
+                dueDate: null,
+                sortIndex: 10,
+                parentGoal: null,
+                calendarTime: null,
+                comments: [
+                    {
+                        id: 'comment-1',
+                        commentText: 'First update',
+                        created: 100,
+                        creatorId: 'user-1',
+                        fromAssistant: false,
+                        commentType: 'STAYWARD_COMMENT',
+                        isLoading: false,
+                    },
+                    {
+                        id: 'comment-2',
+                        commentText: 'Second update',
+                        created: 200,
+                        creatorId: 'user-2',
+                        fromAssistant: true,
+                        commentType: 'STAYWARD_COMMENT',
+                        isLoading: false,
+                    },
+                ],
+                commentsData: {
+                    amount: 2,
+                    lastComment: 'Second update',
+                },
+                isFocus: false,
+            },
+        ])
+    })
+})
