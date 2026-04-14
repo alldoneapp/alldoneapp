@@ -38,15 +38,38 @@ function resolveUserTimezoneName(userData = {}) {
     return null
 }
 
-function getUserLocalDateContext(userData = {}, timestamp = Date.now()) {
+function getUserLocalMoment(userData = {}, timestamp = Date.now()) {
+    const timezoneName = resolveUserTimezoneName(userData)
+    if (timezoneName) {
+        return moment(timestamp).tz(timezoneName)
+    }
+
     const normalizedOffset = normalizeContextTimezoneOffset(resolveUserTimezoneOffset(userData))
-    const momentValue =
-        normalizedOffset !== null ? moment.utc(timestamp).utcOffset(normalizedOffset) : moment.utc(timestamp)
+    return normalizedOffset !== null ? moment.utc(timestamp).utcOffset(normalizedOffset) : moment.utc(timestamp)
+}
+
+function getUserLocalDateContext(userData = {}, timestamp = Date.now()) {
+    const momentValue = getUserLocalMoment(userData, timestamp)
+    const timezoneName = resolveUserTimezoneName(userData)
 
     return {
         dateKey: momentValue.format('YYYYMMDD'),
         dateLabel: momentValue.format('DD MMM YYYY'),
-        timezoneOffsetMinutes: normalizedOffset,
+        timezoneOffsetMinutes: timezoneName
+            ? momentValue.utcOffset()
+            : normalizeContextTimezoneOffset(resolveUserTimezoneOffset(userData)),
+    }
+}
+
+function getUserLocalDayBounds(userData = {}, timestamp = Date.now()) {
+    const momentValue = getUserLocalMoment(userData, timestamp)
+    const timezoneName = resolveUserTimezoneName(userData)
+
+    return {
+        startOfDay: momentValue.clone().startOf('day').valueOf(),
+        endOfDay: momentValue.clone().endOf('day').valueOf(),
+        timezoneOffsetMinutes: momentValue.utcOffset(),
+        timezoneName,
     }
 }
 
@@ -113,5 +136,6 @@ module.exports = {
     normalizeContextTimezoneOffset,
     resolveUserTimezoneOffset,
     resolveUserTimezoneName,
+    getUserLocalDayBounds,
     getUserLocalDateContext,
 }

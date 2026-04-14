@@ -1,4 +1,4 @@
-const { getUserLocalDateContext, resolveUserTimezoneName } = require('./contextTimestampHelper')
+const { getUserLocalDateContext, getUserLocalDayBounds, resolveUserTimezoneName } = require('./contextTimestampHelper')
 
 describe('contextTimestampHelper user-local date context', () => {
     test('uses the user timezone when the local day is ahead of UTC', () => {
@@ -33,5 +33,30 @@ describe('contextTimestampHelper user-local date context', () => {
 
     test('returns the user IANA timezone when available', () => {
         expect(resolveUserTimezoneName({ preferredTimezone: 'Europe/Berlin', timezone: 120 })).toBe('Europe/Berlin')
+    })
+
+    test('builds local day bounds from a fixed timezone offset', () => {
+        const result = getUserLocalDayBounds({ timezone: 120 }, Date.UTC(2026, 3, 3, 22, 30, 0))
+
+        expect(result).toEqual({
+            startOfDay: Date.UTC(2026, 3, 3, 22, 0, 0, 0),
+            endOfDay: Date.UTC(2026, 3, 4, 21, 59, 59, 999),
+            timezoneOffsetMinutes: 120,
+            timezoneName: null,
+        })
+    })
+
+    test('prefers IANA timezone data for local day bounds and DST-aware offsets', () => {
+        const result = getUserLocalDayBounds(
+            { preferredTimezone: 'Europe/Berlin', timezone: 60 },
+            Date.UTC(2026, 5, 15, 10, 0, 0)
+        )
+
+        expect(result).toEqual({
+            startOfDay: Date.UTC(2026, 5, 14, 22, 0, 0, 0),
+            endOfDay: Date.UTC(2026, 5, 15, 21, 59, 59, 999),
+            timezoneOffsetMinutes: 120,
+            timezoneName: 'Europe/Berlin',
+        })
     })
 })

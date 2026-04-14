@@ -712,6 +712,8 @@
     "Delete": "Delete",
     "Ok": "Ok",
     "Recurring": "Recurring",
+    "One-time tasks": "One-time tasks",
+    "Recurring tasks": "Recurring tasks",
     "Select the recurrence for this task": "Select the recurrence for this task",
     "Never": "Never",
     "Auto-Postpone after days overdue": "Auto-Postpone after days overdue",

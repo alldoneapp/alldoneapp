@@ -591,6 +591,8 @@
     "Delete": "Löschen",
     "Ok": "Ok",
     "Recurring": "Wiederkehrend",
+    "One-time tasks": "Einmalige Aufgaben",
+    "Recurring tasks": "Wiederkehrende Aufgaben",
     "Select the recurrence for this task": "Wähle die Wiederholung für diese Aufgabe",
     "Never": "Niemals",
     "Auto-Postpone after days overdue": "Automatisch verschieben nach Tagen überfällig",

@@ -8,6 +8,8 @@ const mockGetOpenTasksContextMessage = jest.fn()
 const mockRemoveSingleChatNotification = jest.fn(async () => {})
 const mockSendTaskCompletionNotification = jest.fn()
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
+const mockGetUserLocalDayBounds = jest.fn(() => ({ startOfDay: 100, endOfDay: 200 }))
+const mockCommentQueryWhere = jest.fn()
 
 const mockBuildEmptyQuerySnapshot = () => ({ empty: true })
 
@@ -36,6 +38,7 @@ jest.mock('./assistantStatusHelper', () => ({
 
 jest.mock('./contextTimestampHelper', () => ({
     resolveUserTimezoneOffset: jest.fn(() => null),
+    getUserLocalDayBounds: (...args) => mockGetUserLocalDayBounds(...args),
 }))
 
 jest.mock('./noteContextHelper', () => ({
@@ -59,7 +62,10 @@ jest.mock('firebase-admin', () => {
     }))
 
     const query = {
-        where: jest.fn(() => query),
+        where: jest.fn((...args) => {
+            mockCommentQueryWhere(...args)
+            return query
+        }),
         orderBy: jest.fn(() => query),
         limit: jest.fn(() => query),
         get: jest.fn(async () => mockBuildEmptyQuerySnapshot()),
@@ -125,6 +131,29 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         })
         mockReduceGoldWhenChatWithAI.mockResolvedValue(undefined)
         mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true })
+    })
+
+    test('checks user messages within the current local day before deciding on a template send', async () => {
+        mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
+
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Heartbeat prompt',
+            'en',
+            aiSettings,
+            { sendWhatsApp: true, name: 'Heartbeat' },
+            null,
+            'topics'
+        )
+
+        expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(expect.objectContaining({ uid: 'user-1' }))
+        expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '>=', 100)
+        expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '<=', 200)
     })
 
     test('marks assistant message as read after successful direct WhatsApp delivery', async () => {

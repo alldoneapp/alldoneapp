@@ -710,6 +710,8 @@
     "Delete": "Eliminar",
     "Ok": "Ok",
     "Recurring": "Recurrencia",
+    "One-time tasks": "Tareas únicas",
+    "Recurring tasks": "Tareas recurrentes",
     "Select the recurrence for this task": "Seleccione la recurrencia para esta tarea",
     "Never": "Nunca",
     "Auto-Postpone after days overdue": "Auto-posponer tras días de atraso",

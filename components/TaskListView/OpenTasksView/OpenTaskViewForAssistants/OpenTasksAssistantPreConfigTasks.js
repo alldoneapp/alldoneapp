@@ -11,6 +11,7 @@ import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
 import AssistantInputLine from './AssistantInputLine'
 import WhatsAppAssistantLine from './WhatsAppAssistantLine'
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 
 export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
     const currentUser = useSelector(state => state.currentUser)
@@ -28,6 +29,18 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
         }
     }, [currentUser.uid, tasksProjectId])
 
+    const isRecurringTask = task => {
+        const recurrenceByUser = task?.recurrenceByUser || {}
+        const hasRecurringUser = Object.values(recurrenceByUser).some(
+            recurrence => recurrence && recurrence !== RECURRENCE_NEVER
+        )
+
+        return hasRecurringUser || (!!task?.recurrence && task.recurrence !== RECURRENCE_NEVER)
+    }
+
+    const oneTimeTasks = tasks.filter(task => !isRecurringTask(task))
+    const recurringTasks = tasks.filter(task => isRecurringTask(task))
+
     return (
         <View style={localStyles.container}>
             <AssistantInputLine
@@ -37,14 +50,32 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
             />
             {currentUser.displayName === 'Anna Alldone' && <WhatsAppAssistantLine />}
             <Text style={localStyles.header}>{translate('Assistant tasks')}</Text>
-            {tasks.map(task => (
-                <PreConfigTaskGeneratorWrapper
-                    projectId={projectId}
-                    key={task.id}
-                    task={task}
-                    assistant={currentUser}
-                />
-            ))}
+            {oneTimeTasks.length > 0 && (
+                <View style={localStyles.section}>
+                    <Text style={localStyles.sectionTitle}>{translate('One-time tasks')}</Text>
+                    {oneTimeTasks.map(task => (
+                        <PreConfigTaskGeneratorWrapper
+                            projectId={projectId}
+                            key={task.id}
+                            task={task}
+                            assistant={currentUser}
+                        />
+                    ))}
+                </View>
+            )}
+            {recurringTasks.length > 0 && (
+                <View style={localStyles.section}>
+                    <Text style={localStyles.sectionTitle}>{translate('Recurring tasks')}</Text>
+                    {recurringTasks.map(task => (
+                        <PreConfigTaskGeneratorWrapper
+                            projectId={projectId}
+                            key={task.id}
+                            task={task}
+                            assistant={currentUser}
+                        />
+                    ))}
+                </View>
+            )}
         </View>
     )
 }
@@ -57,5 +88,14 @@ const localStyles = StyleSheet.create({
     header: {
         ...styles.title6,
         color: colors.Text01,
+    },
+    section: {
+        marginTop: 8,
+    },
+    sectionTitle: {
+        ...styles.subtitle2,
+        color: colors.Text01,
+        marginTop: 12,
+        marginBottom: 4,
     },
 })

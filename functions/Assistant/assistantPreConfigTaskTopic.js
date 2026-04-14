@@ -12,7 +12,7 @@ const {
 } = require('./assistantHelper')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
-const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
+const { resolveUserTimezoneOffset, getUserLocalDayBounds } = require('./contextTimestampHelper')
 const { removeSingleChatNotification } = require('../Chats/chatsFirestoreCloud')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
@@ -31,20 +31,21 @@ function getEncoder() {
 }
 
 /**
- * Check if the user has sent a message in the given topic within the last 24 hours.
+ * Check if the user has sent a message in the given topic on the user's current local day.
  * Used to determine whether to send a plain WhatsApp message or a template.
  */
-async function hasUserMessageInLast24Hours(projectId, chatId, userId) {
+async function hasUserMessageOnUserLocalDay(projectId, chatId, userId, userData = {}) {
     try {
         const admin = require('firebase-admin')
-        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
+        const { startOfDay, endOfDay } = getUserLocalDayBounds(userData)
 
         // Check in topics collection (for heartbeat and WhatsApp daily topics)
         const snapshot = await admin
             .firestore()
             .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
             .where('creatorId', '==', userId)
-            .where('created', '>=', twentyFourHoursAgo)
+            .where('created', '>=', startOfDay)
+            .where('created', '<=', endOfDay)
             .orderBy('created', 'desc')
             .limit(1)
             .get()
@@ -56,7 +57,8 @@ async function hasUserMessageInLast24Hours(projectId, chatId, userId) {
             .firestore()
             .collection(`chatComments/${projectId}/tasks/${chatId}/comments`)
             .where('creatorId', '==', userId)
-            .where('created', '>=', twentyFourHoursAgo)
+            .where('created', '>=', startOfDay)
+            .where('created', '<=', endOfDay)
             .orderBy('created', 'desc')
             .limit(1)
             .get()
@@ -67,6 +69,7 @@ async function hasUserMessageInLast24Hours(projectId, chatId, userId) {
             projectId,
             chatId,
             userId,
+            userTimezone: userData?.preferredTimezone || userData?.timezone || null,
             error: error.message,
         })
         // Default to template on error (safer)
@@ -454,9 +457,9 @@ async function generatePreConfigTaskResult(
                     const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
                     const whatsappService = new TwilioWhatsAppService()
 
-                    // Check if user has sent a message in the WhatsApp daily topic within 24 hours
-                    // If so, we can send a plain message instead of the template
-                    const hasRecentUserMessage = await hasUserMessageInLast24Hours(projectId, objectId, userId)
+                    // Check if user has already sent a message in this conversation on the user's current local day.
+                    // If so, we can send a plain message instead of the template.
+                    const hasRecentUserMessage = await hasUserMessageOnUserLocalDay(projectId, objectId, userId, user)
 
                     let whatsappResult
                     if (hasRecentUserMessage) {

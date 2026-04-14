@@ -1,5 +1,7 @@
 const admin = require('firebase-admin')
+const moment = require('moment-timezone')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { getUserLocalDayBounds } = require('../Assistant/contextTimestampHelper')
 
 /**
  * Get the correct base URL based on environment
@@ -319,7 +321,6 @@ class TwilioWhatsAppService {
     async _countUserOpenTasks(userId) {
         try {
             const admin = require('firebase-admin')
-            const moment = require('moment')
             const { ProjectService } = require('../shared/ProjectService')
             const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 
@@ -340,17 +341,23 @@ class TwilioWhatsAppService {
 
             // Get user data to check if anonymous and build visibility filter
             const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-            const isAnonymous = userDoc.exists ? userDoc.data().isAnonymous : false
+            const userData = userDoc.exists ? userDoc.data() || {} : {}
+            const isAnonymous = !!userData.isAnonymous
             const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, userId]
 
-            const dateEndToday = moment().endOf('day').valueOf()
+            const { endOfDay: dateEndToday, timezoneName, timezoneOffsetMinutes } = getUserLocalDayBounds(userData)
+            const dateEndTodayFormatted = timezoneName
+                ? moment(dateEndToday).tz(timezoneName).format('YYYY-MM-DD HH:mm:ss z')
+                : moment(dateEndToday).utcOffset(timezoneOffsetMinutes).format('YYYY-MM-DD HH:mm:ss')
             let totalCount = 0
 
             console.log('WhatsApp: Counting open tasks for user:', {
                 userId,
                 projectsCount: projects.length,
                 dateEndToday,
-                dateEndTodayFormatted: moment(dateEndToday).format('YYYY-MM-DD HH:mm:ss'),
+                dateEndTodayFormatted,
+                timezoneName,
+                timezoneOffsetMinutes,
                 allowUserIds,
                 isAnonymous,
             })
