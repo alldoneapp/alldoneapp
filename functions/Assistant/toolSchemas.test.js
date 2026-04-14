@@ -116,6 +116,7 @@ describe('User memory assistant tool schemas', () => {
 
     test('documents project description update fields', () => {
         expect(toolSchemas.update_project_description.function.parameters.required).toEqual(['description'])
+        expect(toolSchemas.update_project_description.function.description).toContain('shared context')
         expect(toolSchemas.update_project_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectName.type).toBe('string')
@@ -123,6 +124,8 @@ describe('User memory assistant tool schemas', () => {
 
     test('documents user description update fields', () => {
         expect(toolSchemas.update_user_description.function.parameters.required).toEqual(['description'])
+        expect(toolSchemas.update_user_description.function.description).toContain('global settings description')
+        expect(toolSchemas.update_user_description.function.description).toContain('added on top')
         expect(toolSchemas.update_user_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_user_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_user_description.function.parameters.properties.projectName.type).toBe('string')

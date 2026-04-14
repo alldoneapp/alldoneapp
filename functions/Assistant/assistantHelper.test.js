@@ -1061,7 +1061,7 @@ describe('assistant project description tool', () => {
             .map(message => message[1])
             .join('\n')
 
-        expect(systemMessages).toContain('Current project description:')
+        expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Current project description text.')
     })
 
@@ -1085,9 +1085,9 @@ describe('assistant project description tool', () => {
             .map(message => message[1])
             .join('\n')
 
-        expect(systemMessages).toContain('Current project description:')
+        expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Current project description text.')
-        expect(systemMessages).toContain('treat the current project description as the base text')
+        expect(systemMessages).toContain('Treat the current project description as the base text')
         expect(systemMessages).toContain('call get_user_projects first')
     })
 
@@ -1374,13 +1374,20 @@ describe('assistant user description tool', () => {
         ProjectService.mockClear()
     })
 
-    test('injects current user description and rewrite guidance into base instructions', async () => {
+    test('injects layered user description context and rewrite guidance into base instructions', async () => {
         mockDocGet
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
                     displayName: 'Anna Alldone',
                     noteIdsByProject: {},
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    displayName: 'Anna Alldone',
+                    extendedDescription: 'Global user profile text.',
                 }),
             })
             .mockResolvedValueOnce({
@@ -1397,8 +1404,8 @@ describe('assistant user description tool', () => {
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
-                    displayName: 'Anna Alldone',
-                    extendedDescription: 'Global user profile text.',
+                    name: 'Operations',
+                    description: 'Project-wide context.',
                 }),
             })
 
@@ -1414,8 +1421,11 @@ describe('assistant user description tool', () => {
             .map(message => message[1])
             .join('\n')
 
-        expect(systemMessages).toContain('Current user description:')
+        expect(systemMessages).toContain('Global user description from settings:')
+        expect(systemMessages).toContain('Global user profile text.')
+        expect(systemMessages).toContain('Project-specific user description for this project:')
         expect(systemMessages).toContain('Current user update text.')
+        expect(systemMessages).toContain('takes precedence when they conflict')
         expect(systemMessages).toContain('treat the current user description as the base text')
         expect(systemMessages).toContain('call get_user_projects first')
     })
@@ -1425,21 +1435,16 @@ describe('assistant user description tool', () => {
         expect(await isToolAllowedForExecution(['update_user_description'], 'update_user_description')).toBe(true)
     })
 
-    test('updates the current user description in the current project', async () => {
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest
-                .fn()
-                .mockResolvedValue([{ id: 'project-1', name: 'Operations', description: 'Project description' }]),
-        }))
+    test('updates the current user description globally by default', async () => {
         updateUserDescription.mockResolvedValue({
             success: true,
             updated: true,
+            scope: 'global',
             user: { id: 'user-1', name: 'Anna Alldone' },
-            project: { id: 'project-1', name: 'Operations' },
             description: 'New weekly update',
             previousDescription: 'Old weekly update',
-            message: 'User description updated for "Anna Alldone" in project "Operations"',
+            projectsUpdated: [{ id: 'project-1', name: 'Operations' }],
+            message: 'User description updated globally for "Anna Alldone"',
         })
         mockDocGet
             .mockResolvedValueOnce({
@@ -1462,7 +1467,7 @@ describe('assistant user description tool', () => {
 
         expect(updateUserDescription).toHaveBeenCalledWith({
             db: expect.any(Object),
-            projectId: 'project-1',
+            projectId: null,
             targetUserId: 'user-1',
             actorUserId: 'user-1',
             description: '  New weekly update  ',
@@ -1470,8 +1475,8 @@ describe('assistant user description tool', () => {
         expect(result).toMatchObject({
             success: true,
             updated: true,
+            scope: 'global',
             user: { id: 'user-1', name: 'Anna Alldone' },
-            project: { id: 'project-1', name: 'Operations' },
             description: 'New weekly update',
             previousDescription: 'Old weekly update',
         })
@@ -1589,7 +1594,7 @@ describe('assistant shared user context', () => {
         jest.clearAllMocks()
     })
 
-    test('injects current user description into base instructions for general assistant chats', async () => {
+    test('injects global user description, project-specific user description, and project description into general chats', async () => {
         mockDocGet
             .mockResolvedValueOnce({
                 exists: true,
@@ -1601,10 +1606,17 @@ describe('assistant shared user context', () => {
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
+                    displayName: 'Anna Alldone',
+                    extendedDescription: 'Anna wants concise, strategic weekly summaries.',
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
                     name: 'Operations',
                     usersData: {
                         'user-1': {
-                            extendedDescription: 'Anna is the founder and prefers concise updates.',
+                            extendedDescription: 'In Operations, Anna is acting as sponsor and final approver.',
                         },
                     },
                 }),
@@ -1612,8 +1624,8 @@ describe('assistant shared user context', () => {
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
-                    displayName: 'Anna Alldone',
-                    extendedDescription: 'Global profile fallback.',
+                    name: 'Operations',
+                    description: 'Operations is focused on launch readiness and weekly execution.',
                 }),
             })
 
@@ -1629,7 +1641,11 @@ describe('assistant shared user context', () => {
             .map(message => message[1])
             .join('\n')
 
-        expect(systemMessages).toContain('Current user description:')
-        expect(systemMessages).toContain('Anna is the founder and prefers concise updates.')
+        expect(systemMessages).toContain('Global user description from settings:')
+        expect(systemMessages).toContain('Anna wants concise, strategic weekly summaries.')
+        expect(systemMessages).toContain('Project-specific user description for this project:')
+        expect(systemMessages).toContain('In Operations, Anna is acting as sponsor and final approver.')
+        expect(systemMessages).toContain('Project description for this chat/thread:')
+        expect(systemMessages).toContain('Operations is focused on launch readiness and weekly execution.')
     })
 })

@@ -4519,17 +4519,25 @@ async function executeToolNatively(
             }
 
             const db = admin.firestore()
-            const targetProject = await resolveProjectTargetForDescriptionUpdate(
-                db,
-                requestUserId,
-                projectId,
-                toolArgs.projectId,
-                toolArgs.projectName
-            )
+            const hasExplicitProjectTarget =
+                (typeof toolArgs.projectId === 'string' && toolArgs.projectId.trim()) ||
+                (typeof toolArgs.projectName === 'string' && toolArgs.projectName.trim())
+            let targetProjectId = null
+
+            if (hasExplicitProjectTarget) {
+                const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                    db,
+                    requestUserId,
+                    projectId,
+                    toolArgs.projectId,
+                    toolArgs.projectName
+                )
+                targetProjectId = targetProject.id
+            }
 
             return await updateUserDescription({
                 db,
-                projectId: targetProject.id,
+                projectId: targetProjectId,
                 targetUserId: requestUserId,
                 actorUserId: requestUserId,
                 description: toolArgs.description,
@@ -6650,52 +6658,70 @@ async function getProjectDescriptionContextMessage(projectId) {
     const description = typeof project.description === 'string' ? project.description : ''
 
     return [
-        'Current project description:',
+        'Project description for this chat/thread:',
         `- Project: ${project.name || projectId}`,
+        '- Context rule: This shared project description is added to every chat and thread in this project.',
         '- Description:',
         description || '(empty)',
     ].join('\n')
 }
 
 async function getUserDescriptionContextMessage(projectId, userId) {
-    if (!projectId || !userId) return ''
+    if (!userId) return ''
 
-    const [projectDoc, userDoc] = await Promise.all([
-        admin
-            .firestore()
-            .doc(`projects/${projectId}`)
-            .get()
-            .catch(() => null),
-        admin
-            .firestore()
-            .doc(`users/${userId}`)
-            .get()
-            .catch(() => null),
-    ])
+    const userDocPromise = admin
+        .firestore()
+        .doc(`users/${userId}`)
+        .get()
+        .catch(() => null)
+    const projectDocPromise = projectId
+        ? admin
+              .firestore()
+              .doc(`projects/${projectId}`)
+              .get()
+              .catch(() => null)
+        : Promise.resolve(null)
+
+    const [userDoc, projectDoc] = await Promise.all([userDocPromise, projectDocPromise])
 
     if (!userDoc?.exists) return ''
 
     const project = projectDoc?.exists ? projectDoc.data() || {} : {}
     const user = userDoc.data() || {}
     const projectUserData = project?.usersData?.[userId] || {}
-    const description =
-        typeof projectUserData.extendedDescription === 'string' && projectUserData.extendedDescription.trim()
-            ? projectUserData.extendedDescription
-            : typeof user.extendedDescription === 'string' && user.extendedDescription.trim()
+    const globalDescription =
+        typeof user.extendedDescription === 'string' && user.extendedDescription.trim()
             ? user.extendedDescription
-            : typeof projectUserData.description === 'string' && projectUserData.description.trim()
-            ? projectUserData.description
             : typeof user.description === 'string'
             ? user.description
             : ''
+    const projectDescription =
+        typeof projectUserData.extendedDescription === 'string' && projectUserData.extendedDescription.trim()
+            ? projectUserData.extendedDescription
+            : typeof projectUserData.description === 'string'
+            ? projectUserData.description
+            : ''
 
-    return [
-        'Current user description:',
+    const lines = [
+        'Global user description from settings:',
         `- User: ${user.displayName || user.name || userId}`,
-        `- Project: ${project.name || projectId}`,
+        '- Context rule: This global user description is added to all chats and threads for this user.',
         '- Description:',
-        description || '(empty)',
-    ].join('\n')
+        globalDescription || '(empty)',
+    ]
+
+    if (projectId) {
+        lines.push(
+            '',
+            'Project-specific user description for this project:',
+            `- Project: ${project.name || projectId}`,
+            '- Context rule: This project-specific user description is added on top of the global user description in this project and takes precedence when they conflict.',
+            '- Description:',
+            projectDescription || '(empty)'
+        )
+    }
+
+    return lines.join('\n')
 }
 
 async function addBaseInstructions(
@@ -6760,7 +6786,9 @@ async function addBaseInstructions(
                 error: error.message,
             })
         }
+    }
 
+    if (assistantContext?.requestUserId) {
         try {
             const userDescriptionContextMessage = await getUserDescriptionContextMessage(
                 assistantContext.projectId,
@@ -6771,7 +6799,7 @@ async function addBaseInstructions(
             }
         } catch (error) {
             console.warn('ASSISTANT CONTEXT: Failed to load user description context', {
-                projectId: assistantContext.projectId,
+                projectId: assistantContext?.projectId,
                 requestUserId: assistantContext.requestUserId,
                 error: error.message,
             })
@@ -6872,13 +6900,13 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
-            'When the user asks to update a project description, use update_project_description. When editing the project description, treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
+            'When the user asks to update a project description, use update_project_description. The project description is added as shared context to every chat and thread in that project, so edit it carefully. Treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
-            'When the user asks to update their user description or profile update in this project, use update_user_description. When editing the user description, treat the current user description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update it in another project by name call get_user_projects first so you can inspect the exact project name before writing.',
+            'When the user asks to update their user description or profile update, use update_user_description. By default this updates the global settings user description, which is added to all chats and threads for that user and synced across active regular projects. In a project chat, any project-specific user description is added on top and takes precedence for that project. When editing the user description, treat the current user description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update only one project-specific user description by name call get_user_projects first so you can inspect the exact project name before writing.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {

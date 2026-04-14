@@ -471,14 +471,14 @@ const toolSchemas = {
         function: {
             name: 'update_project_description',
             description:
-                'Updates a project description for the current project by default, or another accessible project when projectId or projectName is provided. Treat the current project description as the base text, preserve useful existing content unless the user clearly wants a rewrite, and when targeting another project by name prefer get_user_projects first so you can inspect the exact project name and its current description before writing.',
+                'Updates a project description for the current project by default, or another accessible project when projectId or projectName is provided. The project description is added as shared context to chats and threads in that project, so treat the current project description as the base text, preserve useful existing content unless the user clearly wants a rewrite, and when targeting another project by name prefer get_user_projects first so you can inspect the exact project name and its current description before writing.',
             parameters: {
                 type: 'object',
                 properties: {
                     description: {
                         type: 'string',
                         description:
-                            'The full revised project description to persist. Treat the current project description as the base text and revise it instead of casually replacing it.',
+                            'The full revised project description to persist. This shared project context is added to chats and threads in that project, so treat the current project description as the base text and revise it instead of casually replacing it.',
                     },
                     projectId: {
                         type: 'string',
@@ -500,23 +500,24 @@ const toolSchemas = {
         function: {
             name: 'update_user_description',
             description:
-                'Updates the current requesting user description in the current project by default, or in another accessible project when projectId or projectName is provided. Treat the current user description as the base text and revise it instead of casually replacing it.',
+                "Updates the current requesting user's global settings description by default and syncs it across the user's accessible active regular projects. If projectId or projectName is provided, updates only that project-specific user description. The global settings user description is added to all chats and threads for that user, and the project-specific user description is added on top in that project's chats.",
             parameters: {
                 type: 'object',
                 properties: {
                     description: {
                         type: 'string',
                         description:
-                            'The full revised user description to persist. Treat the current user description as the base text and revise it instead of casually replacing it.',
+                            'The full revised user description to persist. Treat the current user description as the base text and revise it instead of casually replacing it. By default this updates the global settings description that is added to all chats and threads for the user.',
                     },
                     projectId: {
                         type: 'string',
-                        description: 'Optional: update the current user description in this accessible project ID.',
+                        description:
+                            'Optional: update only the project-specific user description in this accessible project ID instead of the global settings user description.',
                     },
                     projectName: {
                         type: 'string',
                         description:
-                            'Optional: update the current user description in another accessible project by name. Prefer calling get_user_projects first to inspect the exact project name before writing.',
+                            'Optional: update only the project-specific user description in another accessible project by name. Prefer calling get_user_projects first to inspect the exact project name before writing.',
                     },
                 },
                 required: ['description'],
