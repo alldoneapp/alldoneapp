@@ -2,7 +2,6 @@ const mockBatchUpdate = jest.fn()
 const mockBatchCommit = jest.fn()
 const mockCreateUserDescriptionChangedFeed = jest.fn()
 const mockGetFeedUserData = jest.fn()
-const mockProjectServiceGetUserProjects = jest.fn()
 
 jest.mock('../BatchWrapper/batchWrapper', () => ({
     BatchWrapper: jest.fn().mockImplementation(() => ({
@@ -21,13 +20,6 @@ jest.mock('./UserHelper', () => ({
     },
 }))
 
-jest.mock('./ProjectService', () => ({
-    ProjectService: jest.fn().mockImplementation(() => ({
-        initialize: jest.fn().mockResolvedValue(undefined),
-        getUserProjects: (...args) => mockProjectServiceGetUserProjects(...args),
-    })),
-}))
-
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     getTaskNameWithoutMeta: jest.fn(value =>
         String(value || '')
@@ -44,10 +36,9 @@ describe('userDescriptionUpdateHelper', () => {
         mockBatchCommit.mockResolvedValue(undefined)
         mockCreateUserDescriptionChangedFeed.mockResolvedValue(undefined)
         mockGetFeedUserData.mockResolvedValue({ uid: 'user-1', name: 'User 1' })
-        mockProjectServiceGetUserProjects.mockResolvedValue([])
     })
 
-    test('updates user description globally and syncs accessible projects', async () => {
+    test('updates only the global user description by default', async () => {
         const db = {
             collection: jest.fn(collectionName => ({
                 doc: jest.fn(docId => ({
@@ -78,10 +69,6 @@ describe('userDescriptionUpdateHelper', () => {
             })),
             doc: jest.fn(path => ({ path })),
         }
-        mockProjectServiceGetUserProjects.mockResolvedValue([
-            { id: 'project-1', name: 'Operations' },
-            { id: 'project-2', name: 'Marketing' },
-        ])
 
         const result = await updateUserDescription({
             db,
@@ -97,38 +84,8 @@ describe('userDescriptionUpdateHelper', () => {
                 extendedDescription: 'New weekly update',
             }
         )
-        expect(mockBatchUpdate).toHaveBeenCalledWith(
-            { path: 'projects/project-1' },
-            {
-                'usersData.user-1.description': 'New weekly update',
-                'usersData.user-1.extendedDescription': 'New weekly update',
-            }
-        )
-        expect(mockBatchUpdate).toHaveBeenCalledWith(
-            { path: 'projects/project-2' },
-            {
-                'usersData.user-1.description': 'New weekly update',
-                'usersData.user-1.extendedDescription': 'New weekly update',
-            }
-        )
-        expect(mockCreateUserDescriptionChangedFeed).toHaveBeenCalledWith(
-            'project-1',
-            'user-1',
-            'New weekly update',
-            'Old description',
-            expect.any(Object),
-            { uid: 'user-1', name: 'User 1' },
-            false
-        )
-        expect(mockCreateUserDescriptionChangedFeed).toHaveBeenCalledWith(
-            'project-2',
-            'user-1',
-            'New weekly update',
-            '',
-            expect.any(Object),
-            { uid: 'user-1', name: 'User 1' },
-            false
-        )
+        expect(mockBatchUpdate).toHaveBeenCalledTimes(1)
+        expect(mockCreateUserDescriptionChangedFeed).not.toHaveBeenCalled()
         expect(mockBatchCommit).toHaveBeenCalledTimes(1)
         expect(result).toMatchObject({
             success: true,
@@ -137,14 +94,10 @@ describe('userDescriptionUpdateHelper', () => {
             user: { id: 'user-1', name: 'Anna Alldone' },
             description: 'New weekly update',
             previousDescription: 'Global description',
-            projectsUpdated: [
-                { id: 'project-1', name: 'Operations' },
-                { id: 'project-2', name: 'Marketing' },
-            ],
         })
     })
 
-    test('returns no update when global and synced project descriptions already match', async () => {
+    test('returns no update when the global user description already matches', async () => {
         const db = {
             collection: jest.fn(collectionName => ({
                 doc: jest.fn(docId => ({
@@ -174,10 +127,6 @@ describe('userDescriptionUpdateHelper', () => {
             })),
             doc: jest.fn(path => ({ path })),
         }
-        mockProjectServiceGetUserProjects.mockResolvedValue([
-            { id: 'project-1', name: 'Operations' },
-            { id: 'project-2', name: 'Marketing' },
-        ])
 
         const result = await updateUserDescription({
             db,

@@ -15,6 +15,7 @@ export default function UserDescriptionField({
     projectIndex,
     disabled = false,
     placeholder = 'Type the user description here',
+    helperText = '',
 }) {
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const smallScreen = useSelector(state => state.smallScreen)
@@ -78,6 +79,7 @@ export default function UserDescriptionField({
                     disabledEdition={disabled}
                 />
             </View>
+            {!!helperText && <Text style={localStyles.helperText}>{translate(helperText)}</Text>}
             {!disabled && (
                 <View style={localStyles.buttonsContainer}>
                     <Button
@@ -115,6 +117,11 @@ const localStyles = StyleSheet.create({
     textInputText: {
         ...styles.body1,
         color: colors.Text01,
+    },
+    helperText: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginBottom: 8,
     },
     buttonsContainer: {
         flexDirection: 'row',

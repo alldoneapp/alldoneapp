@@ -1443,7 +1443,6 @@ describe('assistant user description tool', () => {
             user: { id: 'user-1', name: 'Anna Alldone' },
             description: 'New weekly update',
             previousDescription: 'Old weekly update',
-            projectsUpdated: [{ id: 'project-1', name: 'Operations' }],
             message: 'User description updated globally for "Anna Alldone"',
         })
         mockDocGet

@@ -155,6 +155,7 @@ const ProjectProperties = ({ project, type }) => {
                 object={project}
                 disabled={!accessGranted || userIsNormalUserInGuide}
                 objectType={FEED_PROJECT_OBJECT_TYPE}
+                helperText={'Project description helper text'}
             />
 
             <View style={localStyles.footerSection}>

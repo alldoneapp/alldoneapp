@@ -126,6 +126,7 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_user_description.function.parameters.required).toEqual(['description'])
         expect(toolSchemas.update_user_description.function.description).toContain('global settings description')
         expect(toolSchemas.update_user_description.function.description).toContain('added on top')
+        expect(toolSchemas.update_user_description.function.description).not.toContain('syncs it across')
         expect(toolSchemas.update_user_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_user_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_user_description.function.parameters.properties.projectName.type).toBe('string')

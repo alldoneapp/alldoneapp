@@ -6906,7 +6906,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
-            'When the user asks to update their user description or profile update, use update_user_description. By default this updates the global settings user description, which is added to all chats and threads for that user and synced across active regular projects. In a project chat, any project-specific user description is added on top and takes precedence for that project. When editing the user description, treat the current user description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update only one project-specific user description by name call get_user_projects first so you can inspect the exact project name before writing.',
+            'When the user asks to update their user description or profile update, use update_user_description. By default this updates the global settings user description, which is added to all chats and threads for that user. In a project chat, any project-specific user description is added on top and takes precedence for that project. When editing the user description, treat the current user description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update only one project-specific user description by name call get_user_projects first so you can inspect the exact project name before writing.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {

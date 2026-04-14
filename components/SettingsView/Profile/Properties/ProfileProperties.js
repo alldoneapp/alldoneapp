@@ -63,6 +63,9 @@ export default function ProfileProperties({ user, projectId, projectIndex }) {
                     projectId={inSettings ? null : projectId}
                     projectIndex={inSettings ? null : projectIndex}
                     disabled={!loggedUserCanUpdateObject}
+                    helperText={
+                        inSettings ? 'Global user description helper text' : 'Project user description helper text'
+                    }
                     onSave={newDescription =>
                         inSettings
                             ? setUserDescription(loggedUserId, newDescription)

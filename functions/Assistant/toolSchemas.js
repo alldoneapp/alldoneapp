@@ -500,7 +500,7 @@ const toolSchemas = {
         function: {
             name: 'update_user_description',
             description:
-                "Updates the current requesting user's global settings description by default and syncs it across the user's accessible active regular projects. If projectId or projectName is provided, updates only that project-specific user description. The global settings user description is added to all chats and threads for that user, and the project-specific user description is added on top in that project's chats.",
+                "Updates the current requesting user's global settings description by default. If projectId or projectName is provided, updates only that project-specific user description. The global settings user description is added to all chats and threads for that user, and the project-specific user description is added on top in that project's chats.",
             parameters: {
                 type: 'object',
                 properties: {

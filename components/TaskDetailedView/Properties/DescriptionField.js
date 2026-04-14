@@ -20,7 +20,7 @@ import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import { updateAssistantDescription } from '../../../utils/backends/Assistants/assistantsFirestore'
 import { setTaskDescription } from '../../../utils/backends/Tasks/tasksFirestore'
 
-export default function DescriptionField({ projectId, object, disabled, objectType, isCalendarTask }) {
+export default function DescriptionField({ projectId, object, disabled, objectType, isCalendarTask, helperText }) {
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const smallScreen = useSelector(state => state.smallScreen)
     const [description, setDescription] = useState(object.description)
@@ -114,6 +114,7 @@ export default function DescriptionField({ projectId, object, disabled, objectTy
                     isCalendarTask={isCalendarTask}
                 />
             </View>
+            {!!helperText && <Text style={localStyles.helperText}>{translate(helperText)}</Text>}
 
             {!disabled && (
                 <View style={localStyles.buttonsContainer}>
@@ -164,6 +165,11 @@ const localStyles = StyleSheet.create({
     textInputText: {
         ...styles.body1,
         color: colors.Text01,
+    },
+    helperText: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginBottom: 8,
     },
     buttonsContainer: {
         flexDirection: 'row',

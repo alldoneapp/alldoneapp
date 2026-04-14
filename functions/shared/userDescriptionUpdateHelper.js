@@ -2,7 +2,6 @@
 
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { createUserDescriptionChangedFeed } = require('../Feeds/usersFeeds')
-const { ProjectService } = require('./ProjectService')
 const { UserHelper } = require('./UserHelper')
 const { getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
 
@@ -12,10 +11,6 @@ function normalizeUserDescription(value) {
 
 function getDirectUserDescription(userData = {}) {
     return normalizeUserDescription(userData.extendedDescription || userData.description || '')
-}
-
-function getDirectProjectUserDescription(projectUserData = {}) {
-    return normalizeUserDescription(projectUserData.extendedDescription || projectUserData.description || '')
 }
 
 function getCurrentUserDescription(projectUserData = {}, userData = {}) {
@@ -144,40 +139,8 @@ async function updateUserDescription({ db, projectId, targetUserId, actorUserId,
 
     const userName = userData.displayName || userData.name || targetUserId
     const currentGlobalDescription = getDirectUserDescription(userData)
-    const projectService = new ProjectService({ database: db })
-    await projectService.initialize()
-    const candidateProjects = await projectService.getUserProjects(targetUserId)
-    const projectDocs = await Promise.all(
-        candidateProjects.map(project =>
-            db
-                .collection('projects')
-                .doc(project.id)
-                .get()
-                .catch(() => null)
-        )
-    )
-    const projectsToSync = []
 
-    for (let index = 0; index < projectDocs.length; index++) {
-        const projectDoc = projectDocs[index]
-        if (!projectDoc?.exists) continue
-
-        const projectData = projectDoc.data() || {}
-        const projectUserData = projectData.usersData?.[targetUserId] || null
-        const projectUserIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
-        if (!projectUserData && !projectUserIds.includes(targetUserId)) continue
-
-        const currentProjectDescription = getDirectProjectUserDescription(projectUserData || {})
-        if (currentProjectDescription === normalizedDescription) continue
-
-        projectsToSync.push({
-            id: candidateProjects[index].id,
-            name: projectData.name || candidateProjects[index].name || candidateProjects[index].id,
-            previousDescription: currentProjectDescription,
-        })
-    }
-
-    if (currentGlobalDescription === normalizedDescription && projectsToSync.length === 0) {
+    if (currentGlobalDescription === normalizedDescription) {
         return {
             success: true,
             updated: false,
@@ -185,41 +148,16 @@ async function updateUserDescription({ db, projectId, targetUserId, actorUserId,
             user: { id: targetUserId, name: userName },
             description: normalizedDescription,
             previousDescription: currentGlobalDescription,
-            projectsUpdated: [],
             message: `User description is already up to date for "${userName}"`,
         }
     }
 
     const batch = new BatchWrapper(db)
     const plainDescription = getTaskNameWithoutMeta(normalizedDescription)
-    const globalDescriptionChanged = currentGlobalDescription !== normalizedDescription
-
-    if (globalDescriptionChanged) {
-        batch.update(db.doc(`users/${targetUserId}`), {
-            description: plainDescription,
-            extendedDescription: normalizedDescription,
-        })
-    }
-
-    if (projectsToSync.length > 0) {
-        const feedUser = await UserHelper.getFeedUserData(db, actorUserId || targetUserId)
-
-        for (const project of projectsToSync) {
-            batch.update(db.doc(`projects/${project.id}`), {
-                [`usersData.${targetUserId}.description`]: plainDescription,
-                [`usersData.${targetUserId}.extendedDescription`]: normalizedDescription,
-            })
-            await createUserDescriptionChangedFeed(
-                project.id,
-                targetUserId,
-                normalizedDescription,
-                project.previousDescription,
-                batch,
-                feedUser,
-                false
-            )
-        }
-    }
+    batch.update(db.doc(`users/${targetUserId}`), {
+        description: plainDescription,
+        extendedDescription: normalizedDescription,
+    })
 
     await batch.commit()
 
@@ -230,7 +168,6 @@ async function updateUserDescription({ db, projectId, targetUserId, actorUserId,
         user: { id: targetUserId, name: userName },
         description: normalizedDescription,
         previousDescription: currentGlobalDescription,
-        projectsUpdated: projectsToSync.map(project => ({ id: project.id, name: project.name })),
         message: `User description updated globally for "${userName}"`,
     }
 }
