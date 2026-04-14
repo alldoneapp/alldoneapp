@@ -73,6 +73,13 @@ describe('User memory assistant tool schemas', () => {
         expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
     })
 
+    test('exposes update_project_description only when allowed', () => {
+        expect(getToolSchemas(['update_project_description']).map(schema => schema.function.name)).toEqual([
+            'update_project_description',
+        ])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
     test('defines required fields for update_user_memory', () => {
         expect(toolSchemas.update_user_memory.function.parameters.required).toEqual(['fact'])
         expect(toolSchemas.update_user_memory.function.parameters.properties.category.type).toBe('string')
@@ -98,6 +105,13 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeEndTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.sendWhatsApp.type).toBe('boolean')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.prompt.type).toBe('string')
+    })
+
+    test('documents project description update fields', () => {
+        expect(toolSchemas.update_project_description.function.parameters.required).toEqual(['description'])
+        expect(toolSchemas.update_project_description.function.parameters.properties.description.type).toBe('string')
+        expect(toolSchemas.update_project_description.function.parameters.properties.projectId.type).toBe('string')
+        expect(toolSchemas.update_project_description.function.parameters.properties.projectName.type).toBe('string')
     })
 })
 

@@ -466,6 +466,35 @@ const toolSchemas = {
         },
     },
 
+    update_project_description: {
+        type: 'function',
+        function: {
+            name: 'update_project_description',
+            description:
+                'Updates a project description for the current project by default, or another accessible project when projectId or projectName is provided. Treat the current project description as the base text, preserve useful existing content unless the user clearly wants a rewrite, and when targeting another project by name prefer get_user_projects first so you can inspect the exact project name and its current description before writing.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    description: {
+                        type: 'string',
+                        description:
+                            'The full revised project description to persist. Treat the current project description as the base text and revise it instead of casually replacing it.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'Optional: update this accessible project ID instead of the current project.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: update another accessible project by name. Prefer calling get_user_projects first to inspect the exact project name and current description before writing.',
+                    },
+                },
+                required: ['description'],
+            },
+        },
+    },
+
     search: {
         type: 'function',
         function: {

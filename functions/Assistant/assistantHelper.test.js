@@ -19,6 +19,9 @@ jest.mock('../shared/ProjectService', () => ({
         getUserProjects: jest.fn().mockResolvedValue([]),
     })),
 }))
+jest.mock('../shared/projectDescriptionUpdateHelper', () => ({
+    updateProjectDescription: jest.fn(),
+}))
 jest.mock('../GAnalytics/GAnalytics', () => ({
     logEvent: jest.fn(),
 }))
@@ -88,6 +91,7 @@ jest.mock(
 )
 
 const { ProjectService } = require('../shared/ProjectService')
+const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
@@ -1017,5 +1021,314 @@ describe('assistant heartbeat settings tool', () => {
                 null
             )
         ).rejects.toThrow('Tool not permitted: update_heartbeat_settings')
+    })
+})
+
+describe('assistant project description tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockClear()
+    })
+
+    test('injects current project description and rewrite guidance into base instructions', async () => {
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                name: 'Operations',
+                description: 'Current project description text.',
+            }),
+        })
+
+        const messages = []
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['update_project_description'], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('Current project description:')
+        expect(systemMessages).toContain('Current project description text.')
+        expect(systemMessages).toContain('treat the current project description as the base text')
+        expect(systemMessages).toContain('call get_user_projects first')
+    })
+
+    test('denies project description tool execution when not allowed', async () => {
+        expect(await isToolAllowedForExecution([], 'update_project_description')).toBe(false)
+        expect(await isToolAllowedForExecution(['update_project_description'], 'update_project_description')).toBe(true)
+    })
+
+    test('updates the current project description', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest
+                .fn()
+                .mockResolvedValue([{ id: 'project-1', name: 'Operations', description: 'Old description' }]),
+        }))
+        updateProjectDescription.mockResolvedValue({
+            success: true,
+            updated: true,
+            project: { id: 'project-1', name: 'Operations' },
+            description: 'New description',
+            previousDescription: 'Old description',
+            message: 'Project description updated in project "Operations"',
+        })
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        const result = await executeToolNatively(
+            'update_project_description',
+            { description: '  New description  ' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(updateProjectDescription).toHaveBeenCalledWith({
+            db: expect.any(Object),
+            projectId: 'project-1',
+            userId: 'user-1',
+            description: '  New description  ',
+        })
+        expect(result).toMatchObject({
+            success: true,
+            updated: true,
+            project: { id: 'project-1', name: 'Operations' },
+            description: 'New description',
+            previousDescription: 'Old description',
+        })
+    })
+
+    test('updates an explicit projectId target', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Operations', description: 'Old description' },
+                { id: 'project-2', name: 'Marketing', description: 'Marketing description' },
+            ]),
+        }))
+        updateProjectDescription.mockResolvedValue({
+            success: true,
+            updated: true,
+            project: { id: 'project-2', name: 'Marketing' },
+            description: 'Updated marketing description',
+            previousDescription: 'Marketing description',
+            message: 'Project description updated in project "Marketing"',
+        })
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await executeToolNatively(
+            'update_project_description',
+            { description: 'Updated marketing description', projectId: 'project-2' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(updateProjectDescription).toHaveBeenCalledWith({
+            db: expect.any(Object),
+            projectId: 'project-2',
+            userId: 'user-1',
+            description: 'Updated marketing description',
+        })
+    })
+
+    test('updates an exact projectName target', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Operations', description: 'Old description' },
+                { id: 'project-2', name: 'Marketing', description: 'Marketing description' },
+            ]),
+        }))
+        updateProjectDescription.mockResolvedValue({
+            success: true,
+            updated: true,
+            project: { id: 'project-2', name: 'Marketing' },
+            description: 'Updated marketing description',
+            previousDescription: 'Marketing description',
+            message: 'Project description updated in project "Marketing"',
+        })
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await executeToolNatively(
+            'update_project_description',
+            { description: 'Updated marketing description', projectName: 'Marketing' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(updateProjectDescription).toHaveBeenCalledWith({
+            db: expect.any(Object),
+            projectId: 'project-2',
+            userId: 'user-1',
+            description: 'Updated marketing description',
+        })
+    })
+
+    test('rejects ambiguous projectName targets', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Marketing Ops', description: '' },
+                { id: 'project-2', name: 'Marketing Team', description: '' },
+            ]),
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_project_description',
+                { description: 'Updated marketing description', projectName: 'Marketing' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Multiple projects partially match "Marketing"')
+
+        expect(updateProjectDescription).not.toHaveBeenCalled()
+    })
+
+    test('rejects missing projectName targets', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Operations', description: '' }]),
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_project_description',
+                { description: 'Updated marketing description', projectName: 'Missing' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('No project found matching "Missing".')
+
+        expect(updateProjectDescription).not.toHaveBeenCalled()
+    })
+
+    test('returns no-op result when the helper reports no change', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest
+                .fn()
+                .mockResolvedValue([{ id: 'project-1', name: 'Operations', description: 'Current description' }]),
+        }))
+        updateProjectDescription.mockResolvedValue({
+            success: true,
+            updated: false,
+            project: { id: 'project-1', name: 'Operations' },
+            description: 'Current description',
+            previousDescription: 'Current description',
+            message: 'Project description is already up to date in project "Operations"',
+        })
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        const result = await executeToolNatively(
+            'update_project_description',
+            { description: 'Current description' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.updated).toBe(false)
+    })
+
+    test('rejects project description updates without description', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_project_description'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively('update_project_description', {}, 'project-1', 'assistant-1', 'user-1', null)
+        ).rejects.toThrow('description is required for update_project_description.')
+    })
+
+    test('rejects direct project description execution when the tool is not permitted', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    allowedTools: [],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_project_description',
+                { description: 'New description' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Tool not permitted: update_project_description')
     })
 })

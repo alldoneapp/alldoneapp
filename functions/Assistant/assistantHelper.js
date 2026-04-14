@@ -70,6 +70,7 @@ const {
     getUserLocalDayBounds,
 } = require('./contextTimestampHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
+const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -105,6 +106,7 @@ const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
 const ALLOWED_DELEGATION_TARGET_KEYS_FIELD = 'allowedDelegationTargetKeys'
 const EXTERNAL_TOOLS_KEY = 'external_tools'
 const UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY = 'update_heartbeat_settings'
+const UPDATE_PROJECT_DESCRIPTION_TOOL_KEY = 'update_project_description'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
@@ -2432,6 +2434,106 @@ async function resolveMoveTargetProject(database, userId, moveToProjectId, moveT
     throw new Error(`No project found matching "${requestedProjectName}".`)
 }
 
+async function resolveProjectTargetForDescriptionUpdate(
+    database,
+    userId,
+    contextProjectId,
+    requestedProjectId,
+    requestedProjectName
+) {
+    const normalizedRequestedProjectId = typeof requestedProjectId === 'string' ? requestedProjectId.trim() : ''
+    const normalizedRequestedProjectName = typeof requestedProjectName === 'string' ? requestedProjectName.trim() : ''
+
+    const { ProjectService } = require('../shared/ProjectService')
+    const projectService = new ProjectService({ database })
+    await projectService.initialize()
+
+    const projects = await projectService.getUserProjects(userId, {
+        includeArchived: false,
+        includeCommunity: false,
+    })
+    const projectsById = new Map(projects.map(project => [project.id, project]))
+
+    if (normalizedRequestedProjectId) {
+        const projectFromId = projectsById.get(normalizedRequestedProjectId)
+        if (!projectFromId) {
+            throw new Error(`Target project not found or not accessible: "${normalizedRequestedProjectId}"`)
+        }
+        if (normalizedRequestedProjectName && !projectNamesMatch(projectFromId.name, normalizedRequestedProjectName)) {
+            throw new Error(
+                `Target project mismatch: projectId "${normalizedRequestedProjectId}" does not match projectName "${normalizedRequestedProjectName}".`
+            )
+        }
+        return {
+            id: projectFromId.id,
+            name: projectFromId.name,
+            description: projectFromId.description || '',
+            source: 'projectId',
+        }
+    }
+
+    if (normalizedRequestedProjectName) {
+        const exactMatches = projects.filter(
+            project => normalizeProjectNameForLookup(project.name) === normalizedRequestedProjectName.toLowerCase()
+        )
+
+        if (exactMatches.length === 1) {
+            return {
+                id: exactMatches[0].id,
+                name: exactMatches[0].name,
+                description: exactMatches[0].description || '',
+                source: 'projectName_exact',
+            }
+        }
+
+        if (exactMatches.length > 1) {
+            throw new Error(
+                `Multiple projects match "${normalizedRequestedProjectName}". Please use projectId to choose one target project.`
+            )
+        }
+
+        const partialMatches = projects.filter(project =>
+            projectNamesMatch(project.name, normalizedRequestedProjectName)
+        )
+        if (partialMatches.length === 1) {
+            return {
+                id: partialMatches[0].id,
+                name: partialMatches[0].name,
+                description: partialMatches[0].description || '',
+                source: 'projectName_partial',
+            }
+        }
+
+        if (partialMatches.length > 1) {
+            const options = partialMatches
+                .slice(0, 5)
+                .map(project => `"${project.name}" (${project.id})`)
+                .join(', ')
+            throw new Error(
+                `Multiple projects partially match "${normalizedRequestedProjectName}": ${options}. Please use projectId.`
+            )
+        }
+
+        throw new Error(`No project found matching "${normalizedRequestedProjectName}".`)
+    }
+
+    if (!contextProjectId) {
+        throw new Error('No project specified and no current project context found.')
+    }
+
+    const contextProject = projectsById.get(contextProjectId)
+    if (!contextProject) {
+        throw new Error(`Target project not found or not accessible: "${contextProjectId}"`)
+    }
+
+    return {
+        id: contextProject.id,
+        name: contextProject.name,
+        description: contextProject.description || '',
+        source: 'contextProject',
+    }
+}
+
 async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId) {
     const taskTree = new Map()
     const queue = [rootTaskId]
@@ -4359,9 +4461,43 @@ async function executeToolNatively(
             })
         }
 
+        case UPDATE_PROJECT_DESCRIPTION_TOOL_KEY: {
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+
+            if (!resolvedAssistant) {
+                throw new Error('Assistant not found for project description update.')
+            }
+
+            const currentAssistant = resolvedAssistant.assistant || {}
+            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
+            if (!allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
+                throw new Error(`Tool not permitted: ${UPDATE_PROJECT_DESCRIPTION_TOOL_KEY}`)
+            }
+
+            if (typeof toolArgs.description !== 'string' || !toolArgs.description.trim()) {
+                throw new Error('description is required for update_project_description.')
+            }
+
+            const db = admin.firestore()
+            const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                db,
+                creatorId,
+                projectId,
+                toolArgs.projectId,
+                toolArgs.projectName
+            )
+
+            return await updateProjectDescription({
+                db,
+                projectId: targetProject.id,
+                userId: creatorId,
+                description: toolArgs.description,
+            })
+        }
+
         case UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY: {
             const hasOwn = key => Object.prototype.hasOwnProperty.call(toolArgs || {}, key)
-            const resolvedAssistant = await resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId)
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
 
             if (!resolvedAssistant) {
                 throw new Error('Assistant not found for heartbeat settings update.')
@@ -6407,7 +6543,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     return settings
 }
 
-async function resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId) {
+async function resolveCurrentAssistantDocForToolExecution(projectId, assistantId) {
     if (!projectId || !assistantId) return null
 
     const db = admin.firestore()
@@ -6439,7 +6575,7 @@ async function resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId
 }
 
 async function getHeartbeatSettingsContextMessage(projectId, assistantId, requestUserId = null) {
-    const resolvedAssistant = await resolveCurrentAssistantDocForHeartbeatTool(projectId, assistantId)
+    const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
     if (!resolvedAssistant) return ''
 
     let userData = null
@@ -6456,6 +6592,28 @@ async function getHeartbeatSettingsContextMessage(projectId, assistantId, reques
         projectId,
         userData,
     })
+}
+
+async function getProjectDescriptionContextMessage(projectId) {
+    if (!projectId) return ''
+
+    const projectDoc = await admin
+        .firestore()
+        .doc(`projects/${projectId}`)
+        .get()
+        .catch(() => null)
+
+    if (!projectDoc?.exists) return ''
+
+    const project = projectDoc.data() || {}
+    const description = typeof project.description === 'string' ? project.description : ''
+
+    return [
+        'Current project description:',
+        `- Project: ${project.name || projectId}`,
+        '- Description:',
+        description || '(empty)',
+    ].join('\n')
 }
 
 async function addBaseInstructions(
@@ -6594,6 +6752,27 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When you call create_task based on the current user message and that message includes images, include those exact image URLs in create_task.images. Use only URLs from the current triggering user message; do not invent, transform, or omit them.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
+        try {
+            const projectDescriptionContextMessage = await getProjectDescriptionContextMessage(
+                assistantContext?.projectId
+            )
+
+            if (projectDescriptionContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(projectDescriptionContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load project description context', {
+                projectId: assistantContext?.projectId,
+                error: error.message,
+            })
+        }
+
+        messages.push([
+            'system',
+            'When the user asks to update a project description, use update_project_description. When editing the project description, treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY)) {
@@ -7647,5 +7826,6 @@ module.exports = {
     mapAssistantTaskForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
     getHeartbeatSettingsContextMessage,
+    getProjectDescriptionContextMessage,
     getOpenTasksContextMessage,
 }
