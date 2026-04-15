@@ -22,7 +22,7 @@ const {
     injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('../Assistant/createTaskImageHelper')
 
-const MAX_TOOL_ITERATIONS = 10
+const MAX_TOOL_ITERATIONS = 50
 const MAX_WHATSAPP_MESSAGE_LENGTH = 1400
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'

@@ -19,7 +19,7 @@ const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require
 const { getConversationHistory, storeEmailAssistantMessageInTopic } = require('./emailDailyTopic')
 const { getEmailSafeAllowedTools } = require('./emailChannelHelpers')
 
-const MAX_TOOL_ITERATIONS = 10
+const MAX_TOOL_ITERATIONS = 50
 
 async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messageText, assistantId, options = {}) {
     const user = await getUserData(userId)
