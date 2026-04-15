@@ -5,10 +5,10 @@ import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import { translate } from '../../../../i18n/TranslationService'
 import ToolsAccessWrapper from './ToolsAccessWrapper'
-import { TOOL_LABEL_BY_KEY, TOOL_OPTIONS } from './toolOptions'
+import { TOOL_LABEL_BY_KEY, TOOL_OPTIONS, normalizeAllowedTools } from './toolOptions'
 
 export default function ToolsAccessProperty({ disabled, projectId, assistant }) {
-    const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+    const allowedTools = normalizeAllowedTools(assistant.allowedTools)
 
     const summaryText = !allowedTools.length
         ? translate('No tools enabled')

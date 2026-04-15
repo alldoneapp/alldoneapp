@@ -36,3 +36,22 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
     acc[option.key] = option.labelKey
     return acc
 }, {})
+
+// Map renamed tool keys so Firestore data with old names resolves correctly
+const TOOL_KEY_RENAMES = { get_note: 'get_notes' }
+
+const VALID_KEYS = new Set(TOOL_OPTIONS.map(o => o.key))
+
+export function normalizeAllowedTools(allowedTools) {
+    if (!Array.isArray(allowedTools)) return []
+    const seen = new Set()
+    const result = []
+    for (const key of allowedTools) {
+        const mapped = TOOL_KEY_RENAMES[key] || key
+        if (!seen.has(mapped)) {
+            seen.add(mapped)
+            result.push(mapped)
+        }
+    }
+    return result
+}

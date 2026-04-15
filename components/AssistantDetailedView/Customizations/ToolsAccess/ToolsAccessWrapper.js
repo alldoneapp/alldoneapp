@@ -9,7 +9,7 @@ import { execShortcutFn } from '../../../UIComponents/ShortcutCheatSheet/HelperF
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantToolsModal from '../../../UIComponents/FloatModals/AssistantToolsModal/AssistantToolsModal'
 import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
-import { TOOL_OPTIONS } from './toolOptions'
+import { TOOL_OPTIONS, normalizeAllowedTools } from './toolOptions'
 
 export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
     const dispatch = useDispatch()
@@ -19,7 +19,7 @@ export default function ToolsAccessWrapper({ disabled, projectId, assistant }) {
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
 
-    const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+    const allowedTools = normalizeAllowedTools(assistant.allowedTools)
 
     const openModal = () => {
         setIsOpen(true)
