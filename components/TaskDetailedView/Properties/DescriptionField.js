@@ -112,6 +112,7 @@ export default function DescriptionField({ projectId, object, disabled, objectTy
                     setEditor={setEditor}
                     otherFormats={['image', 'attachment', 'customImageFormat', 'videoFormat']}
                     isCalendarTask={isCalendarTask}
+                    keepBreakLines={true}
                 />
             </View>
             {!!helperText && <Text style={localStyles.helperText}>{translate(helperText)}</Text>}

@@ -77,6 +77,7 @@ export default function UserDescriptionField({
                     disabledMentions={!projectId}
                     disabledTags={!projectId}
                     disabledEdition={disabled}
+                    keepBreakLines={true}
                 />
             </View>
             {!!helperText && <Text style={localStyles.helperText}>{translate(helperText)}</Text>}
