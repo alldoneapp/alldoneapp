@@ -177,6 +177,30 @@ describe('Get chats assistant tool schema', () => {
     })
 })
 
+describe('Get goals assistant tool schema', () => {
+    test('exposes get_goals only when allowed', () => {
+        expect(getToolSchemas(['get_goals']).map(schema => schema.function.name)).toEqual(['get_goals'])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('documents goal status, project scope, and milestone filters', () => {
+        expect(toolSchemas.get_goals.function.parameters.properties.status).toEqual({
+            type: 'string',
+            enum: ['active', 'done', 'all'],
+            description:
+                'Filter goals by status. Defaults to "active". Use "all" to return one goal-centric result list that merges active and done metadata.',
+        })
+
+        expect(toolSchemas.get_goals.function.parameters.properties.allProjects.type).toBe('boolean')
+        expect(toolSchemas.get_goals.function.parameters.properties.projectId.type).toBe('string')
+        expect(toolSchemas.get_goals.function.parameters.properties.projectName.type).toBe('string')
+        expect(toolSchemas.get_goals.function.parameters.properties.currentMilestoneOnly.type).toBe('boolean')
+        expect(toolSchemas.get_goals.function.parameters.properties.limit.type).toBe('number')
+        expect(toolSchemas.get_goals.function.description).toContain('active goals across all projects')
+        expect(toolSchemas.get_goals.function.description).toContain('currentMilestoneOnly')
+    })
+})
+
 describe('Update note assistant tool schema', () => {
     test('supports contact-targeted note updates', () => {
         expect(toolSchemas.update_note.function.parameters.properties.contactId.type).toBe('string')

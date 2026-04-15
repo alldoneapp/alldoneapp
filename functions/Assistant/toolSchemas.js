@@ -138,6 +138,52 @@ const toolSchemas = {
         },
     },
 
+    get_goals: {
+        type: 'function',
+        function: {
+            name: 'get_goals',
+            description:
+                'Retrieves and shows goals from the current project or across all accessible projects. By default it returns active goals across all projects. Use this when the user asks to show, list, review, or check their goals without relying on a keyword search. Supports active, done, or all goals. currentMilestoneOnly only filters the active side of the results, and is ignored for done goals.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    status: {
+                        type: 'string',
+                        enum: ['active', 'done', 'all'],
+                        description:
+                            'Filter goals by status. Defaults to "active". Use "all" to return one goal-centric result list that merges active and done metadata.',
+                    },
+                    allProjects: {
+                        type: 'boolean',
+                        description:
+                            'If true, retrieves goals from all accessible projects instead of just the current one. Defaults to true.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit goals to a specific accessible project ID. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit goals to a specific accessible project by exact or partial project name. If multiple projects match, the tool will return an ambiguity error.',
+                    },
+                    currentMilestoneOnly: {
+                        type: 'boolean',
+                        description:
+                            'If true, only include goals from the current active milestone in each project. This only filters active goals and is ignored for done goals.',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of goals to return. Default is 100, maximum is 1000. Use higher limits when the user asks for all goals.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     get_chats: {
         type: 'function',
         function: {

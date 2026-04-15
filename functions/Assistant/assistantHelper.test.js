@@ -35,6 +35,23 @@ jest.mock('../shared/ChatRetrievalService', () => ({
         }),
     })),
 }))
+jest.mock('../shared/GoalRetrievalService', () => ({
+    GoalRetrievalService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getGoals: jest.fn().mockResolvedValue({
+            goals: [],
+            count: 0,
+            appliedFilters: {
+                status: 'active',
+                allProjects: true,
+                projectId: null,
+                projectName: null,
+                currentMilestoneOnly: false,
+                limit: 100,
+            },
+        }),
+    })),
+}))
 jest.mock('../shared/projectDescriptionUpdateHelper', () => ({
     updateProjectDescription: jest.fn(),
 }))
@@ -111,6 +128,7 @@ jest.mock(
 
 const { ProjectService } = require('../shared/ProjectService')
 const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
+const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 global.fetch = jest.fn()
@@ -126,6 +144,7 @@ const {
     normalizeRecentHours,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
+    mapAssistantGoalForToolResponse,
     addBaseInstructions,
     executeToolNatively,
     isToolAllowedForExecution,
@@ -239,6 +258,76 @@ describe('assistant attachment handoff helpers', () => {
                 lastComment: 'Need final approval',
             },
             isFocus: true,
+        })
+    })
+
+    test('maps assistant goal tool responses with active and done metadata preserved', () => {
+        expect(
+            mapAssistantGoalForToolResponse({
+                id: 'goal-1',
+                name: 'Launch v2',
+                description: 'Ship the release',
+                progress: 80,
+                projectId: 'project-1',
+                projectName: 'Product',
+                ownerId: 'ALL_USERS',
+                assigneesIds: ['user-1'],
+                commentsData: {
+                    amount: 2,
+                    lastComment: 'Need the final review',
+                },
+                status: 'both',
+                startingMilestoneDate: 1774970400000,
+                completionMilestoneDate: 1775575200000,
+                isBacklog: false,
+                matchedMilestone: {
+                    id: 'milestone-1',
+                    date: 1774970400000,
+                    extendedName: 'Sprint 1',
+                    ownerId: 'ALL_USERS',
+                },
+                doneMilestones: [
+                    {
+                        milestoneId: 'done-1',
+                        date: 1774365600000,
+                        extendedName: 'Beta',
+                        progress: 100,
+                    },
+                ],
+                latestDoneMilestoneDate: 1774365600000,
+            })
+        ).toEqual({
+            id: 'goal-1',
+            name: 'Launch v2',
+            description: 'Ship the release',
+            progress: 80,
+            projectId: 'project-1',
+            projectName: 'Product',
+            ownerId: 'ALL_USERS',
+            assigneesIds: ['user-1'],
+            commentsData: {
+                amount: 2,
+                lastComment: 'Need the final review',
+            },
+            status: 'both',
+            startingMilestoneDate: 1774970400000,
+            completionMilestoneDate: 1775575200000,
+            isBacklog: false,
+            matchedMilestone: {
+                id: 'milestone-1',
+                date: 1774970400000,
+                extendedName: 'Sprint 1',
+                ownerId: 'ALL_USERS',
+            },
+            doneMilestones: [
+                {
+                    milestoneId: 'done-1',
+                    date: 1774365600000,
+                    extendedName: 'Beta',
+                    progress: 100,
+                },
+            ],
+            latestDoneMilestoneDate: 1774365600000,
         })
     })
 
@@ -938,6 +1027,166 @@ describe('assistant get chats tool', () => {
                 projectName: 'Marketing',
             },
         })
+    })
+})
+
+describe('assistant get goals tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        GoalRetrievalService.mockClear()
+    })
+
+    test('delegates goal retrieval with default active cross-project filters', async () => {
+        const getGoals = jest.fn().mockResolvedValue({
+            goals: [
+                {
+                    id: 'goal-1',
+                    name: 'Launch v2',
+                    description: '',
+                    progress: 80,
+                    projectId: 'project-2',
+                    projectName: 'Marketing',
+                    ownerId: 'ALL_USERS',
+                    assigneesIds: ['user-1'],
+                    commentsData: null,
+                    status: 'active',
+                    startingMilestoneDate: 1774970400000,
+                    completionMilestoneDate: 1775575200000,
+                    isBacklog: false,
+                },
+            ],
+            count: 1,
+            appliedFilters: {
+                status: 'active',
+                allProjects: true,
+                projectId: null,
+                projectName: null,
+                currentMilestoneOnly: false,
+                limit: 100,
+            },
+        })
+
+        GoalRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getGoals,
+        }))
+
+        const result = await executeToolNatively('get_goals', {}, 'project-1', 'assistant-1', 'user-1', null)
+
+        expect(getGoals).toHaveBeenCalledWith({
+            userId: 'user-1',
+            currentProjectId: 'project-1',
+            projectId: '',
+            projectName: '',
+            allProjects: true,
+            status: 'active',
+            currentMilestoneOnly: false,
+            limit: undefined,
+        })
+        expect(result).toMatchObject({
+            count: 1,
+            appliedFilters: {
+                status: 'active',
+                allProjects: true,
+            },
+            goals: [
+                expect.objectContaining({
+                    id: 'goal-1',
+                    status: 'active',
+                    projectName: 'Marketing',
+                }),
+            ],
+        })
+    })
+
+    test('forwards projectName and currentMilestoneOnly and maps merged all-status results', async () => {
+        const getGoals = jest.fn().mockResolvedValue({
+            goals: [
+                {
+                    id: 'goal-2',
+                    name: 'Document rollout',
+                    description: 'Write the launch guide',
+                    progress: 100,
+                    projectId: 'project-3',
+                    projectName: 'Product',
+                    ownerId: 'ALL_USERS',
+                    assigneesIds: ['user-1'],
+                    commentsData: { amount: 1, lastComment: 'Done' },
+                    status: 'both',
+                    startingMilestoneDate: 1774970400000,
+                    completionMilestoneDate: 1775575200000,
+                    isBacklog: false,
+                    matchedMilestone: {
+                        id: 'milestone-2',
+                        date: 1774970400000,
+                        extendedName: 'Sprint 2',
+                        ownerId: 'ALL_USERS',
+                    },
+                    doneMilestones: [
+                        {
+                            milestoneId: 'done-2',
+                            date: 1774365600000,
+                            extendedName: 'Beta',
+                            progress: 100,
+                        },
+                    ],
+                    latestDoneMilestoneDate: 1774365600000,
+                },
+            ],
+            count: 1,
+            appliedFilters: {
+                status: 'all',
+                allProjects: false,
+                projectId: 'project-3',
+                projectName: 'Product',
+                currentMilestoneOnly: true,
+                limit: 20,
+            },
+        })
+
+        GoalRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getGoals,
+        }))
+
+        const result = await executeToolNatively(
+            'get_goals',
+            {
+                status: 'all',
+                projectName: 'Product',
+                currentMilestoneOnly: true,
+                limit: 20,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getGoals).toHaveBeenCalledWith({
+            userId: 'user-1',
+            currentProjectId: 'project-1',
+            projectId: '',
+            projectName: 'Product',
+            allProjects: true,
+            status: 'all',
+            currentMilestoneOnly: true,
+            limit: 20,
+        })
+        expect(result.goals).toEqual([
+            expect.objectContaining({
+                id: 'goal-2',
+                status: 'both',
+                matchedMilestone: expect.objectContaining({
+                    id: 'milestone-2',
+                }),
+                doneMilestones: [
+                    expect.objectContaining({
+                        milestoneId: 'done-2',
+                    }),
+                ],
+            }),
+        ])
     })
 })
 

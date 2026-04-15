@@ -197,6 +197,33 @@ function mapAssistantTaskForToolResponse(task) {
     }
 }
 
+function mapAssistantGoalForToolResponse(goal) {
+    return {
+        id: goal?.id,
+        name: goal?.name,
+        description: goal?.description || '',
+        progress: goal?.progress,
+        projectId: goal?.projectId || null,
+        projectName: goal?.projectName || null,
+        ownerId: goal?.ownerId || '',
+        assigneesIds: Array.isArray(goal?.assigneesIds) ? goal.assigneesIds : [],
+        commentsData: goal?.commentsData || null,
+        status: goal?.status || 'active',
+        startingMilestoneDate: Number.isFinite(Number(goal?.startingMilestoneDate))
+            ? Number(goal.startingMilestoneDate)
+            : null,
+        completionMilestoneDate: Number.isFinite(Number(goal?.completionMilestoneDate))
+            ? Number(goal.completionMilestoneDate)
+            : null,
+        isBacklog: goal?.isBacklog === true,
+        matchedMilestone: goal?.matchedMilestone || null,
+        doneMilestones: Array.isArray(goal?.doneMilestones) ? goal.doneMilestones : [],
+        latestDoneMilestoneDate: Number.isFinite(Number(goal?.latestDoneMilestoneDate))
+            ? Number(goal.latestDoneMilestoneDate)
+            : null,
+    }
+}
+
 function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetProjectId = '') {
     const gmailContext = toolRuntimeContext?.gmailContext
     if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return null
@@ -3584,6 +3611,48 @@ async function executeToolNatively(
             return result
         }
 
+        case 'get_goals': {
+            const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
+
+            console.log('🎯 GET_GOALS TOOL: Request params', {
+                userId: creatorId,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
+                allProjects: toolArgs.allProjects !== false,
+                status: toolArgs.status || 'active',
+                currentMilestoneOnly: toolArgs.currentMilestoneOnly === true,
+                limit: toolArgs.limit || null,
+                currentProjectId: projectId || null,
+            })
+
+            const retrievalService = new GoalRetrievalService({
+                database: admin.firestore(),
+            })
+            await retrievalService.initialize()
+
+            const result = await retrievalService.getGoals({
+                userId: creatorId,
+                currentProjectId: projectId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+                allProjects: toolArgs.allProjects !== false,
+                status: toolArgs.status || 'active',
+                currentMilestoneOnly: toolArgs.currentMilestoneOnly === true,
+                limit: toolArgs.limit,
+            })
+
+            console.log('🎯 GET_GOALS TOOL: Results', {
+                goalsReturned: result.count,
+                appliedFilters: result.appliedFilters,
+            })
+
+            return {
+                goals: (result.goals || []).map(mapAssistantGoalForToolResponse),
+                count: result.count || 0,
+                appliedFilters: result.appliedFilters || null,
+            }
+        }
+
         case 'get_user_projects': {
             const { ProjectService } = require('../shared/ProjectService')
 
@@ -6950,6 +7019,12 @@ async function addBaseInstructions(
             'When you call create_task based on the current user message and that message includes images, include those exact image URLs in create_task.images. Use only URLs from the current triggering user message; do not invent, transform, or omit them.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_goals')) {
+        messages.push([
+            'system',
+            'When the user asks to show, list, review, or check their goals, use get_goals instead of generic search unless they are clearly asking for keyword-based goal search.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
@@ -8011,6 +8086,7 @@ module.exports = {
     normalizeRecentHours,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
+    mapAssistantGoalForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
     getHeartbeatSettingsContextMessage,
     getProjectDescriptionContextMessage,
