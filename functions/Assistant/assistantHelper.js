@@ -4946,68 +4946,123 @@ async function executeToolNatively(
             return searchResult
         }
 
-        case 'get_note': {
-            console.log('📝 GET_NOTE TOOL: Starting note retrieval', {
-                creatorId,
-                noteId: toolArgs.noteId,
-                projectId: toolArgs.projectId,
-            })
+        case 'get_note':
+        case 'get_notes': {
+            // Single note by ID
+            if (toolArgs.noteId) {
+                console.log('📝 GET_NOTES TOOL: Fetching single note by ID', {
+                    creatorId,
+                    noteId: toolArgs.noteId,
+                    projectId: toolArgs.projectId,
+                })
 
-            const { SearchService } = require('../shared/SearchService')
-            const moment = require('moment')
+                if (!toolArgs.projectId) {
+                    return { success: false, error: 'projectId is required when fetching a note by noteId.' }
+                }
 
-            // Initialize SearchService for note retrieval
-            let storageBucket = null
-            try {
-                const projectId = admin.app().options.projectId
-                if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
-                else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
-            } catch (e) {}
+                const { SearchService } = require('../shared/SearchService')
+                const moment = require('moment')
 
-            const searchService = new SearchService({
-                database: admin.firestore(),
-                moment: moment,
-                enableAlgolia: true,
-                enableNoteContent: true,
-                enableDateParsing: true,
-                isCloudFunction: true,
-                storageBucket: storageBucket,
-            })
-            await searchService.initialize()
-            console.log('📝 GET_NOTE TOOL: SearchService initialized')
+                let storageBucket = null
+                try {
+                    const projectId = admin.app().options.projectId
+                    if (projectId === 'alldonealeph') storageBucket = 'notescontentprod'
+                    else if (projectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+                } catch (e) {}
 
-            // Retrieve full note content
-            const note = await searchService.getNote(creatorId, toolArgs.noteId, toolArgs.projectId)
-            console.log('📝 GET_NOTE TOOL: Note retrieved', {
-                noteId: note.id,
-                title: note.title,
-                contentLength: note.content?.length || 0,
-                contentPreview: note.content?.substring(0, 200),
-                projectId: note.projectId,
-                projectName: note.projectName,
-                wordCount: note.metadata?.wordCount || 0,
-            })
+                const searchService = new SearchService({
+                    database: admin.firestore(),
+                    moment: moment,
+                    enableAlgolia: true,
+                    enableNoteContent: true,
+                    enableDateParsing: true,
+                    isCloudFunction: true,
+                    storageBucket: storageBucket,
+                })
+                await searchService.initialize()
 
-            const result = {
-                success: true,
-                note: {
-                    id: note.id,
+                const note = await searchService.getNote(creatorId, toolArgs.noteId, toolArgs.projectId)
+                console.log('📝 GET_NOTES TOOL: Single note retrieved', {
+                    noteId: note.id,
                     title: note.title,
-                    content: note.content,
-                    projectId: note.projectId,
-                    projectName: note.projectName,
-                    createdAt: note.createdAt,
-                    updatedAt: note.updatedAt,
-                    wordCount: note.metadata?.wordCount || 0,
-                },
+                    contentLength: note.content?.length || 0,
+                })
+
+                return {
+                    success: true,
+                    note: {
+                        id: note.id,
+                        title: note.title,
+                        content: note.content,
+                        projectId: note.projectId,
+                        projectName: note.projectName,
+                        createdAt: note.createdDate,
+                        updatedAt: note.lastEditionDate,
+                        wordCount: note.metadata?.wordCount || 0,
+                    },
+                }
             }
 
-            console.log('📝 GET_NOTE TOOL: Returning result', {
-                success: result.success,
-                resultLength: JSON.stringify(result).length,
+            // List multiple notes with optional date/project filters
+            console.log('📝 GET_NOTES TOOL: Listing notes', {
+                creatorId,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
+                date: toolArgs.date || null,
+                limit: toolArgs.limit || null,
             })
 
-            return result
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const { NoteRetrievalService } = require('../shared/NoteRetrievalService')
+
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+            let storageBucketForList = null
+            try {
+                const firebaseProjectId = admin.app().options.projectId
+                if (firebaseProjectId === 'alldonealeph') storageBucketForList = 'notescontentprod'
+                else if (firebaseProjectId === 'alldonestaging') storageBucketForList = 'notescontentstaging'
+            } catch (e) {}
+
+            const noteRetrievalService = new NoteRetrievalService({
+                database: admin.firestore(),
+                moment: require('moment'),
+                isCloudFunction: true,
+                storageBucket: storageBucketForList,
+            })
+            await noteRetrievalService.initialize()
+
+            const notesResult = await noteRetrievalService.getNotes({
+                userId: creatorId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+                date: toolArgs.date || null,
+                limit: toolArgs.limit,
+                timezoneOffset,
+            })
+
+            console.log('📝 GET_NOTES TOOL: Results', {
+                notesReturned: notesResult.count,
+                appliedFilters: notesResult.appliedFilters,
+            })
+
+            return {
+                success: true,
+                notes: notesResult.notes,
+                count: notesResult.count,
+                appliedFilters: notesResult.appliedFilters,
+            }
         }
 
         case 'web_search': {

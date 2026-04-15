@@ -26,7 +26,7 @@ export const TOOL_OPTIONS = [
     { key: 'create_calendar_event', labelKey: 'Create Calendar event' },
     { key: 'update_calendar_event', labelKey: 'Update Calendar event' },
     { key: 'delete_calendar_event', labelKey: 'Delete Calendar event' },
-    { key: 'get_note', labelKey: 'Get note content' },
+    { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
     { key: 'external_tools', labelKey: 'Use external app tools' },
     { key: 'talk_to_assistant', labelKey: 'Talk to assistants' },

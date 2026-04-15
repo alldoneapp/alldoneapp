@@ -1318,7 +1318,7 @@ class AlldoneSimpleMCPServer {
                         'create_task',
                         'create_note',
                         'search',
-                        'get_note',
+                        'get_notes',
                         'get_tasks',
                         'get_chats',
                         'get_focus_task',
@@ -1551,40 +1551,90 @@ class AlldoneSimpleMCPServer {
         }
     }
 
-    async getNote(args, request) {
-        const { noteId, projectId } = args
-
-        // Get authenticated user automatically from client session
+    async getNotes(args, request) {
         const userId = await this.getAuthenticatedUserForClient(request)
-
         const db = admin.firestore()
 
         try {
-            // Initialize SearchService if not already done (for note content retrieval)
-            if (!this.searchService) {
-                const { SearchService } = require('../shared/SearchService')
-                this.searchService = new SearchService({
-                    database: db,
-                    moment: moment,
-                    enableAlgolia: true,
-                    enableNoteContent: true,
-                    enableDateParsing: true,
-                    isCloudFunction: true,
-                })
-                await this.searchService.initialize()
+            // Single note by ID
+            if (args.noteId) {
+                if (!args.projectId) {
+                    throw new Error('projectId is required when fetching a note by noteId.')
+                }
+
+                if (!this.searchService) {
+                    const { SearchService } = require('../shared/SearchService')
+                    this.searchService = new SearchService({
+                        database: db,
+                        moment: moment,
+                        enableAlgolia: true,
+                        enableNoteContent: true,
+                        enableDateParsing: true,
+                        isCloudFunction: true,
+                    })
+                    await this.searchService.initialize()
+                }
+
+                const result = await this.searchService.getNote(userId, args.noteId, args.projectId)
+
+                return {
+                    success: true,
+                    note: result,
+                    message: `Retrieved note "${result.title}" (${result.metadata.wordCount} words)`,
+                }
             }
 
-            // Get full note content using unified service
-            const result = await this.searchService.getNote(userId, noteId, projectId)
+            // List multiple notes with optional date/project filters
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const userDoc = await db.collection('users').doc(userId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+
+            const userData = userDoc.data()
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+            let storageBucket = null
+            try {
+                const firebaseProjectId = admin.app().options.projectId
+                if (firebaseProjectId === 'alldonealeph') storageBucket = 'notescontentprod'
+                else if (firebaseProjectId === 'alldonestaging') storageBucket = 'notescontentstaging'
+            } catch (e) {}
+
+            if (!this.noteRetrievalService) {
+                const { NoteRetrievalService } = require('../shared/NoteRetrievalService')
+                this.noteRetrievalService = new NoteRetrievalService({
+                    database: db,
+                    moment: moment,
+                    isCloudFunction: true,
+                    storageBucket: storageBucket,
+                })
+                await this.noteRetrievalService.initialize()
+            }
+
+            const result = await this.noteRetrievalService.getNotes({
+                userId,
+                projectId: args.projectId || '',
+                projectName: args.projectName || '',
+                date: args.date || null,
+                limit: args.limit,
+                timezoneOffset,
+            })
 
             return {
                 success: true,
-                note: result,
-                message: `Retrieved note "${result.title}" (${result.metadata.wordCount} words)`,
+                notes: result.notes,
+                count: result.count,
+                appliedFilters: result.appliedFilters,
             }
         } catch (error) {
-            console.error('Error getting note:', error)
-            throw new Error(`Failed to get note: ${error.message}`)
+            console.error('Error getting notes:', error)
+            throw new Error(`Failed to get notes: ${error.message}`)
         }
     }
 
@@ -2971,22 +3021,43 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
-                            name: 'get_note',
+                            name: 'get_notes',
                             description:
-                                'Get full note content for detailed reading (requires OAuth 2.0 Bearer token authentication)',
+                                'Retrieve notes. Fetch a single note by ID (returns full content) or list multiple notes filtered by date and project (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
                                     noteId: {
                                         type: 'string',
-                                        description: 'Note ID to retrieve',
+                                        description:
+                                            'Optional: specific note ID to retrieve. When provided, projectId is also required.',
                                     },
                                     projectId: {
                                         type: 'string',
-                                        description: 'Project ID containing the note',
+                                        description:
+                                            'Optional: scope to a specific project by ID. Required when noteId is provided.',
+                                    },
+                                    projectName: {
+                                        type: 'string',
+                                        description: 'Optional: scope to a specific project by name.',
+                                    },
+                                    date: {
+                                        type: 'string',
+                                        description:
+                                            'Optional: filter notes by last-edited date. Supports: "today", "yesterday", "last week", "last 7 days", "this month", "YYYY-MM-DD", or "YYYY-MM-DD to YYYY-MM-DD".',
+                                    },
+                                    allProjects: {
+                                        type: 'boolean',
+                                        description:
+                                            'If true, retrieves notes from all accessible projects. Defaults to true when no projectId/projectName is given.',
+                                    },
+                                    limit: {
+                                        type: 'number',
+                                        description:
+                                            'Optional: maximum number of notes to return when listing. Default is 50, max 500.',
                                     },
                                 },
-                                required: ['noteId', 'projectId'],
+                                required: [],
                             },
                         },
                         {
@@ -3327,7 +3398,8 @@ class AlldoneSimpleMCPServer {
                             result = await this.search(args, httpReq)
                             break
                         case 'get_note':
-                            result = await this.getNote(args, httpReq)
+                        case 'get_notes':
+                            result = await this.getNotes(args, httpReq)
                             break
                         case 'update_note':
                             result = await this.updateNote(args, httpReq)

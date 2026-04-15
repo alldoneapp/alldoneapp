@@ -1277,25 +1277,47 @@ const toolSchemas = {
         },
     },
 
-    get_note: {
+    get_notes: {
         type: 'function',
         function: {
-            name: 'get_note',
+            name: 'get_notes',
             description:
-                'Retrieve the full content of a specific note by its ID. Use this when you need to read or analyze the complete contents of a note.',
+                'Retrieve notes. Can fetch a single note by ID (returns full content) or list multiple notes filtered by date and project (returns full content for each). Use this when the user asks to show, list, review, or read their notes.',
             parameters: {
                 type: 'object',
                 properties: {
                     noteId: {
                         type: 'string',
-                        description: 'The ID of the note to retrieve',
+                        description:
+                            'Optional: the ID of a specific note to retrieve. When provided, projectId is also required. Returns the full content of that single note.',
                     },
                     projectId: {
                         type: 'string',
-                        description: 'The project ID where the note is located',
+                        description:
+                            'Optional: scope to a specific project by ID. Required when noteId is provided. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: scope to a specific project by exact or partial name. If multiple projects match, the tool will return an ambiguity error.',
+                    },
+                    date: {
+                        type: 'string',
+                        description:
+                            'Optional: filter notes by last-edited date. Supports: "today", "yesterday", "last week", "last 7 days", "last 30 days", "this week", "this month", "YYYY-MM-DD", or "YYYY-MM-DD to YYYY-MM-DD" for a custom range.',
+                    },
+                    allProjects: {
+                        type: 'boolean',
+                        description:
+                            'If true, retrieves notes from all accessible projects instead of just the current one. Defaults to true when no projectId or projectName is given.',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of notes to return when listing. Default is 50, maximum is 500.',
                     },
                 },
-                required: ['noteId', 'projectId'],
+                required: [],
             },
         },
     },
@@ -1316,7 +1338,12 @@ function getToolSchemas(allowedTools) {
         effectiveTools.push('list_recent_chat_media')
     }
 
-    return effectiveTools.map(toolName => toolSchemas[toolName]).filter(schema => schema !== undefined)
+    // Backward compatibility: map old get_note to new get_notes
+    const toolNameMap = { get_note: 'get_notes' }
+
+    return effectiveTools
+        .map(toolName => toolSchemas[toolNameMap[toolName] || toolName])
+        .filter(schema => schema !== undefined)
 }
 
 module.exports = {
