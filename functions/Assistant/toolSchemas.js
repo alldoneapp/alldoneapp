@@ -228,6 +228,41 @@ const toolSchemas = {
         },
     },
 
+    get_contacts: {
+        type: 'function',
+        function: {
+            name: 'get_contacts',
+            description:
+                'Retrieves contacts from a specific accessible project or, by default, across all accessible active projects. Use this when the user asks to show, list, review, or check contacts without relying on keyword search. The optional date filter applies to contact last edit time.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit contacts to a specific accessible project ID. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit contacts to a specific accessible project by exact or partial project name. If multiple projects match, the tool will return an ambiguity error.',
+                    },
+                    date: {
+                        type: 'string',
+                        description:
+                            'Optional: filter contacts by last edit time. Supports "today", "yesterday", "last week", "last 7 days", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of contacts to return. Default is 100, maximum is 1000. Use higher limits when the user asks for all contacts.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     get_user_projects: {
         type: 'function',
         function: {

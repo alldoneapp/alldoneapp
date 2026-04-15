@@ -224,6 +224,25 @@ function mapAssistantGoalForToolResponse(goal) {
     }
 }
 
+function mapAssistantContactForToolResponse(contact) {
+    const lastEditedAt = Number(contact?.lastEditedAt)
+
+    return {
+        contactId: contact?.contactId || null,
+        projectId: contact?.projectId || null,
+        projectName: contact?.projectName || null,
+        displayName: contact?.displayName || '',
+        email: contact?.email || '',
+        emails: Array.isArray(contact?.emails) ? contact.emails : [],
+        company: contact?.company || '',
+        role: contact?.role || '',
+        phone: contact?.phone || '',
+        linkedInUrl: contact?.linkedInUrl || '',
+        description: contact?.description || '',
+        lastEditedAt: Number.isFinite(lastEditedAt) ? lastEditedAt : 0,
+    }
+}
+
 function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetProjectId = '') {
     const gmailContext = toolRuntimeContext?.gmailContext
     if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return null
@@ -3609,6 +3628,61 @@ async function executeToolNatively(
             })
 
             return result
+        }
+
+        case 'get_contacts': {
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
+
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+            console.log('👥 GET_CONTACTS TOOL: Request params', {
+                userId: creatorId,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
+                date: toolArgs.date || null,
+                limit: toolArgs.limit || null,
+                rawTimezone: rawTz,
+                normalizedTimezoneOffset: timezoneOffset,
+            })
+
+            const retrievalService = new ContactRetrievalService({
+                database: admin.firestore(),
+                moment: require('moment'),
+                isCloudFunction: true,
+            })
+            await retrievalService.initialize()
+
+            const result = await retrievalService.getContacts({
+                userId: creatorId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+                date: toolArgs.date || null,
+                limit: toolArgs.limit,
+                timezoneOffset,
+            })
+
+            console.log('👥 GET_CONTACTS TOOL: Results', {
+                contactsReturned: result.count,
+                appliedFilters: result.appliedFilters,
+            })
+
+            return {
+                contacts: (result.contacts || []).map(mapAssistantContactForToolResponse),
+                count: result.count || 0,
+                appliedFilters: result.appliedFilters || null,
+            }
         }
 
         case 'get_goals': {
@@ -7025,6 +7099,12 @@ async function addBaseInstructions(
             'When the user asks to show, list, review, or check their goals, use get_goals instead of generic search unless they are clearly asking for keyword-based goal search.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_contacts')) {
+        messages.push([
+            'system',
+            'When the user asks to show, list, review, or check contacts, use get_contacts instead of generic search unless they are clearly asking for keyword-based contact search.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
@@ -8087,6 +8167,7 @@ module.exports = {
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
     mapAssistantGoalForToolResponse,
+    mapAssistantContactForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
     getHeartbeatSettingsContextMessage,
     getProjectDescriptionContextMessage,

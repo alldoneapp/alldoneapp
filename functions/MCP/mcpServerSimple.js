@@ -1067,6 +1067,65 @@ class AlldoneSimpleMCPServer {
         }
     }
 
+    async getContacts(args, request) {
+        const userId = await this.getAuthenticatedUserForClient(request)
+        const db = admin.firestore()
+
+        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+        const userDoc = await db.collection('users').doc(userId).get()
+        if (!userDoc.exists) {
+            throw new Error('User not found')
+        }
+
+        const userData = userDoc.data()
+        const rawTz =
+            (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+            (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+            (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+            (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+        const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+        console.log('👥 MCP GET_CONTACTS request:', {
+            userId,
+            projectId: args.projectId || null,
+            projectName: args.projectName || null,
+            date: args.date || null,
+            limit: args.limit || null,
+            normalizedTimezoneOffset: timezoneOffset,
+        })
+
+        try {
+            if (!this.contactRetrievalService) {
+                const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
+                this.contactRetrievalService = new ContactRetrievalService({
+                    database: db,
+                    moment: moment,
+                    isCloudFunction: true,
+                })
+                await this.contactRetrievalService.initialize()
+            }
+
+            const result = await this.contactRetrievalService.getContacts({
+                userId,
+                projectId: args.projectId || '',
+                projectName: args.projectName || '',
+                date: args.date || null,
+                limit: args.limit,
+                timezoneOffset,
+            })
+
+            return {
+                success: true,
+                contacts: result.contacts,
+                count: result.count,
+                appliedFilters: result.appliedFilters,
+            }
+        } catch (error) {
+            console.error('Error getting contacts:', error)
+            throw new Error(`Failed to get contacts: ${error.message}`)
+        }
+    }
+
     async getUserProjects(args, request) {
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -3120,6 +3179,36 @@ class AlldoneSimpleMCPServer {
                             },
                         },
                         {
+                            name: 'get_contacts',
+                            description:
+                                'Get contacts from a specific accessible project or, by default, across all accessible active projects. The optional date filter applies to contact last edit time (requires authentication)',
+                            inputSchema: {
+                                type: 'object',
+                                properties: {
+                                    projectId: {
+                                        type: 'string',
+                                        description: 'Optional project ID to limit the contact query',
+                                    },
+                                    projectName: {
+                                        type: 'string',
+                                        description:
+                                            'Optional exact or partial project name to limit the contact query',
+                                    },
+                                    date: {
+                                        type: 'string',
+                                        description:
+                                            'Optional last-edit timeframe such as "last week", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD"',
+                                    },
+                                    limit: {
+                                        type: 'number',
+                                        description:
+                                            'Optional global maximum number of contacts to return (default: 100, max: 1000)',
+                                    },
+                                },
+                                required: [],
+                            },
+                        },
+                        {
                             name: 'get_user_projects',
                             description:
                                 'Get list of projects accessible to authenticated user (requires OAuth 2.0 Bearer token authentication)',
@@ -3251,6 +3340,9 @@ class AlldoneSimpleMCPServer {
                             break
                         case 'get_chats':
                             result = await this.getChats(args, httpReq)
+                            break
+                        case 'get_contacts':
+                            result = await this.getContacts(args, httpReq)
                             break
                         case 'get_user_projects':
                             result = await this.getUserProjects(args, httpReq)

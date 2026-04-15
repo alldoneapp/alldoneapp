@@ -35,6 +35,22 @@ jest.mock('../shared/ChatRetrievalService', () => ({
         }),
     })),
 }))
+jest.mock('../shared/ContactRetrievalService', () => ({
+    ContactRetrievalService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getContacts: jest.fn().mockResolvedValue({
+            contacts: [],
+            count: 0,
+            appliedFilters: {
+                allProjects: true,
+                projectId: null,
+                projectName: null,
+                date: null,
+                limit: 100,
+            },
+        }),
+    })),
+}))
 jest.mock('../shared/GoalRetrievalService', () => ({
     GoalRetrievalService: jest.fn().mockImplementation(() => ({
         initialize: jest.fn().mockResolvedValue(undefined),
@@ -128,6 +144,7 @@ jest.mock(
 
 const { ProjectService } = require('../shared/ProjectService')
 const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
+const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
 const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
@@ -1025,6 +1042,102 @@ describe('assistant get chats tool', () => {
                 types: ['topics'],
                 projectId: 'project-2',
                 projectName: 'Marketing',
+            },
+        })
+    })
+})
+
+describe('assistant get contacts tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ContactRetrievalService.mockClear()
+    })
+
+    test('delegates contact retrieval with normalized filters and timezone', async () => {
+        const getContacts = jest.fn().mockResolvedValue({
+            contacts: [
+                {
+                    contactId: 'contact-1',
+                    projectId: 'project-2',
+                    projectName: 'Marketing',
+                    displayName: 'Alice Example',
+                    email: 'alice@example.com',
+                    emails: ['alice@example.com'],
+                    company: 'Acme',
+                    role: 'Buyer',
+                    phone: '+491234',
+                    linkedInUrl: 'https://linkedin.com/in/alice',
+                    description: 'Important customer',
+                    lastEditedAt: 1774970400000,
+                },
+            ],
+            count: 1,
+            appliedFilters: {
+                allProjects: false,
+                projectId: 'project-2',
+                projectName: 'Marketing',
+                date: 'last week',
+                limit: 25,
+            },
+        })
+
+        ContactRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getContacts,
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                timezone: 'UTC+02:00',
+            }),
+        })
+
+        const result = await executeToolNatively(
+            'get_contacts',
+            {
+                projectName: 'Marketing',
+                date: 'last week',
+                limit: 25,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getContacts).toHaveBeenCalledWith({
+            userId: 'user-1',
+            projectId: '',
+            projectName: 'Marketing',
+            date: 'last week',
+            limit: 25,
+            timezoneOffset: 120,
+        })
+        expect(result).toEqual({
+            contacts: [
+                {
+                    contactId: 'contact-1',
+                    projectId: 'project-2',
+                    projectName: 'Marketing',
+                    displayName: 'Alice Example',
+                    email: 'alice@example.com',
+                    emails: ['alice@example.com'],
+                    company: 'Acme',
+                    role: 'Buyer',
+                    phone: '+491234',
+                    linkedInUrl: 'https://linkedin.com/in/alice',
+                    description: 'Important customer',
+                    lastEditedAt: 1774970400000,
+                },
+            ],
+            count: 1,
+            appliedFilters: {
+                allProjects: false,
+                projectId: 'project-2',
+                projectName: 'Marketing',
+                date: 'last week',
+                limit: 25,
             },
         })
     })

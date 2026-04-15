@@ -177,6 +177,22 @@ describe('Get chats assistant tool schema', () => {
     })
 })
 
+describe('Get contacts assistant tool schema', () => {
+    test('exposes get_contacts only when allowed', () => {
+        expect(getToolSchemas(['get_contacts']).map(schema => schema.function.name)).toEqual(['get_contacts'])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('documents project, date, and limit filters with cross-project default', () => {
+        expect(toolSchemas.get_contacts.function.parameters.properties.projectId.type).toBe('string')
+        expect(toolSchemas.get_contacts.function.parameters.properties.projectName.type).toBe('string')
+        expect(toolSchemas.get_contacts.function.parameters.properties.date.type).toBe('string')
+        expect(toolSchemas.get_contacts.function.parameters.properties.limit.type).toBe('number')
+        expect(toolSchemas.get_contacts.function.description).toContain('across all accessible active projects')
+        expect(toolSchemas.get_contacts.function.description).toContain('last edit time')
+    })
+})
+
 describe('Get goals assistant tool schema', () => {
     test('exposes get_goals only when allowed', () => {
         expect(getToolSchemas(['get_goals']).map(schema => schema.function.name)).toEqual(['get_goals'])
