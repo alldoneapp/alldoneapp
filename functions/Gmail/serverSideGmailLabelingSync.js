@@ -800,7 +800,7 @@ async function executePostLabelPrompt({
         let goldSpent = 0
         if (estimatedNormalGoldCost > 0) {
             const goldResult = await deductGold(userId, estimatedNormalGoldCost, {
-                source: 'gmail_labeling',
+                source: 'gmail_label_follow_up',
                 projectId: assistantProjectId,
                 objectId: normalizedMessage?.messageId || '',
                 channel: 'gmail',
@@ -992,7 +992,6 @@ async function processSingleMessage({
         projectId,
         objectId: normalizedMessage.messageId,
         channel: 'gmail',
-        note: 'Gmail classification — real token cost',
     })
     if (chargeResult?.success) {
         classificationGoldSpent = goldToCharge
