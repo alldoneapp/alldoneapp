@@ -979,6 +979,16 @@ async function processSingleMessage({
         ? calculateGoldCostFromTokens(tokenUsage.totalTokens, config.model)
         : 0
 
+    logSync('Gmail classifier gold accounting inputs', {
+        userId,
+        projectId,
+        messageId: normalizedMessage.messageId,
+        model: config?.model || null,
+        tokenUsage,
+        estimatedNormalGoldCost,
+        reservation: GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL,
+    })
+
     // Reconcile the upfront reservation against the real token-based cost so the
     // user is charged what the classification actually consumed.
     let classificationGoldSpent = GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL
@@ -1030,6 +1040,14 @@ async function processSingleMessage({
         })
         classificationGoldSpent = 0
     }
+
+    logSync('Gmail classifier gold accounting result', {
+        userId,
+        projectId,
+        messageId: normalizedMessage.messageId,
+        classificationGoldSpent,
+        insufficientGoldForClassificationDelta,
+    })
 
     if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
