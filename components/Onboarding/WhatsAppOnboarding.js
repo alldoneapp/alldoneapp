@@ -19,7 +19,9 @@ import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
 import { setUserPhone, setUserReceiveWhatsApp } from '../../utils/backends/Users/usersFirestore'
 import URLTrigger from '../../URLSystem/URLTrigger'
+import URLSystemTrigger from '../../URLSystem/URLSystemTrigger'
 import NavigationService from '../../utils/NavigationService'
+import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 import Icon from '../Icon'
 import SplitLayout from './SplitLayout'
 import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
@@ -229,6 +231,13 @@ export default function WhatsAppOnboarding({ navigation }) {
     }
 
     const proceed = () => {
+        // If user doesn't have premium, redirect to Stripe trial first
+        if (loggedUser?.premium?.status !== PLAN_STATUS_PREMIUM) {
+            // Save the intended destination so we can redirect after Stripe
+            localStorage.setItem('alldone_post_trial_redirect', nextUrl)
+            URLSystemTrigger.redirectToStripe('monthly')
+            return
+        }
         URLTrigger.processUrl(NavigationService, nextUrl)
     }
 

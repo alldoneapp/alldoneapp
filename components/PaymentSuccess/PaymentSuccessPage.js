@@ -14,7 +14,13 @@ export default function PaymentSuccessPage() {
     const [countdown, setCountdown] = useState(5)
 
     const redirectToRoot = () => {
-        window.location.href = '/'
+        const postTrialRedirect = localStorage.getItem('alldone_post_trial_redirect')
+        if (postTrialRedirect) {
+            localStorage.removeItem('alldone_post_trial_redirect')
+            window.location.href = postTrialRedirect
+        } else {
+            window.location.href = '/'
+        }
     }
 
     const writeBrowserURL = () => {
