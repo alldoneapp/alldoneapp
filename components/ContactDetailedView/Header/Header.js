@@ -185,11 +185,10 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
 
 const localStyles = StyleSheet.create({
     container: {
-        height: 140,
+        minHeight: 140,
         flexDirection: 'column',
         justifyContent: 'space-between',
         paddingBottom: 24,
-        overflow: 'hidden',
     },
     upperHeader: {
         flexDirection: 'row',
