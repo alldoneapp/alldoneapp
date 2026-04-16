@@ -20,12 +20,13 @@ export default function TagList({ projectId, chat }) {
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
+    const useCompactLayout = mobile || tablet
     const editionText = useLastEditDate(chat.lastEditionDate)
 
     const editorData = useGetUserPresentationData(chat.lastEditorId)
     return (
-        <View style={localStyles.container}>
-            <View style={{ flexDirection: 'row' }}>
+        <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
+            <View style={[localStyles.tagList, useCompactLayout && localStyles.tagListCompact]}>
                 <View style={{ marginRight: 12 }}>
                     <PrivacyTag
                         projectId={projectId}
@@ -36,9 +37,9 @@ export default function TagList({ projectId, chat }) {
                     />
                 </View>
             </View>
-            <View style={{ marginTop: 'auto', flexDirection: 'row' }}>
+            <View style={[localStyles.actions, useCompactLayout && localStyles.actionsCompact]}>
                 <Text style={localStyles.lastEdited}>
-                    {tablet
+                    {useCompactLayout
                         ? `${translate('edited')} ${editionText}\n ${translate('by')} ${
                               editorData.displayName.split(' ')[0]
                           }`
@@ -59,9 +60,34 @@ export default function TagList({ projectId, chat }) {
 
 const localStyles = StyleSheet.create({
     container: {
-        width: '100%',
+        flex: 1,
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        minWidth: 0,
+        alignItems: 'flex-start',
+    },
+    containerCompact: {
+        flexWrap: 'wrap',
+    },
+    tagList: {
+        flex: 1,
+        flexGrow: 1,
+        flexShrink: 1,
+        flexDirection: 'row',
+        minWidth: 0,
+    },
+    tagListCompact: {
+        flexWrap: 'wrap',
+    },
+    actions: {
+        flexDirection: 'row',
+        flexShrink: 0,
+        marginLeft: 8,
+    },
+    actionsCompact: {
+        width: '100%',
+        marginLeft: 0,
+        marginTop: 8,
+        justifyContent: 'flex-end',
     },
     lastEdited: {
         ...styles.body3,
