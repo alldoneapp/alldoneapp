@@ -92,6 +92,13 @@ Handle event propagation carefully. Set proper z-index and container `<div>` ele
 
 **Popover Centering**: Popovers using `react-tiny-popover` position content relative to the trigger element by default. For large modals, use `contentLocation={null}` to center the popover on screen instead of positioning relative to the trigger. The pattern `contentLocation={mobile ? null : undefined}` is used throughout the codebase to center on mobile only, but for large modals that need centering on all screen sizes, use `contentLocation={null}` unconditionally.
 
+### Gold Transactions
+
+-   Every gold change (earn, spend, refund, adjustment) must go through `applyGoldChange` / `deductGold` / `refundGold` / `adjustGold` in `functions/Gold/goldHelper.js` so it lands in the user's `goldTransactions` subcollection. Never mutate `users/{uid}.gold` directly — the log is how users see what happened in the Gold history modal.
+-   When adding a new gold spend or refund, always pass a descriptive `source` (a new machine key, e.g. `meeting_transcription`, `gmail_labeling`) plus as much linking context as you have: `projectId`, `goalId`, `objectId`, `objectType`, `channel`, and an optional human `note`. The sanitized fields are defined in `functions/Gold/goldTransactions.js` — add new fields there if you need more link context.
+-   Add a human label for every new `source` in `components/SettingsView/Profile/Properties/GoldTransactionsModal.js` (`getTransactionLabel`) and a matching translation key in `i18n/translations/en.json`, `de.json`, and `es.json`. The modal falls back to `Gold transaction` if the source is unknown.
+-   Prefer storing enough context that the transaction can deep-link back to its source (chat/topic, goal, contact, Gmail message, etc.). The modal's `getTransactionLink` builds the URL from `projectId` + `objectId` + `objectType` / `channel`; extend it when adding a new source type that has a natural destination.
+
 ### Gmail Follow-Up Tasks
 
 -   Gmail follow-up tasks created from labeling prompts use `task.gmailData.origin === 'gmail_label_follow_up'`.

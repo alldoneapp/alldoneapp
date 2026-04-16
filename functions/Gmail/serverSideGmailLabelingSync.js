@@ -38,7 +38,11 @@ const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
 const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
-const GMAIL_LABELING_GOLD_COST_PER_EMAIL = 1
+// Small upfront reservation used purely as an insufficient-balance gate before we
+// invoke the classifier LLM. The real Gold cost is computed from the classifier's
+// token usage after the call and reconciled against this reservation (extra is
+// deducted, any unused reservation is refunded).
+const GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL = 1
 const DEFAULT_SYNC_INTERVAL_MINUTES = 5
 
 class GmailSyncLockedError extends Error {
@@ -887,18 +891,19 @@ async function processSingleMessage({
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
-    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL, {
+    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL, {
         source: 'gmail_labeling',
         projectId,
         objectId: normalizedMessage.messageId,
         channel: 'gmail',
+        note: 'Reservation before classification; reconciled against real token cost afterwards',
     })
     if (!goldResult?.success) {
         logSync('Skipping Gmail labeling because user has insufficient gold', {
             userId,
             projectId,
             messageId: normalizedMessage.messageId,
-            requiredGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            requiredGold: GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL,
             currentGold: goldResult?.currentGold ?? null,
         })
 
@@ -939,18 +944,18 @@ async function processSingleMessage({
             },
         })
     } catch (error) {
-        await refundGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL, {
+        await refundGold(userId, GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL, {
             source: 'gmail_labeling',
             projectId,
             objectId: normalizedMessage.messageId,
             channel: 'gmail',
-            note: 'Refund after Gmail classification failure',
+            note: 'Refund reservation after Gmail classification failure',
         })
         console.warn('[gmailLabeling] Refunded gold after Gmail classification failure', {
             userId,
             projectId,
             messageId: normalizedMessage.messageId,
-            refundedGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            refundedGold: GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL,
             error: error.message,
         })
         throw error
@@ -974,6 +979,58 @@ async function processSingleMessage({
         ? calculateGoldCostFromTokens(tokenUsage.totalTokens, config.model)
         : 0
 
+    // Reconcile the upfront reservation against the real token-based cost so the
+    // user is charged what the classification actually consumed.
+    let classificationGoldSpent = GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL
+    let insufficientGoldForClassificationDelta = false
+    if (estimatedNormalGoldCost > GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL) {
+        const delta = estimatedNormalGoldCost - GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL
+        const deltaResult = await deductGold(userId, delta, {
+            source: 'gmail_labeling',
+            projectId,
+            objectId: normalizedMessage.messageId,
+            channel: 'gmail',
+            note: 'Deduct real classifier cost beyond reservation',
+        })
+        if (deltaResult?.success) {
+            classificationGoldSpent = estimatedNormalGoldCost
+        } else {
+            // Balance ran out between reservation and reconcile. Classification
+            // work already happened; under-charge rather than double-spend, and
+            // signal the sync loop to halt after this message.
+            insufficientGoldForClassificationDelta = true
+            console.warn('[gmailLabeling] Unable to deduct remaining classifier gold cost', {
+                userId,
+                projectId,
+                messageId: normalizedMessage.messageId,
+                reservation: GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL,
+                estimatedNormalGoldCost,
+                requestedDelta: delta,
+                currentGold: deltaResult?.currentGold ?? null,
+            })
+        }
+    } else if (estimatedNormalGoldCost > 0 && estimatedNormalGoldCost < GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL) {
+        const refundAmount = GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL - estimatedNormalGoldCost
+        await refundGold(userId, refundAmount, {
+            source: 'gmail_labeling',
+            projectId,
+            objectId: normalizedMessage.messageId,
+            channel: 'gmail',
+            note: 'Refund unused portion of classifier reservation',
+        })
+        classificationGoldSpent = estimatedNormalGoldCost
+    } else if (estimatedNormalGoldCost === 0 && tokenUsage) {
+        // Token usage was reported but rounds to 0 Gold; still refund the reservation.
+        await refundGold(userId, GMAIL_LABELING_GOLD_RESERVATION_PER_EMAIL, {
+            source: 'gmail_labeling',
+            projectId,
+            objectId: normalizedMessage.messageId,
+            channel: 'gmail',
+            note: 'Classifier cost rounded to 0 Gold; refund reservation',
+        })
+        classificationGoldSpent = 0
+    }
+
     if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
@@ -994,9 +1051,9 @@ async function processSingleMessage({
             labeled: 0,
             archived: 0,
             skipped: 1,
-            goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            goldSpent: classificationGoldSpent,
             estimatedNormalGoldCost,
-            insufficientGold: false,
+            insufficientGold: insufficientGoldForClassificationDelta,
         }
     }
 
@@ -1021,9 +1078,9 @@ async function processSingleMessage({
             labeled: 0,
             archived: 0,
             skipped: 1,
-            goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            goldSpent: classificationGoldSpent,
             estimatedNormalGoldCost,
-            insufficientGold: false,
+            insufficientGold: insufficientGoldForClassificationDelta,
         }
     }
 
@@ -1054,18 +1111,20 @@ async function processSingleMessage({
             direction
         )
     } catch (error) {
-        await refundGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL, {
-            source: 'gmail_labeling',
-            projectId,
-            objectId: normalizedMessage.messageId,
-            channel: 'gmail',
-            note: 'Refund after Gmail label apply failure',
-        })
+        if (classificationGoldSpent > 0) {
+            await refundGold(userId, classificationGoldSpent, {
+                source: 'gmail_labeling',
+                projectId,
+                objectId: normalizedMessage.messageId,
+                channel: 'gmail',
+                note: 'Refund real classifier cost after Gmail label apply failure',
+            })
+        }
         console.warn('[gmailLabeling] Refunded gold after Gmail label resolution/apply failure', {
             userId,
             projectId,
             messageId: normalizedMessage.messageId,
-            refundedGold: GMAIL_LABELING_GOLD_COST_PER_EMAIL,
+            refundedGold: classificationGoldSpent,
             error: error.message,
         })
         throw error
@@ -1117,9 +1176,9 @@ async function processSingleMessage({
         labeled: 1,
         archived: modifyResult.archived ? 1 : 0,
         skipped: 0,
-        goldSpent: GMAIL_LABELING_GOLD_COST_PER_EMAIL + followUpGoldSpent,
+        goldSpent: classificationGoldSpent + followUpGoldSpent,
         estimatedNormalGoldCost: estimatedNormalGoldCost + followUpEstimatedNormalGoldCost,
-        insufficientGold: false,
+        insufficientGold: insufficientGoldForClassificationDelta,
     }
 }
 
