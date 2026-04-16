@@ -5758,6 +5758,18 @@ async function storeChunks(
 
         const silentModeEnabled = typeof silentModeMarker === 'string' && silentModeMarker.length > 0
         let committed = false
+        let silentDeferCount = 0
+
+        if (silentModeEnabled) {
+            console.log('🔕 [SILENT] storeChunks entered in silent mode', {
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                commentId,
+                silentModeMarker,
+            })
+        }
 
         // Create a reference to the comment document for updates
         const commentRef = admin
@@ -5774,6 +5786,14 @@ async function storeChunks(
                 streamOutput.commentId = commentId
             }
             committed = true
+            if (silentModeEnabled) {
+                console.log('🔕 [SILENT] Committed deferred comment doc (answer diverged from marker)', {
+                    commentId,
+                    initialCommentTextLength: comment.commentText?.length || 0,
+                    initialCommentTextPreview:
+                        typeof comment.commentText === 'string' ? comment.commentText.slice(0, 80) : null,
+                })
+            }
         }
 
         let promises = []
@@ -5810,22 +5830,63 @@ async function storeChunks(
         // awaited ensureCommitted() before invoking this.
         const commentRefRawUpdate = data => commentRef.update(data)
 
+        // In silent mode, decide whether the current state should still be hidden from
+        // Firestore. We defer ANY write while:
+        //   - we're in thinking mode (thinking text isn't the final answer), or
+        //   - the answer so far could still become exactly the silent marker.
+        const shouldDeferSilentWrite = () => {
+            if (!silentModeEnabled || committed) return false
+            if (thinkingMode) {
+                silentDeferCount++
+                if (silentDeferCount <= 3 || silentDeferCount % 20 === 0) {
+                    console.log('🔕 [SILENT] Deferring write — still in thinking mode', {
+                        commentId,
+                        silentDeferCount,
+                    })
+                }
+                return true
+            }
+            if (isHeartbeatOkPrefix(answerContent)) {
+                silentDeferCount++
+                if (silentDeferCount <= 3 || silentDeferCount % 20 === 0) {
+                    console.log('🔕 [SILENT] Deferring write — answer is still a marker prefix', {
+                        commentId,
+                        silentDeferCount,
+                        answerContentLength: answerContent.length,
+                        answerContentPreview: answerContent.slice(0, 40),
+                    })
+                }
+                return true
+            }
+            return false
+        }
+
         const flushPendingUpdate = async () => {
-            if (pendingUpdate) {
-                const updateData = { ...pendingUpdate }
+            if (!pendingUpdate) return
+            if (shouldDeferSilentWrite()) {
+                // Keep the timeout and pendingUpdate in place so it fires again later;
+                // actually, we drop it — the next chunk will reschedule if needed.
                 pendingUpdate = null
                 if (updateTimeout) {
                     clearTimeout(updateTimeout)
                     updateTimeout = null
                 }
-                await ensureCommitted()
-                await commentRefRawUpdate(updateData)
+                return
             }
+            const updateData = { ...pendingUpdate }
+            pendingUpdate = null
+            if (updateTimeout) {
+                clearTimeout(updateTimeout)
+                updateTimeout = null
+            }
+            await ensureCommitted()
+            await commentRefRawUpdate(updateData)
         }
 
         // Wrapper that guarantees the Firestore comment doc exists before updating.
         // Safe to use even outside silent mode (in which case `ensureCommitted()` is a no-op).
         const safeCommentUpdate = async updateData => {
+            if (shouldDeferSilentWrite()) return
             await ensureCommitted()
             await commentRefRawUpdate(updateData)
         }
@@ -6420,13 +6481,33 @@ async function storeChunks(
                 streamOutput.silentOk = true
                 streamOutput.silentText = answerContent
             }
-            console.log('🔕 [TIMING] Silent mode match detected — skipping comment write', {
+            console.log('🔕 [SILENT] Silent OK matched — no comment written to thread', {
                 projectId,
                 objectType,
                 objectId,
                 assistantId,
+                commentId,
+                chunkCount,
+                silentDeferCount,
+                answerContentLength: answerContent.length,
+                answerContent,
             })
             return answerContent
+        }
+
+        if (silentModeEnabled) {
+            console.log('🔕 [SILENT] Silent mode was requested but the response was NOT the marker', {
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                commentId,
+                committedBeforeFinalize: committed,
+                chunkCount,
+                silentDeferCount,
+                answerContentLength: answerContent.length,
+                answerContentPreview: answerContent.slice(0, 200),
+            })
         }
 
         // Flush any pending updates before final operations

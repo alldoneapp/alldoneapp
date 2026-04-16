@@ -367,6 +367,7 @@ async function generatePreConfigTaskResult(
             followerIds: [userId],
             displayName,
             hasPreFetchedCommonData: !!commonData,
+            silentModeMarker: options?.silentModeMarker || null,
         })
 
         // Step 4: Process stream
@@ -402,6 +403,8 @@ async function generatePreConfigTaskResult(
             elapsed: `${Date.now() - functionStartTime}ms`,
             hasComment: !!aiCommentText,
             commentLength: aiCommentText?.length,
+            silentOk: streamOutput.silentOk === true,
+            streamCommentId: streamOutput.commentId ?? null,
         })
 
         // Step 5: Gold reduction

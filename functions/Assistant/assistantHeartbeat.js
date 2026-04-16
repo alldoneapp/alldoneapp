@@ -415,6 +415,15 @@ async function checkAndExecuteHeartbeats() {
                     ...chatHistory,
                 ]
 
+                console.log('🔕 [Heartbeat] Dispatching with silent marker', {
+                    projectId,
+                    assistantId: assistant.uid,
+                    userId,
+                    chatId,
+                    silentModeMarker: HEARTBEAT_OK_MARKER,
+                    promptPreview: typeof prompt === 'string' ? prompt.slice(0, 120) : null,
+                })
+
                 const executionResult = await generatePreConfigTaskResult(
                     userId,
                     projectId,
@@ -438,6 +447,19 @@ async function checkAndExecuteHeartbeats() {
                     'topics', // objectType - heartbeat uses topic chats, not task chats
                     { additionalContextMessages, silentModeMarker: HEARTBEAT_OK_MARKER }
                 )
+
+                console.log('🔕 [Heartbeat] generatePreConfigTaskResult returned', {
+                    projectId,
+                    assistantId: assistant.uid,
+                    userId,
+                    silentOk: executionResult?.silentOk === true,
+                    hasCommentId: !!executionResult?.commentId,
+                    commentLength: executionResult?.commentText?.length || 0,
+                    commentPreview:
+                        typeof executionResult?.commentText === 'string'
+                            ? executionResult.commentText.slice(0, 200)
+                            : null,
+                })
 
                 if (executionResult && executionResult.silentOk === true) {
                     await assistantRef.update({
