@@ -210,7 +210,11 @@ async function askToOpenAIBotOptimized(
         if (aiCommentText) {
             const step6Start = Date.now()
             const encoder = getEncoder() // Reuse pre-initialized encoder
-            await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages, encoder)
+            await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages, encoder, {
+                projectId,
+                objectId,
+                objectType,
+            })
             step6Duration = Date.now() - step6Start
 
             console.log('✅ [TIMING] Step 6 - Gold reduced', {

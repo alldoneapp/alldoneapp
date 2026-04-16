@@ -9,6 +9,23 @@ const DEFAULT_AWAKE_END = 22 * 60 * 60 * 1000
 const DEFAULT_PROMPT =
     'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
 
+const HEARTBEAT_OK_MARKER = 'HEARTBEAT_OK'
+
+function isHeartbeatOkResponse(text) {
+    if (typeof text !== 'string') return false
+    return text.trim() === HEARTBEAT_OK_MARKER
+}
+
+function isHeartbeatOkPrefix(partial) {
+    if (typeof partial !== 'string') return false
+    const trimmed = partial.trimStart()
+    if (trimmed.length === 0) return true
+    if (trimmed.length > HEARTBEAT_OK_MARKER.length) {
+        return trimmed.trimEnd() === HEARTBEAT_OK_MARKER
+    }
+    return HEARTBEAT_OK_MARKER.startsWith(trimmed)
+}
+
 function normalizeHeartbeatIntervalMs(value) {
     const parsedValue = Number(value)
 
@@ -131,6 +148,9 @@ module.exports = {
     DEFAULT_AWAKE_START,
     DEFAULT_AWAKE_END,
     DEFAULT_PROMPT,
+    HEARTBEAT_OK_MARKER,
+    isHeartbeatOkResponse,
+    isHeartbeatOkPrefix,
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatChancePercent,
     normalizeHeartbeatTimeMs,

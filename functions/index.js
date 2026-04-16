@@ -1298,12 +1298,13 @@ exports.deductGoldSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const { deductGold } = require('./Gold/goldHelper')
-            const { gold, source, projectId, goalId, objectId, channel, note } = data
+            const { gold, source, projectId, goalId, objectId, objectType, channel, note } = data
             return await deductGold(auth.uid, gold, {
                 source,
                 projectId,
                 goalId,
                 objectId,
+                objectType,
                 channel,
                 note,
             })
@@ -1331,12 +1332,13 @@ exports.refundGoldSecondGen = onCall(
 
         if (auth) {
             const { refundGold } = require('./Gold/goldHelper')
-            const { gold, source, projectId, goalId, objectId, channel, note } = data
+            const { gold, source, projectId, goalId, objectId, objectType, channel, note } = data
             const result = await refundGold(auth.uid, gold, {
                 source,
                 projectId,
                 goalId,
                 objectId,
+                objectType,
                 channel,
                 note,
             })

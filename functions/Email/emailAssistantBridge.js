@@ -110,7 +110,11 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         const { Tiktoken } = require('@dqbd/tiktoken/lite')
         const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
         const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-        await reduceGoldWhenChatWithAI(userId, user.gold, assistant.model, responseText, messages, encoder)
+        await reduceGoldWhenChatWithAI(userId, user.gold, assistant.model, responseText, messages, encoder, {
+            projectId,
+            objectId: chatId,
+            objectType: 'topics',
+        })
         encoder.free()
     } catch (error) {
         console.error('Email Channel: Failed deducting gold', { error: error.message })

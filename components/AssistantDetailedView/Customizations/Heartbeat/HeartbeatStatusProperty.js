@@ -16,7 +16,7 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
     const isDefaultAssistantInDefaultProject = assistant.isDefault && projectId === defaultProjectId
     const chancePercent = assistant.heartbeatChancePercent ?? (isDefaultAssistantInDefaultProject ? 10 : 0)
     const intervalMs = getHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
-    const { lastCheckedAt, lastExecutedAt, hasRecentCheck, lastResult } = getHeartbeatStatusForUser(
+    const { lastCheckedAt, lastExecutedAt, lastSilentOkAt, hasRecentCheck, lastResult } = getHeartbeatStatusForUser(
         assistant,
         loggedUserId,
         intervalMs
@@ -26,6 +26,8 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
     const lastResultLabel =
         lastResult === 'executed'
             ? translate('Executed')
+            : lastResult === 'silent_ok'
+            ? translate('Silent OK')
             : lastResult === 'not_executed'
             ? translate('Not executed')
             : translate('Never')
@@ -54,6 +56,7 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
                 <StatusDetail label={translate('Last checked')} value={formatTimestamp(lastCheckedAt)} />
                 <StatusDetail label={translate('Last result')} value={lastResultLabel} />
                 <StatusDetail label={translate('Last executed')} value={formatTimestamp(lastExecutedAt)} />
+                <StatusDetail label={translate('Last silent OK')} value={formatTimestamp(lastSilentOkAt)} />
             </View>
         </View>
     )

@@ -392,7 +392,8 @@ async function generatePreConfigTaskResult(
             commonData, // Pass pre-fetched common data
             timeToFirstTokenStart, // Pass entry time for accurate time-to-first-token tracking
             toolRuntimeContext,
-            streamOutput
+            streamOutput,
+            options?.silentModeMarker || null
         )
         const step4Duration = Date.now() - step4Start
 
@@ -417,7 +418,11 @@ async function generatePreConfigTaskResult(
                     ? require('./assistantHelper').getTokensPerGold(model)
                     : 'unknown',
             })
-            await reduceGoldWhenChatWithAI(userId, userGold, model, aiCommentText, contextMessages, getEncoder())
+            await reduceGoldWhenChatWithAI(userId, userGold, model, aiCommentText, contextMessages, getEncoder(), {
+                projectId,
+                objectId,
+                objectType,
+            })
             step5Duration = Date.now() - step5Start
 
             console.log('✅ [TIMING] Step 5 - Gold reduction completed', {
@@ -446,7 +451,7 @@ async function generatePreConfigTaskResult(
             taskName: taskMetadata?.name,
             userId,
         })
-        if (taskMetadata?.sendWhatsApp) {
+        if (taskMetadata?.sendWhatsApp && streamOutput.silentOk !== true) {
             console.log('Sending WhatsApp notification for task completion')
             try {
                 const admin = require('firebase-admin')
@@ -523,6 +528,8 @@ async function generatePreConfigTaskResult(
             isPublicFor,
             assistantId: settings.uid,
             commentText: aiCommentText,
+            commentId: streamOutput.commentId ?? null,
+            silentOk: streamOutput.silentOk === true,
         }
     }
 }

@@ -62,6 +62,8 @@ const {
     parseHeartbeatTimeString,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
+    isHeartbeatOkPrefix,
+    isHeartbeatOkResponse,
 } = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const {
@@ -1573,13 +1575,16 @@ async function collectAssistantTextWithToolCalls({
     }
 }
 
-async function spentGold(userId, goldToReduce) {
-    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce })
+async function spentGold(userId, goldToReduce, linkContext = {}) {
+    console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce, linkContext })
     const { deductGold } = require('../Gold/goldHelper')
 
     return await deductGold(userId, goldToReduce, {
         source: 'assistant_usage',
         channel: 'assistant',
+        projectId: linkContext.projectId,
+        objectId: linkContext.objectId,
+        objectType: linkContext.objectType,
     })
 }
 
@@ -1589,7 +1594,8 @@ const reduceGoldWhenChatWithAI = async (
     aiModel,
     aiCommentText,
     contextMessages,
-    encoder = null
+    encoder = null,
+    linkContext = {}
 ) => {
     console.log('🔋 GOLD COST TRACKING: Starting gold reduction process:', {
         userId,
@@ -1618,7 +1624,7 @@ const reduceGoldWhenChatWithAI = async (
         cappedAtUserGold: goldToReduce < tokens / getTokensPerGold(aiModel),
     })
 
-    await spentGold(userId, goldToReduce)
+    await spentGold(userId, goldToReduce, linkContext)
     console.log('🔋 GOLD COST TRACKING: Gold reduction completed')
 }
 
@@ -2868,7 +2874,19 @@ async function executeDelegatedAssistantRequest({
             const billingUserDoc = await db.collection('users').doc(requestUserId).get()
             const billingUserGold = billingUserDoc.exists ? billingUserDoc.data()?.gold || 0 : 0
 
-            await reduceGoldWhenChatWithAI(requestUserId, billingUserGold, targetModel, assistantResponse, messages)
+            await reduceGoldWhenChatWithAI(
+                requestUserId,
+                billingUserGold,
+                targetModel,
+                assistantResponse,
+                messages,
+                null,
+                {
+                    projectId: target?.projectId,
+                    objectId: target?.assistantId,
+                    objectType: 'assistants',
+                }
+            )
 
             console.log('🔁 DELEGATION: billed delegated assistant run', {
                 requestUserId,
@@ -5710,7 +5728,8 @@ async function storeChunks(
     temperatureKey = null,
     allowedTools = [],
     toolRuntimeContext = null,
-    streamOutput = null
+    streamOutput = null,
+    silentModeMarker = null
 ) {
     const chunksStartTime = Date.now()
     console.log('🔄 [TIMING] storeChunks START', {
@@ -5729,18 +5748,43 @@ async function storeChunks(
         const { commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId)
         comment.isLoading = true
         comment.isThinking = false
-        if (streamOutput && typeof streamOutput === 'object') {
-            streamOutput.commentId = commentId
+
+        let commentText = ''
+        let thinkingMode = false
+        let thinkingContent = ''
+        let answerContent = ''
+        let chunkCount = 0
+        let toolAlreadyExecuted = false
+
+        const silentModeEnabled = typeof silentModeMarker === 'string' && silentModeMarker.length > 0
+        let committed = false
+
+        // Create a reference to the comment document for updates
+        const commentRef = admin
+            .firestore()
+            .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+
+        // In silent mode we defer creating the Firestore doc until we know the reply
+        // is not the silent marker. ensureCommitted() writes the deferred comment on demand.
+        const ensureCommitted = async () => {
+            if (committed) return
+            comment.commentText = typeof commentText === 'string' ? commentText : comment.commentText
+            await commentRef.set(comment)
+            if (streamOutput && typeof streamOutput === 'object') {
+                streamOutput.commentId = commentId
+            }
+            committed = true
         }
 
         let promises = []
         promises.push(getCurrentFollowerIds(followerIds, projectId, objectType, objectId, isPublicFor))
-        promises.push(
-            admin
-                .firestore()
-                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
-                .set(comment)
-        )
+        if (!silentModeEnabled) {
+            if (streamOutput && typeof streamOutput === 'object') {
+                streamOutput.commentId = commentId
+            }
+            promises.push(commentRef.set(comment))
+            committed = true
+        }
 
         const [currentFollowerIds] = await Promise.all(promises)
         const step1Duration = Date.now() - step1Start
@@ -5756,23 +5800,15 @@ async function storeChunks(
             requestUserId,
         }
 
-        let commentText = ''
-        let thinkingMode = false
-        let thinkingContent = ''
-        let answerContent = ''
-        let chunkCount = 0
-        let toolAlreadyExecuted = false
-
-        // Create a reference to the comment document for updates
-        const commentRef = admin
-            .firestore()
-            .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
-
         // Batch update mechanism to reduce Firestore writes
         let pendingUpdate = null
         let updateTimeout = null
         const BATCH_UPDATE_DELAY_MS = 300 // Update every 300ms max (increased for better performance)
         const BATCH_UPDATE_CHUNK_THRESHOLD = 10 // Or every 10 chunks, whichever comes first (increased for better performance)
+
+        // Low-level write that assumes the doc already exists. Callers must have
+        // awaited ensureCommitted() before invoking this.
+        const commentRefRawUpdate = data => commentRef.update(data)
 
         const flushPendingUpdate = async () => {
             if (pendingUpdate) {
@@ -5782,8 +5818,16 @@ async function storeChunks(
                     clearTimeout(updateTimeout)
                     updateTimeout = null
                 }
-                await commentRef.update(updateData)
+                await ensureCommitted()
+                await commentRefRawUpdate(updateData)
             }
+        }
+
+        // Wrapper that guarantees the Firestore comment doc exists before updating.
+        // Safe to use even outside silent mode (in which case `ensureCommitted()` is a no-op).
+        const safeCommentUpdate = async updateData => {
+            await ensureCommitted()
+            await commentRefRawUpdate(updateData)
         }
 
         const scheduleUpdate = async (updateData, immediate = false) => {
@@ -5885,7 +5929,7 @@ async function storeChunks(
                     )
                     await flushPendingUpdate() // Flush any pending updates first
                     commentText += '\n\n[Tools are only available for GPT models]'
-                    await commentRef.update({ commentText, isLoading: false })
+                    await safeCommentUpdate({ commentText, isLoading: false })
                     toolAlreadyExecuted = true
                     continue
                 }
@@ -5924,7 +5968,7 @@ async function storeChunks(
                     } catch (e) {
                         console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
                         commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
-                        await commentRef.update({ commentText, isLoading: false })
+                        await safeCommentUpdate({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -5960,7 +6004,7 @@ async function storeChunks(
                         }
                         await flushPendingUpdate() // Flush any pending updates first
                         commentText += `\n\nTool not permitted: ${toolName}`
-                        await commentRef.update({ commentText, isLoading: false })
+                        await safeCommentUpdate({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -5975,7 +6019,7 @@ async function storeChunks(
                         elapsedMs: 0,
                     })
                     commentText += `\n\n${toolStatusMessage}`
-                    await commentRef.update({ commentText, isLoading: true })
+                    await safeCommentUpdate({ commentText, isLoading: true })
 
                     let stopToolProgressUpdates = false
                     const updateToolProgressStatus = async () => {
@@ -5993,7 +6037,7 @@ async function storeChunks(
                         toolStatusMessage = nextStatusMessage
                         if (stopToolProgressUpdates) return
 
-                        await commentRef.update({ commentText, isLoading: true })
+                        await safeCommentUpdate({ commentText, isLoading: true })
                     }
 
                     const toolProgressInterval = setInterval(() => {
@@ -6045,7 +6089,7 @@ async function storeChunks(
                         await flushPendingUpdate() // Flush any pending updates first
                         const errorMsg = `Error executing ${toolName}: ${error.message}`
                         commentText = commentText.replace(toolStatusMessage, errorMsg)
-                        await commentRef.update({ commentText, isLoading: false })
+                        await safeCommentUpdate({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
                     }
@@ -6142,7 +6186,7 @@ async function storeChunks(
                     // Remove loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
                     commentText = commentText.replace(toolStatusMessage, '')
-                    await commentRef.update({ commentText, isLoading: false })
+                    await safeCommentUpdate({ commentText, isLoading: false })
 
                     // Process the new stream - replace the current stream
                     if (ENABLE_DETAILED_LOGGING) {
@@ -6263,7 +6307,7 @@ async function storeChunks(
                         maxIterations: MAX_NATIVE_TOOL_CALL_ITERATIONS,
                     })
                     commentText += '\n\n⚠️ Maximum tool call iterations reached'
-                    await commentRef.update({ commentText, isLoading: false })
+                    await safeCommentUpdate({ commentText, isLoading: false })
                 }
 
                 toolAlreadyExecuted = true // Mark as done
@@ -6274,7 +6318,7 @@ async function storeChunks(
             if (chunk.isLoading) {
                 await flushPendingUpdate() // Flush any pending updates first
                 commentText = chunk.content
-                await commentRef.update({
+                await safeCommentUpdate({
                     commentText: chunk.content,
                     isLoading: true,
                     isThinking: false,
@@ -6293,7 +6337,7 @@ async function storeChunks(
                 commentText = chunk.replacementContent
                 answerContent = chunk.replacementContent
 
-                await commentRef.update({
+                await safeCommentUpdate({
                     commentText,
                     isThinking: false,
                     isLoading: false,
@@ -6331,6 +6375,13 @@ async function storeChunks(
                 commentText = answerContent
             }
 
+            // Silent mode: while the buffered answer still could become exactly the marker
+            // (e.g., "HEARTBEAT_OK"), don't persist anything. As soon as the buffer diverges
+            // we fall through and commit on the next scheduleUpdate call.
+            if (silentModeEnabled && !committed && !thinkingMode && isHeartbeatOkPrefix(answerContent)) {
+                continue
+            }
+
             // Batch update: schedule update instead of immediate write
             chunksSinceLastUpdate++
             const shouldFlushImmediately = chunksSinceLastUpdate >= BATCH_UPDATE_CHUNK_THRESHOLD
@@ -6360,6 +6411,22 @@ async function storeChunks(
 
             // Note: Manual TOOL: format parsing removed - native tool calling only
             // Tools are only available for GPT models that support native tool calling
+        }
+
+        // Silent mode: if the final buffered answer is exactly the silent marker,
+        // skip creating the Firestore comment entirely and signal to the caller.
+        if (silentModeEnabled && !committed && isHeartbeatOkResponse(answerContent)) {
+            if (streamOutput && typeof streamOutput === 'object') {
+                streamOutput.silentOk = true
+                streamOutput.silentText = answerContent
+            }
+            console.log('🔕 [TIMING] Silent mode match detected — skipping comment write', {
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+            })
+            return answerContent
         }
 
         // Flush any pending updates before final operations
@@ -6517,7 +6584,8 @@ async function storeBotAnswerStream(
     commonData = null, // Optional pre-fetched common data to reduce time-to-first-token
     functionStartTime = null, // Optional function start time for time-to-first-token tracking
     toolRuntimeContext = null,
-    streamOutput = null
+    streamOutput = null,
+    silentModeMarker = null
 ) {
     const streamProcessStart = Date.now()
     // Store function start time globally for time-to-first-token tracking
@@ -6573,7 +6641,8 @@ async function storeBotAnswerStream(
                   temperatureKey,
                   allowedTools,
                   toolRuntimeContext,
-                  streamOutput
+                  streamOutput,
+                  silentModeMarker
               )
             : ''
         const storeChunksDuration = Date.now() - storeChunksStart

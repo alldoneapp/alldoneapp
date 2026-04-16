@@ -11,6 +11,7 @@ const {
     DEFAULT_AWAKE_START,
     DEFAULT_AWAKE_END,
     DEFAULT_PROMPT,
+    HEARTBEAT_OK_MARKER,
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatTimeMs,
     getEffectiveHeartbeatChancePercent,
@@ -361,11 +362,11 @@ async function checkAndExecuteHeartbeats() {
         // Step 4: Execute heartbeats
         for (const { projectId, assistant, userId, userData } of heartbeatsToExecute) {
             try {
-                // Update lastExecuted immediately to prevent duplicates
                 const assistantRef = admin.firestore().doc(`assistants/${projectId}/items/${assistant.uid}`)
-                await assistantRef.update({
-                    [`heartbeatLastExecutedByUser.${userId}`]: Date.now(),
-                })
+                // NOTE: duplicate runs within the same window are already prevented by
+                // heartbeatLastProcessedWindowByUser (updated before this loop). We bump
+                // heartbeatLastExecutedByUser after generatePreConfigTaskResult resolves so
+                // silent-OK runs don't falsely look like a full execution in the UI.
 
                 // If heartbeatSendWhatsApp is not explicitly set, default to true when user has a phone number
                 const sendWhatsApp = getEffectiveHeartbeatSendWhatsApp(assistant, userData)
@@ -414,7 +415,7 @@ async function checkAndExecuteHeartbeats() {
                     ...chatHistory,
                 ]
 
-                await generatePreConfigTaskResult(
+                const executionResult = await generatePreConfigTaskResult(
                     userId,
                     projectId,
                     chatId,
@@ -435,15 +436,29 @@ async function checkAndExecuteHeartbeats() {
                     },
                     null, // functionEntryTime
                     'topics', // objectType - heartbeat uses topic chats, not task chats
-                    { additionalContextMessages }
+                    { additionalContextMessages, silentModeMarker: HEARTBEAT_OK_MARKER }
                 )
 
-                console.log('Heartbeat: Executed successfully:', {
-                    projectId,
-                    assistantId: assistant.uid,
-                    userId,
-                    sentWhatsApp: shouldSendWhatsApp,
-                })
+                if (executionResult && executionResult.silentOk === true) {
+                    await assistantRef.update({
+                        [`heartbeatLastSilentOkByUser.${userId}`]: Date.now(),
+                    })
+                    console.log('Heartbeat: Silent OK (no message posted):', {
+                        projectId,
+                        assistantId: assistant.uid,
+                        userId,
+                    })
+                } else {
+                    await assistantRef.update({
+                        [`heartbeatLastExecutedByUser.${userId}`]: Date.now(),
+                    })
+                    console.log('Heartbeat: Executed successfully:', {
+                        projectId,
+                        assistantId: assistant.uid,
+                        userId,
+                        sentWhatsApp: shouldSendWhatsApp,
+                    })
+                }
             } catch (error) {
                 console.error('Heartbeat: Execution failed:', {
                     projectId,

@@ -58,7 +58,10 @@ export default function HeartbeatPromptProperty({ disabled, projectId, assistant
     return (
         <View style={localStyles.container}>
             <Icon name="edit-3" size={24} color={colors.Text03} style={localStyles.icon} />
-            <Text style={localStyles.text}>{translate('Heartbeat prompt')}</Text>
+            <View style={localStyles.textColumn}>
+                <Text style={localStyles.text}>{translate('Heartbeat prompt')}</Text>
+                <Text style={localStyles.hint}>{translate('Tip: reply HEARTBEAT_OK to skip posting a message')}</Text>
+            </View>
             <View style={{ marginLeft: 'auto' }}>
                 <Popover
                     content={
@@ -86,9 +89,7 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        maxHeight: 56,
         minHeight: 56,
-        height: 56,
         paddingLeft: 8,
         paddingVertical: 8,
         alignItems: 'center',
@@ -96,8 +97,16 @@ const localStyles = StyleSheet.create({
     icon: {
         marginRight: 8,
     },
+    textColumn: {
+        flexShrink: 1,
+    },
     text: {
         ...styles.subtitle2,
         color: colors.Text03,
+    },
+    hint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 2,
     },
 })

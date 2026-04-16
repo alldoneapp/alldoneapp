@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 
 import { translate } from '../../../../i18n/TranslationService'
@@ -73,12 +73,67 @@ function getTransactionSubtitle(entry) {
     return ''
 }
 
-function GoldTransactionItem({ entry, showDivider }) {
+function getTransactionLink(entry) {
+    const projectId = entry?.projectId
+    const objectId = entry?.objectId
+    const goalId = entry?.goalId
+    const channel = entry?.channel
+    const source = entry?.source
+
+    if (source === 'goal_unlock' && projectId && goalId) {
+        return {
+            label: translate('Open goal'),
+            url: `${window.location.origin}/projects/${projectId}/goals/${goalId}`,
+            external: false,
+        }
+    }
+
+    if (source === 'linkedin_enrichment' && projectId && objectId) {
+        return {
+            label: translate('Open contact'),
+            url: `${window.location.origin}/projects/${projectId}/contacts/${objectId}`,
+            external: false,
+        }
+    }
+
+    if (channel === 'gmail' && objectId) {
+        return {
+            label: translate('Open Gmail message'),
+            url: `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(objectId)}`,
+            external: true,
+        }
+    }
+
+    if (channel === 'assistant' && projectId && objectId) {
+        const objectType = entry?.objectType || 'tasks'
+        const urlSegment = objectType === 'topics' ? 'chats' : objectType
+        return {
+            label: translate('Open chat'),
+            url: `${window.location.origin}/projects/${projectId}/${urlSegment}/${objectId}/chat`,
+            external: false,
+        }
+    }
+
+    return null
+}
+
+function GoldTransactionItem({ entry, showDivider, closeModal }) {
     const timestamp = getTransactionTimestamp(entry)
     const delta = getTransactionDelta(entry)
     const isPositive = delta >= 0
     const amount = Math.abs(delta || Number(entry?.amount) || 0)
     const balanceAfter = Number(entry?.balanceAfter) || 0
+    const link = getTransactionLink(entry)
+
+    const onOpenLink = () => {
+        if (!link) return
+        if (link.external) {
+            Linking.openURL(link.url)
+            return
+        }
+        if (closeModal) closeModal()
+        window.location.href = link.url
+    }
 
     return (
         <View style={[localStyles.item, showDivider && localStyles.itemDivider]}>
@@ -86,6 +141,11 @@ function GoldTransactionItem({ entry, showDivider }) {
                 <Text style={localStyles.itemTitle}>{getTransactionLabel(entry?.source)}</Text>
                 {!!getTransactionSubtitle(entry) && (
                     <Text style={localStyles.itemSubtitle}>{getTransactionSubtitle(entry)}</Text>
+                )}
+                {!!link && (
+                    <TouchableOpacity onPress={onOpenLink}>
+                        <Text style={localStyles.itemLink}>{link.label}</Text>
+                    </TouchableOpacity>
                 )}
                 <Text style={localStyles.itemMeta}>
                     {timestamp ? moment(timestamp).format(getTimeFormat(true)) : translate('Pending')}
@@ -191,7 +251,11 @@ export default function GoldTransactionsModal({ userId, closeModal }) {
                             return (
                                 <View key={entry.id}>
                                     {showDayHeader && <Text style={localStyles.dayHeader}>{dayLabel}</Text>}
-                                    <GoldTransactionItem entry={entry} showDivider={index < transactions.length - 1} />
+                                    <GoldTransactionItem
+                                        entry={entry}
+                                        showDivider={index < transactions.length - 1}
+                                        closeModal={closeModal}
+                                    />
                                 </View>
                             )
                         })}
@@ -277,6 +341,12 @@ const localStyles = StyleSheet.create({
         ...styles.body2,
         color: colors.Text03,
         marginBottom: 4,
+    },
+    itemLink: {
+        ...styles.body2,
+        color: colors.Primary200,
+        marginBottom: 4,
+        textDecorationLine: 'underline',
     },
     itemAmount: {
         ...styles.subtitle1,

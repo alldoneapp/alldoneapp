@@ -1741,6 +1741,7 @@ export async function spentGold(userId, goldToReduce, context = {}) {
         projectId: context.projectId,
         goalId: context.goalId,
         objectId: context.objectId,
+        objectType: context.objectType,
         channel: context.channel,
         note: context.note,
     })

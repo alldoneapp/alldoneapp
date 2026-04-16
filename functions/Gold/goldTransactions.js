@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 
-const GOLD_CONTEXT_FIELDS = ['projectId', 'goalId', 'objectId', 'channel', 'note']
+const GOLD_CONTEXT_FIELDS = ['projectId', 'goalId', 'objectId', 'objectType', 'channel', 'note']
 
 function sanitizeContext(context = {}) {
     const sanitized = {}
