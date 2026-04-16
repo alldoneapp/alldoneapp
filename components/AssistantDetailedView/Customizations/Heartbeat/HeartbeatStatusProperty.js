@@ -56,7 +56,10 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
                 <StatusDetail label={translate('Last checked')} value={formatTimestamp(lastCheckedAt)} />
                 <StatusDetail label={translate('Last result')} value={lastResultLabel} />
                 <StatusDetail label={translate('Last executed')} value={formatTimestamp(lastExecutedAt)} />
-                <StatusDetail label={translate('Last silent OK')} value={formatTimestamp(lastSilentOkAt)} />
+                <StatusDetail
+                    label={translate('Last silent OK (HEARTBEAT_OK)')}
+                    value={formatTimestamp(lastSilentOkAt)}
+                />
             </View>
         </View>
     )

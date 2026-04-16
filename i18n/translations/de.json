@@ -1177,7 +1177,7 @@
     "Last checked": "Zuletzt geprüft",
     "Last result": "Letztes Ergebnis",
     "Last executed": "Zuletzt ausgeführt",
-    "Last silent OK": "Letztes stilles OK",
+    "Last silent OK (HEARTBEAT_OK)": "Letztes stilles OK (HEARTBEAT_OK)",
     "Silent OK": "Stilles OK",
     "Tip: reply HEARTBEAT_OK to skip posting a message": "Tipp: Mit HEARTBEAT_OK antworten, um keine Nachricht zu senden",
     "Executed": "Ausgeführt",
