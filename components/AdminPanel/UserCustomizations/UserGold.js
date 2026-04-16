@@ -15,8 +15,8 @@ export default function UserGold({ userId, gold }) {
     const mobileNav = useSelector(state => state.smallScreenNavigation)
     const [open, setOpen] = useState(false)
 
-    const changeData = gold => {
-        setUserGold(userId, gold)
+    const changeData = newGold => {
+        setUserGold(userId, newGold, gold)
     }
 
     return (

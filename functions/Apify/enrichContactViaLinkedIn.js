@@ -133,7 +133,12 @@ const enrichContactViaLinkedIn = async (data, userId) => {
     }
 
     console.log('[LinkedIn Enrichment] Deducting', ENRICHMENT_GOLD_COST, 'gold from user:', userId)
-    const goldResult = await deductGold(userId, ENRICHMENT_GOLD_COST)
+    const goldResult = await deductGold(userId, ENRICHMENT_GOLD_COST, {
+        source: 'linkedin_enrichment',
+        projectId,
+        objectId: contactId,
+        channel: 'linkedin',
+    })
     console.log('[LinkedIn Enrichment] Gold deduction result:', JSON.stringify(goldResult))
 
     if (!goldResult.success) {
@@ -232,7 +237,10 @@ const searchLinkedInProfile = async (data, userId) => {
     }
 
     console.log('[LinkedIn Search] Deducting', SEARCH_GOLD_COST, 'gold from user:', userId)
-    const goldResult = await deductGold(userId, SEARCH_GOLD_COST)
+    const goldResult = await deductGold(userId, SEARCH_GOLD_COST, {
+        source: 'linkedin_search',
+        channel: 'linkedin',
+    })
     console.log('[LinkedIn Search] Gold deduction result:', JSON.stringify(goldResult))
 
     if (!goldResult.success) {

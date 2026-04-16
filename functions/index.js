@@ -72,6 +72,22 @@ async function assertProjectAccess(userId, projectId) {
     return userDoc.data() || {}
 }
 
+async function assertAdministrator(userId) {
+    const administratorRoleDoc = await admin
+        .firestore()
+        .doc('roles/administrator')
+        .get()
+        .catch(() => null)
+
+    const isAdministrator = administratorRoleDoc?.exists && administratorRoleDoc.data()?.userId === userId
+
+    if (!isAdministrator) {
+        throw new HttpsError('permission-denied', 'Administrator access required')
+    }
+
+    return true
+}
+
 function assertPremiumFeatureAccess(userData, featureName = 'This feature') {
     if (userData?.premium?.status !== PLAN_STATUS_PREMIUM) {
         throw new HttpsError('permission-denied', `${featureName} is available for premium users only`)
@@ -1264,7 +1280,7 @@ exports.earnGoldSecondGen = onCall(
         if (auth) {
             const { earnGold } = require('./Gold/goldHelper')
             const { projectId, userId, gold, slimDate, timestamp, dayDate } = data
-            await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate)
+            return await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate)
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -1282,8 +1298,15 @@ exports.deductGoldSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const { deductGold } = require('./Gold/goldHelper')
-            const { gold } = data
-            return await deductGold(auth.uid, gold)
+            const { gold, source, projectId, goalId, objectId, channel, note } = data
+            return await deductGold(auth.uid, gold, {
+                source,
+                projectId,
+                goalId,
+                objectId,
+                channel,
+                note,
+            })
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
@@ -1308,8 +1331,15 @@ exports.refundGoldSecondGen = onCall(
 
         if (auth) {
             const { refundGold } = require('./Gold/goldHelper')
-            const { gold } = data
-            const result = await refundGold(auth.uid, gold)
+            const { gold, source, projectId, goalId, objectId, channel, note } = data
+            const result = await refundGold(auth.uid, gold, {
+                source,
+                projectId,
+                goalId,
+                objectId,
+                channel,
+                note,
+            })
 
             console.log('refundGoldSecondGen: request completed', {
                 uid: auth.uid,
@@ -1324,6 +1354,42 @@ exports.refundGoldSecondGen = onCall(
             console.error('refundGoldSecondGen: missing auth')
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }
+    }
+)
+
+exports.adjustUserGoldSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+
+        await assertAdministrator(auth.uid)
+
+        const { adjustGold } = require('./Gold/goldHelper')
+        const { targetUserId, delta, note } = data || {}
+
+        if (!targetUserId) {
+            throw new HttpsError('invalid-argument', 'targetUserId is required')
+        }
+
+        const normalizedDelta = Number(delta)
+        if (!Number.isFinite(normalizedDelta) || normalizedDelta === 0) {
+            throw new HttpsError('invalid-argument', 'delta must be a non-zero number')
+        }
+
+        return await adjustGold(targetUserId, normalizedDelta, {
+            source: 'admin_adjustment',
+            channel: 'admin_panel',
+            note,
+        })
     }
 )
 

@@ -1,16 +1,18 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import Gold from '../../../../assets/svg/Gold'
+import Icon from '../../../Icon'
 
-export default function UserGold({ gold }) {
+export default function UserGold({ gold, onPress }) {
     const mobileNav = useSelector(state => state.smallScreenNavigation)
+    const interactive = !!onPress
 
     return (
-        <View style={localStyles.settingRow}>
+        <TouchableOpacity style={localStyles.settingRow} onPress={onPress} disabled={!interactive}>
             <View style={[localStyles.settingRowSection, localStyles.settingRowLeft, { paddingLeft: 8 }]}>
                 <Gold width={24} height={24} id="statisticsSection" />
                 {mobileNav ? (
@@ -29,8 +31,9 @@ export default function UserGold({ gold }) {
                         {Math.floor(gold)}
                     </Text>
                 )}
+                {interactive && <Icon name="chevron-right" size={24} color={colors.Text03} />}
             </View>
-        </View>
+        </TouchableOpacity>
     )
 }
 

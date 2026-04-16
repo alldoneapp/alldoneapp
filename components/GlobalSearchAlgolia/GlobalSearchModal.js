@@ -678,7 +678,14 @@ export default function GlobalSearchModal() {
     const activateFullSearch = async () => {
         setIndexing(true)
         const { loggedUser } = store.getState()
-        spentGold(loggedUser.uid, 500)
+        const goldResult = await spentGold(loggedUser.uid, 500, {
+            source: 'global_search',
+            channel: 'search',
+        })
+        if (!goldResult?.success) {
+            setIndexing(false)
+            return
+        }
         await runHttpsCallableFunction('indexProjectsRecordsInAlgoliaSecondGen', { userId: loggedUser.uid })
         setIndexing(false)
         onSearch()

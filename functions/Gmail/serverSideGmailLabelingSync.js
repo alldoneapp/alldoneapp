@@ -14,8 +14,7 @@ const {
     parseTextForUseLiKePrompt,
 } = require('../Assistant/assistantHelper')
 const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
-const { deductGold } = require('../Gold/goldHelper')
-const { adGoldToUser } = require('../Users/usersFirestore')
+const { deductGold, refundGold } = require('../Gold/goldHelper')
 const {
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
@@ -795,7 +794,12 @@ async function executePostLabelPrompt({
         const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, assistant.model)
         let goldSpent = 0
         if (estimatedNormalGoldCost > 0) {
-            const goldResult = await deductGold(userId, estimatedNormalGoldCost)
+            const goldResult = await deductGold(userId, estimatedNormalGoldCost, {
+                source: 'gmail_labeling',
+                projectId: assistantProjectId,
+                objectId: normalizedMessage?.messageId || '',
+                channel: 'gmail',
+            })
             if (goldResult?.success) {
                 goldSpent = estimatedNormalGoldCost
             } else {
@@ -883,7 +887,12 @@ async function processSingleMessage({
     const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
-    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+    const goldResult = await deductGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL, {
+        source: 'gmail_labeling',
+        projectId,
+        objectId: normalizedMessage.messageId,
+        channel: 'gmail',
+    })
     if (!goldResult?.success) {
         logSync('Skipping Gmail labeling because user has insufficient gold', {
             userId,
@@ -930,7 +939,13 @@ async function processSingleMessage({
             },
         })
     } catch (error) {
-        await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+        await refundGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL, {
+            source: 'gmail_labeling',
+            projectId,
+            objectId: normalizedMessage.messageId,
+            channel: 'gmail',
+            note: 'Refund after Gmail classification failure',
+        })
         console.warn('[gmailLabeling] Refunded gold after Gmail classification failure', {
             userId,
             projectId,
@@ -1039,7 +1054,13 @@ async function processSingleMessage({
             direction
         )
     } catch (error) {
-        await adGoldToUser(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL)
+        await refundGold(userId, GMAIL_LABELING_GOLD_COST_PER_EMAIL, {
+            source: 'gmail_labeling',
+            projectId,
+            objectId: normalizedMessage.messageId,
+            channel: 'gmail',
+            note: 'Refund after Gmail label apply failure',
+        })
         console.warn('[gmailLabeling] Refunded gold after Gmail label resolution/apply failure', {
             userId,
             projectId,

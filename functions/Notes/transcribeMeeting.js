@@ -6,6 +6,7 @@ const os = require('os')
 const path = require('path')
 
 const admin = require('firebase-admin')
+const { deductGold } = require('../Gold/goldHelper')
 
 const TRANSCRIPTION_COST = 0.2 // Gold per chunk
 
@@ -28,25 +29,15 @@ exports.transcribeMeetingAudio = onCall(
             throw new HttpsError('invalid-argument', 'Audio chunk is required')
         }
 
-        // Deduct Gold
         try {
-            await admin.firestore().runTransaction(async transaction => {
-                const userRef = admin.firestore().doc(`users/${auth.uid}`)
-                const userDoc = await transaction.get(userRef)
-
-                if (!userDoc.exists) {
-                    throw new Error('User not found')
-                }
-
-                const currentGold = userDoc.data().gold || 0
-                if (currentGold < TRANSCRIPTION_COST) {
-                    throw new Error('Insufficient Gold')
-                }
-
-                transaction.update(userRef, {
-                    gold: admin.firestore.FieldValue.increment(-TRANSCRIPTION_COST),
-                })
+            const goldResult = await deductGold(auth.uid, TRANSCRIPTION_COST, {
+                source: 'meeting_transcription',
+                channel: 'notes',
             })
+
+            if (!goldResult?.success) {
+                throw new Error(goldResult?.message || 'Insufficient Gold')
+            }
         } catch (e) {
             console.error('Gold deduction failed:', e)
             if (e.message === 'Insufficient Gold') {

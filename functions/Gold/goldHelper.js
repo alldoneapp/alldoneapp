@@ -4,15 +4,23 @@ const SendInBlueManager = require('../SendInBlueManager')
 
 const { logEvent } = require('../GAnalytics/GAnalytics')
 const { PLAN_STATUS_FREE, PLAN_STATUS_PREMIUM } = require('../Payment/premiumHelper')
+const { applyGoldChange, applyGoldChangeInTransaction } = require('./goldTransactions')
 const {
-    adGoldToUser,
     getUsersByPremiumStatus,
     getLastActiveUsers,
-    getUserData,
     getUsersThatEarnedSomeGoldToday,
     updateUserDailyGold,
 } = require('../Users/usersFirestore')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
+
+function logGoldAnalytics(userId, eventName, amount, source, context = {}) {
+    return logEvent(userId, eventName, {
+        amount,
+        userId,
+        source,
+        ...context,
+    })
+}
 
 const addMonthlyPrmiumGoldToUsers = async () => {
     const users = await getUsersByPremiumStatus(PLAN_STATUS_PREMIUM, false)
@@ -60,15 +68,18 @@ const addMonthlyGoldToUser = async (user, premiumUser) => {
     const email = notificationEmail ? notificationEmail : userEmail
 
     const PREMIUM_GOLD_AMOUNT = premiumUser ? 1000 : 100
+    const source = 'monthly_gold'
 
     const promises = []
-    promises.push(adGoldToUser(user.uid, PREMIUM_GOLD_AMOUNT))
     promises.push(
-        logEvent(user.uid, 'earn_gold', {
-            amount: PREMIUM_GOLD_AMOUNT,
+        applyGoldChange({
             userId: user.uid,
+            delta: PREMIUM_GOLD_AMOUNT,
+            direction: 'earn',
+            source,
         })
     )
+    promises.push(logGoldAnalytics(user.uid, 'earn_gold', PREMIUM_GOLD_AMOUNT, source))
 
     if (receiveEmails && email && email !== 'alldoneapp@exdream.com') {
         const mailData = {
@@ -90,48 +101,56 @@ const addMonthlyGoldToUser = async (user, premiumUser) => {
 }
 
 const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate) => {
-    const user = await getUserData(userId)
-    if (user) {
-        const { dailyGold } = user
+    const userRef = admin.firestore().doc(`users/${userId}`)
+    const statisticsRef = admin.firestore().doc(`statistics/${projectId}/${userId}/${slimDate}`)
+    let result = { success: false, message: 'User not found' }
 
-        const goldToIncrease = gold > dailyGold ? dailyGold : gold
+    await admin.firestore().runTransaction(async transaction => {
+        const userDoc = await transaction.get(userRef)
 
-        if (goldToIncrease > 0) {
-            const promises = []
-            promises.push(
-                admin
-                    .firestore()
-                    .doc(`users/${userId}`)
-                    .set(
-                        {
-                            gold: admin.firestore.FieldValue.increment(goldToIncrease),
-                            dailyGold: admin.firestore.FieldValue.increment(-goldToIncrease),
-                        },
-                        { merge: true }
-                    )
-            )
-            promises.push(
-                admin
-                    .firestore()
-                    .doc(`statistics/${projectId}/${userId}/${slimDate}`)
-                    .set(
-                        {
-                            gold: admin.firestore.FieldValue.increment(goldToIncrease),
-                            timestamp,
-                            day: dayDate,
-                        },
-                        { merge: true }
-                    )
-            )
-            promises.push(
-                logEvent(userId, 'earn_gold', {
-                    amount: goldToIncrease,
-                    userId: userId,
-                })
-            )
-            await Promise.all(promises)
+        if (!userDoc.exists) {
+            result = { success: false, message: 'User not found' }
+            return
         }
+
+        const userData = userDoc.data() || {}
+        const dailyGold = Number(userData.dailyGold) || 0
+        const goldToIncrease = Math.min(Number(gold) || 0, dailyGold)
+
+        if (goldToIncrease <= 0) {
+            result = { success: false, message: 'No daily gold left', currentGold: Number(userData.gold) || 0 }
+            return
+        }
+
+        result = applyGoldChangeInTransaction({
+            transaction,
+            userRef,
+            userData,
+            delta: goldToIncrease,
+            direction: 'earn',
+            source: 'task_completion',
+            context: { projectId },
+            additionalUserFields: { dailyGold: dailyGold - goldToIncrease },
+        })
+
+        if (!result.success) return
+
+        transaction.set(
+            statisticsRef,
+            {
+                gold: admin.firestore.FieldValue.increment(goldToIncrease),
+                timestamp,
+                day: dayDate,
+            },
+            { merge: true }
+        )
+    })
+
+    if (result.success) {
+        await logGoldAnalytics(userId, 'earn_gold', result.amount, 'task_completion', { projectId })
     }
+
+    return result
 }
 
 const resetDailyGoldLimit = async () => {
@@ -145,57 +164,67 @@ const resetDailyGoldLimit = async () => {
     await Promise.all(promises)
 }
 
-const deductGold = async (userId, gold) => {
-    const user = await getUserData(userId)
-    if (user) {
-        const { gold: currentGold } = user
-        if (currentGold >= gold) {
-            await adGoldToUser(userId, -gold)
-            await logEvent(userId, 'spend_gold', {
-                amount: gold,
-                userId: userId,
-            })
-            return { success: true, newBalance: currentGold - gold }
-        } else {
-            return { success: false, message: 'Insufficient gold', currentGold }
-        }
+const deductGold = async (userId, gold, context = {}) => {
+    const source = context.source || 'unknown_spend'
+    const result = await applyGoldChange({
+        userId,
+        delta: -gold,
+        direction: 'spend',
+        source,
+        context,
+        requireSufficientBalance: true,
+    })
+
+    if (result.success) {
+        await logGoldAnalytics(userId, 'spend_gold', result.amount, source, context)
     }
-    return { success: false, message: 'User not found' }
+
+    return result
 }
 
-const refundGold = async (userId, gold) => {
-    console.log('refundGold: starting refund', { userId, gold })
+const refundGold = async (userId, gold, context = {}) => {
+    console.log('refundGold: starting refund', { userId, gold, source: context.source || 'manual_refund' })
 
-    const user = await getUserData(userId)
-    if (!user) {
-        console.error('refundGold: user not found', { userId, gold })
-        return { success: false, message: 'User not found' }
+    const source = context.source || 'manual_refund'
+    const result = await applyGoldChange({
+        userId,
+        delta: gold,
+        direction: 'refund',
+        source,
+        context,
+    })
+
+    if (result.success) {
+        await logGoldAnalytics(userId, 'refund_gold', result.amount, source, context)
     }
 
-    const { gold: currentGold = 0, email = '', notificationEmail = '' } = user
-    const auditEmail = notificationEmail || email || userId
+    return result
+}
 
-    await adGoldToUser(userId, gold)
-    await logEvent(userId, 'refund_gold', {
-        amount: gold,
+const adjustGold = async (userId, delta, context = {}) => {
+    const source = context.source || 'admin_adjustment'
+    const result = await applyGoldChange({
         userId,
+        delta,
+        direction: 'adjustment',
+        source,
+        context,
+        requireSufficientBalance: delta < 0,
     })
 
-    console.log(`Refunded ${gold} gold to ${auditEmail}`)
-    console.log('refundGold: refund completed', {
-        userId,
-        auditEmail,
-        refundedGold: gold,
-        previousBalance: currentGold,
-        newBalance: currentGold + gold,
-    })
+    if (result.success) {
+        await logGoldAnalytics(userId, 'adjust_gold', result.amount, source, context)
+    }
 
-    return { success: true, newBalance: currentGold + gold }
+    return result
 }
 
 module.exports = {
     addMonthlyGoldToUser,
     addMonthlyGoldToAllUsers,
+    adjustGold,
+    applyGoldChange,
+    applyGoldChangeInTransaction,
     earnGold,
     resetDailyGoldLimit,
     deductGold,

@@ -83,6 +83,7 @@ jest.mock('../Firestore/assistantsFirestore', () => ({
 
 jest.mock('../Gold/goldHelper', () => ({
     deductGold: jest.fn(),
+    refundGold: jest.fn(),
 }))
 
 jest.mock('../Users/usersFirestore', () => ({
@@ -278,7 +279,14 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(result.goldSpent).toBe(2)
         expect(result.estimatedNormalGoldCost).toBe(2)
         expect(result.tokenUsage).toEqual({ totalTokens: 420 })
-        expect(deductGold).toHaveBeenCalledWith('user-1', 2)
+        expect(deductGold).toHaveBeenCalledWith(
+            'user-1',
+            2,
+            expect.objectContaining({
+                source: 'gmail_labeling',
+                channel: 'gmail',
+            })
+        )
         expect(assistantHelper.collectAssistantTextWithToolCalls).toHaveBeenCalledWith(
             expect.objectContaining({
                 toolRuntimeContext: expect.objectContaining({

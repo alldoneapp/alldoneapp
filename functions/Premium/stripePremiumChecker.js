@@ -1,6 +1,7 @@
 const functions = require('firebase-functions')
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { applyGoldChangeInTransaction } = require('../Gold/goldHelper')
 const {
     checkPremiumStatusByEmail,
     checkPremiumStatus,
@@ -194,9 +195,23 @@ const fulfillGoldPurchase = async (session, event, stripe) => {
             return
         }
 
-        transaction.update(userRef, {
-            gold: admin.firestore.FieldValue.increment(GOLD_PURCHASE_AMOUNT),
+        const goldResult = applyGoldChangeInTransaction({
+            transaction,
+            userRef,
+            userData: userDoc.data() || {},
+            delta: GOLD_PURCHASE_AMOUNT,
+            direction: 'earn',
+            source: 'gold_pack_purchase',
+            context: {
+                channel: 'stripe',
+                objectId: session.id,
+            },
         })
+
+        if (!goldResult.success) {
+            outcome = 'gold_update_failed'
+            return
+        }
 
         transaction.set(fulfillmentRef, {
             sessionId: session.id,

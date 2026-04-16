@@ -1575,35 +1575,12 @@ async function collectAssistantTextWithToolCalls({
 
 async function spentGold(userId, goldToReduce) {
     console.log('🔋 GOLD COST TRACKING: Spending gold:', { userId, goldToReduce })
+    const { deductGold } = require('../Gold/goldHelper')
 
-    // Check if FieldValue.increment is available
-    if (admin.firestore.FieldValue && admin.firestore.FieldValue.increment) {
-        console.log('🔋 GOLD COST TRACKING: Using FieldValue.increment')
-        const promises = []
-        promises.push(
-            admin
-                .firestore()
-                .doc(`users/${userId}`)
-                .update({
-                    gold: admin.firestore.FieldValue.increment(-goldToReduce),
-                })
-        )
-        promises.push(logEvent(userId, 'SpentGold', { spentGold: goldToReduce }))
-        await Promise.all(promises)
-    } else {
-        console.log('🔋 GOLD COST TRACKING: FieldValue.increment not available, using manual calculation')
-        // Fallback for emulator: get current gold, then update manually
-        const userDoc = await admin.firestore().doc(`users/${userId}`).get()
-        const currentGold = userDoc.data()?.gold || 0
-        const newGold = Math.max(0, currentGold - goldToReduce)
-
-        console.log('🔋 GOLD COST TRACKING: Manual calculation:', { currentGold, goldToReduce, newGold })
-
-        const promises = []
-        promises.push(admin.firestore().doc(`users/${userId}`).update({ gold: newGold }))
-        promises.push(logEvent(userId, 'SpentGold', { spentGold: goldToReduce }))
-        await Promise.all(promises)
-    }
+    return await deductGold(userId, goldToReduce, {
+        source: 'assistant_usage',
+        channel: 'assistant',
+    })
 }
 
 const reduceGoldWhenChatWithAI = async (

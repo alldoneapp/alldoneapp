@@ -23,7 +23,6 @@ import {
     removeWorkflowStepFeedChain,
     runHttpsCallableFunction,
     selectAndSetNewDefaultProject,
-    spentGold,
     tryAddFollower,
     unlinkDeletedProjectFromInvitedUsers,
     unlinkDeletedProjectFromMembers,
@@ -116,6 +115,44 @@ export async function watchProjectUsers(projectId, callback, watcherKey) {
             const users = convertUserDocsInUsers(snapshot)
             callback(users)
         })
+}
+
+export const GOLD_TRANSACTIONS_PAGE_SIZE = 50
+
+const mapGoldTransaction = doc => ({
+    id: doc.id,
+    ...doc.data(),
+})
+
+export function watchGoldTransactions(userId, callback, limitCount = GOLD_TRANSACTIONS_PAGE_SIZE) {
+    return getDb()
+        .collection(`users/${userId}/goldTransactions`)
+        .orderBy('createdAt', 'desc')
+        .limit(limitCount)
+        .onSnapshot(snapshot => {
+            callback({
+                transactions: snapshot.docs.map(mapGoldTransaction),
+                lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+                hasMore: snapshot.docs.length === limitCount,
+            })
+        })
+}
+
+export async function loadMoreGoldTransactions(userId, lastDoc, limitCount = GOLD_TRANSACTIONS_PAGE_SIZE) {
+    if (!lastDoc) return { transactions: [], lastDoc: null, hasMore: false }
+
+    const snapshot = await getDb()
+        .collection(`users/${userId}/goldTransactions`)
+        .orderBy('createdAt', 'desc')
+        .startAfter(lastDoc)
+        .limit(limitCount)
+        .get()
+
+    return {
+        transactions: snapshot.docs.map(mapGoldTransaction),
+        lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+        hasMore: snapshot.docs.length === limitCount,
+    }
 }
 
 export const getUsers = async getOnlyDocs => {
@@ -535,12 +572,45 @@ export async function setDefaultProjectId(userId, projectId) {
     }
 }
 
-export function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId) {
-    updateUserData(
-        userId,
-        { [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey) },
-        null
-    )
+async function spendGoldForGoalUnlock(userId, projectId, goalId) {
+    return await runHttpsCallableFunction('deductGoldSecondGen', {
+        gold: UNLOCK_GOAL_COST,
+        source: 'goal_unlock',
+        projectId,
+        goalId,
+        objectId: goalId,
+        channel: 'guides',
+    })
+}
+
+async function refundGoldForGoalUnlock(projectId, goalId) {
+    return await runHttpsCallableFunction('refundGoldSecondGen', {
+        gold: UNLOCK_GOAL_COST,
+        source: 'goal_unlock',
+        projectId,
+        goalId,
+        objectId: goalId,
+        channel: 'guides',
+        note: 'Goal unlock rollback',
+    })
+}
+
+export async function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId) {
+    const goldResult = await spendGoldForGoalUnlock(userId, projectId, goalId)
+    if (!goldResult?.success) return goldResult
+
+    try {
+        await updateUserData(
+            userId,
+            { [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey) },
+            null
+        )
+    } catch (error) {
+        await refundGoldForGoalUnlock(projectId, goalId)
+        console.error('Failed unlocking goal after gold deduction', { userId, projectId, goalId, error: error.message })
+        return { success: false, message: error.message || 'Failed to unlock goal' }
+    }
+
     logEvent('UnlockGoal', {
         userId,
         goalId,
@@ -549,7 +619,8 @@ export function addLockKeyToLoggedUser(userId, projectId, lockKey, goalId) {
         projectId,
         goalId,
     })
-    spentGold(userId, UNLOCK_GOAL_COST)
+
+    return goldResult
 }
 
 export const updateUserLastCommentData = async (projectId, userId, lastComment, commentType) => {
@@ -577,14 +648,30 @@ export const resetUserLastCommentData = async (projectId, userId) => {
     }
 }
 
-export function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey, goalId, goalOwnerId) {
-    updateUserData(
-        goalOwnerId,
-        {
-            [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey),
-        },
-        null
-    )
+export async function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey, goalId, goalOwnerId) {
+    const goldResult = await spendGoldForGoalUnlock(userUnlockingId, projectId, goalId)
+    if (!goldResult?.success) return goldResult
+
+    try {
+        await updateUserData(
+            goalOwnerId,
+            {
+                [`unlockedKeysByGuides.${projectId}`]: firebase.firestore.FieldValue.arrayUnion(lockKey),
+            },
+            null
+        )
+    } catch (error) {
+        await refundGoldForGoalUnlock(projectId, goalId)
+        console.error('Failed unlocking goal owner after gold deduction', {
+            userUnlockingId,
+            projectId,
+            goalId,
+            goalOwnerId,
+            error: error.message,
+        })
+        return { success: false, message: error.message || 'Failed to unlock goal' }
+    }
+
     logEvent('UnlockGoal', {
         userUnlockingId,
         goalId,
@@ -593,7 +680,6 @@ export function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey, goalI
         projectId,
         goalId,
     })
-    spentGold(userUnlockingId, UNLOCK_GOAL_COST)
 
     const { projectUsers } = store.getState()
 
@@ -611,6 +697,8 @@ export function addLockKeyToGoalOwner(userUnlockingId, projectId, lockKey, goalI
 
     usersInProject[index] = { ...user, unlockedKeysByGuides }
     store.dispatch(setUsersInProject(projectId, usersInProject))
+
+    return goldResult
 }
 
 export async function setUserRoleInProject(project, user, newRole, oldRole) {
@@ -807,8 +895,22 @@ export async function setNumberTodayTasks(userId, todayTasks) {
     getDb().doc(`users/${userId}`).update({ numberTodayTasks: todayTasks })
 }
 
-export function setUserGold(userId, gold) {
-    getDb().doc(`users/${userId}`).update({ gold })
+export async function setUserGold(userId, gold, currentGold, note = '') {
+    const delta = Number(gold) - (Number(currentGold) || 0)
+
+    if (!Number.isFinite(delta)) {
+        throw new Error('Invalid gold value')
+    }
+
+    if (delta === 0) {
+        return { success: true, newBalance: Number(currentGold) || 0 }
+    }
+
+    return await runHttpsCallableFunction('adjustUserGoldSecondGen', {
+        targetUserId: userId,
+        delta,
+        note,
+    })
 }
 
 export async function setUserLanguage(userId, language) {

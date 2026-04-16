@@ -3,6 +3,7 @@ const moment = require('moment')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { transcribeWhatsAppVoiceMessage } = require('./whatsAppVoiceTranscription')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { deductGold } = require('../Gold/goldHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getDefaultAssistantData } = require('../Firestore/assistantsFirestore')
 const { extractTextFromWhatsAppFile } = require('./whatsAppFileExtraction')
@@ -144,14 +145,20 @@ async function handleIncomingWhatsAppMessage(req, res) {
 
                 console.log('WhatsApp Incoming: Deducting gold for voice', { duration, cost: voiceCost })
 
-                // Deduct gold
                 const voiceGoldStart = Date.now()
-                await admin
-                    .firestore()
-                    .doc(`users/${userId}`)
-                    .update({
-                        gold: admin.firestore.FieldValue.increment(-voiceCost),
-                    })
+                const goldResult = await deductGold(userId, voiceCost, {
+                    source: 'whatsapp_voice',
+                    channel: 'whatsapp',
+                })
+
+                if (!goldResult?.success) {
+                    await service.sendWhatsAppMessage(
+                        fromNumber,
+                        'You do not have enough gold to process voice messages right now. Please send a text message.'
+                    )
+                    return res.status(200).send('OK')
+                }
+
                 markStage('deductVoiceGold', voiceGoldStart, { userId, voiceCost })
             } catch (error) {
                 console.error('WhatsApp Incoming: Voice transcription failed:', error.message)

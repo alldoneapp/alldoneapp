@@ -1734,11 +1734,15 @@ export async function moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveI
     batch.commit()
 }
 
-export async function spentGold(userId, goldToReduce) {
-    db.doc(`users/${userId}`).update({ gold: firebase.firestore.FieldValue.increment(-goldToReduce) })
-    logEvent('SpentGold', {
-        userId,
-        spentGold: goldToReduce,
+export async function spentGold(userId, goldToReduce, context = {}) {
+    return await runHttpsCallableFunction('deductGoldSecondGen', {
+        gold: goldToReduce,
+        source: context.source || 'unknown_spend',
+        projectId: context.projectId,
+        goalId: context.goalId,
+        objectId: context.objectId,
+        channel: context.channel,
+        note: context.note,
     })
 }
 

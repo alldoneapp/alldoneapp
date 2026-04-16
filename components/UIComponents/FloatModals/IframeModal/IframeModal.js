@@ -63,7 +63,7 @@ export default function IframeModal() {
                 event.source.postMessage(message, event.origin)
             }
 
-            const handleGoldRequest = async ({ callableName, successType, errorType, errorLogLabel }) => {
+            const handleGoldRequest = async ({ callableName, successType, errorType, errorLogLabel, source }) => {
                 if (!Number.isFinite(amount) || amount <= 0) {
                     postResult({
                         type: errorType,
@@ -80,7 +80,11 @@ export default function IframeModal() {
                     })
 
                     const goldFn = firebase.app().functions('europe-west1').httpsCallable(callableName)
-                    const result = await goldFn({ gold: amount })
+                    const result = await goldFn({
+                        gold: amount,
+                        source,
+                        channel: 'iframe',
+                    })
 
                     console.log('IframeModal: gold function responded', {
                         callableName,
@@ -126,6 +130,7 @@ export default function IframeModal() {
                     successType: 'DEDUCT_GOLD_SUCCESS',
                     errorType: 'DEDUCT_GOLD_ERROR',
                     errorLogLabel: 'Error deducting gold:',
+                    source: 'iframe_deduction',
                 })
             }
 
@@ -136,6 +141,7 @@ export default function IframeModal() {
                     successType: 'REFUND_GOLD_SUCCESS',
                     errorType: 'REFUND_GOLD_ERROR',
                     errorLogLabel: 'Error refunding gold:',
+                    source: 'iframe_refund',
                 })
             }
         }
