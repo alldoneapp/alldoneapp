@@ -18,15 +18,14 @@ export default function TagList({ project, contact }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
-    const useCompactLayout = mobile || tablet
 
     const loggedUserIsCreator = loggedUser.uid === contact.recorderUserId
     const loggedUserCanUpdateObject =
         loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id)
 
     return (
-        <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
-            <View style={[localStyles.tagList, useCompactLayout && localStyles.tagListCompact]}>
+        <View style={localStyles.container}>
+            <View style={localStyles.tagList}>
                 <View style={{ marginRight: 12 }}>
                     <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
                 </View>
@@ -41,7 +40,7 @@ export default function TagList({ project, contact }) {
                 </View>
             </View>
 
-            <View style={[localStyles.actions, useCompactLayout && localStyles.actionsCompact]}>
+            <View style={{ flexDirection: 'row' }}>
                 <CopyLinkButton style={{ top: 3, marginRight: 8 }} />
                 <DvSearchButton style={{ top: 3 }} />
                 <DvBotButton
@@ -60,31 +59,11 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
-        minWidth: 0,
-        alignItems: 'flex-start',
-    },
-    containerCompact: {
-        flexWrap: 'wrap',
+        alignItems: 'flex-end',
     },
     tagList: {
         flex: 1,
         flexGrow: 1,
-        flexShrink: 1,
         flexDirection: 'row',
-        minWidth: 0,
-    },
-    tagListCompact: {
-        flexWrap: 'wrap',
-    },
-    actions: {
-        flexDirection: 'row',
-        flexShrink: 0,
-        marginLeft: 8,
-    },
-    actionsCompact: {
-        width: '100%',
-        marginLeft: 0,
-        marginTop: 8,
-        justifyContent: 'flex-end',
     },
 })
