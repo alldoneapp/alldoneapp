@@ -123,7 +123,7 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
             chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
         })
         mockStoreBotAnswerStream.mockImplementation(async (...args) => {
-            const streamOutput = args[args.length - 1]
+            const streamOutput = args[args.length - 2]
             if (streamOutput && typeof streamOutput === 'object') {
                 streamOutput.commentId = 'comment-1'
             }

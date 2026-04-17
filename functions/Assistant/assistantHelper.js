@@ -6510,6 +6510,10 @@ async function storeChunks(
             })
         }
 
+        if (silentModeEnabled && !committed) {
+            await ensureCommitted()
+        }
+
         // Flush any pending updates before final operations
         await flushPendingUpdate()
 

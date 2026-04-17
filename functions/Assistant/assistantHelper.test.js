@@ -81,30 +81,53 @@ jest.mock('../GAnalytics/GAnalytics', () => ({
 const mockDocGet = jest.fn()
 const mockDocSet = jest.fn(async () => {})
 const mockDocUpdate = jest.fn(async () => {})
+const mockDocDelete = jest.fn(async () => {})
 const mockCollectionGet = jest.fn()
+const mockBatchSet = jest.fn()
+const mockBatchUpdate = jest.fn()
+const mockBatchDelete = jest.fn()
+const mockBatchCommit = jest.fn(async () => {})
 
 jest.mock('firebase-admin', () => ({
-    firestore: jest.fn(() => ({
-        doc: jest.fn(() => ({
-            get: mockDocGet,
-            set: mockDocSet,
-            update: mockDocUpdate,
-        })),
-        collection: jest.fn(() => ({
-            doc: jest.fn(() => ({
+    firestore: Object.assign(
+        jest.fn(() => ({
+            doc: jest.fn(path => ({
+                path,
                 get: mockDocGet,
+                set: mockDocSet,
+                update: mockDocUpdate,
+                delete: mockDocDelete,
             })),
-            get: mockCollectionGet,
-            where: jest.fn(() => ({
+            collection: jest.fn(() => ({
+                doc: jest.fn(path => ({
+                    path,
+                    get: mockDocGet,
+                })),
                 get: mockCollectionGet,
-            })),
-            orderBy: jest.fn(() => ({
-                limit: jest.fn(() => ({
+                where: jest.fn(() => ({
                     get: mockCollectionGet,
                 })),
+                orderBy: jest.fn(() => ({
+                    limit: jest.fn(() => ({
+                        get: mockCollectionGet,
+                    })),
+                })),
+            })),
+            batch: jest.fn(() => ({
+                set: mockBatchSet,
+                update: mockBatchUpdate,
+                delete: mockBatchDelete,
+                commit: mockBatchCommit,
             })),
         })),
-    })),
+        {
+            Timestamp: { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) },
+            FieldValue: {
+                increment: jest.fn(value => ({ __op: 'increment', value })),
+                delete: jest.fn(() => ({ __op: 'delete' })),
+            },
+        }
+    ),
 }))
 
 jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
@@ -166,9 +189,22 @@ const {
     executeToolNatively,
     isToolAllowedForExecution,
     getHeartbeatSettingsContextMessage,
+    storeBotAnswerStream,
 } = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
+    beforeEach(() => {
+        mockDocGet.mockReset()
+        mockDocSet.mockClear()
+        mockDocUpdate.mockClear()
+        mockDocDelete.mockClear()
+        mockCollectionGet.mockReset()
+        mockBatchSet.mockClear()
+        mockBatchUpdate.mockClear()
+        mockBatchDelete.mockClear()
+        mockBatchCommit.mockClear()
+    })
+
     test('normalizes hour-based user timezone values into minutes', () => {
         expect(resolveUserTimezoneOffset({ timezone: 1 })).toBe(60)
         expect(resolveUserTimezoneOffset({ timezoneOffset: 'UTC+02:30' })).toBe(150)
@@ -176,6 +212,56 @@ describe('assistant attachment handoff helpers', () => {
 
     test('formats context message timestamps in the user timezone', () => {
         expect(formatContextMessageTimestamp(Date.UTC(2026, 2, 31, 8, 15, 0), 120)).toBe('2026-03-31 10:15:00 UTC+2')
+    })
+
+    test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {
+        mockDocGet.mockResolvedValue({ data: () => ({}) })
+
+        const streamOutput = {}
+
+        const result = await storeBotAnswerStream(
+            'project-1',
+            'topics',
+            'chat-1',
+            [
+                {
+                    clearThinkingMode: true,
+                    replacementContent: 'Heartbeat reminder for the Daily WhatsApp topic.',
+                },
+            ],
+            ['user-1'],
+            ['PUBLIC'],
+            null,
+            'assistant-1',
+            ['user-1'],
+            'Anna',
+            'user-1',
+            null,
+            [['user', 'Heartbeat prompt']],
+            'MODEL_GPT5_4',
+            'TEMPERATURE_NORMAL',
+            [],
+            {
+                project: { name: 'Project A' },
+                chat: { title: 'Daily Whatsapp <> Anna' },
+                chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
+            },
+            null,
+            null,
+            streamOutput,
+            'HEARTBEAT_OK'
+        )
+
+        expect(result).toBe('Heartbeat reminder for the Daily WhatsApp topic.')
+        expect(streamOutput.silentOk).not.toBe(true)
+        expect(streamOutput.commentId).toBeTruthy()
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: 'Heartbeat reminder for the Daily WhatsApp topic.',
+                creatorId: 'assistant-1',
+                fromAssistant: true,
+            })
+        )
     })
 
     test('adds timestamps to multimodal context content without dropping images', () => {
