@@ -189,6 +189,7 @@ const {
     executeToolNatively,
     isToolAllowedForExecution,
     getHeartbeatSettingsContextMessage,
+    getSilentModeFinalResponseText,
     storeBotAnswerStream,
 } = require('./assistantHelper')
 
@@ -212,6 +213,11 @@ describe('assistant attachment handoff helpers', () => {
 
     test('formats context message timestamps in the user timezone', () => {
         expect(formatContextMessageTimestamp(Date.UTC(2026, 2, 31, 8, 15, 0), 120)).toBe('2026-03-31 10:15:00 UTC+2')
+    })
+
+    test('prefers commentText when answerContent is empty for silent mode final checks', () => {
+        expect(getSilentModeFinalResponseText('', '\n\nHEARTBEAT_OK')).toBe('\n\nHEARTBEAT_OK')
+        expect(getSilentModeFinalResponseText('Final answer', '\n\nHEARTBEAT_OK')).toBe('Final answer')
     })
 
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {

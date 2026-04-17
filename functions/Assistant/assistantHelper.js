@@ -139,6 +139,18 @@ function getCachedEnvFunctions() {
     return cachedEnvFunctions
 }
 
+function getSilentModeFinalResponseText(answerContent, commentText) {
+    if (typeof answerContent === 'string' && answerContent.trim().length > 0) {
+        return answerContent
+    }
+
+    if (typeof commentText === 'string') {
+        return commentText
+    }
+
+    return ''
+}
+
 function normalizeRecentHours(value) {
     if (value === null || value === undefined || value === '') return null
 
@@ -6474,12 +6486,14 @@ async function storeChunks(
             // Tools are only available for GPT models that support native tool calling
         }
 
+        const finalSilentCandidate = getSilentModeFinalResponseText(answerContent, commentText)
+
         // Silent mode: if the final buffered answer is exactly the silent marker,
         // skip creating the Firestore comment entirely and signal to the caller.
-        if (silentModeEnabled && !committed && isHeartbeatOkResponse(answerContent)) {
+        if (silentModeEnabled && !committed && isHeartbeatOkResponse(finalSilentCandidate)) {
             if (streamOutput && typeof streamOutput === 'object') {
                 streamOutput.silentOk = true
-                streamOutput.silentText = answerContent
+                streamOutput.silentText = finalSilentCandidate
             }
             console.log('🔕 [SILENT] Silent OK matched — no comment written to thread', {
                 projectId,
@@ -6489,10 +6503,10 @@ async function storeChunks(
                 commentId,
                 chunkCount,
                 silentDeferCount,
-                answerContentLength: answerContent.length,
-                answerContent,
+                answerContentLength: finalSilentCandidate.length,
+                answerContent: finalSilentCandidate,
             })
-            return answerContent
+            return finalSilentCandidate
         }
 
         if (silentModeEnabled) {
@@ -6505,8 +6519,8 @@ async function storeChunks(
                 committedBeforeFinalize: committed,
                 chunkCount,
                 silentDeferCount,
-                answerContentLength: answerContent.length,
-                answerContentPreview: answerContent.slice(0, 200),
+                answerContentLength: finalSilentCandidate.length,
+                answerContentPreview: finalSilentCandidate.slice(0, 200),
             })
         }
 
@@ -8324,6 +8338,7 @@ module.exports = {
     calculateGoldCostFromTokens,
     executeToolNatively, // Export for WhatsApp assistant bridge
     isToolAllowedForExecution,
+    getSilentModeFinalResponseText,
     // Optimized functions with caching
     getCachedEnvFunctions,
     getOpenAIClient,
