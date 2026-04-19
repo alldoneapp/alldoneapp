@@ -118,7 +118,7 @@ function getTransactionLink(entry) {
     return null
 }
 
-function GoldTransactionItem({ entry, showDivider, closeModal }) {
+function GoldTransactionItem({ entry, showDivider, closeModal, compactLayout }) {
     const timestamp = getTransactionTimestamp(entry)
     const delta = getTransactionDelta(entry)
     const isPositive = delta >= 0
@@ -137,8 +137,10 @@ function GoldTransactionItem({ entry, showDivider, closeModal }) {
     }
 
     return (
-        <View style={[localStyles.item, showDivider && localStyles.itemDivider]}>
-            <View style={localStyles.itemLeft}>
+        <View
+            style={[localStyles.item, compactLayout && localStyles.itemCompact, showDivider && localStyles.itemDivider]}
+        >
+            <View style={[localStyles.itemLeft, compactLayout && localStyles.itemLeftCompact]}>
                 <Text style={localStyles.itemTitle}>{getTransactionLabel(entry?.source)}</Text>
                 {!!getTransactionSubtitle(entry) && (
                     <Text style={localStyles.itemSubtitle}>{getTransactionSubtitle(entry)}</Text>
@@ -152,10 +154,11 @@ function GoldTransactionItem({ entry, showDivider, closeModal }) {
                     {timestamp ? moment(timestamp).format(getTimeFormat(true)) : translate('Pending')}
                 </Text>
             </View>
-            <View style={localStyles.itemRight}>
+            <View style={[localStyles.itemRight, compactLayout && localStyles.itemRightCompact]}>
                 <Text
                     style={[
                         localStyles.itemAmount,
+                        compactLayout && localStyles.itemAmountCompact,
                         { color: isPositive ? colors.UtilityGreen200 : colors.UtilityRed200 },
                     ]}
                 >
@@ -170,12 +173,13 @@ function GoldTransactionItem({ entry, showDivider, closeModal }) {
 }
 
 export default function GoldTransactionsModal({ userId, closeModal }) {
-    const [, height] = useWindowSize()
+    const [width, height] = useWindowSize()
     const [transactions, setTransactions] = useState([])
     const [lastDoc, setLastDoc] = useState(null)
     const [hasMore, setHasMore] = useState(false)
     const [loading, setLoading] = useState(true)
     const [loadingMore, setLoadingMore] = useState(false)
+    const compactLayout = width > 0 && width <= 420
 
     useEffect(() => {
         setLoading(true)
@@ -256,6 +260,7 @@ export default function GoldTransactionsModal({ userId, closeModal }) {
                                         entry={entry}
                                         showDivider={index < transactions.length - 1}
                                         closeModal={closeModal}
+                                        compactLayout={compactLayout}
                                     />
                                 </View>
                             )
@@ -283,6 +288,7 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         borderRadius: 4,
+        overflow: 'hidden',
         backgroundColor: colors.Secondary400,
         shadowColor: 'rgba(78, 93, 120, 0.56)',
         shadowOffset: { width: 0, height: 4 },
@@ -292,7 +298,7 @@ const localStyles = StyleSheet.create({
     },
     scroll: {
         padding: 16,
-        minWidth: 320,
+        width: '100%',
     },
     infoText: {
         ...styles.body2,
@@ -322,6 +328,9 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-start',
         paddingVertical: 12,
     },
+    itemCompact: {
+        flexDirection: 'column',
+    },
     itemDivider: {
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.08)',
@@ -330,8 +339,17 @@ const localStyles = StyleSheet.create({
         flex: 1,
         paddingRight: 16,
     },
+    itemLeftCompact: {
+        width: '100%',
+        paddingRight: 0,
+    },
     itemRight: {
         alignItems: 'flex-end',
+    },
+    itemRightCompact: {
+        width: '100%',
+        marginTop: 8,
+        alignItems: 'flex-start',
     },
     itemTitle: {
         ...styles.subtitle1,
@@ -352,6 +370,9 @@ const localStyles = StyleSheet.create({
     itemAmount: {
         ...styles.subtitle1,
         marginBottom: 4,
+    },
+    itemAmountCompact: {
+        marginBottom: 2,
     },
     itemMeta: {
         ...styles.caption2,
