@@ -233,6 +233,23 @@ function getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assi
     return db.doc(`assistantThreadState/${docId}`)
 }
 
+function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
+    return !!(
+        toolRuntimeContext?.projectId &&
+        toolRuntimeContext?.assistantId &&
+        toolRuntimeContext?.objectType &&
+        toolRuntimeContext?.objectId
+    )
+}
+
+function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
+    if (!Array.isArray(allowedTools)) return []
+    if (!allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)) return [...allowedTools]
+    if (hasValidCompactThreadRuntimeContext(toolRuntimeContext)) return [...allowedTools]
+
+    return allowedTools.filter(toolName => toolName !== COMPACT_THREAD_CONTEXT_TOOL_KEY)
+}
+
 function normalizeCompactThreadContextInteger(value, fieldName) {
     const numericValue = Number(value)
     if (!Number.isInteger(numericValue) || numericValue < 0) {
@@ -1749,6 +1766,9 @@ async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = 
 
 async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
     if (!Array.isArray(assistantAllowedTools)) return false
+    if (toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY) {
+        return assistantAllowedTools.includes(toolName) && hasValidCompactThreadRuntimeContext(toolRuntimeContext)
+    }
     if (assistantAllowedTools.includes(toolName)) {
         return toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
     }
@@ -2032,6 +2052,7 @@ async function interactWithChatStream(
     toolRuntimeContext = null
 ) {
     const streamStartTime = Date.now()
+    const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
         modelKey,
@@ -2142,15 +2163,15 @@ async function interactWithChatStream(
         }
 
         // Add tools if model supports native tools and tools are allowed
-        if (modelSupportsNativeTools(modelKey) && Array.isArray(allowedTools) && allowedTools.length > 0) {
+        if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
             const { getToolSchemas } = require('./toolSchemas')
-            const staticAllowedTools = allowedTools.filter(
+            const staticAllowedTools = runtimeAllowedTools.filter(
                 toolName => toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
             )
             const staticToolSchemas = getToolSchemas(staticAllowedTools)
             const dynamicToolSchemasStart = Date.now()
             const { delegationToolSchemas, externalToolSchemas } = await getDynamicToolSchemasWithCache(
-                allowedTools,
+                runtimeAllowedTools,
                 toolRuntimeContext
             )
             console.log('🔧 TOOL SCHEMAS: Dynamic schema retrieval complete', {
@@ -2166,11 +2187,26 @@ async function interactWithChatStream(
                 staticToolSchemasCount: staticToolSchemas.length,
                 delegationToolSchemasCount: delegationToolSchemas.length,
                 externalToolSchemasCount: externalToolSchemas.length,
-                externalToolsToggleEnabled: allowedTools.includes(EXTERNAL_TOOLS_KEY),
+                externalToolsToggleEnabled: runtimeAllowedTools.includes(EXTERNAL_TOOLS_KEY),
                 toolRuntimeContext,
             })
 
-            if (allowedTools.includes(EXTERNAL_TOOLS_KEY) && externalToolSchemas.length === 0) {
+            if (
+                allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY) &&
+                !runtimeAllowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)
+            ) {
+                console.log(
+                    '🔧 TOOL SCHEMAS: compact_thread_context skipped because the runtime is not thread-backed',
+                    {
+                        projectId: toolRuntimeContext?.projectId || null,
+                        assistantId: toolRuntimeContext?.assistantId || null,
+                        objectType: toolRuntimeContext?.objectType || null,
+                        objectId: toolRuntimeContext?.objectId || null,
+                    }
+                )
+            }
+
+            if (runtimeAllowedTools.includes(EXTERNAL_TOOLS_KEY) && externalToolSchemas.length === 0) {
                 console.warn('🔧 TOOL SCHEMAS: External tools are enabled but none are reachable at runtime', {
                     projectId: toolRuntimeContext?.projectId,
                     assistantId: toolRuntimeContext?.assistantId,
@@ -7676,7 +7712,11 @@ async function addBaseInstructions(
             'When the user asks to change heartbeat settings, use update_heartbeat_settings. When editing the heartbeat prompt, treat the current heartbeat prompt as the base text, preserve its existing intent unless the user clearly asks for a rewrite, and only replace the full prompt when the user explicitly wants a full replacement.',
         ])
     }
-    if (Array.isArray(allowedTools) && allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)) {
+    if (
+        Array.isArray(allowedTools) &&
+        allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY) &&
+        hasValidCompactThreadRuntimeContext(assistantContext)
+    ) {
         messages.push([
             'system',
             'When you are doing a long-running workflow across multiple projects or other repeated units, use compact_thread_context after finishing a unit whenever the earlier detailed reasoning is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so the thread can continue from compacted working memory.',

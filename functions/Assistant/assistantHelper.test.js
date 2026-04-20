@@ -1795,6 +1795,8 @@ describe('assistant thread compaction tool', () => {
         await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['compact_thread_context'], null, {
             projectId: 'project-1',
             assistantId: 'assistant-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
         })
 
         const systemMessages = messages
@@ -1804,6 +1806,46 @@ describe('assistant thread compaction tool', () => {
 
         expect(systemMessages).toContain('use compact_thread_context after finishing a unit')
         expect(systemMessages).toContain('compacted working memory')
+    })
+
+    test('does not inject compaction guidance without a thread-backed runtime context', async () => {
+        mockDocGet.mockResolvedValue({
+            exists: false,
+            data: () => ({}),
+        })
+
+        const messages = []
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['compact_thread_context'], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).not.toContain('use compact_thread_context after finishing a unit')
+        expect(systemMessages).not.toContain('compacted working memory')
+    })
+
+    test('denies compact_thread_context execution without a thread-backed runtime context', async () => {
+        expect(await isToolAllowedForExecution(['compact_thread_context'], 'compact_thread_context')).toBe(false)
+        expect(
+            await isToolAllowedForExecution(['compact_thread_context'], 'compact_thread_context', {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+            })
+        ).toBe(false)
+        expect(
+            await isToolAllowedForExecution(['compact_thread_context'], 'compact_thread_context', {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+            })
+        ).toBe(true)
     })
 
     test('persists hidden assistant thread state for compact_thread_context', async () => {
