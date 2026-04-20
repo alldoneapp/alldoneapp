@@ -47,9 +47,13 @@ export default class NotesByProject extends PureComponent {
 
     componentDidUpdate(prevProps, prevState) {
         const { pressedShowMore, notes, stickyNotes, hashtagFilters } = this.state
-        const { filterBy } = this.props
+        const { filterBy, maxNotesToRender, project } = this.props
 
-        if (prevProps.filterBy !== filterBy) {
+        const filterChanged = prevProps.filterBy !== filterBy
+        const maxNotesChanged = prevProps.maxNotesToRender !== maxNotesToRender
+        const projectIdChanged = prevProps.project.id !== project.id
+
+        if (filterChanged || maxNotesChanged || projectIdChanged) {
             this.datesForNotes = {}
             this.stickyCounter = 0
             this.notesCounter = 0
