@@ -119,11 +119,36 @@ const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 50
 const TOOL_PROGRESS_UPDATE_INTERVAL_MS = 7000
 const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
-const TOOL_RESULT_FOLLOW_UP_PROMPT =
-    'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.'
 const TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY =
+    'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.'
+const TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY_SHORT =
     'Based on the tool results above, provide your response. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.'
 const COMPACT_THREAD_CONTEXT_HEADER = 'Compacted thread state for this ongoing workflow:'
+
+function getToolResultFollowUpPrompt(options = {}) {
+    const {
+        finalReply = false,
+        allowAdditionalTools = true,
+        toolPhrase = 'additional tools',
+        usePlural = true,
+    } = options
+
+    const intro = usePlural ? 'Based on the tool results above' : 'Based on the tool result above'
+    const responseInstruction = finalReply ? 'provide the final email reply.' : 'provide your response to the user.'
+    const toolSentence = allowAdditionalTools
+        ? ` If needed, call ${toolPhrase}${finalReply ? ' before finalizing the reply' : ''}.`
+        : ''
+
+    return (
+        `${intro}, ${responseInstruction} ` +
+        'Only treat the current tool call as failed if this tool result itself indicates failure, blocked status, no execution, or an explicit top-level error/status field for the current call. ' +
+        'Do not infer current-run failure from nested historical text or quoted content inside returned records such as task comments, notes, chats, or other historical fields. ' +
+        'Explain what is missing and what should be tried next only when the current tool result itself shows that work did not complete.' +
+        toolSentence
+    )
+}
+
+const TOOL_RESULT_FOLLOW_UP_PROMPT = getToolResultFollowUpPrompt()
 
 // Service instance caches for reuse across tool executions (performance optimization)
 // Similar pattern to MCP server for consistency
@@ -263,7 +288,9 @@ function isToolFollowUpUserMessage(content) {
     if (typeof content !== 'string') return false
     const normalizedContent = content.trim()
     return (
-        normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT || normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY
+        normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT ||
+        normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY ||
+        normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY_SHORT
     )
 }
 
@@ -464,6 +491,8 @@ function mapAssistantTaskForToolResponse(task) {
                       creatorId: comment?.creatorId || '',
                       fromAssistant: !!comment?.fromAssistant,
                       commentType: comment?.commentType || null,
+                      isHistoricalContext: true,
+                      isAssistantGenerated: !!comment?.fromAssistant,
                   }
               })
               .filter(Boolean)
@@ -3838,6 +3867,11 @@ async function executeToolNatively(
                 tasks: tasks.map(mapAssistantTaskForToolResponse),
                 count: tasks.length,
                 recentHours: recentHours || null,
+                toolInterpretation: {
+                    nestedHistoricalTextIsNonAuthoritative: true,
+                    currentToolStatusMustComeFromTopLevelResult: true,
+                    historicalFields: ['tasks[].comments', 'tasks[].commentsData'],
+                },
             }
         }
 
@@ -8702,6 +8736,7 @@ module.exports = {
     mapAssistantGoalForToolResponse,
     mapAssistantContactForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
+    getToolResultFollowUpPrompt,
     getHeartbeatSettingsContextMessage,
     getAssistantThreadStateContextMessage,
     getProjectDescriptionContextMessage,

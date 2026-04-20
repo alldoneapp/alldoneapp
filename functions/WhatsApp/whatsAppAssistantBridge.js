@@ -11,6 +11,7 @@ const {
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
+    getToolResultFollowUpPrompt,
     THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
 const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
@@ -360,7 +361,7 @@ async function collectStreamWithToolCalls(
                 const followUpInstruction = delegationFailed
                     ? `The delegated assistant result indicates failure (status: ${toolResult.status || 'unknown'}). ` +
                       `Do not claim completion. Try another suitable talk_to_assistant_* tool now, or explain exactly what is missing if no suitable tool exists.`
-                    : 'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call other available tools.'
+                    : getToolResultFollowUpPrompt({ toolPhrase: 'other available tools' })
 
                 const updatedConversation = [
                     ...currentConversation,

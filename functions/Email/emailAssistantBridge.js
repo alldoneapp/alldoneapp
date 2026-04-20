@@ -10,6 +10,7 @@ const {
     injectPendingAttachmentIntoToolArgs,
     interactWithChatStream,
     isToolAllowedForExecution,
+    getToolResultFollowUpPrompt,
     reduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT,
 } = require('../Assistant/assistantHelper')
@@ -213,8 +214,11 @@ async function collectStreamWithToolCalls(
                     return getUserFacingToolErrorMessage(toolName, error)
                 }
 
-                const followUpInstruction =
-                    'Based on the tool result above, provide the final email reply. If the tool result indicates failure or no execution, do not claim completion.'
+                const followUpInstruction = getToolResultFollowUpPrompt({
+                    finalReply: true,
+                    toolPhrase: 'other available tools',
+                    usePlural: false,
+                })
 
                 currentConversation = [
                     ...currentConversation,

@@ -19,6 +19,42 @@ jest.mock('../shared/ProjectService', () => ({
         getUserProjects: jest.fn().mockResolvedValue([]),
     })),
 }))
+jest.mock('../shared/TaskRetrievalService', () => {
+    const normalizeTimezoneOffset = jest.fn(value => {
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+            return Math.abs(value) <= 14 ? value * 60 : value
+        }
+        if (typeof value !== 'string') return null
+
+        const trimmed = value.trim()
+        const utcMatch = trimmed.match(/^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/i)
+        if (utcMatch) {
+            const sign = utcMatch[1] === '-' ? -1 : 1
+            const hours = Number(utcMatch[2]) || 0
+            const minutes = Number(utcMatch[3]) || 0
+            return sign * (hours * 60 + minutes)
+        }
+
+        const numeric = Number(trimmed)
+        if (!Number.isNaN(numeric)) {
+            return Math.abs(numeric) <= 14 ? numeric * 60 : numeric
+        }
+
+        return null
+    })
+
+    const TaskRetrievalService = jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getTasks: jest.fn().mockResolvedValue({ tasks: [] }),
+        getTasksFromMultipleProjects: jest.fn().mockResolvedValue({ tasks: [] }),
+    }))
+
+    TaskRetrievalService.normalizeTimezoneOffset = normalizeTimezoneOffset
+
+    return {
+        TaskRetrievalService,
+    }
+})
 jest.mock('../shared/ChatRetrievalService', () => ({
     ChatRetrievalService: jest.fn().mockImplementation(() => ({
         initialize: jest.fn().mockResolvedValue(undefined),
@@ -166,6 +202,7 @@ jest.mock(
 )
 
 const { ProjectService } = require('../shared/ProjectService')
+const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
 const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
 const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
 const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
@@ -185,6 +222,7 @@ const {
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
     mapAssistantGoalForToolResponse,
+    getToolResultFollowUpPrompt,
     addBaseInstructions,
     executeToolNatively,
     isToolAllowedForExecution,
@@ -363,6 +401,8 @@ describe('assistant attachment handoff helpers', () => {
                     creatorId: 'user-1',
                     fromAssistant: false,
                     commentType: 'STAYWARD_COMMENT',
+                    isHistoricalContext: true,
+                    isAssistantGenerated: false,
                 },
             ],
             commentsData: {
@@ -370,6 +410,36 @@ describe('assistant attachment handoff helpers', () => {
                 lastComment: 'Need final approval',
             },
             isFocus: true,
+        })
+    })
+
+    test('marks assistant-authored task comments as historical non-authoritative context', () => {
+        expect(
+            mapAssistantTaskForToolResponse({
+                documentId: 'task-2',
+                name: 'Review execution logs',
+                done: false,
+                comments: [
+                    {
+                        id: 'comment-2',
+                        commentText: 'Maximum tool call iterations reached',
+                        created: 1774970500000,
+                        creatorId: 'assistant-1',
+                        fromAssistant: true,
+                        commentType: 'STAYWARD_COMMENT',
+                    },
+                ],
+            })
+        ).toMatchObject({
+            comments: [
+                {
+                    id: 'comment-2',
+                    commentText: 'Maximum tool call iterations reached',
+                    fromAssistant: true,
+                    isHistoricalContext: true,
+                    isAssistantGenerated: true,
+                },
+            ],
         })
     })
 
@@ -1142,6 +1212,120 @@ describe('assistant get chats tool', () => {
     })
 })
 
+describe('assistant get tasks tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        TaskRetrievalService.mockClear()
+        ProjectService.mockClear()
+    })
+
+    test('adds top-level interpretation metadata and labels historical task comments', async () => {
+        const getTasksFromMultipleProjects = jest.fn().mockResolvedValue({
+            tasks: [
+                {
+                    id: 'task-1',
+                    documentId: 'task-1',
+                    name: 'Weekly Project descriptions update',
+                    done: true,
+                    completed: 1774970400000,
+                    projectName: 'Privat',
+                    humanReadableId: 'PT-295',
+                    comments: [
+                        {
+                            id: 'comment-1',
+                            commentText: 'Maximum tool call iterations reached',
+                            created: 1774970300000,
+                            creatorId: 'assistant-1',
+                            fromAssistant: true,
+                            commentType: 'STAYWARD_COMMENT',
+                        },
+                    ],
+                    commentsData: {
+                        amount: 1,
+                        lastComment: 'Maximum tool call iterations reached',
+                    },
+                },
+            ],
+        })
+
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks: jest.fn().mockResolvedValue({ tasks: [] }),
+            getTasksFromMultipleProjects,
+        }))
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Privat' }]),
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                timezone: 'UTC+02:00',
+            }),
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            {
+                status: 'done',
+                date: 'last 7 days',
+                allProjects: true,
+                limit: 1000,
+            },
+            'project-ctx',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getTasksFromMultipleProjects).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                status: 'done',
+                date: 'last 7 days',
+                limit: 1000,
+                perProjectLimit: 1000,
+                timezoneOffset: 120,
+            }),
+            ['project-1'],
+            {
+                'project-1': { id: 'project-1', name: 'Privat' },
+            }
+        )
+        expect(result).toMatchObject({
+            count: 1,
+            toolInterpretation: {
+                nestedHistoricalTextIsNonAuthoritative: true,
+                currentToolStatusMustComeFromTopLevelResult: true,
+                historicalFields: ['tasks[].comments', 'tasks[].commentsData'],
+            },
+            tasks: [
+                {
+                    id: 'task-1',
+                    name: 'Weekly Project descriptions update',
+                    comments: [
+                        {
+                            commentText: 'Maximum tool call iterations reached',
+                            isHistoricalContext: true,
+                            isAssistantGenerated: true,
+                        },
+                    ],
+                },
+            ],
+        })
+    })
+
+    test('uses the shared follow-up prompt contract for historical nested text', () => {
+        const prompt = getToolResultFollowUpPrompt()
+
+        expect(prompt).toContain('Only treat the current tool call as failed')
+        expect(prompt).toContain('Do not infer current-run failure from nested historical text')
+        expect(prompt).toContain('task comments, notes, chats')
+        expect(prompt).toContain('If needed, call additional tools.')
+    })
+})
+
 describe('assistant get contacts tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -1878,6 +2062,12 @@ describe('assistant thread compaction tool', () => {
             role: 'user',
             content: expect.stringContaining('Based on the tool results above'),
         })
+        expect(updatedConversation[updatedConversation.length - 1].content).toContain(
+            'Only treat the current tool call as failed'
+        )
+        expect(updatedConversation[updatedConversation.length - 1].content).toContain(
+            'Do not infer current-run failure from nested historical text'
+        )
     })
 
     test('reads compacted thread state as assistant context text', async () => {
