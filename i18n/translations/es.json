@@ -535,6 +535,7 @@
     "Update heartbeat settings": "Actualizar configuración del heartbeat",
     "Update project description": "Actualizar descripción del proyecto",
     "Update user description": "Actualizar descripción del usuario",
+    "Compact thread context": "Compactar contexto del hilo",
     "Delegation tool description": "Descripción de herramienta de delegación",
     "Delegation description stale hint": "La información/tareas del asistente cambiaron. Se recomienda regenerar.",
     "Delegation description modal helper": "Define cómo se debe describir este asistente cuando otros asistentes deciden si delegar trabajo.",
