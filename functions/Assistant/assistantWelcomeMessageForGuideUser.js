@@ -43,12 +43,16 @@ async function generateBotWelcomeMessageForGuideUser(
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
+        objectType: 'topics',
+        objectId,
     })
     messages.push(['system', template])
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
+        objectType: 'topics',
+        objectId,
     }
 
     // Fetch common data in parallel with API call to reduce time-to-first-token

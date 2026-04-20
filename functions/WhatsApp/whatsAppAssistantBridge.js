@@ -106,6 +106,8 @@ async function processWhatsAppAssistantMessage(
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
+        objectType: 'topics',
+        objectId: chatId,
     })
 
     if (allowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {

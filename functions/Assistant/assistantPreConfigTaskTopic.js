@@ -309,6 +309,8 @@ async function generatePreConfigTaskResult(
                 projectId,
                 assistantId: settings.uid || assistantId,
                 requestUserId: userId,
+                objectType,
+                objectId,
             }
         )
         additionalContextMessages.forEach(message => {
@@ -331,6 +333,8 @@ async function generatePreConfigTaskResult(
             projectId,
             assistantId: settings.uid || assistantId,
             requestUserId: userId,
+            objectType,
+            objectId,
         }
 
         // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token
