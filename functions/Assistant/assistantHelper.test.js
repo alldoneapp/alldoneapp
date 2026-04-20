@@ -189,6 +189,9 @@ const {
     executeToolNatively,
     isToolAllowedForExecution,
     getHeartbeatSettingsContextMessage,
+    getAssistantThreadStateContextMessage,
+    getOptimizedContextMessages,
+    buildConversationAfterToolExecution,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
 } = require('./assistantHelper')
@@ -1587,6 +1590,320 @@ describe('assistant heartbeat settings tool', () => {
                 null
             )
         ).rejects.toThrow('Tool not permitted: update_heartbeat_settings')
+    })
+})
+
+describe('assistant thread compaction tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockDocSet.mockClear()
+        mockCollectionGet.mockReset()
+    })
+
+    test('injects compaction guidance into base instructions when allowed', async () => {
+        mockDocGet.mockResolvedValue({
+            exists: false,
+            data: () => ({}),
+        })
+
+        const messages = []
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['compact_thread_context'], null, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+        })
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('use compact_thread_context after finishing a unit')
+        expect(systemMessages).toContain('compacted working memory')
+    })
+
+    test('persists hidden assistant thread state for compact_thread_context', async () => {
+        const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1710000000000)
+
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['compact_thread_context'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        const result = await executeToolNatively(
+            'compact_thread_context',
+            {
+                summary: 'Finished Operations. Marketing is next.',
+                progressCompleted: 1,
+                progressTotal: 3,
+                currentProjectId: 'project-1',
+                currentProjectName: 'Operations',
+                nextProjectId: 'project-2',
+                nextProjectName: 'Marketing',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+            }
+        )
+
+        expect(mockDocSet).toHaveBeenCalledWith({
+            summary: 'Finished Operations. Marketing is next.',
+            progressCompleted: 1,
+            progressTotal: 3,
+            currentProjectId: 'project-1',
+            currentProjectName: 'Operations',
+            nextProjectId: 'project-2',
+            nextProjectName: 'Marketing',
+            trimHistoryBeforeMs: 1710000000000,
+            updatedAt: expect.any(Object),
+        })
+        expect(result).toMatchObject({
+            success: true,
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            compactedState: {
+                summary: 'Finished Operations. Marketing is next.',
+                progressCompleted: 1,
+                progressTotal: 3,
+                currentProjectId: 'project-1',
+                currentProjectName: 'Operations',
+                nextProjectId: 'project-2',
+                nextProjectName: 'Marketing',
+                trimHistoryBeforeMs: 1710000000000,
+            },
+        })
+        expect(result.compactedContextMessage).toContain('Compacted thread state for this ongoing workflow:')
+        expect(result.compactedContextMessage).toContain('Progress: 1 of 3')
+
+        nowSpy.mockRestore()
+    })
+
+    test('rejects compact_thread_context when the tool is not permitted', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    allowedTools: [],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'compact_thread_context',
+                {
+                    summary: 'Finished Operations',
+                    progressCompleted: 1,
+                    progressTotal: 3,
+                },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null,
+                {
+                    projectId: 'project-1',
+                    assistantId: 'assistant-1',
+                    objectType: 'topics',
+                    objectId: 'chat-1',
+                }
+            )
+        ).rejects.toThrow('Tool not permitted: compact_thread_context')
+    })
+
+    test('rejects invalid compact_thread_context payloads', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['compact_thread_context'],
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'compact_thread_context',
+                {
+                    progressCompleted: 2,
+                    progressTotal: 3,
+                },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null,
+                {
+                    projectId: 'project-1',
+                    assistantId: 'assistant-1',
+                    objectType: 'topics',
+                    objectId: 'chat-1',
+                }
+            )
+        ).rejects.toThrow('summary is required for compact_thread_context.')
+    })
+
+    test('injects hidden compacted state and excludes older comments in future context loads', async () => {
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+
+            if (path === 'assistantThreadState/project-1_topics_chat-1_assistant-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        summary: 'Operations done. Marketing next.',
+                        progressCompleted: 1,
+                        progressTotal: 2,
+                        currentProjectId: 'project-1',
+                        currentProjectName: 'Operations',
+                        nextProjectId: 'project-2',
+                        nextProjectName: 'Marketing',
+                        trimHistoryBeforeMs: 200,
+                        updatedAt: { seconds: 1, nanoseconds: 0 },
+                    }),
+                })
+            }
+
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        name: 'Operations',
+                        description: 'Project context.',
+                    }),
+                })
+            }
+
+            return Promise.resolve({
+                exists: false,
+                data: () => ({}),
+            })
+        })
+
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'recent-comment',
+                    ref: { path: 'recent-comment-ref' },
+                    data: () => ({
+                        commentText: 'Recent assistant update',
+                        fromAssistant: true,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+                {
+                    id: 'old-comment',
+                    ref: { path: 'old-comment-ref' },
+                    data: () => ({
+                        commentText: 'Old assistant update',
+                        fromAssistant: true,
+                        created: 100,
+                        lastChangeDate: 100,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'recent-comment',
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            [],
+            null,
+            null,
+            'assistant-1'
+        )
+
+        const flattened = contextMessages
+            .map(message => (typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])))
+            .join('\n')
+
+        expect(flattened).toContain('Compacted thread state for this ongoing workflow:')
+        expect(flattened).toContain('Operations done. Marketing next.')
+        expect(flattened).toContain('Recent assistant update')
+        expect(flattened).not.toContain('Old assistant update')
+    })
+
+    test('rebuilds continuation conversation from compacted state after the tool runs', () => {
+        const updatedConversation = buildConversationAfterToolExecution({
+            currentConversation: [
+                ['system', 'Base system instruction'],
+                ['system', 'Compacted thread state for this ongoing workflow:\n- Summary:\nOld summary'],
+                ['user', 'Update all project descriptions'],
+                ['assistant', 'Detailed project 1 notes that should be dropped'],
+            ],
+            responseText: 'Detailed project 1 notes that should be dropped',
+            toolName: 'compact_thread_context',
+            toolArgs: {
+                summary: 'Finished Operations. Marketing next.',
+                progressCompleted: 1,
+                progressTotal: 2,
+            },
+            toolCallId: 'tool-call-1',
+            conversationSafeToolResult: {
+                compactedContextMessage:
+                    'Compacted thread state for this ongoing workflow:\n- Progress: 1 of 2 units completed.\n- Summary:\nFinished Operations. Marketing next.',
+            },
+            userContext: {
+                message: 'Update all project descriptions',
+            },
+        })
+
+        const contents = updatedConversation.map(message => message.content).join('\n')
+
+        expect(contents).toContain('Base system instruction')
+        expect(contents).toContain('Update all project descriptions')
+        expect(contents).toContain('Finished Operations. Marketing next.')
+        expect(contents).not.toContain('Detailed project 1 notes that should be dropped')
+        expect(contents).not.toContain('Old summary')
+        expect(updatedConversation[updatedConversation.length - 1]).toMatchObject({
+            role: 'user',
+            content: expect.stringContaining('Based on the tool results above'),
+        })
+    })
+
+    test('reads compacted thread state as assistant context text', async () => {
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+            if (path === 'assistantThreadState/project-1_topics_chat-1_assistant-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        summary: 'Operations done. Marketing next.',
+                        progressCompleted: 1,
+                        progressTotal: 2,
+                        trimHistoryBeforeMs: 200,
+                    }),
+                })
+            }
+
+            return Promise.resolve({
+                exists: false,
+                data: () => ({}),
+            })
+        })
+
+        await expect(
+            getAssistantThreadStateContextMessage('project-1', 'topics', 'chat-1', 'assistant-1')
+        ).resolves.toContain('Operations done. Marketing next.')
     })
 })
 

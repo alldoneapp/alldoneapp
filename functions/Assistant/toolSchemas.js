@@ -620,6 +620,52 @@ const toolSchemas = {
         },
     },
 
+    compact_thread_context: {
+        type: 'function',
+        function: {
+            name: 'compact_thread_context',
+            description:
+                'Compacts the current assistant thread context for a long-running multi-step workflow. Use this after finishing a project or another large batch segment when earlier project-by-project detail is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so future tool calls and replies can continue from the compacted working memory.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    summary: {
+                        type: 'string',
+                        description:
+                            'A concise but durable summary of the work completed so far, including key results, constraints, and what should happen next. This becomes the compacted working memory for the thread.',
+                    },
+                    progressCompleted: {
+                        type: 'integer',
+                        description:
+                            'How many projects or batch units are completed so far. Use an integer such as 2 when 2 of 8 projects are finished.',
+                    },
+                    progressTotal: {
+                        type: 'integer',
+                        description:
+                            'The total number of projects or batch units in the workflow. Use an integer such as 8 when processing 8 total projects.',
+                    },
+                    currentProjectId: {
+                        type: 'string',
+                        description: 'Optional current project ID being processed when the compaction is created.',
+                    },
+                    currentProjectName: {
+                        type: 'string',
+                        description: 'Optional current project name being processed when the compaction is created.',
+                    },
+                    nextProjectId: {
+                        type: 'string',
+                        description: 'Optional next project ID the assistant should continue with after compaction.',
+                    },
+                    nextProjectName: {
+                        type: 'string',
+                        description: 'Optional next project name the assistant should continue with after compaction.',
+                    },
+                },
+                required: ['summary', 'progressCompleted', 'progressTotal'],
+            },
+        },
+    },
+
     update_user_description: {
         type: 'function',
         function: {

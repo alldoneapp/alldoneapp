@@ -111,6 +111,7 @@ const EXTERNAL_TOOLS_KEY = 'external_tools'
 const UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY = 'update_heartbeat_settings'
 const UPDATE_PROJECT_DESCRIPTION_TOOL_KEY = 'update_project_description'
 const UPDATE_USER_DESCRIPTION_TOOL_KEY = 'update_user_description'
+const COMPACT_THREAD_CONTEXT_TOOL_KEY = 'compact_thread_context'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
@@ -118,6 +119,11 @@ const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 50
 const TOOL_PROGRESS_UPDATE_INTERVAL_MS = 7000
 const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
+const TOOL_RESULT_FOLLOW_UP_PROMPT =
+    'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.'
+const TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY =
+    'Based on the tool results above, provide your response. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.'
+const COMPACT_THREAD_CONTEXT_HEADER = 'Compacted thread state for this ongoing workflow:'
 
 // Service instance caches for reuse across tool executions (performance optimization)
 // Similar pattern to MCP server for consistency
@@ -171,6 +177,275 @@ function filterTasksByRecentHours(tasks, recentHours, now = Date.now()) {
         const completedAt = Number(task?.completed)
         return Number.isFinite(completedAt) && completedAt >= cutoff
     })
+}
+
+function cloneConversationEntry(entry) {
+    if (Array.isArray(entry)) {
+        return { role: entry[0], content: entry[1] }
+    }
+
+    if (!entry || typeof entry !== 'object') return null
+
+    return {
+        role: entry.role,
+        content:
+            entry.content && typeof entry.content === 'object'
+                ? JSON.parse(JSON.stringify(entry.content))
+                : entry.content || '',
+        ...(entry.tool_calls ? { tool_calls: JSON.parse(JSON.stringify(entry.tool_calls)) } : {}),
+        ...(entry.tool_call_id ? { tool_call_id: entry.tool_call_id } : {}),
+    }
+}
+
+function buildAssistantThreadStateDocId(projectId, objectType, objectId, assistantId) {
+    if (!projectId || !objectType || !objectId || !assistantId) return ''
+    return `${projectId}_${objectType}_${objectId}_${assistantId}`
+}
+
+function getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId) {
+    const docId = buildAssistantThreadStateDocId(projectId, objectType, objectId, assistantId)
+    if (!docId) return null
+    return db.doc(`assistantThreadState/${docId}`)
+}
+
+function normalizeCompactThreadContextInteger(value, fieldName) {
+    const numericValue = Number(value)
+    if (!Number.isInteger(numericValue) || numericValue < 0) {
+        throw new Error(`${fieldName} must be a non-negative integer for compact_thread_context.`)
+    }
+    return numericValue
+}
+
+function normalizeOptionalCompactThreadContextText(value) {
+    if (typeof value !== 'string') return ''
+    return value.trim()
+}
+
+function buildCompactThreadContextMessage(compactedState) {
+    if (!compactedState || typeof compactedState.summary !== 'string' || !compactedState.summary.trim()) return ''
+
+    const lines = [
+        COMPACT_THREAD_CONTEXT_HEADER,
+        '- Context rule: This is the condensed working memory for a long-running thread. Prefer it over older project-by-project detail that has already been compacted.',
+        `- Progress: ${compactedState.progressCompleted} of ${compactedState.progressTotal} units completed.`,
+    ]
+
+    if (compactedState.currentProjectName || compactedState.currentProjectId) {
+        lines.push(
+            `- Current project: ${compactedState.currentProjectName || compactedState.currentProjectId}${
+                compactedState.currentProjectId && compactedState.currentProjectName
+                    ? ` (${compactedState.currentProjectId})`
+                    : ''
+            }`
+        )
+    }
+
+    if (compactedState.nextProjectName || compactedState.nextProjectId) {
+        lines.push(
+            `- Next project: ${compactedState.nextProjectName || compactedState.nextProjectId}${
+                compactedState.nextProjectId && compactedState.nextProjectName
+                    ? ` (${compactedState.nextProjectId})`
+                    : ''
+            }`
+        )
+    }
+
+    lines.push('- Summary:', compactedState.summary.trim())
+
+    return lines.join('\n')
+}
+
+function isCompactThreadContextMessage(content) {
+    return typeof content === 'string' && content.startsWith(COMPACT_THREAD_CONTEXT_HEADER)
+}
+
+function isToolFollowUpUserMessage(content) {
+    if (typeof content !== 'string') return false
+    const normalizedContent = content.trim()
+    return (
+        normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT || normalizedContent === TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY
+    )
+}
+
+function buildLatestUserMessageForContinuation(currentConversation, userContext = null) {
+    if (userContext?.content) {
+        return cloneConversationEntry({ role: 'user', content: userContext.content })
+    }
+
+    if (typeof userContext?.message === 'string' && userContext.message.trim()) {
+        return { role: 'user', content: userContext.message }
+    }
+
+    for (let i = currentConversation.length - 1; i >= 0; i--) {
+        const entry = cloneConversationEntry(currentConversation[i])
+        if (!entry || entry.role !== 'user') continue
+        if (isToolFollowUpUserMessage(entry.content)) continue
+        return entry
+    }
+
+    return null
+}
+
+async function loadAssistantThreadState(db, projectId, objectType, objectId, assistantId) {
+    const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
+    if (!stateRef) return null
+
+    const stateDoc = await stateRef.get().catch(() => null)
+    if (!stateDoc?.exists) return null
+
+    const data = stateDoc.data() || {}
+    const summary = typeof data.summary === 'string' ? data.summary.trim() : ''
+    const progressCompleted = Number(data.progressCompleted)
+    const progressTotal = Number(data.progressTotal)
+
+    if (!summary || !Number.isInteger(progressCompleted) || !Number.isInteger(progressTotal) || progressCompleted < 0) {
+        return null
+    }
+
+    return {
+        summary,
+        progressCompleted,
+        progressTotal,
+        currentProjectId: normalizeOptionalCompactThreadContextText(data.currentProjectId),
+        currentProjectName: normalizeOptionalCompactThreadContextText(data.currentProjectName),
+        nextProjectId: normalizeOptionalCompactThreadContextText(data.nextProjectId),
+        nextProjectName: normalizeOptionalCompactThreadContextText(data.nextProjectName),
+        trimHistoryBeforeMs: Number.isFinite(Number(data.trimHistoryBeforeMs)) ? Number(data.trimHistoryBeforeMs) : 0,
+        updatedAt: data.updatedAt || null,
+    }
+}
+
+async function persistAssistantThreadState({
+    db,
+    projectId,
+    objectType,
+    objectId,
+    assistantId,
+    summary,
+    progressCompleted,
+    progressTotal,
+    currentProjectId = '',
+    currentProjectName = '',
+    nextProjectId = '',
+    nextProjectName = '',
+}) {
+    const normalizedSummary = normalizeOptionalCompactThreadContextText(summary)
+    if (!normalizedSummary) {
+        throw new Error('summary is required for compact_thread_context.')
+    }
+
+    const normalizedProgressCompleted = normalizeCompactThreadContextInteger(progressCompleted, 'progressCompleted')
+    const normalizedProgressTotal = normalizeCompactThreadContextInteger(progressTotal, 'progressTotal')
+    if (normalizedProgressCompleted > normalizedProgressTotal) {
+        throw new Error('progressCompleted cannot exceed progressTotal for compact_thread_context.')
+    }
+
+    const trimHistoryBeforeMs = Date.now()
+    const compactedState = {
+        summary: normalizedSummary,
+        progressCompleted: normalizedProgressCompleted,
+        progressTotal: normalizedProgressTotal,
+        currentProjectId: normalizeOptionalCompactThreadContextText(currentProjectId),
+        currentProjectName: normalizeOptionalCompactThreadContextText(currentProjectName),
+        nextProjectId: normalizeOptionalCompactThreadContextText(nextProjectId),
+        nextProjectName: normalizeOptionalCompactThreadContextText(nextProjectName),
+        trimHistoryBeforeMs,
+        updatedAt: admin.firestore.Timestamp.now(),
+    }
+
+    const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
+    if (!stateRef) {
+        throw new Error('compact_thread_context requires a valid thread runtime context.')
+    }
+
+    await stateRef.set(compactedState)
+
+    return {
+        success: true,
+        compactedState,
+        compactedContextMessage: buildCompactThreadContextMessage(compactedState),
+        message: `Thread context compacted at ${normalizedProgressCompleted}/${normalizedProgressTotal}.`,
+    }
+}
+
+function buildConversationAfterToolExecution({
+    currentConversation,
+    responseText,
+    toolName,
+    toolArgs,
+    toolCallId,
+    conversationSafeToolResult,
+    userContext = null,
+}) {
+    if (
+        toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY &&
+        typeof conversationSafeToolResult?.compactedContextMessage === 'string' &&
+        conversationSafeToolResult.compactedContextMessage.trim()
+    ) {
+        const baseSystemMessages = currentConversation
+            .map(cloneConversationEntry)
+            .filter(message => message?.role === 'system' && !isCompactThreadContextMessage(message.content))
+        const latestUserMessage = buildLatestUserMessageForContinuation(currentConversation, userContext)
+
+        return [
+            ...baseSystemMessages,
+            ...(latestUserMessage ? [latestUserMessage] : []),
+            {
+                role: 'system',
+                content: parseTextForUseLiKePrompt(conversationSafeToolResult.compactedContextMessage),
+            },
+            {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                    {
+                        id: toolCallId,
+                        type: 'function',
+                        function: {
+                            name: toolName,
+                            arguments: JSON.stringify(toolArgs),
+                        },
+                    },
+                ],
+            },
+            {
+                role: 'tool',
+                content: JSON.stringify(conversationSafeToolResult),
+                tool_call_id: toolCallId,
+            },
+            {
+                role: 'user',
+                content: TOOL_RESULT_FOLLOW_UP_PROMPT,
+            },
+        ]
+    }
+
+    return [
+        ...currentConversation,
+        {
+            role: 'assistant',
+            content: responseText,
+            tool_calls: [
+                {
+                    id: toolCallId,
+                    type: 'function',
+                    function: {
+                        name: toolName,
+                        arguments: JSON.stringify(toolArgs),
+                    },
+                },
+            ],
+        },
+        {
+            role: 'tool',
+            content: JSON.stringify(conversationSafeToolResult),
+            tool_call_id: toolCallId,
+        },
+        {
+            role: 'user',
+            content: TOOL_RESULT_FOLLOW_UP_PROMPT,
+        },
+    ]
 }
 
 function mapAssistantTaskForToolResponse(task) {
@@ -1536,33 +1811,15 @@ async function collectAssistantTextWithToolCalls({
         const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
         pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
 
-        currentConversation = [
-            ...currentConversation,
-            {
-                role: 'assistant',
-                content: responseText,
-                tool_calls: [
-                    {
-                        id: toolCallId,
-                        type: 'function',
-                        function: {
-                            name: toolName,
-                            arguments: JSON.stringify(toolArgs),
-                        },
-                    },
-                ],
-            },
-            {
-                role: 'tool',
-                content: JSON.stringify(conversationSafeToolResult),
-                tool_call_id: toolCallId,
-            },
-            {
-                role: 'user',
-                content:
-                    'Based on the tool results above, provide your response. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.',
-            },
-        ]
+        currentConversation = buildConversationAfterToolExecution({
+            currentConversation,
+            responseText,
+            toolName,
+            toolArgs,
+            toolCallId,
+            conversationSafeToolResult,
+            userContext,
+        })
 
         const resumedStream = await interactWithChatStream(
             currentConversation,
@@ -4856,6 +5113,55 @@ async function executeToolNatively(
             }
         }
 
+        case COMPACT_THREAD_CONTEXT_TOOL_KEY: {
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+
+            if (!resolvedAssistant) {
+                throw new Error('Assistant not found for thread compaction.')
+            }
+
+            const currentAssistant = resolvedAssistant.assistant || {}
+            const allowedTools = Array.isArray(currentAssistant.allowedTools) ? currentAssistant.allowedTools : []
+            if (!allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)) {
+                throw new Error(`Tool not permitted: ${COMPACT_THREAD_CONTEXT_TOOL_KEY}`)
+            }
+
+            const runtimeProjectId = toolRuntimeContext?.projectId || projectId
+            const runtimeAssistantId = toolRuntimeContext?.assistantId || resolvedAssistant.id || assistantId
+            const runtimeObjectType = toolRuntimeContext?.objectType || null
+            const runtimeObjectId = toolRuntimeContext?.objectId || null
+            if (!runtimeProjectId || !runtimeAssistantId || !runtimeObjectType || !runtimeObjectId) {
+                throw new Error('compact_thread_context requires a valid thread runtime context.')
+            }
+
+            const db = admin.firestore()
+            const result = await persistAssistantThreadState({
+                db,
+                projectId: runtimeProjectId,
+                objectType: runtimeObjectType,
+                objectId: runtimeObjectId,
+                assistantId: runtimeAssistantId,
+                summary: toolArgs.summary,
+                progressCompleted: toolArgs.progressCompleted,
+                progressTotal: toolArgs.progressTotal,
+                currentProjectId: toolArgs.currentProjectId,
+                currentProjectName: toolArgs.currentProjectName,
+                nextProjectId: toolArgs.nextProjectId,
+                nextProjectName: toolArgs.nextProjectName,
+            })
+
+            return {
+                success: true,
+                projectId: runtimeProjectId,
+                objectType: runtimeObjectType,
+                objectId: runtimeObjectId,
+                assistantId: runtimeAssistantId,
+                compactedState: result.compactedState,
+                compactedContextMessage: result.compactedContextMessage,
+                message: result.message,
+            }
+        }
+
         case 'search': {
             // Only use projectId if explicitly provided by the LLM in toolArgs
             // Do NOT default to current project - this allows searching across all user's projects
@@ -6185,33 +6491,15 @@ async function storeChunks(
                     }
 
                     // Build updated conversation with plain objects
-                    const updatedConversation = [
-                        ...currentConversation,
-                        {
-                            role: 'assistant',
-                            content: assistantMessageContent,
-                            tool_calls: [
-                                {
-                                    id: toolCallId,
-                                    type: 'function',
-                                    function: {
-                                        name: toolName,
-                                        arguments: JSON.stringify(toolArgs),
-                                    },
-                                },
-                            ],
-                        },
-                        {
-                            role: 'tool',
-                            content: JSON.stringify(conversationSafeToolResult),
-                            tool_call_id: toolCallId,
-                        },
-                        {
-                            role: 'user',
-                            content:
-                                'Based on the tool results above, provide your response to the user. If any tool result indicates failure, blocked status, or no execution, do not claim completion. Explain what is missing and what should be tried next. If needed, call additional tools.',
-                        },
-                    ]
+                    const updatedConversation = buildConversationAfterToolExecution({
+                        currentConversation,
+                        responseText: assistantMessageContent,
+                        toolName,
+                        toolArgs,
+                        toolCallId,
+                        conversationSafeToolResult,
+                        userContext,
+                    })
 
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
@@ -7062,6 +7350,19 @@ async function getProjectDescriptionContextMessage(projectId) {
     ].join('\n')
 }
 
+async function getAssistantThreadStateContextMessage(projectId, objectType, objectId, assistantId) {
+    if (!projectId || !objectType || !objectId || !assistantId) return ''
+
+    const compactedState = await loadAssistantThreadState(
+        admin.firestore(),
+        projectId,
+        objectType,
+        objectId,
+        assistantId
+    )
+    return compactedState ? buildCompactThreadContextMessage(compactedState) : ''
+}
+
 async function getUserDescriptionContextMessage(projectId, userId) {
     if (!userId) return ''
 
@@ -7339,6 +7640,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks to change heartbeat settings, use update_heartbeat_settings. When editing the heartbeat prompt, treat the current heartbeat prompt as the base text, preserve its existing intent unless the user clearly asks for a rewrite, and only replace the full prompt when the user explicitly wants a full replacement.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'When you are doing a long-running workflow across multiple projects or other repeated units, use compact_thread_context after finishing a unit whenever the earlier detailed reasoning is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so the thread can continue from compacted working memory.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
@@ -8054,6 +8361,16 @@ async function getOptimizedContextMessages(
     userId,
     assistantId
 ) {
+    const compactedThreadState = assistantId
+        ? await loadAssistantThreadState(admin.firestore(), projectId, objectType, objectId, assistantId).catch(
+              () => null
+          )
+        : null
+    const trimHistoryBeforeMs =
+        compactedThreadState && Number.isFinite(Number(compactedThreadState.trimHistoryBeforeMs))
+            ? Number(compactedThreadState.trimHistoryBeforeMs)
+            : 0
+
     // Start all operations in parallel
     const parallelPromises = [
         // Fetch messages
@@ -8108,6 +8425,13 @@ async function getOptimizedContextMessages(
             if (commentText) {
                 const role = fromAssistant ? 'assistant' : 'user'
                 const messageTimestamp = Number(messageData.created || messageData.lastChangeDate || 0)
+                if (
+                    trimHistoryBeforeMs &&
+                    Number.isFinite(messageTimestamp) &&
+                    messageTimestamp < trimHistoryBeforeMs
+                ) {
+                    continue
+                }
                 if (!fromAssistant) {
                     const mediaContext = await enrichCommentMediaContext(commentDocs[i].ref, messageData)
                     messages.push([
@@ -8140,6 +8464,13 @@ async function getOptimizedContextMessages(
         assistantId,
         requestUserId: userId,
     })
+
+    const compactedThreadContextMessage = compactedThreadState
+        ? buildCompactThreadContextMessage(compactedThreadState)
+        : ''
+    if (compactedThreadContextMessage) {
+        messages.push(['system', parseTextForUseLiKePrompt(compactedThreadContextMessage)])
+    }
 
     // Add topic/context information if available
     if (chatData && chatData.title) {
@@ -8354,6 +8685,7 @@ module.exports = {
     extractImageUrlsFromMessageContent,
     injectCurrentMessageImagesIntoCreateTaskArgs,
     collectAssistantTextWithToolCalls,
+    buildConversationAfterToolExecution,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
@@ -8371,6 +8703,7 @@ module.exports = {
     mapAssistantContactForToolResponse,
     buildGmailContactTargetFromRuntimeContext,
     getHeartbeatSettingsContextMessage,
+    getAssistantThreadStateContextMessage,
     getProjectDescriptionContextMessage,
     getOpenTasksContextMessage,
 }
