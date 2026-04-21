@@ -119,10 +119,11 @@ async function classifyGmailMessage({ config, message }) {
 
     // GPT-5 reasoning models generate large hidden reasoning-token counts by default
     // (medium effort), which inflates total_tokens / Gold cost. Classification is a
-    // simple single-shot task, so request minimal reasoning. Non-reasoning models keep
-    // the low-temperature deterministic setting.
+    // simple single-shot task, so request low reasoning. (`minimal` is rejected by
+    // gpt-5.4-nano — supported values on this provider are none/low/medium/high/xhigh.)
+    // Non-reasoning models keep the low-temperature deterministic setting.
     if (isReasoningModel) {
-        requestParams.reasoning_effort = 'minimal'
+        requestParams.reasoning_effort = 'low'
     } else {
         requestParams.temperature = 0.1
     }
