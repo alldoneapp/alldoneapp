@@ -232,6 +232,7 @@ const {
     buildConversationAfterToolExecution,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
+    calculateGoldCostFromTokens,
 } = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
@@ -259,6 +260,12 @@ describe('assistant attachment handoff helpers', () => {
     test('prefers commentText when answerContent is empty for silent mode final checks', () => {
         expect(getSilentModeFinalResponseText('', '\n\nHEARTBEAT_OK')).toBe('\n\nHEARTBEAT_OK')
         expect(getSilentModeFinalResponseText('Final answer', '\n\nHEARTBEAT_OK')).toBe('Final answer')
+    })
+
+    test('scales GPT-5.4 nano gold cost down to roughly 8% of GPT-5.4', () => {
+        expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_4')).toBe(1)
+        expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
+        expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
     })
 
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {

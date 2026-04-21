@@ -28,7 +28,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         projectId,
         gmailEmail: config.gmailEmail || gmailEmail || '',
         prompt: config.prompt || '',
-        model: config.model || 'MODEL_GPT5_4',
+        model: config.model || 'MODEL_GPT5_4_NANO',
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
         lookbackDays: Number.isFinite(config.lookbackDays) ? String(config.lookbackDays) : '7',
@@ -49,7 +49,7 @@ function sanitizeConfigForSave(config) {
         enabled: !!config.enabled,
         gmailEmail: config.gmailEmail || '',
         prompt: config.prompt || '',
-        model: config.model || 'MODEL_GPT5_4',
+        model: config.model || 'MODEL_GPT5_4_NANO',
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
         lookbackDays: Number.isFinite(parsedLookbackDays)

@@ -109,10 +109,30 @@ const {
     processSingleMessage,
 } = require('./serverSideGmailLabelingSync')
 
+function buildDefaultCollectionMock(path) {
+    return {
+        path,
+        doc: jest.fn(() => ({
+            get: jest.fn().mockResolvedValue({ data: () => ({ gold: 99 }) }),
+            set: jest.fn(),
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn(),
+                    set: jest.fn(),
+                })),
+            })),
+        })),
+        limit: jest.fn(() => ({
+            get: jest.fn(),
+        })),
+    }
+}
+
 describe('serverSideGmailLabelingSync helpers', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         deductGold.mockResolvedValue({ success: true, newBalance: 99 })
+        admin.__mock.collection.mockImplementation(path => buildDefaultCollectionMock(path))
     })
 
     test('builds a Gmail message web url', () => {
@@ -283,7 +303,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             'user-1',
             2,
             expect.objectContaining({
-                source: 'gmail_labeling',
+                source: 'gmail_label_follow_up',
                 channel: 'gmail',
             })
         )
@@ -377,6 +397,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 if (path === 'users') {
                     return {
                         doc: jest.fn(() => ({
+                            get: jest.fn().mockResolvedValue({ data: () => ({ gold: 99 }) }),
                             collection: jest.fn(collectionName => {
                                 if (collectionName !== 'private') return { doc: jest.fn() }
 

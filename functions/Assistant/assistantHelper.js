@@ -81,6 +81,8 @@ const MODEL_GPT4O = 'MODEL_GPT4O'
 const MODEL_GPT5 = 'MODEL_GPT5' // Deprecated, maps to MODEL_GPT5_1
 const MODEL_GPT5_1 = 'MODEL_GPT5_1'
 const MODEL_GPT5_4 = 'MODEL_GPT5_4'
+const MODEL_GPT5_4_MINI = 'MODEL_GPT5_4_MINI'
+const MODEL_GPT5_4_NANO = 'MODEL_GPT5_4_NANO'
 const MODEL_GPT5_2 = 'MODEL_GPT5_2'
 const MODEL_SONAR = 'MODEL_SONAR'
 const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
@@ -704,6 +706,8 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT4O ||
         modelKey === MODEL_GPT5_1 ||
         modelKey === MODEL_GPT5_4 ||
+        modelKey === MODEL_GPT5_4_MINI ||
+        modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2
     )
 }
@@ -715,7 +719,15 @@ const modelSupportsNativeTools = modelKey => {
  */
 const modelSupportsCustomTemperature = modelKey => {
     // GPT-5.1 and some newer models only support default temperature (1.0)
-    if (modelKey === MODEL_GPT5_1 || modelKey === MODEL_GPT5_4 || modelKey === MODEL_GPT5_2) return false
+    if (
+        modelKey === MODEL_GPT5_1 ||
+        modelKey === MODEL_GPT5_4 ||
+        modelKey === MODEL_GPT5_4_MINI ||
+        modelKey === MODEL_GPT5_4_NANO ||
+        modelKey === MODEL_GPT5_2
+    ) {
+        return false
+    }
     return true
 }
 
@@ -725,6 +737,12 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT4O) return 100
     if (modelKey === MODEL_GPT5_1) return 100
     if (modelKey === MODEL_GPT5_4) return 100
+    // GPT-5.4 mini is 30% of GPT-5.4 pricing for both input and output tokens,
+    // so preserve the existing GPT-5.4 gold baseline and scale mini proportionally.
+    if (modelKey === MODEL_GPT5_4_MINI) return 333
+    // GPT-5.4 nano is ~8.0% of GPT-5.4 input pricing and ~8.33% of output pricing.
+    // Our Gold accounting only sees totalTokens, so use a conservative blended rate.
+    if (modelKey === MODEL_GPT5_4_NANO) return 1200
     if (modelKey === MODEL_GPT5_2) return 100
     if (modelKey === MODEL_SONAR) return 100
     if (modelKey === MODEL_SONAR_PRO) return 50
@@ -742,6 +760,8 @@ const getMaxTokensForModel = modelKey => {
     if (modelKey === MODEL_GPT4O) return 128000
     if (modelKey === MODEL_GPT5_1) return 128000
     if (modelKey === MODEL_GPT5_4) return 128000
+    if (modelKey === MODEL_GPT5_4_MINI) return 128000
+    if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
 
     // Perplexity/Sonar models (generally high context)
@@ -769,6 +789,8 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
     if (normalizedKey === MODEL_GPT5_4) return 'gpt-5.4'
+    if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
+    if (normalizedKey === MODEL_GPT5_4_NANO) return 'gpt-5.4-nano'
     if (normalizedKey === MODEL_GPT5_2) return 'gpt-5.2'
     if (normalizedKey === MODEL_SONAR) return 'sonar'
     if (normalizedKey === MODEL_SONAR_PRO) return 'sonar-pro'

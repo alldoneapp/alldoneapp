@@ -21,6 +21,7 @@ const {
     GMAIL_DIRECTION_SCOPE_BOTH,
     GMAIL_DIRECTION_SCOPE_INCOMING,
     GMAIL_DIRECTION_SCOPE_OUTGOING,
+    DEFAULT_GMAIL_LABELING_MODEL,
     buildConfigWriteData,
     buildDefaultState,
     getDefaultGmailLabelingConfig,
@@ -126,6 +127,18 @@ function buildBootstrapQuery(config) {
     return `newer_than:${config.lookbackDays || 7}d`
 }
 
+function applyGmailLabelingModelMigration(config = {}) {
+    if (!config || typeof config !== 'object') return config
+    if (config.model && config.model !== 'MODEL_GPT5_4' && config.model !== 'MODEL_GPT5_4_MINI') {
+        return config
+    }
+
+    return {
+        ...config,
+        model: DEFAULT_GMAIL_LABELING_MODEL,
+    }
+}
+
 async function loadConfig(userId, projectId, gmailEmail = '') {
     const configRef = getGmailLabelingConfigRef(userId, projectId)
     const configDoc = await configRef.get()
@@ -138,7 +151,7 @@ async function loadConfig(userId, projectId, gmailEmail = '') {
     }
 
     return {
-        config: configDoc.data(),
+        config: applyGmailLabelingModelMigration(configDoc.data()),
         exists: true,
         ref: configRef,
     }

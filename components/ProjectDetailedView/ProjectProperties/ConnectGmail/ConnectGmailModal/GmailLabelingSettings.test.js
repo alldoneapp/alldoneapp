@@ -34,6 +34,8 @@ describe('GmailLabelingSettings helpers', () => {
 
         const sanitized = sanitizeConfigForSave(normalized)
 
+        expect(normalized.model).toBe('MODEL_GPT5_4_NANO')
+        expect(sanitized.model).toBe('MODEL_GPT5_4_NANO')
         expect(sanitized.labelDefinitions[0].postLabelPrompt).toBe('Create a task with this email link')
     })
 

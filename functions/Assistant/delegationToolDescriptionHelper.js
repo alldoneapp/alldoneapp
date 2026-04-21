@@ -27,6 +27,8 @@ function getOpenAIModelFromAssistantModel(modelKey) {
     if (modelKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (modelKey === 'MODEL_GPT5_1' || modelKey === 'MODEL_GPT5') return 'gpt-5.1'
     if (modelKey === 'MODEL_GPT5_4') return 'gpt-5.4'
+    if (modelKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
+    if (modelKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     if (modelKey === 'MODEL_GPT5_2') return 'gpt-5.2'
     if (modelKey === 'MODEL_SONAR') return 'sonar'
     if (modelKey === 'MODEL_SONAR_PRO') return 'sonar-pro'

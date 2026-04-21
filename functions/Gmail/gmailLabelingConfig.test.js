@@ -1,6 +1,12 @@
 const { normalizeConfigInput, normalizeLabelDefinition } = require('./gmailLabelingConfig')
 
 describe('gmailLabelingConfig', () => {
+    test('defaults Gmail labeling to GPT-5.4 nano', () => {
+        const config = normalizeConfigInput('project-1', {})
+
+        expect(config.model).toBe('MODEL_GPT5_4_NANO')
+    })
+
     test('normalizes postLabelPrompt on label definitions', () => {
         expect(
             normalizeLabelDefinition({
