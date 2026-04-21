@@ -6,6 +6,14 @@ const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
     'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
 
+const GPT5_REASONING_MODEL_KEYS = new Set([
+    'MODEL_GPT5_1',
+    'MODEL_GPT5_2',
+    'MODEL_GPT5_4',
+    'MODEL_GPT5_4_MINI',
+    'MODEL_GPT5_4_NANO',
+])
+
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
     if (normalizedKey === 'MODEL_GPT3_5') return 'gpt-3.5-turbo'
@@ -16,6 +24,10 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (normalizedKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     return 'gpt-5.2'
+}
+
+function isGpt5ReasoningModel(modelKey) {
+    return GPT5_REASONING_MODEL_KEYS.has(normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL))
 }
 
 function extractJsonFromText(text = '') {
@@ -85,10 +97,10 @@ async function classifyGmailMessage({ config, message }) {
 
     const openai = getOpenAIClient(openAiKey)
     const selectedModel = mapAssistantModelToOpenAIModel(config?.model)
+    const isReasoningModel = isGpt5ReasoningModel(config?.model)
 
-    const completion = await openai.chat.completions.create({
+    const requestParams = {
         model: selectedModel,
-        temperature: 0.1,
         messages: [
             {
                 role: 'system',
@@ -103,7 +115,19 @@ async function classifyGmailMessage({ config, message }) {
                     'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"..."}. If no label matches clearly, return {"matched":false,"labelKey":null,"confidence":0.2,"reasoning":"..."}',
             },
         ],
-    })
+    }
+
+    // GPT-5 reasoning models generate large hidden reasoning-token counts by default
+    // (medium effort), which inflates total_tokens / Gold cost. Classification is a
+    // simple single-shot task, so request minimal reasoning. Non-reasoning models keep
+    // the low-temperature deterministic setting.
+    if (isReasoningModel) {
+        requestParams.reasoning_effort = 'minimal'
+    } else {
+        requestParams.temperature = 0.1
+    }
+
+    const completion = await openai.chat.completions.create(requestParams)
 
     const content = completion?.choices?.[0]?.message?.content || ''
     const parsed = extractJsonFromText(content)

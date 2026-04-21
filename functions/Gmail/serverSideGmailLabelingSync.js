@@ -127,9 +127,17 @@ function buildBootstrapQuery(config) {
     return `newer_than:${config.lookbackDays || 7}d`
 }
 
+const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
+    'MODEL_GPT5',
+    'MODEL_GPT5_1',
+    'MODEL_GPT5_2',
+    'MODEL_GPT5_4',
+    'MODEL_GPT5_4_MINI',
+])
+
 function applyGmailLabelingModelMigration(config = {}) {
     if (!config || typeof config !== 'object') return config
-    if (config.model && config.model !== 'MODEL_GPT5_4' && config.model !== 'MODEL_GPT5_4_MINI') {
+    if (config.model && !GMAIL_LABELING_LEGACY_GPT5_MODELS.has(config.model)) {
         return config
     }
 
