@@ -1279,8 +1279,12 @@ exports.earnGoldSecondGen = onCall(
         const { data, auth } = request
         if (auth) {
             const { earnGold } = require('./Gold/goldHelper')
-            const { projectId, userId, gold, slimDate, timestamp, dayDate } = data
-            return await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate)
+            const { projectId, userId, gold, slimDate, timestamp, dayDate, rewardKey, objectId, objectType } = data
+            return await earnGold(projectId, userId, gold, slimDate, timestamp, dayDate, {
+                rewardKey,
+                objectId,
+                objectType,
+            })
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
         }

@@ -137,6 +137,11 @@ import { getAssistant } from '../../../components/AdminPanel/Assistants/assistan
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
+const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
+    if (!taskId || completedAt == null || currentReviewerId == null) return ''
+    return `task_progress:${taskId}:${completedAt}:${currentReviewerId}`
+}
+
 async function updateLinkedContactsEditionData(projectId, task, editionDate) {
     const linkedContactIds = uniq(task?.linkedParentContactsIds || []).filter(Boolean)
     if (linkedContactIds.length === 0) return
@@ -2327,6 +2332,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 ) {
     const { loggedUser } = store.getState()
     const { parentId, subtaskIds, userId, stepHistory, userIds } = task
+    const transitionDate = Date.now()
 
     if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null)
 
@@ -2341,7 +2347,7 @@ export async function moveTasksFromMiddleOfWorkflow(
             stepHistory: [OPEN_STEP],
             currentReviewerId: userId,
             completed: null,
-            dueDate: Date.now(),
+            dueDate: transitionDate,
             completedTime: null,
         }
     } else if (stepToMoveId === DONE_STEP) {
@@ -2349,7 +2355,7 @@ export async function moveTasksFromMiddleOfWorkflow(
         updateData = {
             userIds: [userId],
             currentReviewerId: DONE_STEP,
-            completed: Date.now(),
+            completed: transitionDate,
         }
     } else {
         workflow = getUserWorkflow(projectId, userId)
@@ -2364,9 +2370,9 @@ export async function moveTasksFromMiddleOfWorkflow(
             updateData = {
                 userIds: [...userIds, reviewerUid],
                 currentReviewerId: reviewerUid,
-                completed: Date.now(),
+                completed: transitionDate,
                 stepHistory: [...stepHistory, stepToMoveId],
-                dueDate: Date.now(),
+                dueDate: transitionDate,
             }
         } else {
             const newUserIds = [task.userId]
@@ -2391,14 +2397,19 @@ export async function moveTasksFromMiddleOfWorkflow(
                 userIds: newUserIds,
                 stepHistory: newStepHistory,
                 currentReviewerId: newCurrentReviewerId,
-                completed: Date.now(),
+                completed: transitionDate,
             }
         }
     }
 
     if (!task.parentId && forwardDirection) {
         const reviewerId = userIds[userIds.length - 1]
-        earnGold(projectId, reviewerId, MAX_GOLD_TO_EARN_BY_CHECK_TASKS, checkBoxId)
+        earnGold(projectId, reviewerId, MAX_GOLD_TO_EARN_BY_CHECK_TASKS, checkBoxId, {
+            timestamp: updateData.completed,
+            rewardKey: buildTaskProgressRewardKey(task.id, updateData.completed, updateData.currentReviewerId),
+            objectId: task.id,
+            objectType: 'task',
+        })
     }
 
     const batch = new BatchWrapper(getDb())
@@ -2560,7 +2571,14 @@ export async function moveTasksFromOpen(
 
     const ownerIsTeamMeber = !!TasksHelper.getUserInProject(projectId, task.userId)
 
-    if (!task.parentId && ownerIsTeamMeber) earnGold(projectId, newUserId, MAX_GOLD_TO_EARN_BY_CHECK_TASKS, checkBoxId)
+    if (!task.parentId && ownerIsTeamMeber) {
+        earnGold(projectId, newUserId, MAX_GOLD_TO_EARN_BY_CHECK_TASKS, checkBoxId, {
+            timestamp: completionDate,
+            rewardKey: buildTaskProgressRewardKey(task.id, completionDate, updateData.currentReviewerId),
+            objectId: task.id,
+            objectType: 'task',
+        })
+    }
 
     const batch = new BatchWrapper(getDb())
 

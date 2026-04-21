@@ -14,8 +14,104 @@ const { createRecurringTaskInCloudFunction } = require('./recurringTasksCloud')
 const { createTaskSomedaySelectedFeed } = require('../Feeds/tasksFeeds')
 const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { earnGold } = require('../Gold/goldHelper')
 
 const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
+const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
+
+const getRewardGoldAmount = (maxGold, rewardKey) => {
+    const normalizedMaxGold = Number(maxGold)
+    if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0) return 0
+
+    if (!rewardKey) {
+        return Math.floor(Math.random() * normalizedMaxGold) + 1
+    }
+
+    let hash = 0
+    for (let i = 0; i < rewardKey.length; i++) {
+        hash = (hash * 31 + rewardKey.charCodeAt(i)) % 2147483647
+    }
+
+    return (Math.abs(hash) % normalizedMaxGold) + 1
+}
+
+const buildTaskProgressReward = (taskId, oldTask = {}, newTask = {}) => {
+    if (!taskId) {
+        console.log('[gold][fallback] Skipping task reward because taskId is missing')
+        return null
+    }
+
+    if (newTask.parentId) {
+        console.log('[gold][fallback] Skipping task reward for subtask', {
+            taskId,
+            parentId: newTask.parentId,
+        })
+        return null
+    }
+
+    const oldUserIds = Array.isArray(oldTask.userIds) ? oldTask.userIds : []
+    const newUserIds = Array.isArray(newTask.userIds) ? newTask.userIds : []
+    const movedForwardInWorkflow = !oldTask.done && !newTask.done && newUserIds.length > oldUserIds.length
+    const completedNow = !oldTask.done && newTask.done
+
+    if (!movedForwardInWorkflow && !completedNow) {
+        console.log('[gold][fallback] Skipping task reward because task did not advance or complete now', {
+            taskId,
+            oldDone: !!oldTask.done,
+            newDone: !!newTask.done,
+            oldUserIdsLength: oldUserIds.length,
+            newUserIdsLength: newUserIds.length,
+        })
+        return null
+    }
+
+    const timestamp = Number(newTask.completed)
+    const currentReviewerId = newTask.currentReviewerId
+    if (!Number.isFinite(timestamp) || currentReviewerId == null) {
+        console.log('[gold][fallback] Skipping task reward because completed timestamp or reviewer is invalid', {
+            taskId,
+            completed: newTask.completed,
+            currentReviewerId,
+        })
+        return null
+    }
+
+    const userId = oldUserIds.length > 1 ? oldUserIds[oldUserIds.length - 1] : newTask.userId
+    if (typeof userId !== 'string' || userId.trim() === '') {
+        console.log('[gold][fallback] Skipping task reward because reward user could not be resolved', {
+            taskId,
+            taskUserId: newTask.userId,
+            oldUserIds,
+            newUserIds,
+        })
+        return null
+    }
+
+    const rewardKey = `task_progress:${taskId}:${timestamp}:${currentReviewerId}`
+    const rewardMoment = moment(timestamp)
+
+    const reward = {
+        gold: getRewardGoldAmount(MAX_GOLD_TO_EARN_BY_CHECK_TASKS, rewardKey),
+        rewardKey,
+        slimDate: rewardMoment.format('DDMMYYYY'),
+        timestamp,
+        dayDate: parseInt(rewardMoment.format('YYYYMMDD')),
+        userId,
+    }
+
+    console.log('[gold][fallback] Built task reward payload', {
+        taskId,
+        rewardUserId: reward.userId,
+        rewardKey: reward.rewardKey,
+        gold: reward.gold,
+        timestamp: reward.timestamp,
+        completedNow,
+        movedForwardInWorkflow,
+        currentReviewerId,
+    })
+
+    return reward
+}
 
 const isGmailTaskWithArchiveOnComplete = (gmailData = null) => {
     return (
@@ -89,6 +185,44 @@ async function archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask) {
             error: error.message || 'Failed to archive Gmail message.',
         })
     }
+}
+
+const awardGoldForTaskProgress = async (projectId, taskId, oldTask, newTask) => {
+    const reward = buildTaskProgressReward(taskId, oldTask, newTask)
+    if (!reward) return
+
+    console.log('[gold][fallback] Calling earnGold from onUpdateTask fallback', {
+        projectId,
+        taskId,
+        rewardUserId: reward.userId,
+        rewardKey: reward.rewardKey,
+        gold: reward.gold,
+    })
+
+    const result = await earnGold(
+        projectId,
+        reward.userId,
+        reward.gold,
+        reward.slimDate,
+        reward.timestamp,
+        reward.dayDate,
+        {
+            rewardKey: reward.rewardKey,
+            objectId: taskId,
+            objectType: 'task',
+        }
+    )
+
+    console.log('[gold][fallback] earnGold fallback completed', {
+        projectId,
+        taskId,
+        rewardUserId: reward.userId,
+        rewardKey: reward.rewardKey,
+        success: !!result?.success,
+        alreadyProcessed: !!result?.alreadyProcessed,
+        amount: result?.amount || 0,
+        message: result?.message || '',
+    })
 }
 
 const proccessAlgoliaRecord = async (taskId, projectId, oldTask, newTask) => {
@@ -265,6 +399,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
     }
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
     promises.push(archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask))
+    promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
 
     // Handle recurring task creation when task is completed
     // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
@@ -338,6 +473,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
 
 module.exports = {
     archiveGmailTaskIfNeeded,
+    buildTaskProgressReward,
     isGmailTaskWithArchiveOnComplete,
     onUpdateTask,
     shouldArchiveGmailTask,

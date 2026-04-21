@@ -116,7 +116,7 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
 }))
 
 const admin = require('firebase-admin')
-const { addMonthlyGoldToUser, deductGold, refundGold } = require('./goldHelper')
+const { addMonthlyGoldToUser, deductGold, refundGold, earnGold } = require('./goldHelper')
 const { applyGoldChangeInTransaction } = require('./goldTransactions')
 
 describe('goldHelper ledger integration', () => {
@@ -244,5 +244,41 @@ describe('goldHelper ledger integration', () => {
                 objectId: 'session-1',
             }),
         ])
+    })
+
+    test('earnGold processes a reward key only once', async () => {
+        admin.__mock.setDoc('users/user-1', {
+            gold: 10,
+            dailyGold: 100,
+            projectIds: ['project-1'],
+        })
+
+        const first = await earnGold('project-1', 'user-1', 4, '21042026', 1776729600000, 20260421, {
+            rewardKey: 'task_progress:task-1:1776729600000:reviewer-1',
+            objectId: 'task-1',
+            objectType: 'task',
+        })
+        const second = await earnGold('project-1', 'user-1', 4, '21042026', 1776729600000, 20260421, {
+            rewardKey: 'task_progress:task-1:1776729600000:reviewer-1',
+            objectId: 'task-1',
+            objectType: 'task',
+        })
+
+        expect(first).toEqual(expect.objectContaining({ success: true, amount: 4, newBalance: 14 }))
+        expect(second).toEqual(expect.objectContaining({ success: true, alreadyProcessed: true, amount: 4 }))
+        expect(admin.__mock.getDoc('users/user-1').gold).toBe(14)
+        expect(admin.__mock.getDoc('users/user-1').dailyGold).toBe(96)
+        expect(
+            admin.__mock.getDoc('users/user-1/goldRewardClaims/task_progress:task-1:1776729600000:reviewer-1')
+        ).toEqual(
+            expect.objectContaining({
+                amount: 4,
+                status: 'processed',
+                projectId: 'project-1',
+                objectId: 'task-1',
+                objectType: 'task',
+            })
+        )
+        expect(admin.__mock.getDocsByPrefix('users/user-1/goldTransactions/')).toHaveLength(1)
     })
 })

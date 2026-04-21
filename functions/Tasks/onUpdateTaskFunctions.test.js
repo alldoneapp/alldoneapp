@@ -72,6 +72,10 @@ jest.mock('./recurringTasksCloud', () => ({
     createRecurringTaskInCloudFunction: jest.fn(() => Promise.resolve()),
 }))
 
+jest.mock('../Gold/goldHelper', () => ({
+    earnGold: jest.fn(() => Promise.resolve()),
+}))
+
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskSomedaySelectedFeed: jest.fn(() => Promise.resolve()),
 }))
@@ -79,7 +83,7 @@ jest.mock('../Feeds/tasksFeeds', () => ({
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
-const { archiveGmailTaskIfNeeded } = require('./onUpdateTaskFunctions')
+const { archiveGmailTaskIfNeeded, buildTaskProgressReward } = require('./onUpdateTaskFunctions')
 
 describe('onUpdateTaskFunctions Gmail archive handling', () => {
     const baseTask = {
@@ -217,5 +221,63 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
                 }),
             }),
         })
+    })
+
+    test('builds deterministic reward data for open task completion', () => {
+        const reward = buildTaskProgressReward(
+            'task-1',
+            {
+                done: false,
+                userIds: ['owner-1'],
+                parentId: null,
+            },
+            {
+                done: true,
+                userId: 'owner-1',
+                userIds: ['owner-1'],
+                currentReviewerId: -2,
+                completed: 1776729600000,
+                parentId: null,
+            }
+        )
+
+        expect(reward).toEqual(
+            expect.objectContaining({
+                userId: 'owner-1',
+                rewardKey: 'task_progress:task-1:1776729600000:-2',
+                timestamp: 1776729600000,
+                dayDate: 20260421,
+                slimDate: '21042026',
+            })
+        )
+        expect(reward.gold).toBeGreaterThanOrEqual(1)
+        expect(reward.gold).toBeLessThanOrEqual(5)
+    })
+
+    test('builds deterministic reward data for workflow forward movement', () => {
+        const reward = buildTaskProgressReward(
+            'task-2',
+            {
+                done: false,
+                userId: 'owner-1',
+                userIds: ['owner-1', 'reviewer-1'],
+                parentId: null,
+            },
+            {
+                done: false,
+                userId: 'owner-1',
+                userIds: ['owner-1', 'reviewer-1', 'reviewer-2'],
+                currentReviewerId: 'reviewer-2',
+                completed: 1776729600000,
+                parentId: null,
+            }
+        )
+
+        expect(reward).toEqual(
+            expect.objectContaining({
+                userId: 'reviewer-1',
+                rewardKey: 'task_progress:task-2:1776729600000:reviewer-2',
+            })
+        )
     })
 })

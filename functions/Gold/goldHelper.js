@@ -22,6 +22,21 @@ function logGoldAnalytics(userId, eventName, amount, source, context = {}) {
     })
 }
 
+function getProjectIdsFromUserData(userData = {}) {
+    const projectIds = new Set()
+
+    ;['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds'].forEach(key => {
+        const ids = userData?.[key]
+        if (!Array.isArray(ids)) return
+
+        ids.forEach(id => {
+            if (typeof id === 'string' && id.trim()) projectIds.add(id.trim())
+        })
+    })
+
+    return projectIds
+}
+
 const addMonthlyPrmiumGoldToUsers = async () => {
     const users = await getUsersByPremiumStatus(PLAN_STATUS_PREMIUM, false)
 
@@ -100,24 +115,109 @@ const addMonthlyGoldToUser = async (user, premiumUser) => {
     await Promise.all(promises)
 }
 
-const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate) => {
+const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, context = {}) => {
     const userRef = admin.firestore().doc(`users/${userId}`)
     const statisticsRef = admin.firestore().doc(`statistics/${projectId}/${userId}/${slimDate}`)
+    const rewardKey = typeof context.rewardKey === 'string' && context.rewardKey.trim() ? context.rewardKey.trim() : ''
+    const rewardRef = rewardKey ? userRef.collection('goldRewardClaims').doc(rewardKey) : null
     let result = { success: false, message: 'User not found' }
+
+    console.log('[gold][server] earnGold requested', {
+        projectId,
+        userId,
+        requestedGold: Number(gold) || 0,
+        slimDate,
+        timestamp,
+        dayDate,
+        rewardKey,
+        objectId: context.objectId || '',
+        objectType: context.objectType || '',
+    })
 
     await admin.firestore().runTransaction(async transaction => {
         const userDoc = await transaction.get(userRef)
 
         if (!userDoc.exists) {
+            console.warn('[gold][server] earnGold aborted because user was not found', {
+                projectId,
+                userId,
+                rewardKey,
+            })
             result = { success: false, message: 'User not found' }
             return
         }
 
         const userData = userDoc.data() || {}
+        const accessibleProjectIds = getProjectIdsFromUserData(userData)
+
+        console.log('[gold][server] Loaded user gold state', {
+            projectId,
+            userId,
+            currentGold: Number(userData.gold) || 0,
+            dailyGold: Number(userData.dailyGold) || 0,
+            rewardKey,
+            projectAccessCount: accessibleProjectIds.size,
+        })
+
+        if (projectId && accessibleProjectIds.size > 0 && !accessibleProjectIds.has(projectId)) {
+            console.warn('[gold][server] earnGold aborted because user has no access to project', {
+                projectId,
+                userId,
+                rewardKey,
+            })
+            result = {
+                success: false,
+                message: 'User has no access to project',
+                currentGold: Number(userData.gold) || 0,
+            }
+            return
+        }
+
+        if (rewardRef) {
+            const rewardDoc = await transaction.get(rewardRef)
+            if (rewardDoc.exists) {
+                console.log('[gold][server] Duplicate reward key detected, returning previous result', {
+                    projectId,
+                    userId,
+                    rewardKey,
+                    previousAmount: rewardDoc.data()?.amount || 0,
+                    previousStatus: rewardDoc.data()?.status || '',
+                })
+                result = { success: true, alreadyProcessed: true, amount: rewardDoc.data()?.amount || 0 }
+                return
+            }
+        }
+
         const dailyGold = Number(userData.dailyGold) || 0
         const goldToIncrease = Math.min(Number(gold) || 0, dailyGold)
 
+        console.log('[gold][server] Computed earnGold amount', {
+            projectId,
+            userId,
+            rewardKey,
+            requestedGold: Number(gold) || 0,
+            dailyGold,
+            goldToIncrease,
+        })
+
         if (goldToIncrease <= 0) {
+            if (rewardRef) {
+                transaction.set(rewardRef, {
+                    amount: 0,
+                    projectId,
+                    objectId: context.objectId || '',
+                    objectType: context.objectType || '',
+                    status: 'skipped_no_daily_gold',
+                    timestamp,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                })
+            }
+            console.log('[gold][server] earnGold skipped because no daily gold remained', {
+                projectId,
+                userId,
+                rewardKey,
+                currentGold: Number(userData.gold) || 0,
+            })
             result = { success: false, message: 'No daily gold left', currentGold: Number(userData.gold) || 0 }
             return
         }
@@ -129,11 +229,48 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate) =
             delta: goldToIncrease,
             direction: 'earn',
             source: 'task_completion',
-            context: { projectId },
+            context: {
+                projectId,
+                objectId: context.objectId || '',
+                objectType: context.objectType || '',
+            },
             additionalUserFields: { dailyGold: dailyGold - goldToIncrease },
         })
 
-        if (!result.success) return
+        if (!result.success) {
+            console.warn('[gold][server] applyGoldChangeInTransaction failed', {
+                projectId,
+                userId,
+                rewardKey,
+                message: result.message || '',
+                currentGold: result.currentGold,
+            })
+            return
+        }
+
+        if (rewardRef) {
+            transaction.set(rewardRef, {
+                amount: goldToIncrease,
+                entryId: result.entryId,
+                projectId,
+                objectId: context.objectId || '',
+                objectType: context.objectType || '',
+                status: 'processed',
+                timestamp,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+        }
+
+        console.log('[gold][server] Applied task reward transaction', {
+            projectId,
+            userId,
+            rewardKey,
+            amount: goldToIncrease,
+            previousBalance: result.previousBalance,
+            newBalance: result.newBalance,
+            remainingDailyGold: dailyGold - goldToIncrease,
+            entryId: result.entryId,
+        })
 
         transaction.set(
             statisticsRef,
@@ -146,9 +283,27 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate) =
         )
     })
 
-    if (result.success) {
+    if (result.success && !result.alreadyProcessed && result.amount > 0) {
+        console.log('[gold][server] Logging analytics for successful task reward', {
+            projectId,
+            userId,
+            rewardKey,
+            amount: result.amount,
+        })
         await logGoldAnalytics(userId, 'earn_gold', result.amount, 'task_completion', { projectId })
     }
+
+    console.log('[gold][server] earnGold completed', {
+        projectId,
+        userId,
+        rewardKey,
+        success: !!result.success,
+        alreadyProcessed: !!result.alreadyProcessed,
+        amount: result.amount || 0,
+        message: result.message || '',
+        currentGold: result.currentGold,
+        newBalance: result.newBalance,
+    })
 
     return result
 }

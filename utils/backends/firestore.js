@@ -1747,25 +1747,76 @@ export async function spentGold(userId, goldToReduce, context = {}) {
     })
 }
 
-export function earnGold(projectId, userId, maxGold, checkBoxId) {
+function getRewardGoldAmount(maxGold, rewardKey) {
+    const normalizedMaxGold = Number(maxGold)
+    if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0) return 0
+
+    if (!rewardKey) {
+        return Math.floor(Math.random() * normalizedMaxGold) + 1
+    }
+
+    let hash = 0
+    for (let i = 0; i < rewardKey.length; i++) {
+        hash = (hash * 31 + rewardKey.charCodeAt(i)) % 2147483647
+    }
+
+    return (Math.abs(hash) % normalizedMaxGold) + 1
+}
+
+export function earnGold(projectId, userId, maxGold, checkBoxId, rewardContext = {}) {
     const { selectedSidebarTab, loggedUser, route } = store.getState()
 
     //VALUES ARE IN THE RANGE OF 1-maxGold (INCLUDED maxGold)
-    const gold = Math.floor(Math.random() * maxGold) + 1
+    const gold = getRewardGoldAmount(maxGold, rewardContext.rewardKey)
 
     const goldToIncrease = gold > loggedUser.dailyGold ? loggedUser.dailyGold : gold
+    const timestamp = Number(rewardContext.timestamp) || moment().valueOf()
+    const date = moment(timestamp)
+    const slimDate = date.format('DDMMYYYY')
+    const dayDate = parseInt(date.format('YYYYMMDD'))
+
+    console.log('[gold][client] Prepared task reward call', {
+        projectId,
+        userId,
+        maxGold,
+        computedGold: gold,
+        goldToIncrease,
+        loggedUserId: loggedUser.uid,
+        loggedUserDailyGold: loggedUser.dailyGold,
+        rewardKey: rewardContext.rewardKey || '',
+        objectId: rewardContext.objectId || '',
+        objectType: rewardContext.objectType || '',
+        timestamp,
+        checkBoxId: checkBoxId || '',
+    })
 
     if (goldToIncrease > 0) {
         if (userId === loggedUser.uid && checkBoxId) {
             store.dispatch(setTriggerGoldAnimation(goldToIncrease, checkBoxId))
         }
 
-        const date = moment()
-        const slimDate = date.format('DDMMYYYY')
-        const dayDate = parseInt(date.format('YYYYMMDD'))
-        const timestamp = date.valueOf()
-
-        runHttpsCallableFunction('earnGoldSecondGen', { projectId, userId, gold, slimDate, timestamp, dayDate })
+        runHttpsCallableFunction('earnGoldSecondGen', {
+            projectId,
+            userId,
+            gold,
+            slimDate,
+            timestamp,
+            dayDate,
+            rewardKey: rewardContext.rewardKey,
+            objectId: rewardContext.objectId,
+            objectType: rewardContext.objectType,
+        })
+    } else {
+        console.log('[gold][client] Skipping task reward call because no daily gold is available locally', {
+            projectId,
+            userId,
+            computedGold: gold,
+            loggedUserDailyGold: loggedUser.dailyGold,
+            rewardKey: rewardContext.rewardKey || '',
+            objectId: rewardContext.objectId || '',
+            objectType: rewardContext.objectType || '',
+            timestamp,
+        })
     }
 }
 
