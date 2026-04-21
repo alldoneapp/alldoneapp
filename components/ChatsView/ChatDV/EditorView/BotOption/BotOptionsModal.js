@@ -133,9 +133,10 @@ export default function BotOptionsModal({
             updateObjectState(updatedObject)
         }
 
-        dispatch(setAssistantEnabled(true))
-        if (onSelectBotOption) onSelectBotOption()
-        closeModal()
+        if (inChatTab) {
+            dispatch(setAssistantEnabled(true))
+        }
+        setShowAssistants(false)
     }
 
     const enableAssistantForObject = () => {
@@ -165,7 +166,6 @@ export default function BotOptionsModal({
                 <AssistantModal
                     closeModal={() => {
                         setShowAssistants(false)
-                        onSelectBotOption()
                     }}
                     projectId={projectId}
                     updateAssistant={updateAssistant}
