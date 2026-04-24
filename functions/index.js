@@ -3077,6 +3077,73 @@ exports.getGmailLabelingConfigSecondGen = onCall(
     }
 )
 
+exports.upsertCalendarProjectRoutingConfigSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId, config } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            assertPremiumFeatureAccess(userData, 'Calendar project routing')
+            const calendarEmail = userData.apisConnected?.[projectId]?.calendarEmail || userData.email || ''
+            const { upsertCalendarProjectRoutingConfig } = require('./GoogleCalendar/calendarProjectRoutingConfig')
+            const savedConfig = await upsertCalendarProjectRoutingConfig(
+                auth.uid,
+                projectId,
+                config || {},
+                calendarEmail
+            )
+            return { config: savedConfig }
+        } catch (error) {
+            console.error('Error saving Calendar project routing config:', error)
+            if (error instanceof HttpsError) throw error
+            if (error?.validationErrors) {
+                throw new HttpsError('invalid-argument', error.validationErrors.join(' '))
+            }
+            throw new HttpsError('internal', error.message || 'Failed to save Calendar project routing config')
+        }
+    }
+)
+
+exports.getCalendarProjectRoutingConfigSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { projectId } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            assertPremiumFeatureAccess(userData, 'Calendar project routing')
+            const calendarEmail = userData.apisConnected?.[projectId]?.calendarEmail || userData.email || ''
+            const {
+                getCalendarProjectRoutingConfigWithPreview,
+            } = require('./GoogleCalendar/calendarProjectRoutingConfig')
+            return await getCalendarProjectRoutingConfigWithPreview(auth.uid, projectId, calendarEmail, userData)
+        } catch (error) {
+            console.error('Error loading Calendar project routing config:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to load Calendar project routing config')
+        }
+    }
+)
+
 exports.setDefaultGmailConnectionSecondGen = onCall(
     {
         timeoutSeconds: 60,

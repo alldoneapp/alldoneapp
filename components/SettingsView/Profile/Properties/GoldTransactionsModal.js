@@ -44,6 +44,7 @@ function getTransactionLabel(source) {
         goal_unlock: 'Goal unlock',
         gmail_labeling: 'Gmail labeling',
         gmail_label_follow_up: 'Gmail label follow-up',
+        calendar_project_routing: 'Calendar project routing',
         linkedin_enrichment: 'LinkedIn enrichment',
         linkedin_search: 'LinkedIn search',
         monthly_gold: 'Monthly gold',
@@ -65,6 +66,7 @@ function getTransactionSubtitle(entry) {
     if (entry?.note) return entry.note
 
     if (entry?.channel === 'gmail') return translate('Triggered from Gmail')
+    if (entry?.channel === 'calendar') return translate('Triggered from Calendar')
     if (entry?.channel === 'assistant') return translate('Triggered from the assistant')
     if (entry?.channel === 'whatsapp') return translate('Triggered from WhatsApp')
     if (entry?.channel === 'linkedin') return translate('Triggered from LinkedIn')

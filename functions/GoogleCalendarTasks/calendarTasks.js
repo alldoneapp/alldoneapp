@@ -96,7 +96,7 @@ const computeSortIndex = (start, timezoneOffset = 0) => {
     return moment(start.dateTime).valueOf()
 }
 
-const generateDataToUpdate = (event, email, projectId = null, timezoneOffset = 0) => {
+const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOffset = 0) => {
     const { start, end, summary, htmlLink, description } = event
 
     const name = summary.toString()
@@ -119,8 +119,8 @@ const generateDataToUpdate = (event, email, projectId = null, timezoneOffset = 0
     const calendarData = { link: htmlLink, start, end, email }
 
     // Store the original project ID if this is a new task
-    if (projectId) {
-        calendarData.originalProjectId = projectId
+    if (originalProjectId) {
+        calendarData.originalProjectId = originalProjectId
     }
 
     const dataToUpdate = {
@@ -136,12 +136,20 @@ const generateDataToUpdate = (event, email, projectId = null, timezoneOffset = 0
     return dataToUpdate
 }
 
-const addOrUpdateCalendarTask = async (projectId, task, event, userId, email, timezoneOffset = 0) => {
+const addOrUpdateCalendarTask = async (
+    syncProjectId,
+    targetProjectId,
+    task,
+    event,
+    userId,
+    email,
+    timezoneOffset = 0
+) => {
     const { start, id: taskId } = event
 
-    // Pass projectId only for new tasks, otherwise preserve existing originalProjectId
+    // Pass the calendar-connected project for new tasks, even when the task is routed elsewhere.
     const isNewTask = !task
-    const dataToUpdate = generateDataToUpdate(event, email, isNewTask ? projectId : null, timezoneOffset)
+    const dataToUpdate = generateDataToUpdate(event, email, isNewTask ? syncProjectId : null, timezoneOffset)
 
     // Preserve manual pinning info and originalProjectId from existing task
     if (task && task.calendarData) {
@@ -158,10 +166,10 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email, ti
         const isPinned = Boolean(task.calendarData && task.calendarData.pinnedToProjectId)
 
         // If exists under a different project, same calendar email, and not pinned,
-        // move it to the newly connected project to enforce single-project ownership per account.
-        if (!isPinned && task.projectId !== projectId && task.calendarData && task.calendarData.email === email) {
+        // move it to the selected project to enforce single-project ownership per account.
+        if (!isPinned && task.projectId !== targetProjectId && task.calendarData && task.calendarData.email === email) {
             const oldRef = admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`)
-            const newRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
+            const newRef = admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`)
 
             // Merge existing task data with the latest calendar fields, omitting non-persisted props
             const { id, projectId: oldProjectId, ...persistableTask } = task
@@ -184,7 +192,7 @@ const addOrUpdateCalendarTask = async (projectId, task, event, userId, email, ti
         }
     } else {
         dataToUpdate.sortIndex = computeSortIndex(start, timezoneOffset)
-        await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).set(generateTask(dataToUpdate, userId))
+        await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(generateTask(dataToUpdate, userId))
     }
 }
 
@@ -196,7 +204,14 @@ const createTasksMap = tasks => {
     return tasksMap
 }
 
-const addCalendarEvents = async (events, syncProjectId, userId, email, timezoneOffset = 0) => {
+const addCalendarEvents = async (
+    events,
+    syncProjectId,
+    userId,
+    email,
+    timezoneOffset = 0,
+    targetProjectIdsByEventId = {}
+) => {
     const user = await getUserData(userId)
     if (!user) {
         return
@@ -217,7 +232,10 @@ const addCalendarEvents = async (events, syncProjectId, userId, email, timezoneO
     const promises = []
     filteredEvents.forEach(event => {
         const existingTask = tasksMap[event.id]
-        promises.push(addOrUpdateCalendarTask(syncProjectId, existingTask, event, userId, email, timezoneOffset))
+        const targetProjectId = targetProjectIdsByEventId[event.id] || syncProjectId
+        promises.push(
+            addOrUpdateCalendarTask(syncProjectId, targetProjectId, existingTask, event, userId, email, timezoneOffset)
+        )
     })
 
     await Promise.all(promises)
@@ -386,4 +404,4 @@ const removeCalendarTasks = async (
     await batch.commit()
 }
 
-module.exports = { removeCalendarTasks, generateTask, addCalendarEvents }
+module.exports = { removeCalendarTasks, generateTask, addCalendarEvents, filterEvents, addOrUpdateCalendarTask }

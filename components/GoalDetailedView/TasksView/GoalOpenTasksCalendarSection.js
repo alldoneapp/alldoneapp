@@ -11,7 +11,6 @@ import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 
 export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks, dateIndex, isActiveOrganizeMode }) {
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
 
     const openLink = () => {
         return window.open(
@@ -55,6 +54,7 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
     }
 
     const calendarConnectedProjectId = getCalendarConnectedProjectId()
+    const isConnected = !!apisConnected?.[calendarConnectedProjectId]?.calendar
     console.log(
         '[GoalCalendarSection] Final calendarConnectedProjectId:',
         calendarConnectedProjectId,
