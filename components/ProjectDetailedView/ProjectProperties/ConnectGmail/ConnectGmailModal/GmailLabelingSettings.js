@@ -15,6 +15,9 @@ import {
     saveGmailLabelingConfig,
 } from '../../../../../utils/backends/Gmail/gmailLabelingFirestore'
 import {
+    GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+    GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    buildDefaultConfigPreviewFromProjects,
     createEmptyLabel,
     formatPostLabelActionStatus,
     normalizeConfig,
@@ -241,6 +244,75 @@ function SyncAuditSection({ entries }) {
     )
 }
 
+function PromptModeSegment({ value, disabled, onChange }) {
+    const options = [
+        { key: GMAIL_LABELING_PROMPT_MODE_DEFAULT, label: 'Default' },
+        { key: GMAIL_LABELING_PROMPT_MODE_CUSTOM, label: 'Custom' },
+    ]
+
+    return (
+        <View style={localStyles.modeSegment}>
+            {options.map(option => {
+                const active = value === option.key
+                return (
+                    <TouchableOpacity
+                        key={option.key}
+                        style={[localStyles.modeButton, active && localStyles.modeButtonActive]}
+                        onPress={() => onChange(option.key)}
+                        disabled={disabled}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={[localStyles.modeButtonText, active && localStyles.modeButtonTextActive]}>
+                            {option.label}
+                        </Text>
+                    </TouchableOpacity>
+                )
+            })}
+        </View>
+    )
+}
+
+function DefaultLabelingPreview({ preview }) {
+    const labelDefinitions = Array.isArray(preview?.labelDefinitions) ? preview.labelDefinitions : []
+
+    return (
+        <View style={localStyles.section}>
+            <Text style={localStyles.inputLabel}>Generated project prompt</Text>
+            <CustomTextInput3
+                containerStyle={[localStyles.input, localStyles.textArea, localStyles.multilineInput]}
+                initialTextExtended={preview?.prompt || ''}
+                placeholder={''}
+                placeholderTextColor={colors.Text03}
+                multiline={true}
+                onChangeText={() => {}}
+                styleTheme={NEW_TOPIC_MODAL_THEME}
+                disabledTabKey={true}
+                disabledTags={true}
+                disabledEdition={true}
+                externalTextStyle={localStyles.multilineInputText}
+                keepBreakLines={true}
+                key={`gmail-default-prompt-${labelDefinitions.length}`}
+            />
+            <Text style={localStyles.sectionTitle}>Generated project labels</Text>
+            {labelDefinitions.length > 0 ? (
+                labelDefinitions.map((label, index) => (
+                    <View key={label.key || `${label.gmailLabelName}-${index}`} style={localStyles.previewLabelCard}>
+                        <Text style={localStyles.previewLabelName}>{label.gmailLabelName}</Text>
+                        <Text style={localStyles.helperText}>{label.description}</Text>
+                    </View>
+                ))
+            ) : (
+                <View style={localStyles.warningCard}>
+                    <Text style={localStyles.warningTitle}>No active projects found</Text>
+                    <Text style={localStyles.helperText}>
+                        Default Gmail labeling needs at least one active project to generate labels.
+                    </Text>
+                </View>
+            )}
+        </View>
+    )
+}
+
 export default function GmailLabelingSettings({
     projectId,
     isConnected,
@@ -249,7 +321,11 @@ export default function GmailLabelingSettings({
     onRegisterCloseHandlers,
 }) {
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
+    const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
+    const [defaultConfigPreview, setDefaultConfigPreview] = useState(() =>
+        buildDefaultConfigPreviewFromProjects(loggedUserProjects)
+    )
     const [syncState, setSyncState] = useState(null)
     const [syncResult, setSyncResult] = useState(null)
     const [loading, setLoading] = useState(false)
@@ -291,6 +367,9 @@ export default function GmailLabelingSettings({
 
                 const normalizedConfig = normalizeConfig(projectId, result?.config || {}, connectedEmail)
                 setConfig(normalizedConfig)
+                setDefaultConfigPreview(
+                    result?.defaultConfigPreview || buildDefaultConfigPreviewFromProjects(loggedUserProjects)
+                )
                 setSyncState(result?.state || null)
                 setRecentAuditEntries(Array.isArray(result?.recentAuditEntries) ? result.recentAuditEntries : [])
                 setSavedConfigSnapshot(sanitizeConfigForSave(normalizedConfig))
@@ -310,7 +389,22 @@ export default function GmailLabelingSettings({
         return () => {
             isMounted = false
         }
-    }, [projectId, isPremiumUser, isConnected, authStatus?.hasCredentials, authStatus?.hasModifyScope, connectedEmail])
+    }, [
+        projectId,
+        isPremiumUser,
+        isConnected,
+        authStatus?.hasCredentials,
+        authStatus?.hasModifyScope,
+        connectedEmail,
+        loggedUserProjects,
+    ])
+
+    useEffect(() => {
+        const nextPreview = buildDefaultConfigPreviewFromProjects(loggedUserProjects)
+        if (!defaultConfigPreview?.labelDefinitions?.length && nextPreview.labelDefinitions.length > 0) {
+            setDefaultConfigPreview(nextPreview)
+        }
+    }, [defaultConfigPreview?.labelDefinitions?.length, loggedUserProjects])
 
     const updateConfig = patch => {
         setConfig(currentConfig => ({
@@ -444,6 +538,7 @@ export default function GmailLabelingSettings({
     }
 
     const showInitialLoadingState = !initialLoadComplete && !error
+    const isDefaultPromptMode = config.promptMode === GMAIL_LABELING_PROMPT_MODE_DEFAULT
 
     return (
         <View style={localStyles.container}>
@@ -501,6 +596,13 @@ export default function GmailLabelingSettings({
                                         disabled={!canManage}
                                     />
                                 </View>
+
+                                <Text style={localStyles.inputLabel}>Labeling mode</Text>
+                                <PromptModeSegment
+                                    value={config.promptMode}
+                                    disabled={!canManage}
+                                    onChange={promptMode => updateConfig({ promptMode })}
+                                />
                             </View>
 
                             <View style={localStyles.section}>
@@ -526,88 +628,25 @@ export default function GmailLabelingSettings({
                                 />
                             </View>
 
-                            <View style={localStyles.section}>
-                                <Text style={localStyles.inputLabel}>User prompt</Text>
-                                <CustomTextInput3
-                                    containerStyle={[
-                                        localStyles.input,
-                                        localStyles.textArea,
-                                        localStyles.multilineInput,
-                                    ]}
-                                    initialTextExtended={config.prompt}
-                                    placeholder={translate(
-                                        'Classify incoming Gmail messages into the configured labels'
-                                    )}
-                                    placeholderTextColor={colors.Text03}
-                                    multiline={true}
-                                    onChangeText={prompt => updateConfig({ prompt })}
-                                    styleTheme={NEW_TOPIC_MODAL_THEME}
-                                    disabledTabKey={true}
-                                    disabledTags={true}
-                                    disabledEdition={!canManage}
-                                    externalTextStyle={localStyles.multilineInputText}
-                                    keepBreakLines={true}
-                                    allowPlainEnterBreakLines={true}
-                                    onKeyPress={stopEnterPropagation}
-                                    key={`gmail-prompt-${projectId}-${connectedEmail || 'default'}`}
-                                />
-                            </View>
-
-                            <View style={localStyles.section}>
-                                <Text style={localStyles.sectionTitle}>{translate('Rules')}</Text>
-                                {config.labelDefinitions.map((label, index) => (
-                                    <View key={label.id || `${label.key}-${index}`} style={localStyles.labelCard}>
-                                        <Text style={localStyles.inputLabel}>
-                                            {translate('Gmail rule number', { number: index + 1 })}
-                                        </Text>
-                                        <TextInput
-                                            value={label.gmailLabelName}
-                                            onChangeText={gmailLabelName => updateLabel(index, { gmailLabelName })}
-                                            editable={canManage}
-                                            style={localStyles.input}
-                                            placeholder={translate('Gmail label name')}
-                                            placeholderTextColor={colors.Text03}
-                                        />
-                                        <Text style={localStyles.inputLabel}>Rule direction</Text>
-                                        <View style={localStyles.directionRow}>
-                                            {DIRECTION_OPTIONS.map(option => {
-                                                const active = (label.directionScope || 'incoming') === option.key
-                                                return (
-                                                    <TouchableOpacity
-                                                        key={option.key}
-                                                        style={[
-                                                            localStyles.directionButton,
-                                                            active && localStyles.directionButtonActive,
-                                                        ]}
-                                                        onPress={() =>
-                                                            updateLabel(index, { directionScope: option.key })
-                                                        }
-                                                        disabled={!canManage}
-                                                        activeOpacity={0.8}
-                                                    >
-                                                        <Text
-                                                            style={[
-                                                                localStyles.directionButtonText,
-                                                                active && localStyles.directionButtonTextActive,
-                                                            ]}
-                                                        >
-                                                            {option.label}
-                                                        </Text>
-                                                    </TouchableOpacity>
-                                                )
-                                            })}
-                                        </View>
+                            {isDefaultPromptMode ? (
+                                <DefaultLabelingPreview preview={defaultConfigPreview} />
+                            ) : (
+                                <>
+                                    <View style={localStyles.section}>
+                                        <Text style={localStyles.inputLabel}>User prompt</Text>
                                         <CustomTextInput3
                                             containerStyle={[
                                                 localStyles.input,
-                                                localStyles.descriptionInput,
+                                                localStyles.textArea,
                                                 localStyles.multilineInput,
                                             ]}
-                                            initialTextExtended={label.description}
-                                            placeholder={translate('Describe when this label should be used')}
+                                            initialTextExtended={config.prompt}
+                                            placeholder={translate(
+                                                'Classify incoming Gmail messages into the configured labels'
+                                            )}
                                             placeholderTextColor={colors.Text03}
                                             multiline={true}
-                                            onChangeText={description => updateLabel(index, { description })}
+                                            onChangeText={prompt => updateConfig({ prompt })}
                                             styleTheme={NEW_TOPIC_MODAL_THEME}
                                             disabledTabKey={true}
                                             disabledTags={true}
@@ -616,65 +655,146 @@ export default function GmailLabelingSettings({
                                             keepBreakLines={true}
                                             allowPlainEnterBreakLines={true}
                                             onKeyPress={stopEnterPropagation}
-                                            key={`gmail-rule-${label.id || index}`}
-                                        />
-                                        <View style={localStyles.switchRow}>
-                                            <Text style={localStyles.inputLabel}>
-                                                {translate('Auto-archive when matched')}
-                                            </Text>
-                                            <Switch
-                                                active={!!label.autoArchive}
-                                                activeSwitch={() => updateLabel(index, { autoArchive: true })}
-                                                deactiveSwitch={() => updateLabel(index, { autoArchive: false })}
-                                                disabled={!canManage}
-                                            />
-                                        </View>
-                                        <Text style={localStyles.inputLabel}>Follow-up prompt after labeling</Text>
-                                        <CustomTextInput3
-                                            containerStyle={[
-                                                localStyles.input,
-                                                localStyles.postLabelPromptInput,
-                                                localStyles.multilineInput,
-                                            ]}
-                                            initialTextExtended={label.postLabelPrompt}
-                                            placeholder={
-                                                'Optional: run an assistant prompt after labeling, for example create_task actions.'
-                                            }
-                                            placeholderTextColor={colors.Text03}
-                                            multiline={true}
-                                            onChangeText={postLabelPrompt => updateLabel(index, { postLabelPrompt })}
-                                            styleTheme={NEW_TOPIC_MODAL_THEME}
-                                            disabledTabKey={true}
-                                            disabledTags={true}
-                                            disabledEdition={!canManage}
-                                            externalTextStyle={localStyles.multilineInputText}
-                                            keepBreakLines={true}
-                                            allowPlainEnterBreakLines={true}
-                                            onKeyPress={stopEnterPropagation}
-                                            key={`gmail-rule-post-label-${label.id || index}`}
-                                        />
-                                        <Button
-                                            title={translate('Remove rule')}
-                                            type="ghost"
-                                            onPress={() => removeLabel(index)}
-                                            disabled={!canManage || config.labelDefinitions.length <= 1}
-                                            titleStyle={{ color: colors.UtilityRed200 }}
-                                            buttonStyle={{
-                                                alignSelf: 'flex-start',
-                                                borderColor: colors.UtilityRed200,
-                                                borderWidth: 1,
-                                            }}
+                                            key={`gmail-prompt-${projectId}-${connectedEmail || 'default'}`}
                                         />
                                     </View>
-                                ))}
-                                <Button
-                                    title={translate('Add rule')}
-                                    type="ghost"
-                                    onPress={addLabel}
-                                    disabled={!canManage}
-                                    buttonStyle={{ alignSelf: 'flex-start' }}
-                                />
-                            </View>
+
+                                    <View style={localStyles.section}>
+                                        <Text style={localStyles.sectionTitle}>{translate('Rules')}</Text>
+                                        {config.labelDefinitions.map((label, index) => (
+                                            <View
+                                                key={label.id || `${label.key}-${index}`}
+                                                style={localStyles.labelCard}
+                                            >
+                                                <Text style={localStyles.inputLabel}>
+                                                    {translate('Gmail rule number', { number: index + 1 })}
+                                                </Text>
+                                                <TextInput
+                                                    value={label.gmailLabelName}
+                                                    onChangeText={gmailLabelName =>
+                                                        updateLabel(index, { gmailLabelName })
+                                                    }
+                                                    editable={canManage}
+                                                    style={localStyles.input}
+                                                    placeholder={translate('Gmail label name')}
+                                                    placeholderTextColor={colors.Text03}
+                                                />
+                                                <Text style={localStyles.inputLabel}>Rule direction</Text>
+                                                <View style={localStyles.directionRow}>
+                                                    {DIRECTION_OPTIONS.map(option => {
+                                                        const active =
+                                                            (label.directionScope || 'incoming') === option.key
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={option.key}
+                                                                style={[
+                                                                    localStyles.directionButton,
+                                                                    active && localStyles.directionButtonActive,
+                                                                ]}
+                                                                onPress={() =>
+                                                                    updateLabel(index, { directionScope: option.key })
+                                                                }
+                                                                disabled={!canManage}
+                                                                activeOpacity={0.8}
+                                                            >
+                                                                <Text
+                                                                    style={[
+                                                                        localStyles.directionButtonText,
+                                                                        active && localStyles.directionButtonTextActive,
+                                                                    ]}
+                                                                >
+                                                                    {option.label}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        )
+                                                    })}
+                                                </View>
+                                                <CustomTextInput3
+                                                    containerStyle={[
+                                                        localStyles.input,
+                                                        localStyles.descriptionInput,
+                                                        localStyles.multilineInput,
+                                                    ]}
+                                                    initialTextExtended={label.description}
+                                                    placeholder={translate('Describe when this label should be used')}
+                                                    placeholderTextColor={colors.Text03}
+                                                    multiline={true}
+                                                    onChangeText={description => updateLabel(index, { description })}
+                                                    styleTheme={NEW_TOPIC_MODAL_THEME}
+                                                    disabledTabKey={true}
+                                                    disabledTags={true}
+                                                    disabledEdition={!canManage}
+                                                    externalTextStyle={localStyles.multilineInputText}
+                                                    keepBreakLines={true}
+                                                    allowPlainEnterBreakLines={true}
+                                                    onKeyPress={stopEnterPropagation}
+                                                    key={`gmail-rule-${label.id || index}`}
+                                                />
+                                                <View style={localStyles.switchRow}>
+                                                    <Text style={localStyles.inputLabel}>
+                                                        {translate('Auto-archive when matched')}
+                                                    </Text>
+                                                    <Switch
+                                                        active={!!label.autoArchive}
+                                                        activeSwitch={() => updateLabel(index, { autoArchive: true })}
+                                                        deactiveSwitch={() =>
+                                                            updateLabel(index, { autoArchive: false })
+                                                        }
+                                                        disabled={!canManage}
+                                                    />
+                                                </View>
+                                                <Text style={localStyles.inputLabel}>
+                                                    Follow-up prompt after labeling
+                                                </Text>
+                                                <CustomTextInput3
+                                                    containerStyle={[
+                                                        localStyles.input,
+                                                        localStyles.postLabelPromptInput,
+                                                        localStyles.multilineInput,
+                                                    ]}
+                                                    initialTextExtended={label.postLabelPrompt}
+                                                    placeholder={
+                                                        'Optional: run an assistant prompt after labeling, for example create_task actions.'
+                                                    }
+                                                    placeholderTextColor={colors.Text03}
+                                                    multiline={true}
+                                                    onChangeText={postLabelPrompt =>
+                                                        updateLabel(index, { postLabelPrompt })
+                                                    }
+                                                    styleTheme={NEW_TOPIC_MODAL_THEME}
+                                                    disabledTabKey={true}
+                                                    disabledTags={true}
+                                                    disabledEdition={!canManage}
+                                                    externalTextStyle={localStyles.multilineInputText}
+                                                    keepBreakLines={true}
+                                                    allowPlainEnterBreakLines={true}
+                                                    onKeyPress={stopEnterPropagation}
+                                                    key={`gmail-rule-post-label-${label.id || index}`}
+                                                />
+                                                <Button
+                                                    title={translate('Remove rule')}
+                                                    type="ghost"
+                                                    onPress={() => removeLabel(index)}
+                                                    disabled={!canManage || config.labelDefinitions.length <= 1}
+                                                    titleStyle={{ color: colors.UtilityRed200 }}
+                                                    buttonStyle={{
+                                                        alignSelf: 'flex-start',
+                                                        borderColor: colors.UtilityRed200,
+                                                        borderWidth: 1,
+                                                    }}
+                                                />
+                                            </View>
+                                        ))}
+                                        <Button
+                                            title={translate('Add rule')}
+                                            type="ghost"
+                                            onPress={addLabel}
+                                            disabled={!canManage}
+                                            buttonStyle={{ alignSelf: 'flex-start' }}
+                                        />
+                                    </View>
+                                </>
+                            )}
 
                             <View style={localStyles.section}>
                                 <Text style={localStyles.inputLabel}>{translate('Gmail sync interval minutes')}</Text>
@@ -891,6 +1011,43 @@ const localStyles = StyleSheet.create({
     },
     directionButtonTextActive: {
         color: '#ffffff',
+    },
+    modeSegment: {
+        flexDirection: 'row',
+        alignSelf: 'flex-start',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.16)',
+        borderRadius: 6,
+        overflow: 'hidden',
+        marginBottom: 10,
+    },
+    modeButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+    },
+    modeButtonActive: {
+        backgroundColor: 'rgba(66, 153, 225, 0.22)',
+    },
+    modeButtonText: {
+        ...styles.caption1,
+        color: colors.Text03,
+    },
+    modeButtonTextActive: {
+        color: '#ffffff',
+    },
+    previewLabelCard: {
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 10,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    previewLabelName: {
+        ...styles.subtitle2,
+        color: '#ffffff',
+        marginBottom: 6,
     },
     buttonRow: {
         flexDirection: 'row',

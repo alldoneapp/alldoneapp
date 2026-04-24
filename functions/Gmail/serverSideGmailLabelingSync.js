@@ -27,6 +27,10 @@ const {
     getDefaultGmailLabelingConfig,
     getGmailLabelingConfigRef,
     getGmailLabelingStateRef,
+    GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+    GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    normalizePromptMode,
+    slugifyLabelKey,
 } = require('./gmailLabelingConfig')
 const {
     extractEmailAddresses,
@@ -46,6 +50,9 @@ const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
 // cost rounds to 0 Gold, so every labeled email is reflected in the log.
 const GMAIL_LABELING_MIN_GOLD_TO_CLASSIFY = 1
 const DEFAULT_SYNC_INTERVAL_MINUTES = 5
+
+const DEFAULT_ACTIVE_PROJECTS_PROMPT =
+    'Classify each Gmail message into exactly one active Alldone project label when the message clearly belongs to that project. Use the project descriptions in the configured labels as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, subjects, deadlines, action requests, decisions, deliverables, and business context. Do not label general newsletters, spam, or unrelated messages unless they clearly mention a configured active project.'
 
 class GmailSyncLockedError extends Error {
     constructor(message) {
@@ -137,13 +144,140 @@ const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
 
 function applyGmailLabelingModelMigration(config = {}) {
     if (!config || typeof config !== 'object') return config
-    if (config.model && !GMAIL_LABELING_LEGACY_GPT5_MODELS.has(config.model)) {
-        return config
+    const migratedConfig = {
+        ...config,
+        promptMode: normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM),
+    }
+
+    if (migratedConfig.model && !GMAIL_LABELING_LEGACY_GPT5_MODELS.has(migratedConfig.model)) {
+        return migratedConfig
+    }
+
+    return {
+        ...migratedConfig,
+        model: DEFAULT_GMAIL_LABELING_MODEL,
+    }
+}
+
+function getActiveProjectIdsFromUserData(userData = {}) {
+    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
+    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
+    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
+    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
+    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
+
+    return projectIds.filter(
+        projectId => typeof projectId === 'string' && projectId.trim() && !blockedProjectIds.has(projectId)
+    )
+}
+
+function normalizeProjectLabelName(project = {}, index = 0) {
+    const labelName = typeof project.name === 'string' ? project.name.trim() : ''
+    return labelName || `Untitled project ${index + 1}`
+}
+
+function getUniqueProjectLabelNames(projects = []) {
+    const counts = new Map()
+    return projects.map((project, index) => {
+        const baseName = normalizeProjectLabelName(project, index)
+        const lookup = baseName.toLowerCase()
+        const nextCount = (counts.get(lookup) || 0) + 1
+        counts.set(lookup, nextCount)
+        return nextCount === 1 ? baseName : `${baseName} (${nextCount})`
+    })
+}
+
+function buildDefaultProjectLabelDescription(project = {}, labelName = '') {
+    const projectName = typeof project.name === 'string' && project.name.trim() ? project.name.trim() : labelName
+    const description = typeof project.description === 'string' ? project.description.trim() : ''
+
+    if (description) {
+        return `Use this label for emails related to the Alldone project "${projectName}". Project description: ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.`
+    }
+
+    return `Use this label for emails clearly related to the Alldone project "${projectName}". Match direct references to the project, its work, stakeholders, tasks, deadlines, decisions, updates, or deliverables.`
+}
+
+function buildDefaultActiveProjectLabelDefinitions(projects = []) {
+    const labelNames = getUniqueProjectLabelNames(projects)
+
+    return projects.map((project, index) => {
+        const gmailLabelName = labelNames[index]
+        const projectKey = slugifyLabelKey(project.id || gmailLabelName) || `project_${index + 1}`
+        return {
+            key: `project_${projectKey}`,
+            gmailLabelName,
+            description: buildDefaultProjectLabelDescription(project, gmailLabelName),
+            directionScope: GMAIL_DIRECTION_SCOPE_BOTH,
+            autoArchive: false,
+            postLabelPrompt: '',
+            sourceProjectId: project.id || '',
+        }
+    })
+}
+
+async function loadActiveProjectsForDefaultLabels(userData = {}) {
+    const activeProjectIds = getActiveProjectIdsFromUserData(userData)
+    if (activeProjectIds.length === 0) return []
+
+    const projectDocs = await Promise.all(
+        activeProjectIds.map(projectId =>
+            admin
+                .firestore()
+                .collection('projects')
+                .doc(projectId)
+                .get()
+                .catch(error => {
+                    console.warn('[gmailLabeling] Failed loading active project for default labels', {
+                        projectId,
+                        error: error.message,
+                    })
+                    return null
+                })
+        )
+    )
+
+    return projectDocs
+        .map(doc => {
+            if (!doc?.exists) return null
+            const data = doc.data() || {}
+            if (data.active === false || data.isTemplate === true || data.parentTemplateId) return null
+            return {
+                id: doc.id,
+                name: data.name || '',
+                description: data.description || '',
+            }
+        })
+        .filter(Boolean)
+}
+
+async function buildDefaultActiveProjectsGmailLabelingConfig(userData = {}) {
+    const projects = await loadActiveProjectsForDefaultLabels(userData)
+    return {
+        prompt: DEFAULT_ACTIVE_PROJECTS_PROMPT,
+        labelDefinitions: buildDefaultActiveProjectLabelDefinitions(projects),
+    }
+}
+
+async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
+    const promptMode = normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM)
+    if (promptMode !== GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
+        return {
+            ...config,
+            promptMode: GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+        }
+    }
+
+    const defaultConfig = await buildDefaultActiveProjectsGmailLabelingConfig(userData)
+    if (config.enabled && defaultConfig.labelDefinitions.length === 0) {
+        throw new Error('Default Gmail labeling requires at least one active project.')
     }
 
     return {
         ...config,
-        model: DEFAULT_GMAIL_LABELING_MODEL,
+        promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+        prompt: defaultConfig.prompt,
+        labelDefinitions: defaultConfig.labelDefinitions,
     }
 }
 
@@ -183,13 +317,17 @@ async function upsertGmailLabelingConfig(userId, projectId, configInput, gmailEm
 }
 
 async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '') {
-    const [{ config, exists }, { state }] = await Promise.all([
+    const [{ config, exists }, { state }, userDoc] = await Promise.all([
         loadConfig(userId, projectId, gmailEmail),
         loadState(userId, projectId, gmailEmail),
+        admin.firestore().collection('users').doc(userId).get(),
     ])
     const recentAuditEntries = await loadRecentAuditEntries(userId, projectId)
+    const userData = userDoc.exists ? userDoc.data() || {} : {}
+    const defaultConfigPreview = await buildDefaultActiveProjectsGmailLabelingConfig(userData)
     return {
         config: exists ? config : getDefaultGmailLabelingConfig(projectId, gmailEmail),
+        defaultConfigPreview,
         state,
         recentAuditEntries,
     }
@@ -1220,19 +1358,21 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
     const logContext = createSyncLogContext(userId, projectId, gmailEmail)
     assertPremiumAccess(userData)
     const { config, exists } = await loadConfig(userId, projectId, gmailEmail)
+    const effectiveConfig = exists ? await resolveEffectiveGmailLabelingConfig(config, userData) : config
 
     logSync('Starting Gmail labeling sync', {
         ...logContext,
         options,
         configExists: exists,
-        configEnabled: config?.enabled,
-        processUnreadOnly: config?.processUnreadOnly,
-        onlyInbox: config?.onlyInbox,
-        maxMessagesPerRun: config?.maxMessagesPerRun,
-        lookbackDays: config?.lookbackDays,
+        configEnabled: effectiveConfig?.enabled,
+        promptMode: effectiveConfig?.promptMode || null,
+        processUnreadOnly: effectiveConfig?.processUnreadOnly,
+        onlyInbox: effectiveConfig?.onlyInbox,
+        maxMessagesPerRun: effectiveConfig?.maxMessagesPerRun,
+        lookbackDays: effectiveConfig?.lookbackDays,
     })
 
-    if (!exists || !config.enabled) {
+    if (!exists || !effectiveConfig.enabled) {
         logSync('Skipping Gmail labeling sync because config is missing or disabled', {
             ...logContext,
             skippedReason: exists ? 'disabled' : 'missing_config',
@@ -1257,7 +1397,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         const { state } = await loadState(userId, projectId, gmailEmail)
         const labelMap = await loadExistingLabelMap(gmail)
         const syncStartHistoryId = await getCurrentProfileHistoryId(gmail)
-        const bootstrapForScopeExpansion = shouldBootstrapForScopeExpansion(state, config)
+        const bootstrapForScopeExpansion = shouldBootstrapForScopeExpansion(state, effectiveConfig)
 
         logSync('Loaded Gmail labeling sync state', {
             ...logContext,
@@ -1277,7 +1417,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
 
         if (state.lastHistoryId && !options.forceBootstrap && !bootstrapForScopeExpansion) {
             try {
-                messageIds = await listIncrementalMessageIds(gmail, state, config)
+                messageIds = await listIncrementalMessageIds(gmail, state, effectiveConfig)
                 logSync('Fetched incremental Gmail message ids', {
                     ...logContext,
                     lastHistoryId: state.lastHistoryId,
@@ -1299,7 +1439,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         }
 
         if (!state.lastHistoryId || options.forceBootstrap || resetHistory || bootstrapForScopeExpansion) {
-            const bootstrapResult = await listBootstrapMessageIds(gmail, config)
+            const bootstrapResult = await listBootstrapMessageIds(gmail, effectiveConfig)
             messageIds = bootstrapResult.messageIds
             bootstrapQuery = bootstrapResult.query
             syncMode = bootstrapForScopeExpansion ? 'bootstrap_scope_expansion' : 'bootstrap'
@@ -1321,16 +1461,19 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             fetchedMessageCount: fetchedMessages.length,
         })
 
-        const candidateMessages = filterCandidateMessages(fetchedMessages, config).slice(0, config.maxMessagesPerRun)
+        const candidateMessages = filterCandidateMessages(fetchedMessages, effectiveConfig).slice(
+            0,
+            effectiveConfig.maxMessagesPerRun
+        )
         logSync('Filtered Gmail candidate messages', {
             ...logContext,
             syncMode,
             fetchedMessageCount: fetchedMessages.length,
             candidateMessageCount: candidateMessages.length,
-            processUnreadOnly: config.processUnreadOnly,
-            onlyInbox: config.onlyInbox,
-            lookbackDays: config.lookbackDays,
-            maxMessagesPerRun: config.maxMessagesPerRun,
+            processUnreadOnly: effectiveConfig.processUnreadOnly,
+            onlyInbox: effectiveConfig.onlyInbox,
+            lookbackDays: effectiveConfig.lookbackDays,
+            maxMessagesPerRun: effectiveConfig.maxMessagesPerRun,
         })
 
         const processedMessageIds = options.forceBootstrap
@@ -1370,7 +1513,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 const result = await processSingleMessage({
                     gmail,
                     labelMap,
-                    config,
+                    config: effectiveConfig,
                     userId,
                     userData,
                     projectId,
@@ -1425,7 +1568,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     applied: false,
                     archived: false,
                     skippedReason: 'processing_error',
-                    promptVersion: config.updatedAt || admin.firestore.Timestamp.now(),
+                    promptVersion: effectiveConfig.updatedAt || admin.firestore.Timestamp.now(),
                     postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
                 })
                 skipped += 1
@@ -1451,8 +1594,8 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 lastProcessedCount: candidateMessages.length,
                 lastLabeledCount: labeled,
                 lastArchivedCount: archived,
-                lastProcessUnreadOnly: config.processUnreadOnly,
-                lastOnlyInbox: config.onlyInbox,
+                lastProcessUnreadOnly: effectiveConfig.processUnreadOnly,
+                lastOnlyInbox: effectiveConfig.onlyInbox,
             },
             'idle'
         )
@@ -1501,8 +1644,8 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 gmailEmail,
                 lastSyncAt: now,
                 lastError: error.message,
-                lastProcessUnreadOnly: config.processUnreadOnly,
-                lastOnlyInbox: config.onlyInbox,
+                lastProcessUnreadOnly: effectiveConfig.processUnreadOnly,
+                lastOnlyInbox: effectiveConfig.onlyInbox,
             },
             'error'
         )
@@ -1591,6 +1734,8 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 
 module.exports = {
     GmailSyncLockedError,
+    buildDefaultActiveProjectLabelDefinitions,
+    buildDefaultActiveProjectsGmailLabelingConfig,
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
@@ -1600,6 +1745,7 @@ module.exports = {
     getExternalRecipientEmails,
     processEnabledGmailLabelingConfigs,
     processSingleMessage,
+    resolveEffectiveGmailLabelingConfig,
     resolvePostLabelAssistantContext,
     syncGmailLabeling,
     upsertGmailLabelingConfig,

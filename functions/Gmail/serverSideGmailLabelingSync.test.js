@@ -100,6 +100,7 @@ const assistantsFirestore = require('../Firestore/assistantsFirestore')
 const { deductGold } = require('../Gold/goldHelper')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const {
+    buildDefaultActiveProjectLabelDefinitions,
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
@@ -107,6 +108,7 @@ const {
     getDefaultAssistantIdForProject,
     getExternalRecipientEmails,
     processSingleMessage,
+    resolveEffectiveGmailLabelingConfig,
 } = require('./serverSideGmailLabelingSync')
 
 function buildDefaultCollectionMock(path) {
@@ -132,6 +134,11 @@ describe('serverSideGmailLabelingSync helpers', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         deductGold.mockResolvedValue({ success: true, newBalance: 99 })
+        admin.firestore.mockImplementation(() => ({
+            getAll: admin.__mock.getAll,
+            doc: admin.__mock.doc,
+            collection: admin.__mock.collection,
+        }))
         admin.__mock.collection.mockImplementation(path => buildDefaultCollectionMock(path))
     })
 
@@ -182,6 +189,97 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 'me@example.com'
             )
         ).toEqual(['alice@example.com', 'bob@example.com'])
+    })
+
+    test('builds default active project labels with duplicate project names suffixed', () => {
+        const labels = buildDefaultActiveProjectLabelDefinitions([
+            { id: 'project-a', name: 'Client', description: 'Website launch' },
+            { id: 'project-b', name: 'Client', description: '' },
+        ])
+
+        expect(labels.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)'])
+        expect(labels[0].description).toContain('Website launch')
+        expect(labels[0].directionScope).toBe('both')
+        expect(labels[0].autoArchive).toBe(false)
+        expect(labels[0].postLabelPrompt).toBe('')
+    })
+
+    test('resolves default mode to active project labels and excludes inactive project types', async () => {
+        const projectDataById = {
+            active: { exists: true, data: () => ({ name: 'Active Client', description: 'Support retainer' }) },
+            archived: { exists: true, data: () => ({ name: 'Archived Client', description: '' }) },
+            template: { exists: true, data: () => ({ name: 'Template Client', isTemplate: true }) },
+            guide: { exists: true, data: () => ({ name: 'Guide Client', parentTemplateId: 'template-1' }) },
+            inactive: { exists: true, data: () => ({ name: 'Inactive Client', active: false }) },
+        }
+        admin.firestore.mockImplementation(() => ({
+            collection: jest.fn(path => {
+                if (path === 'projects') {
+                    return {
+                        doc: jest.fn(projectId => ({
+                            get: jest.fn().mockResolvedValue(projectDataById[projectId] || { exists: false }),
+                        })),
+                    }
+                }
+                return buildDefaultCollectionMock(path)
+            }),
+            doc: admin.__mock.doc,
+            getAll: admin.__mock.getAll,
+        }))
+
+        const config = await resolveEffectiveGmailLabelingConfig(
+            {
+                enabled: true,
+                promptMode: 'default',
+                prompt: 'Custom prompt that should not be used',
+                labelDefinitions: [
+                    {
+                        key: 'custom',
+                        gmailLabelName: 'Custom',
+                        description: 'Custom rule',
+                        postLabelPrompt: 'Create a custom follow-up',
+                    },
+                ],
+            },
+            {
+                projectIds: ['active', 'archived', 'template', 'guide', 'inactive'],
+                archivedProjectIds: ['archived'],
+                templateProjectIds: ['template'],
+                guideProjectIds: ['guide'],
+            }
+        )
+
+        expect(config.prompt).toContain('active Alldone project')
+        expect(config.labelDefinitions).toHaveLength(1)
+        expect(config.labelDefinitions[0]).toEqual(
+            expect.objectContaining({
+                gmailLabelName: 'Active Client',
+                autoArchive: false,
+                postLabelPrompt: '',
+            })
+        )
+    })
+
+    test('keeps custom mode classifier prompt and labels unchanged', async () => {
+        const config = await resolveEffectiveGmailLabelingConfig(
+            {
+                enabled: true,
+                promptMode: 'custom',
+                prompt: 'Custom prompt',
+                labelDefinitions: [
+                    {
+                        key: 'custom',
+                        gmailLabelName: 'Custom',
+                        description: 'Custom rule',
+                        postLabelPrompt: 'Create a custom follow-up',
+                    },
+                ],
+            },
+            {}
+        )
+
+        expect(config.prompt).toBe('Custom prompt')
+        expect(config.labelDefinitions[0].postLabelPrompt).toBe('Create a custom follow-up')
     })
 
     test('prefers project assistant when resolving default assistant id', async () => {

@@ -15,6 +15,9 @@ const MAX_LOOKBACK_DAYS = 30
 const GMAIL_LABELING_CONFIG_TYPE = 'gmailLabelingConfig'
 const GMAIL_LABELING_STATE_TYPE = 'gmailLabelingState'
 const GMAIL_LABELING_LOCK_TIMEOUT_MS = 10 * 60 * 1000
+const GMAIL_LABELING_PROMPT_MODE_DEFAULT = 'default'
+const GMAIL_LABELING_PROMPT_MODE_CUSTOM = 'custom'
+const GMAIL_LABELING_PROMPT_MODES = new Set([GMAIL_LABELING_PROMPT_MODE_DEFAULT, GMAIL_LABELING_PROMPT_MODE_CUSTOM])
 const GMAIL_DIRECTION_SCOPE_INCOMING = 'incoming'
 const GMAIL_DIRECTION_SCOPE_OUTGOING = 'outgoing'
 const GMAIL_DIRECTION_SCOPE_BOTH = 'both'
@@ -92,6 +95,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         enabled: true,
         projectId,
         gmailEmail,
+        promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
         prompt:
             'Read each Gmail message and assign exactly one of the configured Gmail labels when it clearly matches. Messages may be incoming or outgoing depending on the rule scope. Prefer precision over recall. If no label clearly matches, return no match. Focus on participants, subject, deadlines, action requests, and business relevance.',
         model: DEFAULT_GMAIL_LABELING_MODEL,
@@ -104,6 +108,11 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
         labelDefinitions: getStarterLabelDefinitions(),
     }
+}
+
+function normalizePromptMode(value, fallback = GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
+    const promptMode = typeof value === 'string' ? value.trim().toLowerCase() : ''
+    return GMAIL_LABELING_PROMPT_MODES.has(promptMode) ? promptMode : fallback
 }
 
 function normalizeLabelDefinition(label = {}) {
@@ -167,6 +176,7 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
             typeof input.gmailEmail === 'string' && input.gmailEmail.trim()
                 ? input.gmailEmail.trim().toLowerCase()
                 : gmailEmail || defaultConfig.gmailEmail,
+        promptMode: normalizePromptMode(input.promptMode, defaultConfig.promptMode),
         prompt: typeof input.prompt === 'string' ? input.prompt.trim() : defaultConfig.prompt,
         model:
             typeof input.model === 'string' && input.model.trim() ? input.model.trim() : DEFAULT_GMAIL_LABELING_MODEL,
@@ -200,18 +210,26 @@ function validateGmailLabelingConfig(config = {}) {
     const keySet = new Set()
     const labelNameSet = new Set()
     const labelDefinitions = Array.isArray(config.labelDefinitions) ? config.labelDefinitions : []
+    const isCustomMode = normalizePromptMode(config.promptMode) === GMAIL_LABELING_PROMPT_MODE_CUSTOM
 
     if (!config.projectId || typeof config.projectId !== 'string') {
         errors.push('A valid projectId is required.')
     }
 
-    if (config.enabled) {
+    if (config.enabled && isCustomMode) {
         if (!config.prompt || typeof config.prompt !== 'string' || !config.prompt.trim()) {
             errors.push('Prompt is required when Gmail labeling is enabled.')
         }
 
         if (labelDefinitions.length === 0) {
             errors.push('At least one label definition is required when Gmail labeling is enabled.')
+        }
+    }
+
+    if (!isCustomMode) {
+        return {
+            valid: errors.length === 0,
+            errors,
         }
     }
 
@@ -298,6 +316,9 @@ module.exports = {
     GMAIL_DIRECTION_SCOPES,
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
+    GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+    GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    GMAIL_LABELING_PROMPT_MODES,
     GMAIL_LABELING_STATE_TYPE,
     MAX_ESTIMATED_EMAILS_PER_DAY,
     MAX_LOOKBACK_DAYS,
@@ -315,6 +336,7 @@ module.exports = {
     normalizeConfigInput,
     ensureLabelKeys,
     normalizeLabelDefinition,
+    normalizePromptMode,
     slugifyLabelKey,
     validateGmailLabelingConfig,
 }
