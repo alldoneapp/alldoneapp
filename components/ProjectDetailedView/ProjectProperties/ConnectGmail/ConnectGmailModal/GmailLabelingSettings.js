@@ -17,6 +17,7 @@ import {
 import {
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    buildCustomDefaultsForReset,
     buildDefaultConfigPreviewFromProjects,
     createEmptyLabel,
     formatPostLabelActionStatus,
@@ -299,6 +300,12 @@ function DefaultLabelingPreview({ preview }) {
                     <View key={label.key || `${label.gmailLabelName}-${index}`} style={localStyles.previewLabelCard}>
                         <Text style={localStyles.previewLabelName}>{label.gmailLabelName}</Text>
                         <Text style={localStyles.helperText}>{label.description}</Text>
+                        {label.postLabelPrompt ? (
+                            <>
+                                <Text style={localStyles.previewFollowUpTitle}>Default follow-up prompt</Text>
+                                <Text style={localStyles.helperText}>{label.postLabelPrompt}</Text>
+                            </>
+                        ) : null}
                     </View>
                 ))
             ) : (
@@ -333,6 +340,7 @@ export default function GmailLabelingSettings({
     const [syncing, setSyncing] = useState(false)
     const [error, setError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
+    const [customDefaultsResetVersion, setCustomDefaultsResetVersion] = useState(0)
     const [savedConfigSnapshot, setSavedConfigSnapshot] = useState(null)
     const [initialLoadComplete, setInitialLoadComplete] = useState(false)
     const [recentAuditEntries, setRecentAuditEntries] = useState([])
@@ -442,6 +450,17 @@ export default function GmailLabelingSettings({
             ...currentConfig,
             labelDefinitions: currentConfig.labelDefinitions.filter((_, currentIndex) => currentIndex !== index),
         }))
+    }
+
+    const resetCustomDefaults = () => {
+        const customDefaults = buildCustomDefaultsForReset()
+        setConfig(currentConfig => ({
+            ...currentConfig,
+            promptMode: GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+            prompt: customDefaults.prompt,
+            labelDefinitions: customDefaults.labelDefinitions,
+        }))
+        setCustomDefaultsResetVersion(currentVersion => currentVersion + 1)
     }
 
     const saveSettings = async () => {
@@ -633,7 +652,16 @@ export default function GmailLabelingSettings({
                             ) : (
                                 <>
                                     <View style={localStyles.section}>
-                                        <Text style={localStyles.inputLabel}>User prompt</Text>
+                                        <View style={localStyles.sectionHeaderRow}>
+                                            <Text style={localStyles.inputLabel}>User prompt</Text>
+                                            <Button
+                                                title="Reset to defaults"
+                                                type="ghost"
+                                                onPress={resetCustomDefaults}
+                                                disabled={!canManage}
+                                                buttonStyle={localStyles.resetDefaultsButton}
+                                            />
+                                        </View>
                                         <CustomTextInput3
                                             containerStyle={[
                                                 localStyles.input,
@@ -655,7 +683,9 @@ export default function GmailLabelingSettings({
                                             keepBreakLines={true}
                                             allowPlainEnterBreakLines={true}
                                             onKeyPress={stopEnterPropagation}
-                                            key={`gmail-prompt-${projectId}-${connectedEmail || 'default'}`}
+                                            key={`gmail-prompt-${customDefaultsResetVersion}-${projectId}-${
+                                                connectedEmail || 'default'
+                                            }`}
                                         />
                                     </View>
 
@@ -894,6 +924,16 @@ const localStyles = StyleSheet.create({
         color: '#ffffff',
         marginBottom: 8,
     },
+    sectionHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    resetDefaultsButton: {
+        alignSelf: 'flex-start',
+        marginBottom: 4,
+    },
     headerRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -1048,6 +1088,12 @@ const localStyles = StyleSheet.create({
         ...styles.subtitle2,
         color: '#ffffff',
         marginBottom: 6,
+    },
+    previewFollowUpTitle: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginTop: 10,
+        marginBottom: 4,
     },
     buttonRow: {
         flexDirection: 'row',

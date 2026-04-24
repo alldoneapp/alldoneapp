@@ -53,6 +53,7 @@ const DEFAULT_SYNC_INTERVAL_MINUTES = 5
 
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     'Classify each Gmail message into exactly one active Alldone project label when the message clearly belongs to that project. Use the project descriptions in the configured labels as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, subjects, deadlines, action requests, decisions, deliverables, and business context. Do not label general newsletters, spam, or unrelated messages unless they clearly mention a configured active project.'
+const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
 
 class GmailSyncLockedError extends Error {
     constructor(message) {
@@ -189,13 +190,27 @@ function getUniqueProjectLabelNames(projects = []) {
 
 function buildDefaultProjectLabelDescription(project = {}, labelName = '') {
     const projectName = typeof project.name === 'string' && project.name.trim() ? project.name.trim() : labelName
-    const description = typeof project.description === 'string' ? project.description.trim() : ''
+    const description =
+        typeof project.description === 'string'
+            ? project.description
+                  .trim()
+                  .replace(/^project description\s*:\s*/i, '')
+                  .trim()
+            : ''
 
     if (description) {
-        return `Use this label for emails related to the Alldone project "${projectName}". Project description: ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.`
+        return `Use this label for emails related to the Alldone project "${projectName}". ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.`
     }
 
     return `Use this label for emails clearly related to the Alldone project "${projectName}". Match direct references to the project, its work, stakeholders, tasks, deadlines, decisions, updates, or deliverables.`
+}
+
+function buildDefaultProjectFollowUpPrompt(labelName = '') {
+    const projectLabel = labelName || 'the matched project'
+    return [
+        `Only if its an inbound email create a new task based in the project ${projectLabel} based on this email in the following format: "[one sentence summary of what the email is about] ".`,
+        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
+    ].join('\n')
 }
 
 function buildDefaultActiveProjectLabelDefinitions(projects = []) {
@@ -210,7 +225,8 @@ function buildDefaultActiveProjectLabelDefinitions(projects = []) {
             description: buildDefaultProjectLabelDescription(project, gmailLabelName),
             directionScope: GMAIL_DIRECTION_SCOPE_BOTH,
             autoArchive: false,
-            postLabelPrompt: '',
+            postLabelPrompt: buildDefaultProjectFollowUpPrompt(gmailLabelName),
+            postLabelPromptDirectionScope: DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE,
             sourceProjectId: project.id || '',
         }
     })
@@ -865,9 +881,21 @@ async function executePostLabelPrompt({
     const prompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
     const promptHash = createPostLabelPromptHash(selectedDefinition?.key || '', prompt)
+    const postLabelPromptDirectionScope =
+        typeof selectedDefinition?.postLabelPromptDirectionScope === 'string'
+            ? selectedDefinition.postLabelPromptDirectionScope.trim().toLowerCase()
+            : ''
 
     if (!prompt) {
         return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
+    }
+
+    if (
+        postLabelPromptDirectionScope &&
+        postLabelPromptDirectionScope !== GMAIL_DIRECTION_SCOPE_BOTH &&
+        postLabelPromptDirectionScope !== direction
+    ) {
+        return buildPostLabelActionSkipped({ prompt, promptHash, status: 'skipped' })
     }
 
     if (
@@ -1736,6 +1764,7 @@ module.exports = {
     GmailSyncLockedError,
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultActiveProjectsGmailLabelingConfig,
+    buildDefaultProjectFollowUpPrompt,
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,

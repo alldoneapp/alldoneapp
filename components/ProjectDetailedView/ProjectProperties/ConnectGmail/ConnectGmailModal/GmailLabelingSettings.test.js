@@ -1,7 +1,11 @@
 const {
+    DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT,
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    STARTER_CUSTOM_LABEL_DEFINITIONS,
+    buildCustomDefaultsForReset,
     buildDefaultConfigPreviewFromProjects,
+    buildDefaultProjectFollowUpPrompt,
     createEmptyLabel,
     formatPostLabelActionStatus,
     normalizeConfig,
@@ -84,9 +88,25 @@ describe('GmailLabelingSettings helpers', () => {
         expect(sanitized.labelDefinitions[0].postLabelPrompt).toBe('Create a follow-up task')
     })
 
-    test('builds default project label preview with duplicate names suffixed', () => {
+    test('builds editable custom defaults for reset', () => {
+        const customDefaults = buildCustomDefaultsForReset()
+
+        expect(customDefaults.prompt).toBe(DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT)
+        expect(customDefaults.labelDefinitions).toHaveLength(STARTER_CUSTOM_LABEL_DEFINITIONS.length)
+        expect(customDefaults.labelDefinitions[0]).toEqual(
+            expect.objectContaining({
+                key: 'newsletter',
+                gmailLabelName: 'Alldone/Newsletter',
+                autoArchive: true,
+                postLabelPrompt: '',
+            })
+        )
+        expect(customDefaults.labelDefinitions[0].id).toContain('custom-default-')
+    })
+
+    test('builds default project label preview with duplicate names suffixed and follow-ups', () => {
         const preview = buildDefaultConfigPreviewFromProjects([
-            { id: 'project-a', name: 'Client', description: 'Website launch' },
+            { id: 'project-a', name: 'Client', description: 'Project Description: Website launch' },
             { id: 'project-b', name: 'Client', description: '' },
             { id: 'archived', name: 'Archived', active: false },
         ])
@@ -94,8 +114,20 @@ describe('GmailLabelingSettings helpers', () => {
         expect(preview.prompt).toContain('active Alldone project')
         expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)'])
         expect(preview.labelDefinitions[0].description).toContain('Website launch')
+        expect(preview.labelDefinitions[0].description).not.toContain('Project description: Project Description')
         expect(preview.labelDefinitions[1].autoArchive).toBe(false)
-        expect(preview.labelDefinitions[1].postLabelPrompt).toBe('')
+        expect(preview.labelDefinitions[1].postLabelPrompt).toContain('Only if its an inbound email')
+        expect(preview.labelDefinitions[1].postLabelPrompt).toContain('update_note')
+        expect(preview.labelDefinitions[1].postLabelPrompt).toContain('Client (2)')
+        expect(preview.labelDefinitions[1].postLabelPromptDirectionScope).toBe('incoming')
+    })
+
+    test('builds default project follow-up prompt with the label name', () => {
+        const prompt = buildDefaultProjectFollowUpPrompt('Alldone Product')
+
+        expect(prompt).toContain('project Alldone Product')
+        expect(prompt).toContain('hello@cal.com')
+        expect(prompt).toContain('with a space at the end')
     })
 
     test('formats follow-up action statuses for audit display', () => {

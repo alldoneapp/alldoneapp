@@ -101,6 +101,7 @@ const { deductGold } = require('../Gold/goldHelper')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const {
     buildDefaultActiveProjectLabelDefinitions,
+    buildDefaultProjectFollowUpPrompt,
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
@@ -191,17 +192,28 @@ describe('serverSideGmailLabelingSync helpers', () => {
         ).toEqual(['alice@example.com', 'bob@example.com'])
     })
 
-    test('builds default active project labels with duplicate project names suffixed', () => {
+    test('builds default active project labels with duplicate project names suffixed and follow-ups', () => {
         const labels = buildDefaultActiveProjectLabelDefinitions([
-            { id: 'project-a', name: 'Client', description: 'Website launch' },
+            { id: 'project-a', name: 'Client', description: 'Project Description: Website launch' },
             { id: 'project-b', name: 'Client', description: '' },
         ])
 
         expect(labels.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)'])
         expect(labels[0].description).toContain('Website launch')
+        expect(labels[0].description).not.toContain('Project description: Project Description')
         expect(labels[0].directionScope).toBe('both')
         expect(labels[0].autoArchive).toBe(false)
-        expect(labels[0].postLabelPrompt).toBe('')
+        expect(labels[0].postLabelPrompt).toContain('Only if its an inbound email')
+        expect(labels[0].postLabelPrompt).toContain('update_note')
+        expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
+    })
+
+    test('builds the default project follow-up prompt with the label name', () => {
+        const prompt = buildDefaultProjectFollowUpPrompt('Alldone Product')
+
+        expect(prompt).toContain('project Alldone Product')
+        expect(prompt).toContain('hello@cal.com')
+        expect(prompt).toContain('with a space at the end')
     })
 
     test('resolves default mode to active project labels and excludes inactive project types', async () => {
@@ -255,9 +267,29 @@ describe('serverSideGmailLabelingSync helpers', () => {
             expect.objectContaining({
                 gmailLabelName: 'Active Client',
                 autoArchive: false,
-                postLabelPrompt: '',
+                postLabelPrompt: expect.stringContaining('update_note'),
+                postLabelPromptDirectionScope: 'incoming',
             })
         )
+    })
+
+    test('skips inbound-only default follow-up prompts for outgoing messages', async () => {
+        const result = await executePostLabelPrompt({
+            userId: 'user-1',
+            userData: { defaultProjectId: 'default-project' },
+            selectedDefinition: {
+                key: 'project_active',
+                gmailLabelName: 'Active Client',
+                postLabelPrompt: buildDefaultProjectFollowUpPrompt('Active Client'),
+                postLabelPromptDirectionScope: 'incoming',
+            },
+            normalizedMessage: { messageId: 'message-1' },
+            gmailEmail: 'person@example.com',
+            direction: 'outgoing',
+        })
+
+        expect(result.status).toBe('skipped')
+        expect(assistantHelper.getAssistantForChat).not.toHaveBeenCalled()
     })
 
     test('keeps custom mode classifier prompt and labels unchanged', async () => {
