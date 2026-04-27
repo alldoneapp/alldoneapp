@@ -1007,9 +1007,13 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
     }
 
     const endOfToday = moment().endOf('day').valueOf()
+    let shouldFindNewFocusTask = false
     if (endOfToday < task.dueDate) {
         const assignee = TasksHelper.getUserInProject(projectId, task.userId)
-        if (assignee && assignee.inFocusTaskId === task.id) updateFocusedTask(task.userId, projectId, null, null, null)
+        shouldFindNewFocusTask = !!assignee && assignee.inFocusTaskId === task.id
+        if (shouldFindNewFocusTask) {
+            setOptimisticNextFocusTask(projectId, oldTask)
+        }
     }
 
     updateSubtasksState(projectId, task.subtaskIds, subtasksUpdateData, batch)
@@ -1030,7 +1034,11 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
         }
     }
 
-    batch.commit()
+    await batch.commit()
+
+    if (shouldFindNewFocusTask) {
+        await findAndSetNewFocusedTask(projectId, task.userId, oldTask.parentGoalId, taskId)
+    }
 
     updateTaskFeedsChain(
         projectId,
@@ -2123,6 +2131,7 @@ export async function setTaskDueDate(
         const assignee = TasksHelper.getUserInProject(projectId, task.userId)
         // Check if the postponed task was the focus task
         if (assignee && assignee.inFocusTaskId === task.id) {
+            setOptimisticNextFocusTask(projectId, task)
             // Instead of just removing focus, we'll find a new one after committing the postpone changes
             // We remove the direct call to updateFocusedTask here
             // REMOVE LOGGING HERE
@@ -2243,7 +2252,22 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
         const subtasksUpdate = { ...updateData, timesPostponed: firebase.firestore.FieldValue.increment(1) }
         updateSubtasksState(projectId, task.subtaskIds, subtasksUpdate, batch)
     }
+
+    let shouldFindNewFocusTask = false
+    if (!isObservedTask) {
+        const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+        shouldFindNewFocusTask = !!assignee && assignee.inFocusTaskId === task.id
+        if (shouldFindNewFocusTask) {
+            setOptimisticNextFocusTask(projectId, task)
+        }
+    }
+
     if (!externalBatch) await batch.commit()
+
+    if (shouldFindNewFocusTask) {
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, taskId)
+    }
+
     setTaskToBacklogFeedsChain(projectId, taskId, task, isObservedTask)
 }
 
@@ -3396,6 +3420,15 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
     return result
 }
 
+function setOptimisticNextFocusTask(projectId, task) {
+    const optimisticNext = getOptimisticNextFocusTask(projectId, task)
+    if (optimisticNext) {
+        store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId))
+    } else {
+        store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId || NOT_PARENT_GOAL_INDEX))
+    }
+}
+
 async function findAndSetNewFocusedTask(
     currentProjectId,
     userId,
@@ -3762,7 +3795,7 @@ async function setNewFocusedTaskBatch(projectId, userId, task) {
 
     // Optimistically mark this task as the focus task BEFORE committing to Firestore
     // This prevents UI "jumping" by immediately showing the task at the top
-    store.dispatch(setOptimisticFocusTask(task.id, projectId))
+    store.dispatch(setOptimisticFocusTask(task.id, projectId, task.parentGoalId))
 
     // Generate the focus sortIndex
     const focusSortIndex = generateSortIndexForTaskInFocusInTime()
