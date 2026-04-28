@@ -103,7 +103,7 @@ const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
 
 describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
     const aiSettings = {
-        model: 'MODEL_GPT5_4',
+        model: 'MODEL_GPT5_5',
         temperature: 'TEMPERATURE_NORMAL',
         systemMessage: 'Be helpful',
         assistantDisplayName: 'Anna',

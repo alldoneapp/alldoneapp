@@ -140,6 +140,7 @@ const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
     'MODEL_GPT5_4',
+    'MODEL_GPT5_5',
     'MODEL_GPT5_4_MINI',
 ])
 

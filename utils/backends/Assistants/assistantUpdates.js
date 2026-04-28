@@ -38,7 +38,7 @@ import {
     MODEL_GPT4,
     MODEL_GPT4O,
     MODEL_GPT5_1,
-    MODEL_GPT5_4,
+    MODEL_GPT5_5,
     MODEL_GPT5_2,
     TEMPERATURE_HIGH,
     TEMPERATURE_LOW,
@@ -471,7 +471,7 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_GPT4) return 'GPT 4'
     if (modelKey === MODEL_GPT4O) return 'GPT 4o'
     if (modelKey === MODEL_GPT5_1) return 'GPT 5_1'
-    if (modelKey === MODEL_GPT5_4) return 'GPT 5_4'
+    if (modelKey === MODEL_GPT5_5) return 'GPT 5_5'
     if (modelKey === MODEL_GPT5_2) return 'GPT 5_2'
     if (modelKey === MODEL_SONAR) return 'Sonar'
     if (modelKey === MODEL_SONAR_PRO) return 'Sonar Pro'

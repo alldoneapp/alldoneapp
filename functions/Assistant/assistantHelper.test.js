@@ -262,8 +262,8 @@ describe('assistant attachment handoff helpers', () => {
         expect(getSilentModeFinalResponseText('Final answer', '\n\nHEARTBEAT_OK')).toBe('Final answer')
     })
 
-    test('scales GPT-5.4 nano gold cost down to roughly 8% of GPT-5.4', () => {
-        expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_4')).toBe(1)
+    test('scales GPT-5.4 nano gold cost down to roughly 8% of GPT-5.5', () => {
+        expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_5')).toBe(1)
         expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
         expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
     })
@@ -292,7 +292,7 @@ describe('assistant attachment handoff helpers', () => {
             'user-1',
             null,
             [['user', 'Heartbeat prompt']],
-            'MODEL_GPT5_4',
+            'MODEL_GPT5_5',
             'TEMPERATURE_NORMAL',
             [],
             {

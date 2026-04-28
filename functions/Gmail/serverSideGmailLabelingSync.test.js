@@ -385,7 +385,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         })
         admin.__mock.getAll.mockResolvedValue([{ exists: true }, { exists: false }])
         assistantHelper.getAssistantForChat.mockResolvedValue({
-            model: 'MODEL_GPT5_4',
+            model: 'MODEL_GPT5_5',
             temperature: 'TEMPERATURE_NORMAL',
             instructions: 'Be useful',
             allowedTools: ['create_task'],
@@ -485,7 +485,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         })
         admin.__mock.getAll.mockResolvedValue([{ exists: true }, { exists: false }])
         assistantHelper.getAssistantForChat.mockResolvedValue({
-            model: 'MODEL_GPT5_4',
+            model: 'MODEL_GPT5_5',
             temperature: 'TEMPERATURE_NORMAL',
             instructions: 'Be useful',
             allowedTools: ['get_tasks'],
@@ -581,7 +581,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             usage: { totalTokens: 100 },
         })
         assistantHelper.getAssistantForChat.mockResolvedValue({
-            model: 'MODEL_GPT5_4',
+            model: 'MODEL_GPT5_5',
             temperature: 'TEMPERATURE_NORMAL',
             instructions: 'Be useful',
             allowedTools: ['create_task'],
@@ -612,7 +612,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             gmail,
             labelMap: new Map(),
             config: {
-                model: 'MODEL_GPT5_4',
+                model: 'MODEL_GPT5_5',
                 labelDefinitions: [
                     {
                         key: 'urgent',

@@ -11,7 +11,7 @@ const MODEL_OPTIONS = [
     { label: 'GPT-4', value: 'MODEL_GPT4' },
     { label: 'GPT-4o', value: 'MODEL_GPT4O' },
     { label: 'GPT-5.1', value: 'MODEL_GPT5_1' },
-    { label: 'GPT-5.4', value: 'MODEL_GPT5_4' },
+    { label: 'GPT-5.5', value: 'MODEL_GPT5_5' },
     { label: 'Sonar', value: 'MODEL_SONAR' },
     { label: 'Sonar Pro', value: 'MODEL_SONAR_PRO' },
     { label: 'Sonar Reasoning', value: 'MODEL_SONAR_REASONING' },

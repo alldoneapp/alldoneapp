@@ -80,7 +80,7 @@ const MODEL_GPT4 = 'MODEL_GPT4'
 const MODEL_GPT4O = 'MODEL_GPT4O'
 const MODEL_GPT5 = 'MODEL_GPT5' // Deprecated, maps to MODEL_GPT5_1
 const MODEL_GPT5_1 = 'MODEL_GPT5_1'
-const MODEL_GPT5_4 = 'MODEL_GPT5_4'
+const MODEL_GPT5_5 = 'MODEL_GPT5_5'
 const MODEL_GPT5_4_MINI = 'MODEL_GPT5_4_MINI'
 const MODEL_GPT5_4_NANO = 'MODEL_GPT5_4_NANO'
 const MODEL_GPT5_2 = 'MODEL_GPT5_2'
@@ -98,7 +98,7 @@ const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
 
 const COMPLETION_MAX_TOKENS = 1000
 const COMPLETION_MAX_TOKENS_GPT5_1 = 2000 // GPT-5.1 needs more tokens due to stricter limits
-const COMPLETION_MAX_TOKENS_GPT5_4 = 2000 // GPT-5.4 needs more tokens due to stricter limits
+const COMPLETION_MAX_TOKENS_GPT5_5 = 2000 // GPT-5.5 needs more tokens due to stricter limits
 const COMPLETION_MAX_TOKENS_GPT5_2 = 2000 // GPT-5.2 needs more tokens due to stricter limits
 
 const ENCODE_MESSAGE_GAP = 4
@@ -705,7 +705,7 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT4 ||
         modelKey === MODEL_GPT4O ||
         modelKey === MODEL_GPT5_1 ||
-        modelKey === MODEL_GPT5_4 ||
+        modelKey === MODEL_GPT5_5 ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2
@@ -721,7 +721,7 @@ const modelSupportsCustomTemperature = modelKey => {
     // GPT-5.1 and some newer models only support default temperature (1.0)
     if (
         modelKey === MODEL_GPT5_1 ||
-        modelKey === MODEL_GPT5_4 ||
+        modelKey === MODEL_GPT5_5 ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2
@@ -736,9 +736,9 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_GPT4) return 100
     if (modelKey === MODEL_GPT4O) return 100
     if (modelKey === MODEL_GPT5_1) return 100
-    if (modelKey === MODEL_GPT5_4) return 100
+    if (modelKey === MODEL_GPT5_5) return 100
     // GPT-5.4 mini is 30% of GPT-5.4 pricing for both input and output tokens,
-    // so preserve the existing GPT-5.4 gold baseline and scale mini proportionally.
+    // so preserve the existing gold baseline and scale mini proportionally.
     if (modelKey === MODEL_GPT5_4_MINI) return 333
     // GPT-5.4 nano is ~8.0% of GPT-5.4 input pricing and ~8.33% of output pricing.
     // Our Gold accounting only sees totalTokens, so use a conservative blended rate.
@@ -759,7 +759,7 @@ const getMaxTokensForModel = modelKey => {
     // Modern High context models
     if (modelKey === MODEL_GPT4O) return 128000
     if (modelKey === MODEL_GPT5_1) return 128000
-    if (modelKey === MODEL_GPT5_4) return 128000
+    if (modelKey === MODEL_GPT5_5) return 128000
     if (modelKey === MODEL_GPT5_4_MINI) return 128000
     if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
@@ -775,8 +775,10 @@ const getMaxTokensForModel = modelKey => {
 const normalizeModelKey = modelKey => {
     // Map deprecated MODEL_GPT5 to MODEL_GPT5_1
     if (modelKey === MODEL_GPT5 || modelKey === 'MODEL_GPT5') return MODEL_GPT5_1
-    // Default to MODEL_GPT5_4 if no model specified or empty
-    if (!modelKey) return MODEL_GPT5_4
+    // Map deprecated MODEL_GPT5_4 to MODEL_GPT5_5
+    if (modelKey === 'MODEL_GPT5_4') return MODEL_GPT5_5
+    // Default to MODEL_GPT5_5 if no model specified or empty
+    if (!modelKey) return MODEL_GPT5_5
     return modelKey
 }
 
@@ -788,7 +790,7 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4) return 'gpt-4'
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
-    if (normalizedKey === MODEL_GPT5_4) return 'gpt-5.4'
+    if (normalizedKey === MODEL_GPT5_5) return 'gpt-5.5'
     if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
     if (normalizedKey === MODEL_GPT5_4_NANO) return 'gpt-5.4-nano'
     if (normalizedKey === MODEL_GPT5_2) return 'gpt-5.2'
@@ -798,8 +800,8 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_SONAR_REASONING_PRO) return 'sonar-reasoning-pro'
     if (normalizedKey === MODEL_SONAR_DEEP_RESEARCH) return 'sonar-deep-research'
 
-    // Default fallback to gpt-5.4
-    return 'gpt-5.4'
+    // Default fallback to gpt-5.5
+    return 'gpt-5.5'
 }
 
 const getTemperature = temperatureKey => {
@@ -2084,7 +2086,7 @@ async function interactWithChatStream(
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey) || 'gpt-5.4' // Fallback to gpt-5.4 if undefined
+    const model = getModel(modelKey) || 'gpt-5.5' // Fallback to gpt-5.5 if undefined
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
@@ -3154,7 +3156,7 @@ async function executeDelegatedAssistantRequest({
 
     const targetAssistant = targetAssistantDoc.data() || {}
     const targetAllowedTools = Array.isArray(targetAssistant.allowedTools) ? targetAssistant.allowedTools : []
-    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_4)
+    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_5)
     const targetTemperature = targetAssistant.temperature || TEMPERATURE_NORMAL
     const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
     const targetInstructions = targetAssistant.instructions || 'You are a helpful assistant.'
@@ -7190,7 +7192,7 @@ const primeDefaultAssistantCache = async () => {
         if (defaultAssistant?.uid) {
             const normalizedAssistant = {
                 ...defaultAssistant,
-                model: normalizeModelKey(defaultAssistant.model || 'MODEL_GPT5_4'),
+                model: normalizeModelKey(defaultAssistant.model || 'MODEL_GPT5_5'),
                 temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
                 instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
                 allowedTools: Array.isArray(defaultAssistant.allowedTools) ? defaultAssistant.allowedTools : [],
@@ -7295,7 +7297,7 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
     }
     // Provide fallback defaults for missing fields
     assistant = assistant || {}
-    assistant.model = normalizeModelKey(assistant?.model || 'MODEL_GPT5_4')
+    assistant.model = normalizeModelKey(assistant?.model || 'MODEL_GPT5_5')
     assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
     assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
     assistant.allowedTools = Array.isArray(assistant?.allowedTools) ? assistant.allowedTools : []
@@ -7358,7 +7360,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
 
     // Return task settings if they exist, otherwise use assistant settings with defaults
     const settings = {
-        model: normalizeModelKey((task && task.aiModel) || assistant.model || 'MODEL_GPT5_4'),
+        model: normalizeModelKey((task && task.aiModel) || assistant.model || 'MODEL_GPT5_5'),
         temperature: (task && task.aiTemperature) || assistant.temperature || 'TEMPERATURE_NORMAL',
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
         displayName: assistant.displayName, // Always use assistant's display name
