@@ -119,6 +119,31 @@ describe('AlldoneSimpleMCPServer get_contacts tool', () => {
         expect(tool.inputSchema.properties.limit.type).toBe('number')
     })
 
+    test('includes safe patch fields for update_note in tools/list', async () => {
+        const server = new AlldoneSimpleMCPServer()
+
+        const response = await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 3,
+                method: 'tools/list',
+            },
+            {}
+        )
+
+        const tool = response.result.tools.find(entry => entry.name === 'update_note')
+        expect(tool).toBeDefined()
+        expect(tool.inputSchema.required).toEqual([])
+        expect(tool.inputSchema.properties.mode.enum).toEqual(['prepend', 'patch'])
+        expect(tool.inputSchema.properties.edits.type).toBe('array')
+        expect(tool.inputSchema.properties.edits.items.properties.type.enum).toEqual([
+            'replace_text',
+            'replace_section',
+            'insert_before',
+            'insert_after',
+        ])
+    })
+
     test('routes tools/call for get_contacts and returns the response shape', async () => {
         const server = new AlldoneSimpleMCPServer()
         server.getAuthenticatedUserForClient = jest.fn().mockResolvedValue('user-1')

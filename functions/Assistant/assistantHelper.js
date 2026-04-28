@@ -4558,6 +4558,7 @@ async function executeToolNatively(
                 typeof toolArgs.moveToProjectName === 'string' ? toolArgs.moveToProjectName.trim() : ''
             const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
             const hasContentUpdate = toolArgs.content !== undefined
+            const hasPatchUpdate = toolArgs.mode === 'patch'
             const hasTitleUpdate = toolArgs.title !== undefined
             const gmailContactTarget = buildGmailContactTargetFromRuntimeContext(toolRuntimeContext)
             const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
@@ -4614,9 +4615,9 @@ async function executeToolNatively(
                 await cachedSearchService.initialize()
             }
 
-            if (!hasContentUpdate && !hasTitleUpdate && !hasMoveRequest) {
+            if (!hasContentUpdate && !hasPatchUpdate && !hasTitleUpdate && !hasMoveRequest) {
                 throw new Error(
-                    'No note changes requested. Provide content, title, moveToProjectId, or moveToProjectName.'
+                    'No note changes requested. Provide content, edits with mode "patch", title, moveToProjectId, or moveToProjectName.'
                 )
             }
 
@@ -4783,7 +4784,7 @@ async function executeToolNatively(
                     changes: [],
                 }
 
-                if (hasContentUpdate || hasTitleUpdate) {
+                if (hasContentUpdate || hasPatchUpdate || hasTitleUpdate) {
                     console.log('Internal Assistant: Using NoteService for note update with feed generation')
                     result = await cachedNoteService.updateAndPersistNote({
                         noteId: currentNote.id,
@@ -4791,8 +4792,22 @@ async function executeToolNatively(
                         currentNote: currentNote,
                         content: toolArgs.content,
                         title: toolArgs.title, // Optional: for renaming the note
+                        mode: toolArgs.mode,
+                        edits: toolArgs.edits,
                         feedUser: feedUser,
                     })
+
+                    if (!result.success) {
+                        return {
+                            success: false,
+                            noteId: currentNote.id,
+                            message: result.message,
+                            error: result.error,
+                            failedEditIndex: result.failedEditIndex,
+                            project: { id: currentProjectId, name: currentProjectName },
+                            changes: result.changes || [],
+                        }
+                    }
 
                     console.log('Note updated via NoteService:', {
                         noteId: currentNote.id,

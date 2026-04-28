@@ -25,6 +25,13 @@ try {
     containsMarkdown = null
 }
 
+const NOTE_UPDATE_MODE_PREPEND = 'prepend'
+const NOTE_UPDATE_MODE_PATCH = 'patch'
+const NOTE_PATCH_EDIT_TYPES = ['replace_text', 'replace_section', 'insert_before', 'insert_after']
+const MAX_PATCH_DELETE_CHARS = 50000
+const MAX_PATCH_DELETE_RATIO = 0.9
+const MAX_PATCH_DELETE_RATIO_MIN_CONTENT = 1000
+
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
     if (!NoteModelBuilder) {
@@ -662,6 +669,9 @@ class NoteService {
         await this.ensureInitialized()
 
         const { noteId, projectId, currentNote, content: newContent, title: newTitle, feedUser } = params
+        const updateMode = this.normalizeNoteUpdateMode(params.mode)
+        const hasPatchUpdate = updateMode === NOTE_UPDATE_MODE_PATCH
+        const hasPrependContentUpdate = updateMode === NOTE_UPDATE_MODE_PREPEND && newContent !== undefined
 
         if (!noteId || typeof noteId !== 'string' || noteId.trim() === '') {
             throw new Error('Note ID is required for updating')
@@ -675,19 +685,17 @@ class NoteService {
             throw new Error('Current note data is required for updating')
         }
 
-        if (!newContent && !newTitle) {
+        if (updateMode === NOTE_UPDATE_MODE_PATCH && newContent !== undefined) {
+            throw new Error('content is only supported in prepend mode. Use edits[].content or edits[].replaceWith.')
+        }
+
+        if (!hasPrependContentUpdate && !hasPatchUpdate && !newTitle) {
             throw new Error('At least content or title must be provided for update')
         }
 
         const db = this.options.database
         if (!db) {
             throw new Error('Database interface is required for note updates')
-        }
-
-        // Import moment for date formatting
-        const moment = this.options.moment || (typeof require !== 'undefined' ? require('moment') : null)
-        if (!moment) {
-            throw new Error('Moment.js is required for date stamp generation')
         }
 
         try {
@@ -711,7 +719,13 @@ class NoteService {
             }
 
             // Handle content update - replicate the note toolbar date button behavior
-            if (newContent !== undefined) {
+            if (hasPrependContentUpdate) {
+                // Import moment for date formatting
+                const moment = this.options.moment || (typeof require !== 'undefined' ? require('moment') : null)
+                if (!moment) {
+                    throw new Error('Moment.js is required for date stamp generation')
+                }
+
                 // Get user's date format (fallback to DD.MM.YYYY for European format)
                 const dateFormat = 'DD.MM.YYYY' // Default European format like the toolbar
                 const dateStamp = moment().format(`${dateFormat} `)
@@ -727,7 +741,7 @@ class NoteService {
             }
 
             // Handle storage-only updates (content changes)
-            if (newContent !== undefined && this._dateStamp && this._newContent) {
+            if (hasPrependContentUpdate && this._dateStamp && this._newContent) {
                 await this.addFormattedContentToStorage(projectId, noteId, this._dateStamp, this._newContent, feedUser)
                 // Clear the pending content
                 delete this._dateStamp
@@ -739,17 +753,34 @@ class NoteService {
                 )
             }
 
+            if (hasPatchUpdate) {
+                const patchResult = await this.applyPatchEditsToStorage(projectId, noteId, params.edits, feedUser)
+                if (!patchResult.success) {
+                    return {
+                        success: false,
+                        noteId,
+                        message: patchResult.message,
+                        error: patchResult.error,
+                        failedEditIndex: patchResult.failedEditIndex,
+                        updatedNote: { id: noteId, ...currentNote },
+                        changes: [],
+                        persisted: false,
+                    }
+                }
+                changes.push(...patchResult.changes)
+            }
+
             // Only update Firestore if there are metadata changes (title, etc.)
             if (Object.keys(updateData).length > 0) {
                 const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
                 await noteDocRef.update(updateData)
                 console.log(`NoteService: Updated Firestore metadata with ${Object.keys(updateData).length} changes`)
-            } else if (newContent !== undefined) {
+            } else if (hasPrependContentUpdate || hasPatchUpdate) {
                 // Content-only update - no Firestore changes needed
                 console.log('NoteService: Content-only update, skipping Firestore to avoid triggering cloud functions')
             }
 
-            if (Object.keys(updateData).length === 0 && newContent === undefined) {
+            if (Object.keys(updateData).length === 0 && !hasPrependContentUpdate && !hasPatchUpdate) {
                 return {
                     success: true,
                     message: 'No changes to apply',
@@ -761,7 +792,7 @@ class NoteService {
 
             // Get updated note data (only if we updated Firestore)
             let updatedNote
-            if (Object.keys(updateData).length > 0) {
+            if (Object.keys(updateData).length > 0 || hasPatchUpdate) {
                 const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
                 const updatedNoteDoc = await noteDocRef.get()
                 updatedNote = updatedNoteDoc.exists
@@ -981,6 +1012,494 @@ class NoteService {
         } catch (error) {
             console.error('NoteService: Failed to get storage content:', error)
             throw error
+        }
+    }
+
+    normalizeNoteUpdateMode(mode) {
+        if (mode === undefined || mode === null || mode === '') {
+            return NOTE_UPDATE_MODE_PREPEND
+        }
+
+        if (mode === NOTE_UPDATE_MODE_PREPEND || mode === NOTE_UPDATE_MODE_PATCH) {
+            return mode
+        }
+
+        throw new Error(`Unsupported note update mode: "${mode}"`)
+    }
+
+    getPatchLinesFromContent(content, headingTexts = new Set()) {
+        const lines = []
+        let start = 0
+        const normalizedContent = typeof content === 'string' ? content : ''
+
+        for (let index = 0; index < normalizedContent.length; index++) {
+            if (normalizedContent[index] === '\n') {
+                const text = normalizedContent.substring(start, index)
+                const trimmed = text.trim()
+                lines.push({
+                    text,
+                    trimmed,
+                    start,
+                    end: index,
+                    newlineEnd: index + 1,
+                    isHeading: headingTexts.has(trimmed) || /^#{1,6}\s+\S/.test(trimmed),
+                })
+                start = index + 1
+            }
+        }
+
+        if (start < normalizedContent.length || normalizedContent.length === 0) {
+            const text = normalizedContent.substring(start)
+            const trimmed = text.trim()
+            lines.push({
+                text,
+                trimmed,
+                start,
+                end: normalizedContent.length,
+                newlineEnd: normalizedContent.length,
+                isHeading: headingTexts.has(trimmed) || /^#{1,6}\s+\S/.test(trimmed),
+            })
+        }
+
+        return lines
+    }
+
+    getFormattedHeadingTextsFromYText(ytext) {
+        const headingTexts = new Set()
+        if (!ytext || typeof ytext.toDelta !== 'function') return headingTexts
+
+        const chars = []
+        ytext.toDelta().forEach(op => {
+            if (typeof op.insert !== 'string') return
+            for (let index = 0; index < op.insert.length; index++) {
+                chars.push({
+                    char: op.insert[index],
+                    attributes: op.attributes || {},
+                })
+            }
+        })
+
+        let lineStart = 0
+        let lineText = ''
+        chars.forEach((entry, index) => {
+            if (entry.char === '\n') {
+                if (entry.attributes && entry.attributes.header) {
+                    const trimmed = lineText.trim()
+                    if (trimmed) headingTexts.add(trimmed)
+                }
+                lineStart = index + 1
+                lineText = ''
+            } else if (index >= lineStart) {
+                lineText += entry.char
+            }
+        })
+
+        return headingTexts
+    }
+
+    normalizePatchEditOccurrence(occurrence) {
+        if (occurrence === undefined || occurrence === null || occurrence === '') return null
+        const normalizedOccurrence = Number(occurrence)
+        if (!Number.isInteger(normalizedOccurrence) || normalizedOccurrence <= 0) {
+            throw new Error('Patch edit occurrence must be a positive integer when provided.')
+        }
+        return normalizedOccurrence
+    }
+
+    findTextOccurrences(content, searchText) {
+        const occurrences = []
+        if (!searchText) return occurrences
+
+        let index = content.indexOf(searchText)
+        while (index !== -1) {
+            occurrences.push(index)
+            index = content.indexOf(searchText, index + searchText.length)
+        }
+        return occurrences
+    }
+
+    resolvePatchTextMatch(content, searchText, occurrence, editIndex, fieldName) {
+        if (typeof searchText !== 'string' || searchText.length === 0) {
+            return {
+                success: false,
+                error: 'INVALID_PATCH_EDIT',
+                message: `Patch edit ${editIndex + 1} requires a non-empty ${fieldName}.`,
+                failedEditIndex: editIndex,
+            }
+        }
+
+        const occurrences = this.findTextOccurrences(content, searchText)
+        if (occurrences.length === 0) {
+            return {
+                success: false,
+                error: 'PATCH_ANCHOR_NOT_FOUND',
+                message: `Patch edit ${editIndex + 1} could not find the exact ${fieldName}: "${searchText}".`,
+                failedEditIndex: editIndex,
+            }
+        }
+
+        const normalizedOccurrence = this.normalizePatchEditOccurrence(occurrence)
+        if (normalizedOccurrence !== null) {
+            if (normalizedOccurrence > occurrences.length) {
+                return {
+                    success: false,
+                    error: 'PATCH_OCCURRENCE_NOT_FOUND',
+                    message: `Patch edit ${editIndex + 1} requested occurrence ${normalizedOccurrence}, but only ${
+                        occurrences.length
+                    } match(es) were found.`,
+                    failedEditIndex: editIndex,
+                }
+            }
+            return { success: true, index: occurrences[normalizedOccurrence - 1], occurrences }
+        }
+
+        if (occurrences.length > 1) {
+            return {
+                success: false,
+                error: 'PATCH_ANCHOR_AMBIGUOUS',
+                message: `Patch edit ${editIndex + 1} found ${
+                    occurrences.length
+                } matches for "${searchText}". Provide occurrence to edit one exact match.`,
+                failedEditIndex: editIndex,
+            }
+        }
+
+        return { success: true, index: occurrences[0], occurrences }
+    }
+
+    validatePatchDeleteRange(deleteLength, contentLength, editIndex) {
+        if (deleteLength <= 0) return null
+
+        if (deleteLength >= contentLength && contentLength > 0) {
+            return {
+                success: false,
+                error: 'PATCH_TOO_LARGE',
+                message: `Patch edit ${
+                    editIndex + 1
+                } would replace the whole note. Full-note replacement is not allowed in patch mode.`,
+                failedEditIndex: editIndex,
+            }
+        }
+
+        if (deleteLength > MAX_PATCH_DELETE_CHARS) {
+            return {
+                success: false,
+                error: 'PATCH_TOO_LARGE',
+                message: `Patch edit ${
+                    editIndex + 1
+                } would replace ${deleteLength} characters, which exceeds the safe patch limit.`,
+                failedEditIndex: editIndex,
+            }
+        }
+
+        if (
+            contentLength >= MAX_PATCH_DELETE_RATIO_MIN_CONTENT &&
+            deleteLength / contentLength > MAX_PATCH_DELETE_RATIO
+        ) {
+            return {
+                success: false,
+                error: 'PATCH_TOO_LARGE',
+                message: `Patch edit ${
+                    editIndex + 1
+                } would replace too much of the note. Use a narrower section or exact text anchor.`,
+                failedEditIndex: editIndex,
+            }
+        }
+
+        return null
+    }
+
+    buildPatchOperations(originalContent, edits, headingTexts = new Set()) {
+        if (!Array.isArray(edits) || edits.length === 0) {
+            throw new Error('Patch mode requires a non-empty edits array.')
+        }
+
+        let workingContent = typeof originalContent === 'string' ? originalContent : ''
+        const operations = []
+        const changes = []
+
+        for (let editIndex = 0; editIndex < edits.length; editIndex++) {
+            const edit = edits[editIndex] || {}
+            const editType = edit.type
+
+            if (!NOTE_PATCH_EDIT_TYPES.includes(editType)) {
+                return {
+                    success: false,
+                    error: 'INVALID_PATCH_EDIT',
+                    message: `Patch edit ${editIndex + 1} has unsupported type "${editType}".`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+
+            let operation = null
+
+            if (editType === 'replace_text') {
+                const replacement = typeof edit.replaceWith === 'string' ? edit.replaceWith : edit.content
+                if (typeof replacement !== 'string') {
+                    return {
+                        success: false,
+                        error: 'INVALID_PATCH_EDIT',
+                        message: `Patch edit ${editIndex + 1} requires replaceWith.`,
+                        failedEditIndex: editIndex,
+                        changes: [],
+                    }
+                }
+
+                const match = this.resolvePatchTextMatch(
+                    workingContent,
+                    edit.find,
+                    edit.occurrence,
+                    editIndex,
+                    'find text'
+                )
+                if (!match.success) return { ...match, changes: [] }
+
+                const unsafeDelete = this.validatePatchDeleteRange(edit.find.length, workingContent.length, editIndex)
+                if (unsafeDelete) return { ...unsafeDelete, changes: [] }
+
+                operation = {
+                    index: match.index,
+                    deleteLength: edit.find.length,
+                    insertText: replacement,
+                    type: editType,
+                }
+                changes.push('patched exact text')
+            } else if (editType === 'replace_section') {
+                const heading = typeof edit.heading === 'string' ? edit.heading.trim() : ''
+                const sectionContent = typeof edit.content === 'string' ? edit.content : edit.replaceWith
+                if (!heading) {
+                    return {
+                        success: false,
+                        error: 'INVALID_PATCH_EDIT',
+                        message: `Patch edit ${editIndex + 1} requires heading.`,
+                        failedEditIndex: editIndex,
+                        changes: [],
+                    }
+                }
+                if (typeof sectionContent !== 'string') {
+                    return {
+                        success: false,
+                        error: 'INVALID_PATCH_EDIT',
+                        message: `Patch edit ${editIndex + 1} requires content.`,
+                        failedEditIndex: editIndex,
+                        changes: [],
+                    }
+                }
+
+                const lines = this.getPatchLinesFromContent(workingContent, headingTexts)
+                const matchingHeadings = lines.filter(line => {
+                    const withoutMarkdownPrefix = line.trimmed.replace(/^#{1,6}\s+/, '').trim()
+                    return line.isHeading && (line.trimmed === heading || withoutMarkdownPrefix === heading)
+                })
+
+                if (matchingHeadings.length === 0) {
+                    return {
+                        success: false,
+                        error: 'PATCH_HEADING_NOT_FOUND',
+                        message: `Patch edit ${editIndex + 1} could not find heading "${heading}".`,
+                        failedEditIndex: editIndex,
+                        changes: [],
+                    }
+                }
+
+                if (matchingHeadings.length > 1) {
+                    return {
+                        success: false,
+                        error: 'PATCH_HEADING_AMBIGUOUS',
+                        message: `Patch edit ${editIndex + 1} found multiple headings named "${heading}".`,
+                        failedEditIndex: editIndex,
+                        changes: [],
+                    }
+                }
+
+                const headingLine = matchingHeadings[0]
+                const followingLines = lines.filter(line => line.start >= headingLine.newlineEnd)
+                const nextHeading = followingLines.find(line => line.isHeading)
+                const sectionStart = headingLine.newlineEnd
+                const sectionEnd = nextHeading ? nextHeading.start : workingContent.length
+                const normalizedSectionContent =
+                    sectionContent.length > 0 && nextHeading && !sectionContent.endsWith('\n')
+                        ? `${sectionContent}\n`
+                        : sectionContent
+
+                const unsafeDelete = this.validatePatchDeleteRange(
+                    sectionEnd - sectionStart,
+                    workingContent.length,
+                    editIndex
+                )
+                if (unsafeDelete) return { ...unsafeDelete, changes: [] }
+
+                operation = {
+                    index: sectionStart,
+                    deleteLength: sectionEnd - sectionStart,
+                    insertText: normalizedSectionContent,
+                    type: editType,
+                }
+                changes.push(`patched section "${heading}"`)
+            } else {
+                const anchor = edit.anchor || edit.find
+                const content = typeof edit.content === 'string' ? edit.content : edit.insertText
+                if (typeof content !== 'string') {
+                    return {
+                        success: false,
+                        error: 'INVALID_PATCH_EDIT',
+                        message: `Patch edit ${editIndex + 1} requires content.`,
+                        failedEditIndex: editIndex,
+                        changes: [],
+                    }
+                }
+
+                const match = this.resolvePatchTextMatch(workingContent, anchor, edit.occurrence, editIndex, 'anchor')
+                if (!match.success) return { ...match, changes: [] }
+
+                operation = {
+                    index: editType === 'insert_after' ? match.index + anchor.length : match.index,
+                    deleteLength: 0,
+                    insertText: content,
+                    type: editType,
+                }
+                changes.push(
+                    editType === 'insert_after' ? 'inserted content after anchor' : 'inserted content before anchor'
+                )
+            }
+
+            workingContent =
+                workingContent.substring(0, operation.index) +
+                operation.insertText +
+                workingContent.substring(operation.index + operation.deleteLength)
+            operations.push(operation)
+        }
+
+        return {
+            success: true,
+            operations,
+            content: workingContent,
+            changes,
+        }
+    }
+
+    insertPatchContent(ytext, index, content) {
+        if (!content) return
+        ytext.insert(index, content, {
+            header: null,
+            list: null,
+            bold: null,
+            italic: null,
+            strike: null,
+        })
+    }
+
+    applyPatchOperationsToYText(ytext, operations) {
+        operations.forEach(operation => {
+            if (operation.deleteLength > 0) {
+                ytext.delete(operation.index, operation.deleteLength)
+            }
+            this.insertPatchContent(ytext, operation.index, operation.insertText)
+        })
+    }
+
+    async updateContentMetadata(projectId, noteId, fullContent, feedUser = null, changes = ['content updated']) {
+        const db = this.options.database
+        if (!db) return null
+
+        const preview = fullContent.length > 150 ? fullContent.substring(0, 147) + '...' : fullContent
+
+        await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
+            preview: preview,
+            lastEditionDate: Date.now(),
+            ...(feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
+                ? { lastEditorId: feedUser.uid || feedUser.id || feedUser.userId }
+                : {}),
+            ...(feedUser && (feedUser.displayName || feedUser.name)
+                ? { lastEditorName: feedUser.displayName || feedUser.name }
+                : {}),
+        })
+
+        if (this.options.enableFeeds && feedUser) {
+            await this.createNoteFeed('updated', {
+                note: { id: noteId, preview },
+                projectId,
+                feedUser,
+                changes,
+            })
+        }
+
+        return preview
+    }
+
+    /**
+     * Apply deterministic patch edits to an existing note in Firebase Storage.
+     * Validates every edit before mutating the Yjs document, so unsafe patches make no changes.
+     */
+    async applyPatchEditsToStorage(projectId, noteId, edits, feedUser = null) {
+        let storage = this.options.storage
+        if (!storage && typeof require !== 'undefined') {
+            try {
+                const firebase = require('firebase-admin')
+                storage = firebase.storage()
+            } catch (error) {
+                return {
+                    success: false,
+                    error: 'STORAGE_UNAVAILABLE',
+                    message: `Storage is not available for patching note content: ${error.message}`,
+                }
+            }
+        }
+
+        if (!storage) {
+            return {
+                success: false,
+                error: 'STORAGE_UNAVAILABLE',
+                message: 'Storage is not configured for patching note content.',
+            }
+        }
+
+        const Y = typeof require !== 'undefined' ? require('yjs') : null
+        if (!Y) {
+            return {
+                success: false,
+                error: 'YJS_UNAVAILABLE',
+                message: 'Yjs is not available for patching note content.',
+            }
+        }
+
+        const bucketName = await this.getBucketName()
+        const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
+        const doc = new Y.Doc()
+
+        const [fileExists] = await storageRef.exists()
+        if (fileExists) {
+            const [buffer] = await storageRef.download()
+            Y.applyUpdate(doc, new Uint8Array(buffer))
+        }
+
+        const ytext = doc.getText('quill')
+        const originalContent = ytext.toString()
+        const headingTexts = this.getFormattedHeadingTextsFromYText(ytext)
+        const patchPlan = this.buildPatchOperations(originalContent, edits, headingTexts)
+
+        if (!patchPlan.success) {
+            return patchPlan
+        }
+
+        this.applyPatchOperationsToYText(ytext, patchPlan.operations)
+
+        const encodedStateData = Y.encodeStateAsUpdate(doc)
+        await storageRef.save(Buffer.from(encodedStateData), {
+            metadata: {
+                contentType: 'application/octet-stream',
+            },
+        })
+
+        const fullContent = ytext.toString()
+        const preview = await this.updateContentMetadata(projectId, noteId, fullContent, feedUser, patchPlan.changes)
+
+        return {
+            success: true,
+            changes: patchPlan.changes,
+            content: fullContent,
+            preview,
         }
     }
 

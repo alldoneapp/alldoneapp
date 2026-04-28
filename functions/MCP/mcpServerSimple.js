@@ -1781,10 +1781,16 @@ class AlldoneSimpleMCPServer {
             {
                 content,
                 title,
+                mode: args.mode,
+                edits: args.edits,
             },
             userId,
             db
         )
+
+        if (!updateResult.success) {
+            return updateResult
+        }
 
         if (searchResult?.isAutoSelected) {
             updateResult.searchInfo = {
@@ -1913,7 +1919,7 @@ class AlldoneSimpleMCPServer {
      * Perform the actual note update
      */
     async performNoteUpdate(currentNote, currentProjectId, currentProjectName, updateFields, userId, db) {
-        const { content, title } = updateFields
+        const { content, title, mode, edits } = updateFields
 
         // Initialize NoteService for consistent update logic and feed generation
         if (!this.noteService) {
@@ -1942,8 +1948,23 @@ class AlldoneSimpleMCPServer {
                 currentNote: currentNote,
                 content: content,
                 title: title,
+                mode: mode,
+                edits: edits,
                 feedUser: feedUser,
             })
+
+            if (!result.success) {
+                return {
+                    success: false,
+                    noteId: currentNote.id,
+                    message: result.message,
+                    error: result.error,
+                    failedEditIndex: result.failedEditIndex,
+                    note: result.updatedNote || { id: currentNote.id, ...currentNote },
+                    project: { id: currentProjectId, name: currentProjectName },
+                    changes: result.changes || [],
+                }
+            }
 
             console.log('Note updated via NoteService:', {
                 noteId: currentNote.id,
@@ -3063,7 +3084,7 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'update_note',
                             description:
-                                'Update an existing note by prepending new content with a date stamp, either by note lookup or by targeting the note linked to a contact via contact ID, name, or email (requires OAuth 2.0 Bearer token authentication)',
+                                'Update an existing note. Defaults to prepending new content with a date stamp. Use mode "patch" with deterministic edits to safely replace exact text, replace a section, or insert before/after an exact anchor. Patch mode refuses missing or ambiguous anchors and does not support full-note replacement (requires OAuth 2.0 Bearer token authentication)',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
@@ -3097,11 +3118,67 @@ class AlldoneSimpleMCPServer {
                                     },
                                     content: {
                                         type: 'string',
-                                        description: 'New content to prepend to the note with date stamp (required)',
+                                        description:
+                                            'New content to prepend to the note with date stamp when mode is omitted or "prepend". Do not use this for mode "patch"; use edits instead.',
                                     },
                                     title: {
                                         type: 'string',
                                         description: 'Update the note title (optional)',
+                                    },
+                                    mode: {
+                                        type: 'string',
+                                        enum: ['prepend', 'patch'],
+                                        description:
+                                            'Optional update mode. Defaults to "prepend". Use "patch" for exact, safe partial rewrites using edits.',
+                                    },
+                                    edits: {
+                                        type: 'array',
+                                        description:
+                                            'Required when mode is "patch". Edits are applied in order and the whole patch is rejected if any edit has a missing or ambiguous anchor.',
+                                        items: {
+                                            type: 'object',
+                                            properties: {
+                                                type: {
+                                                    type: 'string',
+                                                    enum: [
+                                                        'replace_text',
+                                                        'replace_section',
+                                                        'insert_before',
+                                                        'insert_after',
+                                                    ],
+                                                    description: 'Patch operation type.',
+                                                },
+                                                find: {
+                                                    type: 'string',
+                                                    description:
+                                                        'Exact text to replace for replace_text, or an exact anchor alternative for insert_before/insert_after.',
+                                                },
+                                                replaceWith: {
+                                                    type: 'string',
+                                                    description: 'Replacement text for replace_text.',
+                                                },
+                                                heading: {
+                                                    type: 'string',
+                                                    description:
+                                                        'Exact section heading for replace_section. The backend replaces content under this heading until the next heading.',
+                                                },
+                                                content: {
+                                                    type: 'string',
+                                                    description:
+                                                        'Replacement content for replace_section, or inserted content for insert_before/insert_after.',
+                                                },
+                                                anchor: {
+                                                    type: 'string',
+                                                    description: 'Exact anchor text for insert_before or insert_after.',
+                                                },
+                                                occurrence: {
+                                                    type: 'number',
+                                                    description:
+                                                        'Optional 1-based occurrence to use when exact text or anchor appears multiple times. Omit only when the match is unique.',
+                                                },
+                                            },
+                                            required: ['type'],
+                                        },
                                     },
                                     createIfMissing: {
                                         type: 'boolean',
@@ -3109,7 +3186,7 @@ class AlldoneSimpleMCPServer {
                                             'For contact-targeted updates, auto-create the contact and/or linked note when missing (optional, default true)',
                                     },
                                 },
-                                required: ['content'],
+                                required: [],
                             },
                         },
                         {

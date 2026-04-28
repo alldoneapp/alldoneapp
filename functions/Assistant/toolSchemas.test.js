@@ -247,6 +247,20 @@ describe('Update note assistant tool schema', () => {
         expect(toolSchemas.update_note.function.parameters.properties.contactEmail.type).toBe('string')
         expect(toolSchemas.update_note.function.parameters.properties.createIfMissing.type).toBe('boolean')
     })
+
+    test('supports safe patch mode note updates', () => {
+        const properties = toolSchemas.update_note.function.parameters.properties
+
+        expect(properties.mode.enum).toEqual(['prepend', 'patch'])
+        expect(properties.edits.type).toBe('array')
+        expect(properties.edits.items.properties.type.enum).toEqual([
+            'replace_text',
+            'replace_section',
+            'insert_before',
+            'insert_after',
+        ])
+        expect(properties.edits.items.properties.occurrence.type).toBe('number')
+    })
 })
 
 describe('Update contact assistant tool schema', () => {
