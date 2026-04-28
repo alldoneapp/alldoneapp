@@ -176,4 +176,60 @@ describe('NoteService patch storage updates', () => {
         expect(file.save).not.toHaveBeenCalled()
         expect(update).not.toHaveBeenCalled()
     })
+
+    test('ignores stray top-level content when valid patch edits are provided', async () => {
+        let savedBuffer = null
+        const file = {
+            exists: jest.fn(async () => [true]),
+            download: jest.fn(async () => [encodePlainContent('Keep old value')]),
+            save: jest.fn(async buffer => {
+                savedBuffer = buffer
+            }),
+        }
+        const update = jest.fn(async () => {})
+        const get = jest.fn(async () => ({
+            exists: true,
+            data: () => ({ preview: 'Keep new value' }),
+        }))
+        const service = createService({
+            storage: {
+                bucket: jest.fn(() => ({
+                    file: jest.fn(() => file),
+                })),
+            },
+            database: {
+                doc: jest.fn(() => ({ update, get })),
+            },
+        })
+
+        const result = await service.updateAndPersistNote({
+            noteId: 'note-1',
+            projectId: 'project-1',
+            currentNote: { id: 'note-1', title: 'Note' },
+            mode: 'patch',
+            content: 'This must not be prepended',
+            edits: [{ type: 'replace_text', find: 'old', replaceWith: 'new' }],
+        })
+
+        expect(result.success).toBe(true)
+        expect(decodeContent(savedBuffer)).toBe('Keep new value')
+    })
+
+    test('returns a safe failure when patch mode has top-level content but no edits', async () => {
+        const service = createService()
+
+        const result = await service.updateAndPersistNote({
+            noteId: 'note-1',
+            projectId: 'project-1',
+            currentNote: { id: 'note-1', title: 'Note' },
+            mode: 'patch',
+            content: 'Top-level patch content',
+        })
+
+        expect(result).toMatchObject({
+            success: false,
+            error: 'PATCH_EDITS_REQUIRED',
+            persisted: false,
+        })
+    })
 })

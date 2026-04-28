@@ -670,7 +670,8 @@ class NoteService {
 
         const { noteId, projectId, currentNote, content: newContent, title: newTitle, feedUser } = params
         const updateMode = this.normalizeNoteUpdateMode(params.mode)
-        const hasPatchUpdate = updateMode === NOTE_UPDATE_MODE_PATCH
+        const hasPatchMode = updateMode === NOTE_UPDATE_MODE_PATCH
+        const hasPatchEdits = hasPatchMode && Array.isArray(params.edits) && params.edits.length > 0
         const hasPrependContentUpdate = updateMode === NOTE_UPDATE_MODE_PREPEND && newContent !== undefined
 
         if (!noteId || typeof noteId !== 'string' || noteId.trim() === '') {
@@ -685,11 +686,24 @@ class NoteService {
             throw new Error('Current note data is required for updating')
         }
 
-        if (updateMode === NOTE_UPDATE_MODE_PATCH && newContent !== undefined) {
-            throw new Error('content is only supported in prepend mode. Use edits[].content or edits[].replaceWith.')
+        if (hasPatchMode && newContent !== undefined && hasPatchEdits) {
+            console.warn('NoteService: Ignoring top-level content in patch mode because edits were provided')
         }
 
-        if (!hasPrependContentUpdate && !hasPatchUpdate && !newTitle) {
+        if (hasPatchMode && !hasPatchEdits && newContent !== undefined) {
+            return {
+                success: false,
+                noteId,
+                message:
+                    'Patch mode requires edits. Top-level content is only valid for prepend mode; use edits[].content or edits[].replaceWith for patch updates.',
+                error: 'PATCH_EDITS_REQUIRED',
+                updatedNote: { id: noteId, ...currentNote },
+                changes: [],
+                persisted: false,
+            }
+        }
+
+        if (!hasPrependContentUpdate && !hasPatchEdits && !newTitle) {
             throw new Error('At least content or title must be provided for update')
         }
 
@@ -753,7 +767,7 @@ class NoteService {
                 )
             }
 
-            if (hasPatchUpdate) {
+            if (hasPatchEdits) {
                 const patchResult = await this.applyPatchEditsToStorage(projectId, noteId, params.edits, feedUser)
                 if (!patchResult.success) {
                     return {
@@ -775,12 +789,12 @@ class NoteService {
                 const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
                 await noteDocRef.update(updateData)
                 console.log(`NoteService: Updated Firestore metadata with ${Object.keys(updateData).length} changes`)
-            } else if (hasPrependContentUpdate || hasPatchUpdate) {
+            } else if (hasPrependContentUpdate || hasPatchEdits) {
                 // Content-only update - no Firestore changes needed
                 console.log('NoteService: Content-only update, skipping Firestore to avoid triggering cloud functions')
             }
 
-            if (Object.keys(updateData).length === 0 && !hasPrependContentUpdate && !hasPatchUpdate) {
+            if (Object.keys(updateData).length === 0 && !hasPrependContentUpdate && !hasPatchEdits) {
                 return {
                     success: true,
                     message: 'No changes to apply',
@@ -792,7 +806,7 @@ class NoteService {
 
             // Get updated note data (only if we updated Firestore)
             let updatedNote
-            if (Object.keys(updateData).length > 0 || hasPatchUpdate) {
+            if (Object.keys(updateData).length > 0 || hasPatchEdits) {
                 const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
                 const updatedNoteDoc = await noteDocRef.get()
                 updatedNote = updatedNoteDoc.exists
