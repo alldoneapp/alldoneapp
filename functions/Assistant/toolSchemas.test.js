@@ -87,6 +87,13 @@ describe('User memory assistant tool schemas', () => {
         expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
     })
 
+    test('exposes update_assistant_settings only when allowed', () => {
+        expect(getToolSchemas(['update_assistant_settings']).map(schema => schema.function.name)).toEqual([
+            'update_assistant_settings',
+        ])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
     test('exposes compact_thread_context only when allowed', () => {
         expect(getToolSchemas(['compact_thread_context']).map(schema => schema.function.name)).toEqual([
             'compact_thread_context',
@@ -137,6 +144,25 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_user_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_user_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_user_description.function.parameters.properties.projectName.type).toBe('string')
+    })
+
+    test('documents assistant settings update fields', () => {
+        expect(toolSchemas.update_assistant_settings.function.parameters.required).toEqual([])
+        expect(toolSchemas.update_assistant_settings.function.description).toContain('instructions')
+        expect(toolSchemas.update_assistant_settings.function.description).toContain('instructionsHistory')
+        expect(toolSchemas.update_assistant_settings.function.description).toContain('allowedTools')
+        const properties = toolSchemas.update_assistant_settings.function.parameters.properties
+        expect(properties.instructions.type).toBe('string')
+        expect(properties.displayName.type).toBe('string')
+        expect(properties.description.type).toBe('string')
+        expect(properties.delegationToolDescriptionManual.type).toBe('string')
+        expect(properties.assistantId.type).toBe('string')
+        expect(properties.assistantName.type).toBe('string')
+        expect(properties.projectId.type).toBe('string')
+        expect(properties.model.enum).toContain('MODEL_GPT5_5')
+        expect(properties.temperature.enum).toContain('TEMPERATURE_NORMAL')
+        expect(Object.keys(properties)).not.toContain('allowedTools')
+        expect(Object.keys(properties)).not.toContain('isDefault')
     })
 
     test('documents compact thread context fields', () => {

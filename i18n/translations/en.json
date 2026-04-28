@@ -537,6 +537,7 @@
     "Update heartbeat settings": "Update heartbeat settings",
     "Update project description": "Update project description",
     "Update user description": "Update user description",
+    "Update assistant settings": "Update assistant settings",
     "Compact thread context": "Compact thread context",
     "Delegation tool description": "Delegation tool description",
     "Delegation description stale hint": "Assistant info/tasks changed. Regenerate recommended.",

@@ -8,6 +8,7 @@ export const TOOL_OPTIONS = [
     { key: 'update_heartbeat_settings', labelKey: 'Update heartbeat settings' },
     { key: 'update_project_description', labelKey: 'Update project description' },
     { key: 'update_user_description', labelKey: 'Update user description' },
+    { key: 'update_assistant_settings', labelKey: 'Update assistant settings' },
     { key: 'compact_thread_context', labelKey: 'Compact thread context' },
     { key: 'get_tasks', labelKey: 'Get tasks' },
     { key: 'get_goals', labelKey: 'Get goals' },
