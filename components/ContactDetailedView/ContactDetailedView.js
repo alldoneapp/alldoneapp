@@ -213,6 +213,7 @@ const ContactDetailedView = ({ navigation }) => {
                                                     projectId={project.id}
                                                     chatTitle={contact.displayName}
                                                     assistantId={contact.assistantId}
+                                                    parentObject={contact}
                                                     objectType={'contacts'}
                                                 />
                                             )

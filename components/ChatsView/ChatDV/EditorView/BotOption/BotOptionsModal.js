@@ -28,6 +28,7 @@ import { setSkillAssistant } from '../../../../../utils/backends/Skills/skillsFi
 import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFirestore'
 import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actions'
 import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
+import Backend from '../../../../../utils/BackendBridge'
 
 const normalizeAssistantObjectType = objectType => {
     switch (objectType) {
@@ -68,8 +69,28 @@ export default function BotOptionsModal({
     const dispatch = useDispatch()
     const [selectedTask, setSelectedTask] = useState(null)
     const [showAssistants, setShowAssistants] = useState(false)
+    const [linkedNoteTitle, setLinkedNoteTitle] = useState(null)
     const [width, height] = useWindowSize()
     const normalizedObjectType = normalizeAssistantObjectType(objectType)
+
+    const linkedNoteId = parentObject?.noteId
+    useEffect(() => {
+        if (!linkedNoteId || !projectId) {
+            setLinkedNoteTitle(null)
+            return
+        }
+        let cancelled = false
+        Backend.getNote(projectId, linkedNoteId)
+            .then(note => {
+                if (!cancelled) setLinkedNoteTitle(note?.title || null)
+            })
+            .catch(() => {
+                if (!cancelled) setLinkedNoteTitle(null)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [projectId, linkedNoteId])
 
     const assistant = getAssistantInProjectObject(projectId, assistantId)
 
@@ -190,7 +211,12 @@ export default function BotOptionsModal({
                     defaultContext={
                         parentObject
                             ? {
-                                  name: parentObject.title || parentObject.name,
+                                  name: parentObject.noteId
+                                      ? linkedNoteTitle ||
+                                        parentObject.title ||
+                                        parentObject.name ||
+                                        parentObject.displayName
+                                      : parentObject.title || parentObject.name || parentObject.displayName,
                                   id: parentObject.noteId || parentObject.id || parentObject.uid,
                                   type: parentObject.noteId ? 'note' : normalizedObjectType,
                               }
