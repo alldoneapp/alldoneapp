@@ -50,6 +50,12 @@ describe('Gmail assistant tool schemas', () => {
         expect(toolSchemas.create_gmail_reply_draft.function.parameters.required).toEqual([])
         expect(toolSchemas.update_gmail_draft.function.parameters.required).toEqual(['draftId'])
         expect(toolSchemas.update_gmail_email.function.parameters.required).toEqual(['messageId'])
+        expect(toolSchemas.create_gmail_draft.function.parameters.properties.attachments.items.required).toEqual([
+            'fileName',
+            'base64',
+        ])
+        expect(toolSchemas.update_gmail_draft.function.parameters.properties.removeAttachmentFileNames).toBeDefined()
+        expect(toolSchemas.update_gmail_draft.function.parameters.properties.replaceAttachments.type).toBe('boolean')
     })
 
     test('defines required fields for Gmail attachment fetch', () => {

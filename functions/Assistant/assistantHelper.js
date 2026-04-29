@@ -443,6 +443,8 @@ function buildConversationAfterToolExecution({
     conversationSafeToolResult,
     userContext = null,
 }) {
+    const conversationSafeToolArgs = buildConversationSafeToolArgs(toolName, toolArgs, null)
+
     if (
         toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY &&
         typeof conversationSafeToolResult?.compactedContextMessage === 'string' &&
@@ -469,7 +471,7 @@ function buildConversationAfterToolExecution({
                         type: 'function',
                         function: {
                             name: toolName,
-                            arguments: JSON.stringify(toolArgs),
+                            arguments: JSON.stringify(conversationSafeToolArgs),
                         },
                     },
                 ],
@@ -497,7 +499,7 @@ function buildConversationAfterToolExecution({
                     type: 'function',
                     function: {
                         name: toolName,
-                        arguments: JSON.stringify(toolArgs),
+                        arguments: JSON.stringify(conversationSafeToolArgs),
                     },
                 },
             ],
@@ -6032,6 +6034,7 @@ async function executeToolNatively(
                     threadId: toolArgs.threadId,
                     body: toolArgs.body,
                     instructions: toolArgs.instructions,
+                    attachments: toolArgs.attachments,
                 })
 
                 console.log('📧 CREATE_GMAIL_REPLY_DRAFT TOOL: Completed', {
@@ -6089,6 +6092,7 @@ async function executeToolNatively(
                     bcc: toolArgs.bcc,
                     subject: toolArgs.subject,
                     body: toolArgs.body,
+                    attachments: toolArgs.attachments,
                 })
 
                 console.log('📧 CREATE_GMAIL_DRAFT TOOL: Completed', {
@@ -6137,6 +6141,9 @@ async function executeToolNatively(
                     bcc: toolArgs.bcc,
                     subject: toolArgs.subject,
                     body: toolArgs.body,
+                    attachments: toolArgs.attachments,
+                    removeAttachmentFileNames: toolArgs.removeAttachmentFileNames,
+                    replaceAttachments: toolArgs.replaceAttachments,
                 })
 
                 console.log('📧 UPDATE_GMAIL_DRAFT TOOL: Completed', {
@@ -7971,7 +7978,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. Draft emails only; do not claim you sent anything.',
+            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. If the user asks to attach a file and you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('update_gmail_email')) {
@@ -7999,7 +8006,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {
         messages.push([
             'system',
-            'When the user wants an external app tool to use a file they uploaded in chat, call get_chat_attachment first. If they refer to a file from an earlier message, use list_recent_chat_media first to identify the right messageId, then call get_chat_attachment with that messageId. If get_chat_attachment succeeds, pass the returned fileName and fileBase64 directly into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+            'When the user wants an external app tool or Gmail draft to use a file they uploaded in chat, call get_chat_attachment first. If they refer to a file from an earlier message, use list_recent_chat_media first to identify the right messageId, then call get_chat_attachment with that messageId. If get_chat_attachment succeeds, pass the returned fileName and fileBase64 directly into the next tool call. Do not claim a file was sent unless both tool calls succeeded.',
         ])
     }
     if (
@@ -8014,7 +8021,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes('get_gmail_attachment')) {
         messages.push([
             'system',
-            'When the user wants to use a PDF or other file from Gmail with an external app tool, first use search_gmail to find the message and attachment metadata, then call get_gmail_attachment with the exact messageId and exact fileName from the same search result item. If search_gmail returned a projectId for that same result, reuse that exact projectId too; do not invent or substitute a different projectId. Use attachmentId only as a fallback when fileName is unavailable. Then pass the returned fileName and fileBase64 into the external tool call. Do not claim a file was sent unless both tool calls succeeded.',
+            'When the user wants to use a PDF or other file from Gmail with an external app tool or Gmail draft, first use search_gmail to find the message and attachment metadata, then call get_gmail_attachment with the exact messageId and exact fileName from the same search result item. If search_gmail returned a projectId for that same result, reuse that exact projectId too; do not invent or substitute a different projectId. Use attachmentId only as a fallback when fileName is unavailable. Then pass the returned fileName and fileBase64 into the next tool call. Do not claim a file was sent unless both tool calls succeeded.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('create_task')) {

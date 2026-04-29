@@ -3,6 +3,8 @@
 const { searchGmailForAssistantRequest, getConnectedGmailAccounts, getGmailClient } = require('./assistantGmailSearch')
 const { normalizeGmailMessage } = require('./gmailMessageParser')
 
+const MAX_DRAFT_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
+
 function normalizeRecipientList(value) {
     if (Array.isArray(value)) {
         return value.map(item => String(item || '').trim()).filter(Boolean)
@@ -25,6 +27,68 @@ function encodeMimeWord(value = '') {
 
 function toBase64Url(input) {
     return Buffer.from(input, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function normalizeBase64UrlToBuffer(base64Url = '') {
+    const normalized = String(base64Url || '')
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
+    const padding = normalized.length % 4
+    const padded = padding === 0 ? normalized : normalized + '='.repeat(4 - padding)
+    return Buffer.from(padded, 'base64')
+}
+
+function escapeHeaderValue(value = '') {
+    return String(value || '')
+        .replace(/[\r\n]+/g, ' ')
+        .trim()
+}
+
+function escapeQuotedHeaderValue(value = '') {
+    return escapeHeaderValue(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+function wrapBase64(value = '') {
+    return String(value || '')
+        .replace(/(.{1,76})/g, '$1\r\n')
+        .trim()
+}
+
+function normalizeAttachmentList(attachments = []) {
+    if (!Array.isArray(attachments)) return []
+
+    return attachments
+        .map(attachment => {
+            const fileName = escapeHeaderValue(attachment?.fileName || attachment?.name || '')
+            const mimeType = escapeHeaderValue(
+                attachment?.mimeType ||
+                    attachment?.fileMimeType ||
+                    attachment?.contentType ||
+                    'application/octet-stream'
+            )
+            const rawBase64 = String(attachment?.base64 || attachment?.fileBase64 || attachment?.data || '').trim()
+            const inline = attachment?.inline === true
+
+            if (!fileName || !rawBase64) return null
+
+            const buffer = normalizeBase64UrlToBuffer(rawBase64)
+            if (buffer.length > MAX_DRAFT_ATTACHMENT_SIZE_BYTES) {
+                throw new Error(
+                    `Gmail draft attachment "${fileName}" exceeds the ${Math.round(
+                        MAX_DRAFT_ATTACHMENT_SIZE_BYTES / 1024 / 1024
+                    )} MB limit (${buffer.length} bytes)`
+                )
+            }
+
+            return {
+                fileName,
+                mimeType: mimeType || 'application/octet-stream',
+                base64: buffer.toString('base64'),
+                sizeBytes: buffer.length,
+                inline,
+            }
+        })
+        .filter(Boolean)
 }
 
 function buildReferencesHeader({ references = '', rfcMessageId = '' }) {
@@ -54,6 +118,56 @@ function buildPlainTextMimeMessage({ to, cc, bcc, subject, body, inReplyTo, refe
     if (references) headers.unshift(`References: ${references}`)
 
     return `${headers.join('\r\n')}\r\n\r\n${String(body || '').replace(/\r?\n/g, '\r\n')}`
+}
+
+function buildMimeMessage({ to, cc, bcc, subject, body, inReplyTo, references, attachments }) {
+    const normalizedAttachments = normalizeAttachmentList(attachments)
+    if (normalizedAttachments.length === 0) {
+        return buildPlainTextMimeMessage({ to, cc, bcc, subject, body, inReplyTo, references })
+    }
+
+    const boundary = `alldone-gmail-draft-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const headers = ['MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${boundary}"`]
+
+    const toRecipients = normalizeRecipientList(to)
+    const ccRecipients = normalizeRecipientList(cc)
+    const bccRecipients = normalizeRecipientList(bcc)
+
+    if (toRecipients.length > 0) headers.unshift(`To: ${toRecipients.join(', ')}`)
+    if (ccRecipients.length > 0) headers.unshift(`Cc: ${ccRecipients.join(', ')}`)
+    if (bccRecipients.length > 0) headers.unshift(`Bcc: ${bccRecipients.join(', ')}`)
+    if (subject) headers.unshift(`Subject: ${encodeMimeWord(subject)}`)
+    if (inReplyTo) headers.unshift(`In-Reply-To: ${inReplyTo}`)
+    if (references) headers.unshift(`References: ${references}`)
+
+    const parts = [
+        [
+            `--${boundary}`,
+            'Content-Type: text/plain; charset="UTF-8"',
+            'Content-Transfer-Encoding: 8bit',
+            '',
+            String(body || '').replace(/\r?\n/g, '\r\n'),
+        ].join('\r\n'),
+    ]
+
+    normalizedAttachments.forEach(attachment => {
+        const safeFileName = escapeQuotedHeaderValue(attachment.fileName)
+        const disposition = attachment.inline ? 'inline' : 'attachment'
+        parts.push(
+            [
+                `--${boundary}`,
+                `Content-Type: ${attachment.mimeType}; name="${safeFileName}"`,
+                'Content-Transfer-Encoding: base64',
+                `Content-Disposition: ${disposition}; filename="${safeFileName}"`,
+                '',
+                wrapBase64(attachment.base64),
+            ].join('\r\n')
+        )
+    })
+
+    parts.push(`--${boundary}--`)
+
+    return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`
 }
 
 function buildGmailDraftUrl(gmailEmail = '', messageId = '') {
@@ -120,6 +234,76 @@ async function fetchDraftById(gmail, draftId) {
     })
 
     return response?.data || null
+}
+
+function collectDraftAttachmentParts(payload, parts = []) {
+    if (!payload) return parts
+
+    const fileName = typeof payload.filename === 'string' ? payload.filename.trim() : ''
+    const attachmentId = typeof payload.body?.attachmentId === 'string' ? payload.body.attachmentId.trim() : ''
+    const bodyData = typeof payload.body?.data === 'string' ? payload.body.data.trim() : ''
+    const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType.trim() : ''
+
+    if (fileName && (attachmentId || bodyData)) {
+        parts.push({
+            attachmentId,
+            bodyData,
+            fileName,
+            mimeType,
+            sizeBytes: Number(payload.body?.size || 0),
+            inline: String(payload.disposition || '').toLowerCase() === 'inline',
+        })
+    }
+
+    if (Array.isArray(payload.parts)) {
+        payload.parts.forEach(part => collectDraftAttachmentParts(part, parts))
+    }
+
+    return parts
+}
+
+async function fetchDraftAttachments({ gmail, messageId, payload }) {
+    const attachmentParts = collectDraftAttachmentParts(payload, [])
+    const attachments = []
+
+    for (const part of attachmentParts) {
+        let buffer = null
+        if (part.bodyData) {
+            buffer = normalizeBase64UrlToBuffer(part.bodyData)
+        } else if (part.attachmentId && messageId) {
+            const attachmentResponse = await gmail.users.messages.attachments.get({
+                userId: 'me',
+                messageId,
+                id: part.attachmentId,
+            })
+            buffer = normalizeBase64UrlToBuffer(attachmentResponse?.data?.data || '')
+        }
+
+        if (!buffer) continue
+
+        attachments.push({
+            fileName: part.fileName,
+            mimeType: part.mimeType || 'application/octet-stream',
+            base64: buffer.toString('base64'),
+            sizeBytes: buffer.length,
+            inline: part.inline,
+        })
+    }
+
+    return attachments
+}
+
+function normalizeFileNameList(value) {
+    if (Array.isArray(value)) {
+        return value.map(item => String(item || '').trim()).filter(Boolean)
+    }
+
+    if (typeof value !== 'string') return []
+
+    return value
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean)
 }
 
 function normalizeDraftData(draft = {}) {
@@ -297,7 +481,7 @@ async function updateDraftInAccount({ gmail, draftId, mimeMessage, threadId = ''
     return response?.data || {}
 }
 
-async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, bcc, subject, body }) {
+async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, bcc, subject, body, attachments }) {
     const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : ''
     if (!userId) {
         return { success: false, message: 'Gmail draft creation requires a valid requesting user.' }
@@ -331,12 +515,14 @@ async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, 
         return { success: false, message: 'Gmail draft creation requires a body.' }
     }
 
-    const mimeMessage = buildPlainTextMimeMessage({
+    const normalizedAttachments = normalizeAttachmentList(attachments)
+    const mimeMessage = buildMimeMessage({
         to: toRecipients,
         cc: ccRecipients,
         bcc: bccRecipients,
         subject: normalizedSubject,
         body: normalizedBody,
+        attachments: normalizedAttachments,
     })
 
     const draft = await createDraftInAccount({
@@ -356,12 +542,21 @@ async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, 
         to: toRecipients,
         cc: ccRecipients,
         bcc: bccRecipients,
+        attachments: normalizedAttachments.map(({ base64, ...attachment }) => attachment),
         webUrl: buildGmailDraftUrl(account.gmailEmail || '', draft.message?.id || ''),
         message: `Created a Gmail draft in ${account.gmailEmail || 'the connected Gmail account'}.`,
     }
 }
 
-async function createGmailReplyDraftForAssistantRequest({ userId, query, messageId, threadId, body, instructions }) {
+async function createGmailReplyDraftForAssistantRequest({
+    userId,
+    query,
+    messageId,
+    threadId,
+    body,
+    instructions,
+    attachments,
+}) {
     if (!userId) {
         return { success: false, message: 'Gmail reply draft creation requires a valid requesting user.' }
     }
@@ -396,12 +591,14 @@ async function createGmailReplyDraftForAssistantRequest({ userId, query, message
         ? String(target.normalizedMessage.subject || '').trim()
         : `Re: ${String(target.normalizedMessage.subject || '').trim()}`
     const references = buildReferencesHeader(target.normalizedMessage)
-    const mimeMessage = buildPlainTextMimeMessage({
+    const normalizedAttachments = normalizeAttachmentList(attachments)
+    const mimeMessage = buildMimeMessage({
         to: [replyTo],
         subject: replySubject,
         body: draftBody,
         inReplyTo: target.normalizedMessage.rfcMessageId || '',
         references,
+        attachments: normalizedAttachments,
     })
 
     const draft = await createDraftInAccount({
@@ -421,12 +618,24 @@ async function createGmailReplyDraftForAssistantRequest({ userId, query, message
         targetMessageId: target.normalizedMessage.messageId || '',
         targetSubject: target.normalizedMessage.subject || '',
         to: [replyTo],
+        attachments: normalizedAttachments.map(({ base64, ...attachment }) => attachment),
         webUrl: buildGmailDraftUrl(target.account.gmailEmail || '', draft.message?.id || ''),
         message: `Created a Gmail reply draft in ${target.account.gmailEmail || 'the connected Gmail account'}.`,
     }
 }
 
-async function updateGmailDraftForAssistantRequest({ userId, draftId, to, cc, bcc, subject, body }) {
+async function updateGmailDraftForAssistantRequest({
+    userId,
+    draftId,
+    to,
+    cc,
+    bcc,
+    subject,
+    body,
+    attachments,
+    removeAttachmentFileNames,
+    replaceAttachments,
+}) {
     if (!userId) {
         return { success: false, message: 'Gmail draft update requires a valid requesting user.' }
     }
@@ -465,12 +674,29 @@ async function updateGmailDraftForAssistantRequest({ userId, draftId, to, cc, bc
         }
     }
 
-    const mimeMessage = buildPlainTextMimeMessage({
+    const existingAttachments = await fetchDraftAttachments({
+        gmail: target.gmail,
+        messageId: target.normalizedDraft.messageId,
+        payload: target.draft.message?.payload || {},
+    })
+    const namesToRemove = new Set(normalizeFileNameList(removeAttachmentFileNames))
+    const normalizedAttachments = normalizeAttachmentList(attachments)
+    const replacementNames = new Set(normalizedAttachments.map(attachment => attachment.fileName))
+    const preservedAttachments =
+        replaceAttachments === true
+            ? []
+            : existingAttachments.filter(
+                  attachment => !namesToRemove.has(attachment.fileName) && !replacementNames.has(attachment.fileName)
+              )
+    const nextAttachments = [...preservedAttachments, ...normalizedAttachments]
+
+    const mimeMessage = buildMimeMessage({
         to: nextTo,
         cc: nextCc,
         bcc: nextBcc,
         subject: nextSubject,
         body: nextBody,
+        attachments: nextAttachments,
     })
 
     const draft = await updateDraftInAccount({
@@ -491,6 +717,7 @@ async function updateGmailDraftForAssistantRequest({ userId, draftId, to, cc, bc
         to: nextTo,
         cc: nextCc,
         bcc: nextBcc,
+        attachments: nextAttachments.map(({ base64, ...attachment }) => attachment),
         webUrl: buildGmailDraftUrl(target.account.gmailEmail || '', draft.message?.id || ''),
         message: `Updated the Gmail draft in ${target.account.gmailEmail || 'the connected Gmail account'}.`,
     }
@@ -498,11 +725,16 @@ async function updateGmailDraftForAssistantRequest({ userId, draftId, to, cc, bc
 
 module.exports = {
     buildPlainTextMimeMessage,
+    buildMimeMessage,
     buildGmailDraftUrl,
     buildReferencesHeader,
+    collectDraftAttachmentParts,
     createGmailDraftForAssistantRequest,
     createGmailReplyDraftForAssistantRequest,
     fetchDraftById,
+    fetchDraftAttachments,
+    normalizeAttachmentList,
+    normalizeFileNameList,
     normalizeRecipientList,
     normalizeDraftData,
     pickLatestResult,

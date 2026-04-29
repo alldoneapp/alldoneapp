@@ -5,15 +5,30 @@ jest.mock('./assistantGmailSearch', () => ({
 }))
 
 const {
+    buildMimeMessage,
     buildPlainTextMimeMessage,
     buildGmailDraftUrl,
     buildReferencesHeader,
+    normalizeAttachmentList,
     normalizeDraftData,
     normalizeRecipientList,
     pickLatestResult,
     selectDefaultAccount,
     selectProjectAccount,
+    updateGmailDraftForAssistantRequest,
 } = require('./assistantGmailDrafts')
+const { getConnectedGmailAccounts, getGmailClient } = require('./assistantGmailSearch')
+
+function toBase64Url(value) {
+    return Buffer.from(value, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function decodeBase64Url(value) {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padding = normalized.length % 4
+    const padded = padding === 0 ? normalized : normalized + '='.repeat(4 - padding)
+    return Buffer.from(padded, 'base64').toString('utf8')
+}
 
 describe('assistantGmailDrafts helpers', () => {
     test('normalizes recipients from string or array input', () => {
@@ -37,6 +52,47 @@ describe('assistantGmailDrafts helpers', () => {
         expect(mimeMessage).toContain('Subject: Project update')
         expect(mimeMessage).toContain('Content-Type: text/plain; charset="UTF-8"')
         expect(mimeMessage).toContain('\r\n\r\nHello team,\r\nStatus update.')
+    })
+
+    test('builds a multipart MIME message when attachments are provided', () => {
+        const mimeMessage = buildMimeMessage({
+            to: ['alice@example.com'],
+            subject: 'Project update',
+            body: 'Attached.',
+            attachments: [
+                {
+                    fileName: 'summary.txt',
+                    mimeType: 'text/plain',
+                    base64: Buffer.from('File contents', 'utf8').toString('base64'),
+                },
+            ],
+        })
+
+        expect(mimeMessage).toContain('Content-Type: multipart/mixed; boundary="')
+        expect(mimeMessage).toContain('Content-Type: text/plain; charset="UTF-8"')
+        expect(mimeMessage).toContain('Content-Type: text/plain; name="summary.txt"')
+        expect(mimeMessage).toContain('Content-Disposition: attachment; filename="summary.txt"')
+        expect(mimeMessage).toContain(Buffer.from('File contents', 'utf8').toString('base64'))
+    })
+
+    test('normalizes attachment tool payloads for draft MIME generation', () => {
+        const attachments = normalizeAttachmentList([
+            {
+                fileName: 'invoice.pdf',
+                fileMimeType: 'application/pdf',
+                fileBase64: Buffer.from('pdf bytes', 'utf8').toString('base64'),
+            },
+        ])
+
+        expect(attachments).toEqual([
+            {
+                fileName: 'invoice.pdf',
+                mimeType: 'application/pdf',
+                base64: Buffer.from('pdf bytes', 'utf8').toString('base64'),
+                sizeBytes: 9,
+                inline: false,
+            },
+        ])
     })
 
     test('builds reply MIME message headers with threading metadata', () => {
@@ -134,5 +190,126 @@ describe('assistantGmailDrafts helpers', () => {
         ])
 
         expect(result).toEqual({ messageId: 'm2', internalDate: 5000 })
+    })
+})
+
+describe('assistantGmailDrafts updates', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    function buildGmailClient(existingAttachmentText = 'Existing file') {
+        return {
+            users: {
+                drafts: {
+                    get: jest.fn().mockResolvedValue({
+                        data: {
+                            id: 'draft-123',
+                            message: {
+                                id: 'message-123',
+                                threadId: 'thread-123',
+                                payload: {
+                                    headers: [
+                                        { name: 'To', value: 'alice@example.com' },
+                                        { name: 'Subject', value: 'Project update' },
+                                    ],
+                                    parts: [
+                                        {
+                                            mimeType: 'text/plain',
+                                            body: {
+                                                data: toBase64Url('Original body'),
+                                            },
+                                        },
+                                        {
+                                            filename: 'existing.txt',
+                                            mimeType: 'text/plain',
+                                            body: {
+                                                data: toBase64Url(existingAttachmentText),
+                                                size: existingAttachmentText.length,
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    }),
+                    update: jest.fn().mockResolvedValue({
+                        data: {
+                            id: 'draft-123',
+                            message: {
+                                id: 'message-456',
+                                threadId: 'thread-123',
+                            },
+                        },
+                    }),
+                },
+                messages: {
+                    attachments: {
+                        get: jest.fn(),
+                    },
+                },
+            },
+        }
+    }
+
+    test('preserves existing draft attachments when adding a new attachment', async () => {
+        const gmail = buildGmailClient()
+        getConnectedGmailAccounts.mockResolvedValue([
+            { projectId: 'project-1', gmailEmail: 'person@example.com', gmailDefault: true },
+        ])
+        getGmailClient.mockResolvedValue(gmail)
+
+        const result = await updateGmailDraftForAssistantRequest({
+            userId: 'user-1',
+            draftId: 'draft-123',
+            body: 'Updated body',
+            attachments: [
+                {
+                    fileName: 'new.txt',
+                    mimeType: 'text/plain',
+                    base64: Buffer.from('New file', 'utf8').toString('base64'),
+                },
+            ],
+        })
+
+        const raw = gmail.users.drafts.update.mock.calls[0][0].requestBody.message.raw
+        const mimeMessage = decodeBase64Url(raw)
+
+        expect(result.success).toBe(true)
+        expect(result.attachments.map(attachment => attachment.fileName)).toEqual(['existing.txt', 'new.txt'])
+        expect(mimeMessage).toContain('Updated body')
+        expect(mimeMessage).toContain('filename="existing.txt"')
+        expect(mimeMessage).toContain(Buffer.from('Existing file', 'utf8').toString('base64'))
+        expect(mimeMessage).toContain('filename="new.txt"')
+        expect(mimeMessage).toContain(Buffer.from('New file', 'utf8').toString('base64'))
+    })
+
+    test('can replace existing draft attachments', async () => {
+        const gmail = buildGmailClient()
+        getConnectedGmailAccounts.mockResolvedValue([
+            { projectId: 'project-1', gmailEmail: 'person@example.com', gmailDefault: true },
+        ])
+        getGmailClient.mockResolvedValue(gmail)
+
+        const result = await updateGmailDraftForAssistantRequest({
+            userId: 'user-1',
+            draftId: 'draft-123',
+            replaceAttachments: true,
+            attachments: [
+                {
+                    fileName: 'replacement.txt',
+                    mimeType: 'text/plain',
+                    base64: Buffer.from('Replacement file', 'utf8').toString('base64'),
+                },
+            ],
+        })
+
+        const raw = gmail.users.drafts.update.mock.calls[0][0].requestBody.message.raw
+        const mimeMessage = decodeBase64Url(raw)
+
+        expect(result.success).toBe(true)
+        expect(result.attachments.map(attachment => attachment.fileName)).toEqual(['replacement.txt'])
+        expect(mimeMessage).not.toContain('filename="existing.txt"')
+        expect(mimeMessage).toContain('filename="replacement.txt"')
     })
 })

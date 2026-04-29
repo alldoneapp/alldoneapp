@@ -6,6 +6,7 @@ const {
     injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
 const {
+    buildConversationSafeToolArgs,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     injectPendingAttachmentIntoToolArgs,
@@ -695,6 +696,74 @@ describe('assistant attachment handoff helpers', () => {
                 source: 'chat',
             },
             usedPendingAttachment: false,
+        })
+    })
+
+    test('injects the pending attachment into Gmail draft attachment arguments', () => {
+        const pendingAttachmentPayload = {
+            fileName: 'invoice.pdf',
+            fileBase64: 'YWJjMTIz',
+            fileMimeType: 'application/pdf',
+            fileSizeBytes: 42,
+            source: 'gmail',
+        }
+
+        expect(
+            injectPendingAttachmentIntoToolArgs(
+                'update_gmail_draft',
+                {
+                    draftId: 'draft-1',
+                    attachments: [{ fileName: 'invoice.pdf' }],
+                },
+                pendingAttachmentPayload
+            )
+        ).toEqual({
+            toolArgs: {
+                draftId: 'draft-1',
+                attachments: [
+                    {
+                        fileName: 'invoice.pdf',
+                        mimeType: 'application/pdf',
+                        base64: 'YWJjMTIz',
+                    },
+                ],
+            },
+            usedPendingAttachment: true,
+        })
+    })
+
+    test('redacts Gmail draft attachment base64 from conversation-safe tool args', () => {
+        const pendingAttachmentPayload = {
+            fileName: 'invoice.pdf',
+            fileBase64: 'YWJjMTIz',
+            fileMimeType: 'application/pdf',
+            fileSizeBytes: 42,
+            source: 'gmail',
+        }
+
+        expect(
+            buildConversationSafeToolArgs(
+                'create_gmail_draft',
+                {
+                    attachments: [
+                        {
+                            fileName: 'invoice.pdf',
+                            mimeType: 'application/pdf',
+                            base64: 'YWJjMTIz',
+                        },
+                    ],
+                },
+                pendingAttachmentPayload
+            )
+        ).toEqual({
+            attachments: [
+                {
+                    fileName: 'invoice.pdf',
+                    mimeType: 'application/pdf',
+                    base64: '[omitted from conversation; preserved for the next external tool call]',
+                    base64Length: 8,
+                },
+            ],
         })
     })
 })

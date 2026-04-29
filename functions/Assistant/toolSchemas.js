@@ -1028,6 +1028,29 @@ const toolSchemas = {
                         type: 'string',
                         description: 'The plain-text body content for the reply draft.',
                     },
+                    attachments: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                fileName: {
+                                    type: 'string',
+                                    description: 'Attachment file name to show in Gmail.',
+                                },
+                                mimeType: {
+                                    type: 'string',
+                                    description: 'Attachment MIME type, such as application/pdf.',
+                                },
+                                base64: {
+                                    type: 'string',
+                                    description:
+                                        'Base64-encoded file content. You can pass fileBase64 returned by get_gmail_attachment.',
+                                },
+                            },
+                            required: ['fileName', 'base64'],
+                        },
+                        description: 'Optional files to attach to the reply draft.',
+                    },
                     instructions: {
                         type: 'string',
                         description:
@@ -1086,6 +1109,29 @@ const toolSchemas = {
                         type: 'string',
                         description: 'The plain-text body content for the draft.',
                     },
+                    attachments: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                fileName: {
+                                    type: 'string',
+                                    description: 'Attachment file name to show in Gmail.',
+                                },
+                                mimeType: {
+                                    type: 'string',
+                                    description: 'Attachment MIME type, such as application/pdf.',
+                                },
+                                base64: {
+                                    type: 'string',
+                                    description:
+                                        'Base64-encoded file content. You can pass fileBase64 returned by get_gmail_attachment.',
+                                },
+                            },
+                            required: ['fileName', 'base64'],
+                        },
+                        description: 'Optional files to attach to the new draft.',
+                    },
                 },
                 required: ['to', 'subject', 'body'],
             },
@@ -1142,6 +1188,46 @@ const toolSchemas = {
                     body: {
                         type: 'string',
                         description: 'Optional replacement plain-text body content.',
+                    },
+                    attachments: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                fileName: {
+                                    type: 'string',
+                                    description: 'Attachment file name to show in Gmail.',
+                                },
+                                mimeType: {
+                                    type: 'string',
+                                    description: 'Attachment MIME type, such as application/pdf.',
+                                },
+                                base64: {
+                                    type: 'string',
+                                    description:
+                                        'Base64-encoded file content. You can pass fileBase64 returned by get_gmail_attachment.',
+                                },
+                            },
+                            required: ['fileName', 'base64'],
+                        },
+                        description:
+                            'Optional files to add to the draft. Existing attachments are preserved unless removed or replaced.',
+                    },
+                    removeAttachmentFileNames: {
+                        oneOf: [
+                            { type: 'string' },
+                            {
+                                type: 'array',
+                                items: { type: 'string' },
+                            },
+                        ],
+                        description:
+                            'Optional attachment file names to remove from the draft. Use exact existing file names.',
+                    },
+                    replaceAttachments: {
+                        type: 'boolean',
+                        description:
+                            'Set true to replace all existing draft attachments with the provided attachments. Omit or false to preserve existing attachments.',
                     },
                 },
                 required: ['draftId'],
