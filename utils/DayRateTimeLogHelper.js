@@ -48,12 +48,17 @@ export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, force
     const normalizedConfig = normalizeDayRateTimeLogConfig(config)
     const realDoneTasks = tasks.filter(task => !task.parentId && !isDayRateTimeLogTask(task))
     const realLoggedMinutes = realDoneTasks.reduce((total, task) => total + (task.estimations?.[OPEN_STEP] || 0), 0)
-    const shouldLogDay = forceWorkedDay || realDoneTasks.length >= normalizedConfig.triggerTasks
+    const hasManualNonCalendarLoggedTime = realDoneTasks.some(
+        task => !task.calendarData && (task.estimations?.[OPEN_STEP] || 0) > 0
+    )
+    const shouldLogDay =
+        forceWorkedDay || (!hasManualNonCalendarLoggedTime && realDoneTasks.length >= normalizedConfig.triggerTasks)
 
     return {
         adjustmentMinutes: shouldLogDay ? Math.max(0, normalizedConfig.targetMinutes - realLoggedMinutes) : 0,
         realDoneTasksAmount: realDoneTasks.length,
         realLoggedMinutes,
+        hasManualNonCalendarLoggedTime,
         shouldLogDay,
     }
 }

@@ -27,9 +27,15 @@ const task = estimation => ({
     estimations: { Open: estimation },
 })
 
+const calendarTask = estimation => ({
+    parentId: null,
+    calendarData: { id: 'calendar-event' },
+    estimations: { Open: estimation },
+})
+
 describe('DayRateTimeLogHelper', () => {
     it('tops up qualifying days to the configured target', () => {
-        const result = calculateDayRateTimeLogAdjustment([task(15), task(15), task(15), task(15), task(30)], {
+        const result = calculateDayRateTimeLogAdjustment([task(0), task(0), task(0), task(0), calendarTask(90)], {
             enabled: true,
             targetMinutes: 480,
             triggerTasks: 5,
@@ -43,11 +49,11 @@ describe('DayRateTimeLogHelper', () => {
     it('does not double count existing day-rate adjustment tasks', () => {
         const result = calculateDayRateTimeLogAdjustment(
             [
-                task(60),
-                task(60),
-                task(60),
-                task(60),
-                task(60),
+                calendarTask(60),
+                calendarTask(60),
+                calendarTask(60),
+                calendarTask(60),
+                calendarTask(60),
                 { parentId: null, genericData: { type: DAY_RATE_TIME_LOG_TYPE }, estimations: { Open: 180 } },
             ],
             { enabled: true, targetMinutes: 480, triggerTasks: 5 }
@@ -59,7 +65,7 @@ describe('DayRateTimeLogHelper', () => {
     })
 
     it('does not create automatic adjustments below the task threshold', () => {
-        const result = calculateDayRateTimeLogAdjustment([task(60), task(30)], {
+        const result = calculateDayRateTimeLogAdjustment([calendarTask(60), calendarTask(30)], {
             enabled: true,
             targetMinutes: 480,
             triggerTasks: 5,
@@ -81,14 +87,41 @@ describe('DayRateTimeLogHelper', () => {
     })
 
     it('does not produce a top-up when real logged time reaches the target', () => {
-        const result = calculateDayRateTimeLogAdjustment([task(120), task(120), task(120), task(60), task(60)], {
+        const result = calculateDayRateTimeLogAdjustment(
+            [calendarTask(120), calendarTask(120), calendarTask(120), calendarTask(60), calendarTask(60)],
+            {
+                enabled: true,
+                targetMinutes: 480,
+                triggerTasks: 5,
+            }
+        )
+
+        expect(result.shouldLogDay).toBe(true)
+        expect(result.adjustmentMinutes).toBe(0)
+    })
+
+    it('does not auto-adjust when a non-calendar task has manually logged time', () => {
+        const result = calculateDayRateTimeLogAdjustment([task(240), task(0), task(0), task(0), calendarTask(30)], {
             enabled: true,
             targetMinutes: 480,
             triggerTasks: 5,
         })
 
-        expect(result.shouldLogDay).toBe(true)
+        expect(result.hasManualNonCalendarLoggedTime).toBe(true)
+        expect(result.shouldLogDay).toBe(false)
         expect(result.adjustmentMinutes).toBe(0)
+    })
+
+    it('still allows manual worked-day adjustments when a non-calendar task has logged time', () => {
+        const result = calculateDayRateTimeLogAdjustment(
+            [task(240), task(0)],
+            { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+            true
+        )
+
+        expect(result.hasManualNonCalendarLoggedTime).toBe(true)
+        expect(result.shouldLogDay).toBe(true)
+        expect(result.adjustmentMinutes).toBe(240)
     })
 
     it('recognizes generated day-rate tasks', () => {
