@@ -23,6 +23,7 @@ import {
     getEstimationTypeByProjectId,
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
+import { normalizeDayRateTimeLogConfig, reconcileDayRateTimeLogsForPastDays } from '../../../utils/DayRateTimeLogHelper'
 
 export default function EndDayStatisticsModal() {
     const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
@@ -95,6 +96,18 @@ export default function EndDayStatisticsModal() {
         setDataLoaded({})
     }
 
+    const reconcileDayRateTimeLogBeforeStats = async (project, startTimestamp) => {
+        const dayRateTimeLog = normalizeDayRateTimeLogConfig(project.dayRateTimeLog)
+        if (!dayRateTimeLog.enabled) return
+
+        try {
+            const yesterday = moment().subtract(1, 'day').endOf('day').valueOf()
+            await reconcileDayRateTimeLogsForPastDays(project.id, loggedUserId, startTimestamp, yesterday)
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
     useEffect(() => {
         if (
             !isAnonymous &&
@@ -112,13 +125,15 @@ export default function EndDayStatisticsModal() {
                 const project = loggedUserProjects[i]
                 if (!templateProjectIds.includes(project.id)) {
                     dataLoaded[project.id] = false
-                    Backend.getUserStatistics(
-                        project.id,
-                        loggedUserId,
-                        statisticsDate,
-                        updateStatistics,
-                        activeOfflineMode
-                    )
+                    reconcileDayRateTimeLogBeforeStats(project, endDayStatisticsDate.valueOf()).finally(() => {
+                        Backend.getUserStatistics(
+                            project.id,
+                            loggedUserId,
+                            statisticsDate,
+                            updateStatistics,
+                            activeOfflineMode
+                        )
+                    })
                 }
             }
 

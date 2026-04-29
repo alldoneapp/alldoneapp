@@ -85,6 +85,12 @@ export function setProjectAutoEstimation(projectId, autoEstimation) {
     })
 }
 
+export function setProjectDayRateTimeLog(projectId, dayRateTimeLog) {
+    getDb().doc(`/projects/${projectId}`).update({
+        dayRateTimeLog,
+    })
+}
+
 export function setProjectSortIndex(projectId, userId, sortIndex, batch) {
     batch.update(getDb().doc(`/projects/${projectId}`), {
         [`sortIndexByUser.${userId}`]: sortIndex,

@@ -623,6 +623,11 @@ class ProjectHelper {
             parentTemplateId: '',
             activeFullSearch: null,
             hourlyRatesData: { currency: 'EUR', hourlyRates: {} },
+            dayRateTimeLog: {
+                enabled: false,
+                targetMinutes: 480,
+                triggerTasks: 5,
+            },
             lastChatActionDate: moment().subtract(30, 'year').valueOf(),
             usersData: {},
             workstreamIds: [DEFAULT_WORKSTREAM_ID],

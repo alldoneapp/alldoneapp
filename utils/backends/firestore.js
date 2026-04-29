@@ -3675,6 +3675,17 @@ export function mapProjectData(projectId, project, customData) {
         parentTemplateId: project.parentTemplateId ? project.parentTemplateId : '',
         activeFullSearch: project.activeFullSearch ? project.activeFullSearch : null,
         hourlyRatesData: project.hourlyRatesData ? project.hourlyRatesData : { currency: 'EUR', hourlyRates: {} },
+        dayRateTimeLog: project.dayRateTimeLog
+            ? {
+                  enabled: project.dayRateTimeLog.enabled === true,
+                  targetMinutes: project.dayRateTimeLog.targetMinutes || 480,
+                  triggerTasks: project.dayRateTimeLog.triggerTasks || 5,
+              }
+            : {
+                  enabled: false,
+                  targetMinutes: 480,
+                  triggerTasks: 5,
+              },
         lastChatActionDate: project.lastChatActionDate
             ? project.lastChatActionDate
             : moment().subtract(30, 'year').valueOf(),

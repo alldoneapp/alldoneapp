@@ -1353,5 +1353,11 @@
     "Open chat": "Chat öffnen",
     "Open goal": "Ziel öffnen",
     "Open contact": "Kontakt öffnen",
-    "Open Gmail message": "Gmail-Nachricht öffnen"
+    "Open Gmail message": "Gmail-Nachricht öffnen",
+    "Day-rate logging": "Tagessatz-Zeiterfassung",
+    "Enabled": "Aktiviert",
+    "Hours per day": "Stunden pro Tag",
+    "Task trigger": "Aufgaben-Auslöser",
+    "Mark day worked": "Tag als gearbeitet markieren",
+    "Off": "Aus"
 }

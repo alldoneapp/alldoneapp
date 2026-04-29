@@ -1790,5 +1790,11 @@
     "Open chat": "Abrir chat",
     "Open goal": "Abrir meta",
     "Open contact": "Abrir contacto",
-    "Open Gmail message": "Abrir mensaje de Gmail"
+    "Open Gmail message": "Abrir mensaje de Gmail",
+    "Day-rate logging": "Registro de tarifa diaria",
+    "Enabled": "Activado",
+    "Hours per day": "Horas por día",
+    "Task trigger": "Activador de tareas",
+    "Mark day worked": "Marcar día trabajado",
+    "Off": "Desactivado"
 }

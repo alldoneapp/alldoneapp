@@ -1803,5 +1803,11 @@
     "Open chat": "Open chat",
     "Open goal": "Open goal",
     "Open contact": "Open contact",
-    "Open Gmail message": "Open Gmail message"
+    "Open Gmail message": "Open Gmail message",
+    "Day-rate logging": "Day-rate logging",
+    "Enabled": "Enabled",
+    "Hours per day": "Hours per day",
+    "Task trigger": "Task trigger",
+    "Mark day worked": "Mark day worked",
+    "Off": "Off"
 }

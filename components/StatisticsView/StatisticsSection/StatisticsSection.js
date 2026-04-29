@@ -29,6 +29,8 @@ import HourlyRateAndCurrencyWrapper from './HourlyRateAndCurrency/HourlyRateAndC
 import FilterByUser from './FilterByUser'
 import InvoiceInfoWrapper from '../../Invoicing/InvoiceInfoWrapper'
 import { formatCurrency } from '../../../utils/CurrencyConverter'
+import Button from '../../UIControls/Button'
+import { markDayRateDayWorked, normalizeDayRateTimeLogConfig } from '../../../utils/DayRateTimeLogHelper'
 
 export default function StatisticsSection({
     projectId,
@@ -53,6 +55,14 @@ export default function StatisticsSection({
     const currency = project?.hourlyRatesData?.currency || 'EUR'
     const showMoneyEarned = moneyEarned > 0
     const hasMoneyChart = showMoneyEarned && allMoneyEarned && Object.keys(allMoneyEarned).length > 0
+    const dayRateTimeLog = normalizeDayRateTimeLogConfig(project?.dayRateTimeLog)
+    const canMarkDayWorked = dayRateTimeLog.enabled && timestamp1.isSame(timestamp2, 'day')
+
+    const markWorkedDay = () => {
+        markDayRateDayWorked(projectId, loggedUserId, timestamp1.valueOf()).catch(error => {
+            console.log(error)
+        })
+    }
 
     useEffect(() => {
         if (!hasMoneyChart && selectedChart === STATISTIC_CHART_MONEY_EARNED) {
@@ -116,6 +126,15 @@ export default function StatisticsSection({
                             projectId={project.id}
                             timestamp1={timestamp1}
                             timestamp2={timestamp2}
+                        />
+                    )}
+                    {canMarkDayWorked && (
+                        <Button
+                            icon="clock"
+                            title={translate('Mark day worked')}
+                            type="ghost"
+                            onPress={markWorkedDay}
+                            buttonStyle={localStyles.markWorkedButton}
                         />
                     )}
                 </View>
@@ -215,5 +234,9 @@ const localStyles = StyleSheet.create({
     },
     propertiesSectionMobile: {
         width: '100%',
+    },
+    markWorkedButton: {
+        alignSelf: 'flex-start',
+        marginTop: 8,
     },
 })

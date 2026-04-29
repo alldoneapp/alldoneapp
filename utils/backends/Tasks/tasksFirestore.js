@@ -115,6 +115,7 @@ import { getUserWorkflow } from '../../../components/ContactsView/Utils/Contacts
 import { updateXpByDoneForAllReviewers, updateXpByDoneTask } from '../../Levels'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -1036,6 +1037,10 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
 
     await batch.commit()
 
+    if (task.done && !isDayRateTimeLogTask(task)) {
+        await reconcileExistingDayRateTimeLog(projectId, task.userId, task.completed)
+    }
+
     if (shouldFindNewFocusTask) {
         await findAndSetNewFocusedTask(projectId, task.userId, oldTask.parentGoalId, taskId)
     }
@@ -1200,7 +1205,11 @@ export async function setTaskEstimations(projectId, taskId, task, stepId, estima
 
     updateTaskData(projectId, task.id, { [`estimations.${stepId}`]: estimation }, batch)
 
-    batch.commit()
+    await batch.commit()
+
+    if (task.done && stepId === OPEN_STEP && !isDayRateTimeLogTask(task)) {
+        await reconcileExistingDayRateTimeLog(projectId, task.userId, task.completed)
+    }
 
     setFutureEstimationsFeedChain(projectId, taskId, task, stepId, estimation, oldEstimation)
 }
@@ -2480,7 +2489,11 @@ export async function moveTasksFromMiddleOfWorkflow(
               batch
           )
 
-    batch.commit()
+    await batch.commit()
+
+    if (stepToMoveId === DONE_STEP && !isDayRateTimeLogTask(task)) {
+        await reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed)
+    }
 
     const assignee = TasksHelper.getUserInProject(projectId, task.userId)
     if (assignee && assignee.inFocusTaskId === task.id) {
@@ -2694,9 +2707,12 @@ export async function moveTasksFromOpen(
         }
     }
 
-    batch.commit().then(() => {
-        moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
-    })
+    await batch.commit()
+    moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
+
+    if (stepToMoveId === DONE_STEP && ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
+        await reconcileExistingDayRateTimeLog(projectId, newUserId, completionDate)
+    }
 
     await updateLinkedContactsEditionData(projectId, task, completionDate)
 
@@ -2791,7 +2807,11 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         ? await promoteSubtaskToTask(projectId, task, batch)
         : updateSubtasksState(projectId, subtaskIds, { ...updateData, parentDone: false, inDone: false }, batch)
 
-    batch.commit()
+    await batch.commit()
+
+    if (ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
+        await reconcileExistingDayRateTimeLog(projectId, userId, task.completed)
+    }
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations)
 }
@@ -2871,7 +2891,11 @@ export async function setTaskStatus(
         )
     }
 
-    taskBatch.commit()
+    await taskBatch.commit()
+
+    if (!isDayRateTimeLogTask(task)) {
+        await reconcileExistingDayRateTimeLog(projectId, statisticUserUid, isDone ? completedDate : task.completed)
+    }
 
     if (isDone && completedDate) {
         await updateLinkedContactsEditionData(projectId, task, completedDate)

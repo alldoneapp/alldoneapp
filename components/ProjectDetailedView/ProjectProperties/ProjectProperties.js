@@ -36,6 +36,7 @@ import ProjectStatus from './Status/ProjectStatus'
 import { getUserData } from '../../../utils/backends/Users/usersFirestore'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import AutoEstimation from './AutoEstimation/AutoEstimation'
+import DayRateLogging from './DayRateLogging/DayRateLogging'
 
 const ProjectProperties = ({ project, type }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -128,6 +129,11 @@ const ProjectProperties = ({ project, type }) => {
                                 projectId={projectId}
                                 disabled={!accessGranted || userIsNormalUserInGuide}
                                 autoEstimation={project.autoEstimation}
+                            />
+                            <DayRateLogging
+                                projectId={projectId}
+                                disabled={!accessGranted || userIsNormalUserInGuide}
+                                dayRateTimeLog={project.dayRateTimeLog}
                             />
                             <FollowObject
                                 projectId={projectId}
