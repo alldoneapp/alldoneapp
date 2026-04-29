@@ -42,6 +42,11 @@ export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
 export const ASSISTANT_PROMPT_FIELD_HEARTBEAT = 'heartbeatPrompt'
 export const ASSISTANT_PROMPT_HISTORY_FIELD_INSTRUCTIONS = 'instructionsHistory'
 export const ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT = 'heartbeatPromptHistory'
+const DEFAULT_HEARTBEAT_AWAKE_START = 28800000
+const DEFAULT_HEARTBEAT_AWAKE_END = 79200000
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 1800000
+const DEFAULT_HEARTBEAT_CHANCE_PERCENT = 0
+const DEFAULT_HEARTBEAT_SEND_WHATSAPP = false
 export const DEFAULT_HEARTBEAT_PROMPT =
     'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
 
@@ -1157,6 +1162,15 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
         prompt: globalAssistant.prompt,
         thirdPartLink: globalAssistant.thirdPartLink,
         type: globalAssistant.type,
+        heartbeatAwakeStart: globalAssistant.heartbeatAwakeStart ?? DEFAULT_HEARTBEAT_AWAKE_START,
+        heartbeatAwakeEnd: globalAssistant.heartbeatAwakeEnd ?? DEFAULT_HEARTBEAT_AWAKE_END,
+        heartbeatIntervalMs: globalAssistant.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+        heartbeatChancePercent: globalAssistant.heartbeatChancePercent ?? DEFAULT_HEARTBEAT_CHANCE_PERCENT,
+        heartbeatSendWhatsApp: globalAssistant.heartbeatSendWhatsApp ?? DEFAULT_HEARTBEAT_SEND_WHATSAPP,
+        heartbeatPrompt:
+            typeof globalAssistant.heartbeatPrompt === 'string'
+                ? globalAssistant.heartbeatPrompt
+                : DEFAULT_HEARTBEAT_PROMPT,
         // Reset sync timestamp to indicate we've synced with the latest version
         copiedFromTemplateAssistantDate: Date.now(),
     }
