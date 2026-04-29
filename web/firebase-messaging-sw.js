@@ -22,6 +22,39 @@ firebase.initializeApp({
 if (firebase.messaging.isSupported()) {
     const messaging = firebase.messaging()
 
+    const getNotificationUrl = notification => {
+        try {
+            const url = notification && notification.data && notification.data.url
+            return url ? new URL(url, self.location.origin).href : self.location.origin
+        } catch (_) {
+            return self.location.origin
+        }
+    }
+
+    const openOrFocusNotificationUrl = async url => {
+        const targetUrl = new URL(url, self.location.origin)
+        const windowClients = await clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true,
+        })
+
+        const sameOriginClient = windowClients.find(client => {
+            try {
+                return targetUrl.origin === self.location.origin && new URL(client.url).origin === self.location.origin
+            } catch (_) {
+                return false
+            }
+        })
+
+        if (sameOriginClient) {
+            const navigatedClient =
+                'navigate' in sameOriginClient ? await sameOriginClient.navigate(targetUrl.href) : sameOriginClient
+            return navigatedClient && 'focus' in navigatedClient ? navigatedClient.focus() : navigatedClient
+        }
+
+        return clients.openWindow(targetUrl.href)
+    }
+
     messaging.setBackgroundMessageHandler(payload => {
         const options = {
             body: payload.data.body,
@@ -36,7 +69,7 @@ if (firebase.messaging.isSupported()) {
     self.addEventListener('notificationclick', function (event) {
         const clickedNotification = event.notification
         clickedNotification.close()
-        const promiseChain = clients.openWindow(clickedNotification.data.url)
+        const promiseChain = openOrFocusNotificationUrl(getNotificationUrl(clickedNotification))
         event.waitUntil(promiseChain)
     })
 }

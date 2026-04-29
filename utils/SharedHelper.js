@@ -56,7 +56,24 @@ import { getChatMeta } from './backends/Chats/chatsFirestore'
 import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
 
 class SharedHelper {
+    static normalizeInternalUrl = rawUrl => {
+        if (typeof rawUrl !== 'string') return '/'
+
+        if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+            try {
+                const parsedUrl = new window.URL(rawUrl, window.location.origin)
+                if (parsedUrl.origin === window.location.origin) {
+                    return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+                }
+            } catch (_) {}
+        }
+
+        return rawUrl
+    }
+
     static processUrl = async (isLoggedIn, URL, onIsMember, onIsShared, onNotShared, onNotMatch, onJoinToTemplate) => {
+        URL = SharedHelper.normalizeInternalUrl(URL)
+
         const sharedMatchersList = [
             URLsTasksTrigger,
             URLsNotesTrigger,
