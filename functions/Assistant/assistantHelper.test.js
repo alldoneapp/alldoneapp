@@ -119,6 +119,8 @@ const mockDocGet = jest.fn()
 const mockDocSet = jest.fn(async () => {})
 const mockDocUpdate = jest.fn(async () => {})
 const mockDocDelete = jest.fn(async () => {})
+const mockTransactionGet = jest.fn(ref => ref.get())
+const mockTransactionUpdate = jest.fn(async () => {})
 const mockCollectionGet = jest.fn()
 const mockBatchSet = jest.fn()
 const mockBatchUpdate = jest.fn()
@@ -135,6 +137,12 @@ jest.mock('firebase-admin', () => ({
                 update: mockDocUpdate,
                 delete: mockDocDelete,
             })),
+            runTransaction: jest.fn(async callback =>
+                callback({
+                    get: mockTransactionGet,
+                    update: mockTransactionUpdate,
+                })
+            ),
             collection: jest.fn(() => ({
                 doc: jest.fn(path => ({
                     path,
@@ -242,6 +250,8 @@ describe('assistant attachment handoff helpers', () => {
         mockDocSet.mockClear()
         mockDocUpdate.mockClear()
         mockDocDelete.mockClear()
+        mockTransactionGet.mockClear()
+        mockTransactionUpdate.mockClear()
         mockCollectionGet.mockReset()
         mockBatchSet.mockClear()
         mockBatchUpdate.mockClear()
@@ -1661,6 +1671,9 @@ describe('assistant get goals tool', () => {
 describe('assistant heartbeat settings tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockTransactionGet.mockClear()
+        mockTransactionUpdate.mockClear()
     })
 
     test('builds heartbeat settings context with the current prompt', async () => {
@@ -1741,6 +1754,19 @@ describe('assistant heartbeat settings tool', () => {
             .mockResolvedValueOnce({
                 exists: true,
                 data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_heartbeat_settings'],
+                    heartbeatPrompt: 'Old prompt',
+                    heartbeatPromptHistory: Array.from({ length: 10 }, (_, index) => ({
+                        prompt: `Older heartbeat prompt ${index}`,
+                        heartbeatPrompt: `Older heartbeat prompt ${index}`,
+                        replacedAt: 100 - index,
+                    })),
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
                     defaultProjectId: 'project-1',
                     phone: '+49123456',
                 }),
@@ -1762,14 +1788,26 @@ describe('assistant heartbeat settings tool', () => {
             null
         )
 
-        expect(mockDocUpdate).toHaveBeenCalledWith({
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(expect.any(Object), {
             heartbeatIntervalMs: 15 * 60 * 1000,
             heartbeatChancePercent: 100,
             heartbeatAwakeStart: (9 * 60 + 15) * 60 * 1000,
             heartbeatAwakeEnd: (18 * 60 + 45) * 60 * 1000,
             heartbeatSendWhatsApp: false,
             heartbeatPrompt: 'New prompt for heartbeat',
+            heartbeatPromptHistory: expect.arrayContaining([
+                expect.objectContaining({
+                    prompt: 'Old prompt',
+                    heartbeatPrompt: 'Old prompt',
+                    replacedByUserId: 'user-1',
+                    replacedByAssistantId: 'assistant-1',
+                }),
+            ]),
+            lastEditorId: 'user-1',
+            lastEditionDate: expect.any(Number),
         })
+        const updatePatch = mockTransactionUpdate.mock.calls[0][1]
+        expect(updatePatch.heartbeatPromptHistory).toHaveLength(10)
         expect(result).toMatchObject({
             success: true,
             assistantId: 'assistant-1',
@@ -1782,6 +1820,7 @@ describe('assistant heartbeat settings tool', () => {
                 'prompt',
             ],
             heartbeatPrompt: 'New prompt for heartbeat',
+            heartbeatPromptHistoryLength: 10,
         })
         expect(result.heartbeatSettings).toMatchObject({
             intervalMinutes: 15,
@@ -1806,6 +1845,32 @@ describe('assistant heartbeat settings tool', () => {
         await expect(
             executeToolNatively('update_heartbeat_settings', {}, 'project-1', 'assistant-1', 'user-1', null)
         ).rejects.toThrow('update_heartbeat_settings requires at least one')
+    })
+
+    test('does not create heartbeat prompt history when the prompt is unchanged', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_heartbeat_settings'],
+                    heartbeatPrompt: 'Same prompt',
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+
+        await expect(
+            executeToolNatively(
+                'update_heartbeat_settings',
+                { prompt: 'Same prompt' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('update_heartbeat_settings requires at least one')
+        expect(mockTransactionUpdate).not.toHaveBeenCalled()
+        expect(mockDocUpdate).not.toHaveBeenCalled()
     })
 
     test('rejects invalid heartbeat time strings', async () => {
@@ -1850,6 +1915,87 @@ describe('assistant heartbeat settings tool', () => {
                 null
             )
         ).rejects.toThrow('Tool not permitted: update_heartbeat_settings')
+    })
+})
+
+describe('assistant settings prompt history', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockTransactionGet.mockClear()
+        mockTransactionUpdate.mockClear()
+    })
+
+    test('versions instructions changes and caps history at 10 entries', async () => {
+        const existingHistory = Array.from({ length: 10 }, (_, index) => ({
+            prompt: `Older instructions ${index}`,
+            instructions: `Older instructions ${index}`,
+            replacedAt: 100 - index,
+        }))
+
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_assistant_settings'],
+                    instructions: 'Current instructions',
+                    instructionsHistory: existingHistory,
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_assistant_settings'],
+                    instructions: 'Current instructions',
+                    instructionsHistory: existingHistory,
+                }),
+            })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    uid: 'assistant-1',
+                    allowedTools: ['update_assistant_settings'],
+                    instructions: 'Current instructions',
+                    instructionsHistory: existingHistory,
+                }),
+            })
+
+        const result = await executeToolNatively(
+            'update_assistant_settings',
+            { instructions: 'Updated instructions' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.objectContaining({
+                instructions: 'Updated instructions',
+                instructionsHistory: expect.arrayContaining([
+                    expect.objectContaining({
+                        prompt: 'Current instructions',
+                        instructions: 'Current instructions',
+                        replacedByUserId: 'user-1',
+                        replacedByAssistantId: 'assistant-1',
+                    }),
+                ]),
+                lastEditorId: 'user-1',
+                lastEditionDate: expect.any(Number),
+            })
+        )
+        const updatePatch = mockTransactionUpdate.mock.calls[0][1]
+        expect(updatePatch.instructionsHistory).toHaveLength(10)
+        expect(result).toMatchObject({
+            success: true,
+            updatedFields: ['instructions'],
+            instructionsHistoryLength: 10,
+        })
     })
 })
 

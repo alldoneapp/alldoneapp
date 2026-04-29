@@ -156,6 +156,7 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_assistant_settings.function.parameters.required).toEqual([])
         expect(toolSchemas.update_assistant_settings.function.description).toContain('instructions')
         expect(toolSchemas.update_assistant_settings.function.description).toContain('instructionsHistory')
+        expect(toolSchemas.update_assistant_settings.function.description).toContain('latest 10')
         expect(toolSchemas.update_assistant_settings.function.description).toContain('allowedTools')
         const properties = toolSchemas.update_assistant_settings.function.parameters.properties
         expect(properties.instructions.type).toBe('string')
@@ -169,6 +170,14 @@ describe('User memory assistant tool schemas', () => {
         expect(properties.temperature.enum).toContain('TEMPERATURE_NORMAL')
         expect(Object.keys(properties)).not.toContain('allowedTools')
         expect(Object.keys(properties)).not.toContain('isDefault')
+    })
+
+    test('documents heartbeat prompt versioning', () => {
+        expect(toolSchemas.update_heartbeat_settings.function.description).toContain('heartbeatPromptHistory')
+        expect(toolSchemas.update_heartbeat_settings.function.description).toContain('latest 10')
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.prompt.description).toContain(
+            'heartbeatPromptHistory'
+        )
     })
 
     test('documents compact thread context fields', () => {

@@ -37,6 +37,14 @@ import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { RECURRENCE_NEVER } from '../../../components/TaskListView/Utils/TasksHelper'
 
+const MAX_ASSISTANT_PROMPT_HISTORY = 10
+export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
+export const ASSISTANT_PROMPT_FIELD_HEARTBEAT = 'heartbeatPrompt'
+export const ASSISTANT_PROMPT_HISTORY_FIELD_INSTRUCTIONS = 'instructionsHistory'
+export const ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT = 'heartbeatPromptHistory'
+export const DEFAULT_HEARTBEAT_PROMPT =
+    'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
+
 function getAssistantTasksCollectionPath(projectId, assistantId) {
     return isGlobalAssistant(assistantId)
         ? `assistantTasks/${projectId}/preConfigTasks`
@@ -236,6 +244,87 @@ async function updateAssistantData(projectId, assistantId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
+function getPromptHistoryValue(entry, promptField) {
+    if (!entry) return ''
+    if (typeof entry[promptField] === 'string') return entry[promptField]
+    if (typeof entry.prompt === 'string') return entry.prompt
+    if (promptField === ASSISTANT_PROMPT_FIELD_INSTRUCTIONS && typeof entry.instructions === 'string') {
+        return entry.instructions
+    }
+    if (promptField === ASSISTANT_PROMPT_FIELD_HEARTBEAT && typeof entry.heartbeatPrompt === 'string') {
+        return entry.heartbeatPrompt
+    }
+    return ''
+}
+
+function buildPromptHistoryEntry(promptField, prompt, replacedAt, replacedByUserId) {
+    return {
+        prompt,
+        [promptField]: prompt,
+        replacedAt,
+        replacedByUserId: replacedByUserId || null,
+        replacedByAssistantId: null,
+    }
+}
+
+function getCurrentPromptValue(data, promptField) {
+    const value = data?.[promptField]
+    if (typeof value === 'string') return value
+    if (promptField === ASSISTANT_PROMPT_FIELD_HEARTBEAT) return DEFAULT_HEARTBEAT_PROMPT
+    return ''
+}
+
+async function updateAssistantPromptFieldWithHistory(
+    projectId,
+    assistant,
+    promptField,
+    historyField,
+    prompt,
+    extraData = {}
+) {
+    const nextPrompt = typeof prompt === 'string' ? prompt : ''
+    const { loggedUser } = store.getState()
+    const ref = getDb().doc(`assistants/${projectId}/items/${assistant.uid}`)
+    const now = Date.now()
+    let updated = false
+
+    await getDb().runTransaction(async transaction => {
+        const doc = await transaction.get(ref)
+        if (!doc.exists) return
+
+        const currentData = doc.data() || {}
+        const currentPrompt = getCurrentPromptValue(currentData, promptField)
+        if (currentPrompt === nextPrompt) {
+            if (Object.keys(extraData).length > 0) {
+                transaction.update(ref, {
+                    ...extraData,
+                    lastEditionDate: now,
+                    lastEditorId: loggedUser.uid,
+                })
+                updated = true
+            }
+            return
+        }
+
+        const existingHistory = Array.isArray(currentData[historyField]) ? currentData[historyField] : []
+        const historyEntry = buildPromptHistoryEntry(promptField, currentPrompt, now, loggedUser.uid)
+        const nextHistory = [historyEntry, ...existingHistory]
+            .filter(entry => getPromptHistoryValue(entry, promptField) !== nextPrompt)
+            .slice(0, MAX_ASSISTANT_PROMPT_HISTORY)
+
+        transaction.update(ref, {
+            ...extraData,
+            [promptField]: nextPrompt,
+            [historyField]: nextHistory,
+            lastEditionDate: now,
+            lastEditorId: loggedUser.uid,
+        })
+        updated = true
+    })
+
+    return updated
+}
+
 export async function uploadNewAssistant(projectId, assistant, callback) {
     const { loggedUser } = store.getState()
     updateEditionData(assistant)
@@ -358,14 +447,32 @@ export function updateAssistantThirdPartLink(projectId, assistant, thirdPartLink
     }
 }
 
-export function updateAssistantInstructions(projectId, assistant, instructions) {
-    updateAssistantData(projectId, assistant.uid, { instructions }, null)
-    if (!isGlobalAssistant(assistant.uid))
+export async function updateAssistantInstructions(projectId, assistant, instructions) {
+    const updated = await updateAssistantPromptFieldWithHistory(
+        projectId,
+        assistant,
+        ASSISTANT_PROMPT_FIELD_INSTRUCTIONS,
+        ASSISTANT_PROMPT_HISTORY_FIELD_INSTRUCTIONS,
+        instructions
+    )
+    if (updated && !isGlobalAssistant(assistant.uid))
         assistantInstructionsChangedUpdatesChain(projectId, assistant, assistant.instructions, instructions)
 }
 
-export function updateAssistantHeartbeatSettings(projectId, assistant, data) {
-    updateAssistantData(projectId, assistant.uid, data, null)
+export async function updateAssistantHeartbeatSettings(projectId, assistant, data) {
+    if (Object.prototype.hasOwnProperty.call(data, ASSISTANT_PROMPT_FIELD_HEARTBEAT)) {
+        const { heartbeatPrompt, ...settingsData } = data
+        await updateAssistantPromptFieldWithHistory(
+            projectId,
+            assistant,
+            ASSISTANT_PROMPT_FIELD_HEARTBEAT,
+            ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT,
+            heartbeatPrompt,
+            settingsData
+        )
+    } else {
+        updateAssistantData(projectId, assistant.uid, data, null)
+    }
 }
 
 export function updateAssistantDelegationDescriptionManual(projectId, assistant, manualText) {

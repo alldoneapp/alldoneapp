@@ -128,6 +128,9 @@ function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, user
 
 function buildHeartbeatSettingsContextMessage(assistant = {}, { projectId = null, userData = null } = {}) {
     const settings = getNormalizedHeartbeatSettings(assistant, { projectId, userData })
+    const heartbeatPromptHistoryLength = Array.isArray(assistant.heartbeatPromptHistory)
+        ? assistant.heartbeatPromptHistory.length
+        : 0
 
     return [
         'Current heartbeat settings for this assistant:',
@@ -135,6 +138,7 @@ function buildHeartbeatSettingsContextMessage(assistant = {}, { projectId = null
         `- Heartbeat interval: ${formatHeartbeatIntervalMinutes(settings.intervalMinutes)}`,
         `- Execution chance: ${settings.chancePercent}%`,
         `- WhatsApp notification: ${settings.sendWhatsApp ? 'enabled' : 'disabled'}`,
+        `- heartbeatPromptHistory: ${heartbeatPromptHistoryLength} previous version(s) saved, up to 10 retained (rollback by passing the older prompt text back through update_heartbeat_settings).`,
         '- Current heartbeat prompt:',
         settings.prompt,
     ].join('\n')

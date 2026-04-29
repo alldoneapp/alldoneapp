@@ -8,12 +8,15 @@ import Icon from '../../../Icon'
 import Button from '../../../UIControls/Button'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import { TASK_DESCRIPTION_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
-import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
+import {
+    ASSISTANT_PROMPT_FIELD_HEARTBEAT,
+    ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT,
+    DEFAULT_HEARTBEAT_PROMPT,
+    updateAssistantHeartbeatSettings,
+} from '../../../../utils/backends/Assistants/assistantsFirestore'
 import AssistantInstructionsModal from '../../../UIComponents/FloatModals/AssistantInstructionsModal/AssistantInstructionsModal'
 import { translate } from '../../../../i18n/TranslationService'
-
-const DEFAULT_PROMPT =
-    'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
+import PromptHistoryWrapper from '../PromptHistory/PromptHistoryWrapper'
 
 export default function HeartbeatPromptProperty({ disabled, projectId, assistant }) {
     const dispatch = useDispatch()
@@ -50,9 +53,10 @@ export default function HeartbeatPromptProperty({ disabled, projectId, assistant
         updateAssistantHeartbeatSettings(projectId, assistant, { heartbeatPrompt: instructions })
     }
 
+    const currentPrompt = assistant.heartbeatPrompt ?? DEFAULT_HEARTBEAT_PROMPT
     const assistantWithPrompt = {
         ...assistant,
-        instructions: assistant.heartbeatPrompt ?? DEFAULT_PROMPT,
+        instructions: currentPrompt,
     }
 
     return (
@@ -62,7 +66,18 @@ export default function HeartbeatPromptProperty({ disabled, projectId, assistant
                 <Text style={localStyles.text}>{translate('Heartbeat prompt')}</Text>
                 <Text style={localStyles.hint}>{translate('Tip: reply HEARTBEAT_OK to skip posting a message')}</Text>
             </View>
-            <View style={{ marginLeft: 'auto' }}>
+            <View style={localStyles.buttons}>
+                <PromptHistoryWrapper
+                    disabled={disabled}
+                    projectId={projectId}
+                    assistant={assistant}
+                    promptField={ASSISTANT_PROMPT_FIELD_HEARTBEAT}
+                    historyField={ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT}
+                    currentPrompt={currentPrompt}
+                    title={translate('Recover a heartbeat prompt version')}
+                    description={translate('Select a heartbeat prompt version to recover')}
+                    restorePrompt={updatePrompt}
+                />
                 <Popover
                     content={
                         <AssistantInstructionsModal
@@ -99,6 +114,11 @@ const localStyles = StyleSheet.create({
     },
     textColumn: {
         flexShrink: 1,
+    },
+    buttons: {
+        marginLeft: 'auto',
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     text: {
         ...styles.subtitle2,
