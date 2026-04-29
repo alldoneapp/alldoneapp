@@ -200,9 +200,65 @@ const sortProjects = (projects, userId) => {
     )
 }
 
+const getDefinedStringParamValue = name => {
+    try {
+        return defineString(name).value()
+    } catch (_) {
+        return ''
+    }
+}
+
+const getRuntimeProjectId = () => {
+    let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT
+
+    if (!projectId) {
+        try {
+            const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+            if (cfg && cfg.projectId) projectId = cfg.projectId
+        } catch (_) {}
+    }
+
+    if (!projectId) {
+        try {
+            projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+        } catch (_) {}
+    }
+
+    return projectId
+}
+
+const getCurrentEnvironment = () => {
+    return (
+        getDefinedStringParamValue('CURRENT_ENVIORNMENT') ||
+        getDefinedStringParamValue('CURRENT_ENVIRONMENT') ||
+        process.env.CURRENT_ENVIORNMENT ||
+        process.env.CURRENT_ENVIRONMENT ||
+        ''
+    )
+}
+
 const inProductionEnvironment = () => {
-    const currentEnvironment = defineString('CURRENT_ENVIORNMENT').value()
-    return currentEnvironment === 'Production'
+    const projectId = getRuntimeProjectId()
+    if (projectId === 'alldonealeph') return true
+    if (projectId === 'alldonestaging') return false
+
+    return getCurrentEnvironment() === 'Production'
+}
+
+const getBaseUrl = () => {
+    if (process.env.FUNCTIONS_EMULATOR) {
+        return 'http://localhost:5000'
+    }
+
+    const projectId = getRuntimeProjectId()
+    if (projectId === 'alldonealeph') return 'https://my.alldone.app'
+    if (projectId === 'alldonestaging') return 'https://mystaging.alldone.app'
+
+    const currentEnvironment = getCurrentEnvironment()
+    if (currentEnvironment === 'Production') return 'https://my.alldone.app'
+    if (['Staging', 'Develop', 'Development'].includes(currentEnvironment)) return 'https://mystaging.alldone.app'
+
+    return 'https://my.alldone.app'
 }
 
 module.exports = {
@@ -260,4 +316,6 @@ module.exports = {
     isWorkstream,
     sortProjects,
     inProductionEnvironment,
+    getBaseUrl,
+    getRuntimeProjectId,
 }

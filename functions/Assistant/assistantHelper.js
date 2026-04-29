@@ -11,7 +11,7 @@ const {
     STAYWARD_COMMENT,
     FEED_PUBLIC_FOR_ALL,
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
-    inProductionEnvironment,
+    getBaseUrl,
     OPEN_STEP,
 } = require('../Utils/HelperFunctionsCloud')
 const { logEvent } = require('../GAnalytics/GAnalytics')
@@ -7341,7 +7341,7 @@ async function storeChunks(
 }
 
 const getLinkedParentChatUrl = (projectId, objectType, objectId) => {
-    const origin = inProductionEnvironment() ? 'https://my.alldone.app' : 'https://mystaging.alldone.app'
+    const origin = getBaseUrl()
     return `${origin}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
 }
 
