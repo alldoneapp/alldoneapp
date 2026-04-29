@@ -23,6 +23,7 @@ import Karma from '../../../Feeds/CommentsTextInput/autoformat/formats/karma'
 import VideoFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/videoFormat'
 import TaskTagFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/taskTagFormat'
 import Autoformat, { AutoformatHelperAttribute } from '../../../Feeds/CommentsTextInput/autoformat/modules/autoformat'
+import MarkdownTableFormat from './MarkdownTableFormat'
 import domServer from 'react-dom/server'
 import dom from 'react-dom'
 import Shortcut, { SHORTCUT_LIGHT } from '../../../UIControls/Shortcut'
@@ -638,6 +639,7 @@ Quill.register({
     'formats/customImageFormat': CustomImageFormat,
     'formats/videoFormat': VideoFormat,
     'formats/taskTagFormat': TaskTagFormat,
+    'formats/markdownTable': MarkdownTableFormat,
     'formats/autoformat-helper': AutoformatHelperAttribute,
     'formats/karma': Karma,
     'formats/milestoneTag': MilestoneTag,
@@ -965,6 +967,7 @@ export const formats = [
     'customImageFormat',
     'videoFormat',
     'taskTagFormat',
+    'markdownTable',
 ]
 
 export const EditorToolbar = ({

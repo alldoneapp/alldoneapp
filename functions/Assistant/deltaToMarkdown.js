@@ -56,7 +56,7 @@ function deltaToMarkdown(ops) {
             markdown += text
         } else if (typeof insert === 'object') {
             // Handle embedded objects
-            const { mention, email, url, hashtag, image } = insert
+            const { mention, email, url, hashtag, image, markdownTable } = insert
 
             if (mention) {
                 // User mention - format as @username
@@ -78,6 +78,8 @@ function deltaToMarkdown(ops) {
                 // Image
                 const imageUrl = typeof image === 'string' ? image : image.url || ''
                 markdown += `![image](${imageUrl})`
+            } else if (markdownTable) {
+                markdown += markdownTableToMarkdown(markdownTable)
             }
         }
 
@@ -146,6 +148,42 @@ function deltaToMarkdown(ops) {
     return markdown.trim()
 }
 
+function markdownTableToMarkdown(tableData) {
+    const rows = Array.isArray(tableData.rows) ? tableData.rows : []
+    if (rows.length === 0) return ''
+
+    const alignments = Array.isArray(tableData.alignments) ? tableData.alignments : []
+    const columnCount = rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+    if (columnCount === 0) return ''
+
+    const normalizedRows = rows.map(row => {
+        const normalized = Array.isArray(row) ? row.slice(0, columnCount) : []
+        while (normalized.length < columnCount) {
+            normalized.push('')
+        }
+        return normalized
+    })
+
+    const separatorCells = []
+    for (let i = 0; i < columnCount; i++) {
+        if (alignments[i] === 'center') {
+            separatorCells.push(':---:')
+        } else if (alignments[i] === 'right') {
+            separatorCells.push('---:')
+        } else if (alignments[i] === 'left') {
+            separatorCells.push(':---')
+        } else {
+            separatorCells.push('---')
+        }
+    }
+
+    const formatRow = row => `| ${row.map(cell => String(cell || '').replace(/\|/g, '\\|')).join(' | ')} |`
+    return [formatRow(normalizedRows[0]), formatRow(separatorCells), ...normalizedRows.slice(1).map(formatRow)].join(
+        '\n'
+    )
+}
+
 module.exports = {
     deltaToMarkdown,
+    markdownTableToMarkdown,
 }

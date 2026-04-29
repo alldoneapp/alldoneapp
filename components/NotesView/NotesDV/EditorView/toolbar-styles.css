@@ -71,6 +71,41 @@
 .ql-editor > * {
     cursor: text;
 }
+.ql-editor .ql-markdownTable {
+    display: block;
+    margin: 12px 0;
+    max-width: 100%;
+    cursor: default;
+}
+.ql-editor .ql-markdown-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+.ql-editor .ql-markdown-table {
+    width: max-content;
+    min-width: min(100%, 320px);
+    max-width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #d7dff0;
+    color: #04142f;
+    font-size: 14px;
+    line-height: 20px;
+    white-space: normal;
+}
+.ql-editor .ql-markdown-table th,
+.ql-editor .ql-markdown-table td {
+    min-width: 96px;
+    max-width: 280px;
+    border: 1px solid #d7dff0;
+    padding: 8px 10px;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+.ql-editor .ql-markdown-table th {
+    background-color: #f6f8fc;
+    font-weight: 700;
+}
 .ql-editor p,
 .ql-editor ol,
 .ql-editor ul,
