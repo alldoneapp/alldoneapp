@@ -108,7 +108,12 @@ export default function OpenTasksAssistantData({ projectId }) {
                 />
             )}
             {isAvailable && (isNormalAssistantAndCanBeEdited || isGlobalAssistantAndCanBeEdited) && (
-                <UpdateFromTemplate projectId={projectId} assistant={currentUser} disabled={false} />
+                <UpdateFromTemplate
+                    projectId={projectId}
+                    assistant={currentUser}
+                    disabled={false}
+                    onAssistantUpdated={updatedAssistant => dispatch(storeCurrentUser(updatedAssistant))}
+                />
             )}
             {canBeCopiedToEdit && (
                 <Button

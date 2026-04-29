@@ -1177,6 +1177,7 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
 
     await updateAssistantData(projectId, localAssistant.uid, updatePayload, null)
     console.log(`✅ Updated assistant ${localAssistant.uid} from template ${globalAssistant.uid}`)
+    return { ...localAssistant, ...updatePayload }
 }
 
 // Sync pre-configured tasks from a global/template assistant

@@ -11,7 +11,7 @@ import {
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { useUpdateAvailable } from './useUpdateAvailable'
 
-export default function UpdateFromTemplate({ projectId, assistant, disabled }) {
+export default function UpdateFromTemplate({ projectId, assistant, disabled, onAssistantUpdated }) {
     const { isAvailable, globalAssistant } = useUpdateAvailable(assistant)
 
     const handleUpdate = async () => {
@@ -22,7 +22,8 @@ export default function UpdateFromTemplate({ projectId, assistant, disabled }) {
             (await getAssistantData(GLOBAL_PROJECT_ID, assistant.copiedFromTemplateAssistantId)) || globalAssistant
 
         // Update assistant properties from template
-        await updateAssistantFromTemplate(projectId, assistant, latestGlobalAssistant)
+        const updatedAssistant = await updateAssistantFromTemplate(projectId, assistant, latestGlobalAssistant)
+        onAssistantUpdated?.(updatedAssistant)
 
         // Sync pre-configured tasks from template
         await syncPreConfigTasksFromTemplate(latestGlobalAssistant.uid, projectId, assistant.uid)
