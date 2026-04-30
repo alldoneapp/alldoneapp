@@ -67,12 +67,14 @@ export default function ChatInput({
 
     const hasExplicitChatAssistantState = typeof chat?.isAssistantEnabled === 'boolean'
     const hasParentAssistantState = typeof parentObject?.isAssistantEnabled === 'boolean'
-    const isAssistantActive = hasExplicitChatAssistantState
+    const persistedAssistantActive = hasExplicitChatAssistantState
         ? chat.isAssistantEnabled === true
         : hasParentAssistantState
         ? parentObject.isAssistantEnabled === true
         : false
-    const explicitAssistantEnabled = hasExplicitChatAssistantState || hasParentAssistantState ? isAssistantActive : null
+    const isAssistantActive = persistedAssistantActive || assistantEnabled
+    const explicitAssistantEnabled =
+        hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null
     const disabledEdition = editing && loggedUserId !== creatorId
 
     const updateEditor = editor => {
