@@ -19,6 +19,14 @@ firebase.initializeApp({
     measurementId: '__FIREBASE_MEASUREMENT_ID__',
 })
 
+self.addEventListener('install', event => {
+    event.waitUntil(self.skipWaiting())
+})
+
+self.addEventListener('activate', event => {
+    event.waitUntil(clients.claim())
+})
+
 if (firebase.messaging.isSupported()) {
     const messaging = firebase.messaging()
 
@@ -28,6 +36,24 @@ if (firebase.messaging.isSupported()) {
             return url ? new URL(url, self.location.origin).href : self.location.origin
         } catch (_) {
             return self.location.origin
+        }
+    }
+
+    const openWindow = url => {
+        return clients.openWindow(url).catch(() => clients.openWindow(self.location.origin))
+    }
+
+    const navigateAndFocusClient = async (client, url) => {
+        try {
+            const navigatedClient = 'navigate' in client ? await client.navigate(url) : client
+            const targetClient = navigatedClient || client
+            return targetClient && 'focus' in targetClient ? targetClient.focus() : targetClient
+        } catch (_) {
+            try {
+                return 'focus' in client ? client.focus() : client
+            } catch (_) {
+                return null
+            }
         }
     }
 
@@ -47,12 +73,11 @@ if (firebase.messaging.isSupported()) {
         })
 
         if (sameOriginClient) {
-            const navigatedClient =
-                'navigate' in sameOriginClient ? await sameOriginClient.navigate(targetUrl.href) : sameOriginClient
-            return navigatedClient && 'focus' in navigatedClient ? navigatedClient.focus() : navigatedClient
+            const focusedClient = await navigateAndFocusClient(sameOriginClient, targetUrl.href)
+            if (focusedClient) return focusedClient
         }
 
-        return clients.openWindow(targetUrl.href)
+        return openWindow(targetUrl.href)
     }
 
     messaging.setBackgroundMessageHandler(payload => {
@@ -68,8 +93,10 @@ if (firebase.messaging.isSupported()) {
 
     self.addEventListener('notificationclick', function (event) {
         const clickedNotification = event.notification
-        clickedNotification.close()
-        const promiseChain = openOrFocusNotificationUrl(getNotificationUrl(clickedNotification))
+        if (clickedNotification) clickedNotification.close()
+        const promiseChain = openOrFocusNotificationUrl(getNotificationUrl(clickedNotification)).catch(() =>
+            openWindow(self.location.origin)
+        )
         event.waitUntil(promiseChain)
     })
 }
