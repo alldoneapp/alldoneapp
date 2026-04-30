@@ -3639,6 +3639,44 @@ async function executeExternalIntegrationTool({ target, toolArgs, requestUserId,
     }
 }
 
+async function getAssistantFeedUserForTool(db, projectId, assistantId, requestUserId) {
+    if (!assistantId) {
+        const { UserHelper } = require('../shared/UserHelper')
+        return UserHelper.getFeedUserData(db, requestUserId)
+    }
+
+    try {
+        const assistant = await getAssistantForChat(projectId, assistantId, requestUserId, { forceRefresh: true })
+        if (assistant) {
+            const displayName = assistant.displayName || assistant.name || 'Assistant'
+            return {
+                uid: assistant.uid || assistantId,
+                id: assistant.uid || assistantId,
+                creatorId: assistant.uid || assistantId,
+                name: displayName,
+                displayName,
+                email: assistant.email || '',
+                photoURL: assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL || '',
+            }
+        }
+    } catch (error) {
+        console.warn('Assistant tool: failed to load assistant feed actor, using assistant id fallback', {
+            assistantId,
+            error: error.message,
+        })
+    }
+
+    return {
+        uid: assistantId,
+        id: assistantId,
+        creatorId: assistantId,
+        name: 'Assistant',
+        displayName: 'Assistant',
+        email: '',
+        photoURL: '',
+    }
+}
+
 /**
  * Execute a tool natively and return the raw result (not processed by LLM)
  * This is used for OpenAI native tool calling
@@ -3656,7 +3694,8 @@ async function executeToolNatively(
 
     const admin = require('firebase-admin')
 
-    // Get creator ID - use requestUserId if available, otherwise use assistantId
+    // Keep the requesting user for access/search context, but use the assistant as actor
+    // for tool-generated feeds so the feed reflects who performed the tool action.
     const creatorId = requestUserId || assistantId
 
     if (isTalkToAssistantToolName(toolName)) {
@@ -4736,7 +4775,6 @@ async function executeToolNatively(
         case 'update_note': {
             const { NoteService } = require('../shared/NoteService')
             const { SearchService } = require('../shared/SearchService')
-            const { UserHelper } = require('../shared/UserHelper')
             const {
                 resolveContactNoteTarget,
                 resolveProjectForContactNote,
@@ -4812,8 +4850,7 @@ async function executeToolNatively(
                 )
             }
 
-            // Get user data for feed creation using shared helper
-            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {

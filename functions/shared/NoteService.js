@@ -386,7 +386,8 @@ class NoteService {
             const { generateCurrentDateObject, generateFeedModel } = require('../Feeds/globalFeedsHelper')
 
             const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
-            const noteFeedObject = generateNoteObjectModel(currentMilliseconds, params.note, params.noteId)
+            const noteId = params.noteId || params.note?.id
+            const noteFeedObject = generateNoteObjectModel(currentMilliseconds, params.note, noteId)
 
             let entryText = 'created note'
             if (eventType === 'updated') {
@@ -400,7 +401,7 @@ class NoteService {
                 lastChangeDate: currentMilliseconds,
                 entryText: entryText,
                 feedUser: params.feedUser,
-                objectId: params.noteId,
+                objectId: noteId,
                 isPublicFor: noteFeedObject.isPublicFor,
             })
 
@@ -413,6 +414,70 @@ class NoteService {
         } catch (error) {
             console.error('Failed to create note feed:', error)
             return null
+        }
+    }
+
+    async persistNoteUpdateFeed({ projectId, noteId, note, feedUser, feedData }) {
+        if (!this.options.enableFeeds || !this.options.isCloudFunction || !this.options.database || !feedUser) {
+            return false
+        }
+
+        try {
+            const admin = require('firebase-admin')
+            const { loadFeedsGlobalState } = require('../GlobalState/globalState')
+            const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+            const notesFeeds = require('../Feeds/notesFeeds')
+            const { generateNoteObjectModel } = require('../Feeds/notesFeedsHelper')
+            const { generateCurrentDateObject, cleanGlobalFeeds } = require('../Feeds/globalFeedsHelper')
+
+            if (!notesFeeds || typeof notesFeeds.createNoteUpdatedFeed !== 'function') {
+                console.warn('NoteService: Feeds module missing createNoteUpdatedFeed function')
+                return false
+            }
+
+            const projectSnap = await this.options.database.doc(`projects/${projectId}`).get()
+            const projectData = projectSnap.exists ? projectSnap.data() : { userIds: [] }
+            const projectUsersIds = Array.isArray(projectData.userIds) ? projectData.userIds : []
+            const creator = feedUser
+
+            loadFeedsGlobalState(admin, admin, creator, { ...projectData, id: projectId }, [], null)
+
+            const feedsBatch = new BatchWrapper(this.options.database)
+            if (feedsBatch.setProjectContext) {
+                feedsBatch.setProjectContext(projectId)
+            }
+
+            const lastStateRef = this.options.database.doc(`feedsObjectsLastStates/${projectId}/notes/${noteId}`)
+            const lastStateSnap = await lastStateRef.get()
+            if (!lastStateSnap.exists) {
+                const { currentMilliseconds } = generateCurrentDateObject()
+                feedsBatch.feedObjects = {
+                    ...feedsBatch.feedObjects,
+                    [noteId]: generateNoteObjectModel(currentMilliseconds, note || { id: noteId }, noteId),
+                }
+            }
+
+            await notesFeeds.createNoteUpdatedFeed(projectId, noteId, feedsBatch, creator, true)
+
+            try {
+                await cleanGlobalFeeds(projectId)
+            } catch (cleanError) {
+                console.warn('NoteService: Pre-commit feed cleanup failed:', cleanError.message)
+            }
+
+            await feedsBatch.commit()
+
+            console.log('NoteService: Persisted note update feed', {
+                noteId,
+                projectId,
+                creatorId: creator.uid,
+                feedId: feedData?.feedId || null,
+                projectUsersCount: projectUsersIds.length,
+            })
+            return true
+        } catch (feedPersistError) {
+            console.error('NoteService: Failed to persist note update feed:', feedPersistError)
+            return false
         }
     }
 
@@ -823,9 +888,17 @@ class NoteService {
                 try {
                     feedData = await this.createNoteFeed('updated', {
                         note: updatedNote,
+                        noteId,
                         projectId,
                         feedUser,
                         changes,
+                    })
+                    await this.persistNoteUpdateFeed({
+                        projectId,
+                        noteId,
+                        note: updatedNote,
+                        feedUser,
+                        feedData,
                     })
                 } catch (feedError) {
                     console.warn('Failed to generate note update feed:', feedError.message)
