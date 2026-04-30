@@ -3770,7 +3770,6 @@ async function executeToolNatively(
     switch (toolName) {
         case 'create_task': {
             const { TaskService } = require('../shared/TaskService')
-            const { UserHelper } = require('../shared/UserHelper')
             const moment = require('moment-timezone')
             const db = admin.firestore()
 
@@ -3793,8 +3792,7 @@ async function executeToolNatively(
                 source: createTaskProjectSelection.source,
             })
 
-            // Get user data for feed creation and timezone
-            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+            const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
 
             // Get user's timezone for date parsing (normalize across possible fields)
             const userDoc = await db.collection('users').doc(creatorId).get()
@@ -3960,11 +3958,9 @@ async function executeToolNatively(
 
         case 'create_note': {
             const { NoteService } = require('../shared/NoteService')
-            const { UserHelper } = require('../shared/UserHelper')
             const db = admin.firestore()
 
-            // Get user data for feed creation using shared helper
-            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
@@ -4416,6 +4412,7 @@ async function executeToolNatively(
             // Use shared service for find and update
             // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
             try {
+                const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
                 const normalizedToolArgs = { ...toolArgs }
                 const moveToProjectId =
                     typeof normalizedToolArgs.moveToProjectId === 'string'
@@ -4564,6 +4561,7 @@ async function executeToolNatively(
                         dominanceMargin: 300,
                         maxOptionsToShow: 5,
                         updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
+                        feedUser,
                     }
                 )
 
@@ -4582,7 +4580,9 @@ async function executeToolNatively(
                         moveToProjectName
                     )
                     const editorName =
-                        (userContext && (userContext.displayName || userContext.name || userContext.userName)) || null
+                        (feedUser && (feedUser.displayName || feedUser.name)) ||
+                        (userContext && (userContext.displayName || userContext.name || userContext.userName)) ||
+                        null
                     const updatedTasks = Array.isArray(result.updated) ? result.updated.map(task => ({ ...task })) : []
 
                     const moveSummary = {
@@ -4643,7 +4643,7 @@ async function executeToolNatively(
                                 sourceProjectId,
                                 targetProjectId: targetProject.id,
                                 taskId,
-                                editorId: creatorId,
+                                editorId: feedUser?.uid || creatorId,
                                 editorName,
                             })
 
@@ -4714,7 +4714,9 @@ async function executeToolNatively(
                         moveToProjectName
                     )
                     const editorName =
-                        (userContext && (userContext.displayName || userContext.name || userContext.userName)) || null
+                        (feedUser && (feedUser.displayName || feedUser.name)) ||
+                        (userContext && (userContext.displayName || userContext.name || userContext.userName)) ||
+                        null
 
                     if (targetProject.id === sourceProjectId) {
                         return {
@@ -4734,7 +4736,7 @@ async function executeToolNatively(
                         sourceProjectId,
                         targetProjectId: targetProject.id,
                         taskId: result.taskId,
-                        editorId: creatorId,
+                        editorId: feedUser?.uid || creatorId,
                         editorName,
                     })
 
@@ -4952,7 +4954,7 @@ async function executeToolNatively(
                         db,
                         projectId: contactTargetProjectId,
                         contact: contactResult.contact,
-                        userId: creatorId,
+                        userId: feedUser?.uid || creatorId,
                         feedUser,
                         updates: { email: contactEmail },
                     })
@@ -5075,7 +5077,7 @@ async function executeToolNatively(
                             sourceProjectId: currentProjectId,
                             targetProjectId: targetProject.id,
                             noteId: currentNote.id,
-                            editorId: creatorId,
+                            editorId: feedUser?.uid || creatorId,
                             editorName: editorName || null,
                             notesBucketName,
                         })
@@ -5165,7 +5167,6 @@ async function executeToolNatively(
         }
 
         case 'update_contact': {
-            const { UserHelper } = require('../shared/UserHelper')
             const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
             const { updateContactFields } = require('../shared/contactUpdateHelper')
             const db = admin.firestore()
@@ -5210,12 +5211,12 @@ async function executeToolNatively(
                 }
             }
 
-            const feedUser = await UserHelper.getFeedUserData(db, creatorId)
+            const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
             const updateResult = await updateContactFields({
                 db,
                 projectId: targetProjectId,
                 contact: contactResolution.contact,
-                userId: creatorId,
+                userId: feedUser?.uid || creatorId,
                 feedUser,
                 updates: { email: targetEmail },
             })
@@ -5283,12 +5284,19 @@ async function executeToolNatively(
                 toolArgs.projectId,
                 toolArgs.projectName
             )
+            const feedUser = await getAssistantFeedUserForTool(
+                db,
+                targetProject.id || projectId,
+                assistantId,
+                creatorId
+            )
 
             return await updateProjectDescription({
                 db,
                 projectId: targetProject.id,
                 userId: creatorId,
                 description: toolArgs.description,
+                feedUser,
             })
         }
 
@@ -5329,6 +5337,12 @@ async function executeToolNatively(
                 )
                 targetProjectId = targetProject.id
             }
+            const feedUser = await getAssistantFeedUserForTool(
+                db,
+                targetProjectId || projectId,
+                assistantId,
+                requestUserId
+            )
 
             return await updateUserDescription({
                 db,
@@ -5336,6 +5350,7 @@ async function executeToolNatively(
                 targetUserId: requestUserId,
                 actorUserId: requestUserId,
                 description: toolArgs.description,
+                feedUser,
             })
         }
 

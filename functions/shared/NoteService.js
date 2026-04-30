@@ -661,11 +661,23 @@ class NoteService {
 
                         const feedsBatch = new BatchWrapper(this.options.database)
                         const creator = feedUser || { uid: note.userId, id: note.userId }
+                        const initialFollowers = Array.from(new Set([creator.uid, note.userId].filter(Boolean)))
+                        feedsBatch.feedChainFollowersIds = {
+                            ...(feedsBatch.feedChainFollowersIds || {}),
+                            [noteId]: initialFollowers,
+                        }
 
                         await notesFeeds.createNoteCreatedFeed(finalProjectId, note, noteId, feedsBatch, creator, true)
 
-                        // Create follow feeds for the creator
-                        await notesFeeds.createNoteFollowedFeed(finalProjectId, noteId, feedsBatch, creator, true)
+                        for (const followerId of initialFollowers) {
+                            await notesFeeds.createNoteFollowedFeed(
+                                finalProjectId,
+                                noteId,
+                                feedsBatch,
+                                { uid: followerId, id: followerId },
+                                true
+                            )
+                        }
 
                         console.log('NoteService: Committing feeds batch')
                         await feedsBatch.commit()

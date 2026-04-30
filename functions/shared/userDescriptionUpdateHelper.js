@@ -30,6 +30,7 @@ async function updateUserDescriptionInProject({
     actorUserId,
     normalizedDescription,
     userDoc = null,
+    feedUser: actorFeedUser = null,
 }) {
     if (!projectId || typeof projectId !== 'string') {
         throw new Error('Valid projectId is required')
@@ -73,7 +74,7 @@ async function updateUserDescriptionInProject({
         }
     }
 
-    const feedUser = await UserHelper.getFeedUserData(db, actorUserId || targetUserId)
+    const feedUser = actorFeedUser || (await UserHelper.getFeedUserData(db, actorUserId || targetUserId))
     const batch = new BatchWrapper(db)
     const plainDescription = getTaskNameWithoutMeta(normalizedDescription)
 
@@ -104,7 +105,7 @@ async function updateUserDescriptionInProject({
     }
 }
 
-async function updateUserDescription({ db, projectId, targetUserId, actorUserId, description }) {
+async function updateUserDescription({ db, projectId, targetUserId, actorUserId, description, feedUser = null }) {
     if (!db) {
         throw new Error('Database instance is required')
     }
@@ -134,6 +135,7 @@ async function updateUserDescription({ db, projectId, targetUserId, actorUserId,
             actorUserId,
             normalizedDescription,
             userDoc,
+            feedUser,
         })
     }
 

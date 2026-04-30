@@ -95,7 +95,7 @@ class TaskUpdateService {
      * @param {string} userId - User ID performing the update
      * @param {Object} searchCriteria - Search criteria (taskId, taskName, projectName, etc.)
      * @param {Object} updateFields - Fields to update (name, description, completed, estimation, etc.)
-     * @param {Object} options - Search options (autoSelectOnHighConfidence, thresholds, updateAll, etc.)
+     * @param {Object} options - Search options (autoSelectOnHighConfidence, thresholds, updateAll, feedUser, etc.)
      * @returns {Promise<Object>} Update result with success, message, and task data
      */
     async findAndUpdateTask(userId, searchCriteria, updateFields, options = {}) {
@@ -153,7 +153,7 @@ class TaskUpdateService {
         })
 
         // Step 4: Get feedUser for feed generation
-        const feedUser = await this.createFeedUserFromUserId(userId, this.options.database)
+        const feedUser = options.feedUser || (await this.createFeedUserFromUserId(userId, this.options.database))
 
         // Step 5: Perform update
         const updateResult = await this.performTaskUpdate(
@@ -327,7 +327,7 @@ class TaskUpdateService {
         }
 
         // Get feedUser once for all updates
-        const feedUser = await this.createFeedUserFromUserId(userId, this.options.database)
+        const feedUser = options.feedUser || (await this.createFeedUserFromUserId(userId, this.options.database))
 
         // Update each task
         const updated = []

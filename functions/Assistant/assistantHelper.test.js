@@ -2456,12 +2456,15 @@ describe('assistant project description tool', () => {
             null
         )
 
-        expect(updateProjectDescription).toHaveBeenCalledWith({
-            db: expect.any(Object),
-            projectId: 'project-1',
-            userId: 'user-1',
-            description: '  New description  ',
-        })
+        expect(updateProjectDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                db: expect.any(Object),
+                projectId: 'project-1',
+                userId: 'user-1',
+                description: '  New description  ',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
         expect(result).toMatchObject({
             success: true,
             updated: true,
@@ -2506,12 +2509,15 @@ describe('assistant project description tool', () => {
             null
         )
 
-        expect(updateProjectDescription).toHaveBeenCalledWith({
-            db: expect.any(Object),
-            projectId: 'project-2',
-            userId: 'user-1',
-            description: 'Updated marketing description',
-        })
+        expect(updateProjectDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                db: expect.any(Object),
+                projectId: 'project-2',
+                userId: 'user-1',
+                description: 'Updated marketing description',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
     })
 
     test('updates an exact projectName target', async () => {
@@ -2549,12 +2555,15 @@ describe('assistant project description tool', () => {
             null
         )
 
-        expect(updateProjectDescription).toHaveBeenCalledWith({
-            db: expect.any(Object),
-            projectId: 'project-2',
-            userId: 'user-1',
-            description: 'Updated marketing description',
-        })
+        expect(updateProjectDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                db: expect.any(Object),
+                projectId: 'project-2',
+                userId: 'user-1',
+                description: 'Updated marketing description',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
     })
 
     test('rejects ambiguous projectName targets', async () => {
@@ -2790,13 +2799,16 @@ describe('assistant user description tool', () => {
             null
         )
 
-        expect(updateUserDescription).toHaveBeenCalledWith({
-            db: expect.any(Object),
-            projectId: null,
-            targetUserId: 'user-1',
-            actorUserId: 'user-1',
-            description: '  New weekly update  ',
-        })
+        expect(updateUserDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                db: expect.any(Object),
+                projectId: null,
+                targetUserId: 'user-1',
+                actorUserId: 'user-1',
+                description: '  New weekly update  ',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
         expect(result).toMatchObject({
             success: true,
             updated: true,
@@ -2843,13 +2855,16 @@ describe('assistant user description tool', () => {
             null
         )
 
-        expect(updateUserDescription).toHaveBeenCalledWith({
-            db: expect.any(Object),
-            projectId: 'project-2',
-            targetUserId: 'user-1',
-            actorUserId: 'user-1',
-            description: 'Marketing weekly update',
-        })
+        expect(updateUserDescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                db: expect.any(Object),
+                projectId: 'project-2',
+                targetUserId: 'user-1',
+                actorUserId: 'user-1',
+                description: 'Marketing weekly update',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
     })
 
     test('rejects user description updates without description', async () => {

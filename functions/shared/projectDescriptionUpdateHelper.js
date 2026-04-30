@@ -8,7 +8,7 @@ function normalizeProjectDescription(value) {
     return typeof value === 'string' ? value.trim() : ''
 }
 
-async function updateProjectDescription({ db, projectId, userId, description }) {
+async function updateProjectDescription({ db, projectId, userId, description, feedUser: actorFeedUser = null }) {
     if (!db) {
         throw new Error('Database instance is required')
     }
@@ -48,7 +48,7 @@ async function updateProjectDescription({ db, projectId, userId, description }) 
         }
     }
 
-    const feedUser = await UserHelper.getFeedUserData(db, userId)
+    const feedUser = actorFeedUser || (await UserHelper.getFeedUserData(db, userId))
     const batch = new BatchWrapper(db)
 
     batch.update(db.doc(`projects/${projectId}`), { description: normalizedDescription })
