@@ -151,6 +151,7 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
             'topics'
         )
 
+        expect(mockGetCommonData).toHaveBeenCalledWith('project-1', 'topics', 'chat-1')
         expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(expect.objectContaining({ uid: 'user-1' }))
         expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '>=', 100)
         expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '<=', 200)

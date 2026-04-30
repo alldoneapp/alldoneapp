@@ -15,6 +15,7 @@ const {
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
 
+const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
@@ -295,8 +296,7 @@ async function getCommonDataOptimized(projectId, objectType, objectId) {
             .then(doc => doc.data()),
     ])
 
-    const chatLink =
-        chat?.objectType === 'topics' ? `/feed/${objectId}` : getLinkedParentChatUrl(projectId, objectType, objectId)
+    const chatLink = getLinkedParentChatUrl(projectId, objectType, objectId)
 
     return { project, chat, chatLink }
 }
@@ -354,14 +354,7 @@ async function storeBotAnswerStreamOptimized(
 
 // Helper function
 function getLinkedParentChatUrl(projectId, objectType, objectId) {
-    const objectTypeToUrl = {
-        tasks: `/task/${objectId}`,
-        notes: `/note/${objectId}`,
-        goals: `/goal/${objectId}`,
-        contacts: `/contact/${objectId}`,
-        chats: `/chat/${objectId}`,
-    }
-    return objectTypeToUrl[objectType] || ''
+    return `${getBaseUrl()}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
 }
 
 module.exports = {

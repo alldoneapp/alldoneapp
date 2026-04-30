@@ -347,7 +347,7 @@ async function generatePreConfigTaskResult(
         })
         const [stream, commonData] = await Promise.all([
             interactWithChatStream(contextMessages, model, temperature, allowedTools, toolRuntimeContext),
-            getCommonData(projectId, 'tasks', objectId),
+            getCommonData(projectId, objectType, objectId),
         ])
         const step3Duration = Date.now() - step3Start
 
