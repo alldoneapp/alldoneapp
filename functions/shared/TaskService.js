@@ -333,6 +333,8 @@ class TaskService {
                             const { loadFeedsGlobalState } = require('../GlobalState/globalState')
                             const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
                             const feedsTasks = require('../Feeds/tasksFeeds')
+                            const { tryAddFollower } = require('../Followers/followerHelper')
+                            const { FOLLOWER_TASKS_TYPE } = require('../Followers/FollowerConstants')
                             if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
                                 const feedsBatch = new BatchWrapper(this.options.database)
                                 if (feedsBatch.setProjectContext) {
@@ -392,19 +394,18 @@ class TaskService {
                                     true,
                                     { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
                                 )
-                                // Create follow feeds for each follower (dedup); creator will also get a follow feed unless duplicates collapse
                                 for (const followerId of initialFollowers) {
                                     const followerUser = { uid: followerId, id: followerId }
-                                    await feedsTasks.createTaskFollowedFeed(
+                                    await tryAddFollower(
                                         finalProjectId,
-                                        taskId,
-                                        feedsBatch,
-                                        followerUser,
-                                        true,
                                         {
-                                            feedCreator: creator,
-                                            project: { id: finalProjectId, userIds: projectUsersIds },
-                                        }
+                                            followObjectsType: FOLLOWER_TASKS_TYPE,
+                                            followObjectId: taskId,
+                                            followObject: normalizedTaskForFeeds,
+                                            feedUser: followerUser,
+                                        },
+                                        feedsBatch,
+                                        true
                                     )
                                 }
                                 // Pre-commit cleanup: trim feedsCount documents to prevent index limit errors
@@ -494,6 +495,8 @@ class TaskService {
                             const admin = require('firebase-admin')
                             const { loadFeedsGlobalState } = require('../GlobalState/globalState')
                             const feedsTasks = require('../Feeds/tasksFeeds')
+                            const { tryAddFollower } = require('../Followers/followerHelper')
+                            const { FOLLOWER_TASKS_TYPE } = require('../Followers/FollowerConstants')
                             if (feedsTasks && typeof feedsTasks.createTaskCreatedFeed === 'function') {
                                 const creator = feedUser || { uid: task.userId, id: task.userId }
                                 // Load minimal global state required by feeds helpers (feedCreator and project)
@@ -549,19 +552,18 @@ class TaskService {
                                     true,
                                     { feedCreator: creator, project: { id: finalProjectId, userIds: projectUsersIds } }
                                 )
-                                // Create follow feeds for each follower (dedup)
                                 for (const followerId of initialFollowers) {
                                     const followerUser = { uid: followerId, id: followerId }
-                                    await feedsTasks.createTaskFollowedFeed(
+                                    await tryAddFollower(
                                         finalProjectId,
-                                        taskId,
-                                        batch,
-                                        followerUser,
-                                        true,
                                         {
-                                            feedCreator: creator,
-                                            project: { id: finalProjectId, userIds: projectUsersIds },
-                                        }
+                                            followObjectsType: FOLLOWER_TASKS_TYPE,
+                                            followObjectId: taskId,
+                                            followObject: normalizedTaskForFeeds,
+                                            feedUser: followerUser,
+                                        },
+                                        batch,
+                                        true
                                     )
                                 }
                             } else {
