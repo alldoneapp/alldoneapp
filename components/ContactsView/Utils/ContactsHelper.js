@@ -74,7 +74,11 @@ import { PLAN_STATUS_FREE } from '../../Premium/PremiumHelper'
 import NavigationService from '../../../utils/NavigationService'
 import { getDeviceLanguage, translate } from '../../../i18n/TranslationService'
 import HelperFunctions from '../../../utils/HelperFunctions'
-import { getAssistant, getAssistantInProject } from '../../AdminPanel/Assistants/assistantsHelper'
+import {
+    getAssistant,
+    getAssistantInProject,
+    getAssistantInProjectObject,
+} from '../../AdminPanel/Assistants/assistantsHelper'
 import { getContactData, setContactLastVisitedBoardDate } from '../../../utils/backends/Contacts/contactsFirestore'
 import { updateUserLastVisitedBoardDate } from '../../../utils/backends/Users/usersFirestore'
 
@@ -657,7 +661,11 @@ export const getUserPresentationDataInProject = (projectId, userId) => {
                         shortName: HelperFunctions.getFirstName(contact.displayName),
                     }
                 else {
-                    const assistant = getAssistantInProject(projectId, userId)
+                    const assistantFromProjectObject = getAssistantInProjectObject(projectId, userId)
+                    const assistant =
+                        getAssistantInProject(projectId, userId) ||
+                        getAssistant(userId) ||
+                        (assistantFromProjectObject?.uid === userId ? assistantFromProjectObject : null)
                     if (assistant)
                         return {
                             photoURL: assistant.photoURL50 || getUnknownUserData().photoURL,
