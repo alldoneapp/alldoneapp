@@ -23,7 +23,10 @@ import {
     getEstimationTypeByProjectId,
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
-import { normalizeDayRateTimeLogConfig, reconcileDayRateTimeLogsForPastDays } from '../../../utils/DayRateTimeLogHelper'
+import {
+    normalizeDayRateTimeLogConfig,
+    reconcileProjectDayRateTimeLogsBackfill,
+} from '../../../utils/DayRateTimeLogHelper'
 
 export default function EndDayStatisticsModal() {
     const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
@@ -102,7 +105,7 @@ export default function EndDayStatisticsModal() {
 
         try {
             const yesterday = moment().subtract(1, 'day').endOf('day').valueOf()
-            await reconcileDayRateTimeLogsForPastDays(project.id, loggedUserId, startTimestamp, yesterday)
+            await reconcileProjectDayRateTimeLogsBackfill(project, loggedUserId, startTimestamp, yesterday)
         } catch (error) {
             console.log(error)
         }

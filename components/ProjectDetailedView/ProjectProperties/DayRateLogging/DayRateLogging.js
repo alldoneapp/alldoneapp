@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
+import moment from 'moment'
 
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
@@ -10,17 +11,21 @@ import Switch from '../../../UIControls/Switch'
 import { translate } from '../../../../i18n/TranslationService'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { setProjectDayRateTimeLog } from '../../../../utils/backends/Projects/projectsFirestore'
+import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import {
     DEFAULT_DAY_RATE_TARGET_MINUTES,
     DEFAULT_DAY_RATE_TRIGGER_TASKS,
     normalizeDayRateTimeLogConfig,
+    reconcileProjectDayRateTimeLogsBackfill,
 } from '../../../../utils/DayRateTimeLogHelper'
 
 function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
     const config = normalizeDayRateTimeLogConfig(dayRateTimeLog)
     const [enabled, setEnabled] = useState(config.enabled)
     const [hours, setHours] = useState(String(config.targetMinutes / 60))
     const [triggerTasks, setTriggerTasks] = useState(String(config.triggerTasks))
+    const [backfilling, setBackfilling] = useState(false)
 
     const save = () => {
         const parsedHours = parseFloat(hours)
@@ -35,10 +40,31 @@ function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
                 Number.isFinite(parsedTriggerTasks) && parsedTriggerTasks > 0
                     ? parsedTriggerTasks
                     : DEFAULT_DAY_RATE_TRIGGER_TASKS,
+            backfilledUntilByUser: dayRateTimeLog?.backfilledUntilByUser || {},
         }
 
         setProjectDayRateTimeLog(projectId, nextConfig)
         closePopover()
+    }
+
+    const backfillFromProjectStart = async () => {
+        const project = ProjectHelper.getProjectById(projectId)
+        if (!project || backfilling) return
+
+        setBackfilling(true)
+        try {
+            await reconcileProjectDayRateTimeLogsBackfill(
+                project,
+                loggedUserId,
+                project.projectStartDate || project.created,
+                moment().subtract(1, 'day').endOf('day').valueOf(),
+                { forceFromProjectStart: true }
+            )
+            closePopover()
+        } catch (error) {
+            console.log(error)
+            setBackfilling(false)
+        }
     }
 
     return (
@@ -72,7 +98,17 @@ function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
                     accessible={false}
                 />
             </View>
-            <Button title={translate('Save')} onPress={save} buttonStyle={localStyles.saveButton} />
+            <View style={localStyles.buttons}>
+                <Button
+                    title={translate(backfilling ? 'Backfilling...' : 'Backfill from project start')}
+                    type={'ghost'}
+                    icon="rotate-cw"
+                    onPress={backfillFromProjectStart}
+                    disabled={!config.enabled || backfilling}
+                    buttonStyle={localStyles.backfillButton}
+                />
+                <Button title={translate('Save')} onPress={save} buttonStyle={localStyles.saveButton} />
+            </View>
         </View>
     )
 }
@@ -171,6 +207,13 @@ const localStyles = StyleSheet.create({
     },
     saveButton: {
         alignSelf: 'flex-end',
+        marginTop: 8,
+    },
+    buttons: {
         marginTop: 16,
+        alignItems: 'flex-end',
+    },
+    backfillButton: {
+        alignSelf: 'flex-start',
     },
 })

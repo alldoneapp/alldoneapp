@@ -15,6 +15,7 @@ export const DAY_RATE_TIME_LOG_TASK_NAME = 'Time log for day rate'
 export const DAY_RATE_TIME_LOG_TYPE = 'dayRateTimeLog'
 export const DEFAULT_DAY_RATE_TARGET_MINUTES = 480
 export const DEFAULT_DAY_RATE_TRIGGER_TASKS = 5
+const DAY_RATE_BACKFILL_CURSOR_FIELD = 'backfilledUntilByUser'
 
 export function normalizeDayRateTimeLogConfig(config = {}) {
     const targetMinutes = Number(config.targetMinutes)
@@ -68,24 +69,26 @@ async function getDoneTasksForDay(projectId, userId, timestamp) {
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', userId)
-        .where('done', '==', true)
+        .where('inDone', '==', true)
         .where('completed', '>=', start)
         .where('completed', '<=', end)
+        .orderBy('completed', 'desc')
         .get()
 
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(task => task.done === true)
 }
 
 async function getDoneTasksForRange(projectId, userId, start, end) {
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', userId)
-        .where('done', '==', true)
+        .where('inDone', '==', true)
         .where('completed', '>=', start)
         .where('completed', '<=', end)
+        .orderBy('completed', 'desc')
         .get()
 
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(task => task.done === true)
 }
 
 function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, manual) {
@@ -284,6 +287,32 @@ export async function reconcileDayRateTimeLogsForPastDays(projectId, userId, sta
     for (let i = 0; i < dayTimestamps.length; i++) {
         results.push(await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i]))
     }
+    return results
+}
+
+export async function reconcileProjectDayRateTimeLogsBackfill(
+    project,
+    userId,
+    fallbackStartTimestamp,
+    endTimestamp,
+    options = {}
+) {
+    if (!project?.id || !userId || !endTimestamp) return []
+
+    const rawConfig = project.dayRateTimeLog || {}
+    const cursor = rawConfig[DAY_RATE_BACKFILL_CURSOR_FIELD]?.[userId]
+    const projectStart = project.projectStartDate || project.created || fallbackStartTimestamp
+    const startTimestamp =
+        cursor && !options.forceFromProjectStart ? moment(cursor).add(1, 'day').startOf('day').valueOf() : projectStart
+    const end = moment(endTimestamp).endOf('day').valueOf()
+
+    if (!startTimestamp || startTimestamp > end) return []
+
+    const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end)
+    await getDb()
+        .doc(`/projects/${project.id}`)
+        .update({ [`dayRateTimeLog.${DAY_RATE_BACKFILL_CURSOR_FIELD}.${userId}`]: end })
+
     return results
 }
 

@@ -1796,5 +1796,7 @@
     "Hours per day": "Horas por día",
     "Task trigger": "Activador de tareas",
     "Mark day worked": "Marcar día trabajado",
+    "Backfill from project start": "Rellenar desde el inicio del proyecto",
+    "Backfilling...": "Rellenando...",
     "Off": "Desactivado"
 }

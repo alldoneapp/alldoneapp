@@ -1359,5 +1359,7 @@
     "Hours per day": "Stunden pro Tag",
     "Task trigger": "Aufgaben-Auslöser",
     "Mark day worked": "Tag als gearbeitet markieren",
+    "Backfill from project start": "Ab Projektstart nachtragen",
+    "Backfilling...": "Wird nachgetragen...",
     "Off": "Aus"
 }

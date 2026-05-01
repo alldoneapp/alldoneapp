@@ -1,8 +1,21 @@
+const mockBatchSet = jest.fn()
+const mockBatchUpdate = jest.fn()
+const mockBatchCommit = jest.fn()
+const mockDocUpdate = jest.fn()
+
 jest.mock('./backends/firestore', () => ({
     generateSortIndex: jest.fn(() => 1),
     getDb: jest.fn(),
     getId: jest.fn(() => 'task-id'),
     updateStatistics: jest.fn(),
+}))
+
+jest.mock('../functions/BatchWrapper/batchWrapper', () => ({
+    BatchWrapper: jest.fn().mockImplementation(() => ({
+        set: mockBatchSet,
+        update: mockBatchUpdate,
+        commit: mockBatchCommit,
+    })),
 }))
 
 jest.mock('../redux/store', () => ({
@@ -20,7 +33,17 @@ jest.mock('../components/TaskListView/Utils/TasksHelper', () => ({
     TASK_ASSIGNEE_USER_TYPE: 'USER',
 }))
 
-import { calculateDayRateTimeLogAdjustment, DAY_RATE_TIME_LOG_TYPE, isDayRateTimeLogTask } from './DayRateTimeLogHelper'
+import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
+import moment from 'moment'
+import { getDb, updateStatistics } from './backends/firestore'
+import {
+    calculateDayRateTimeLogAdjustment,
+    DAY_RATE_TIME_LOG_TASK_NAME,
+    DAY_RATE_TIME_LOG_TYPE,
+    isDayRateTimeLogTask,
+    reconcileDayRateTimeLog,
+    reconcileProjectDayRateTimeLogsBackfill,
+} from './DayRateTimeLogHelper'
 
 const task = estimation => ({
     parentId: null,
@@ -33,7 +56,68 @@ const calendarTask = estimation => ({
     estimations: { Open: estimation },
 })
 
+const storedTask = (estimation, data = {}) => ({
+    ...task(estimation),
+    userId: 'user-1',
+    done: true,
+    inDone: true,
+    ...data,
+})
+
+const storedCalendarTask = (estimation, data = {}) => ({
+    ...calendarTask(estimation),
+    userId: 'user-1',
+    done: true,
+    inDone: true,
+    ...data,
+})
+
+const createMockDb = tasks => {
+    const createQuery = () => {
+        const filters = []
+        const query = {
+            where: jest.fn((field, operator, value) => {
+                filters.push({ field, operator, value })
+                return query
+            }),
+            orderBy: jest.fn(() => query),
+            get: jest.fn().mockImplementation(async () => ({
+                docs: tasks
+                    .filter(task =>
+                        filters.every(({ field, operator, value }) => {
+                            switch (operator) {
+                                case '==':
+                                    return task[field] === value
+                                case '>=':
+                                    return task[field] >= value
+                                case '<=':
+                                    return task[field] <= value
+                                default:
+                                    return true
+                            }
+                        })
+                    )
+                    .map((task, index) => ({
+                        id: task.id || `task-${index}`,
+                        data: () => task,
+                    })),
+            })),
+        }
+        return query
+    }
+    return {
+        collection: jest.fn(() => createQuery()),
+        doc: jest.fn(path => ({ path, update: mockDocUpdate })),
+    }
+}
+
 describe('DayRateTimeLogHelper', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockBatchCommit.mockResolvedValue(undefined)
+        mockDocUpdate.mockResolvedValue(undefined)
+    })
+
     it('tops up qualifying days to the configured target', () => {
         const result = calculateDayRateTimeLogAdjustment([task(0), task(0), task(0), task(0), calendarTask(90)], {
             enabled: true,
@@ -127,5 +211,140 @@ describe('DayRateTimeLogHelper', () => {
     it('recognizes generated day-rate tasks', () => {
         expect(isDayRateTimeLogTask({ genericData: { type: DAY_RATE_TIME_LOG_TYPE } })).toBe(true)
         expect(isDayRateTimeLogTask(task(60))).toBe(false)
+    })
+
+    it('creates a missing generated task when a day newly qualifies', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+        getDb.mockReturnValue(
+            createMockDb([
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedCalendarTask(90, { completed }),
+                storedTask(240, { completed, userId: 'user-2' }),
+                storedTask(240, { completed, done: false }),
+            ])
+        )
+
+        const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+        expect(result).toEqual({
+            adjustmentMinutes: 390,
+            realDoneTasksAmount: 5,
+            realLoggedMinutes: 90,
+            updated: true,
+        })
+        expect(mockBatchSet).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'items/project-1/tasks/dayRateTimeLog_user-1_20260501' }),
+            expect.objectContaining({
+                name: DAY_RATE_TIME_LOG_TASK_NAME,
+                completed,
+                done: true,
+                estimations: { Open: 390 },
+                genericData: {
+                    type: DAY_RATE_TIME_LOG_TYPE,
+                    projectId: 'project-1',
+                    day: '20260501',
+                    manual: false,
+                },
+            })
+        )
+        expect(updateStatistics).toHaveBeenCalledWith(
+            'project-1',
+            'user-1',
+            390,
+            false,
+            true,
+            completed,
+            expect.anything()
+        )
+    })
+
+    it('backfills from the project start once and stores the backfill cursor', async () => {
+        const projectStartDate = Date.UTC(2026, 3, 28, 12, 0, 0)
+        const qualifyingDay = Date.UTC(2026, 3, 29, 12, 0, 0)
+        const endTimestamp = Date.UTC(2026, 3, 30, 23, 59, 59)
+        const db = createMockDb([
+            storedTask(0, { completed: qualifyingDay }),
+            storedTask(0, { completed: qualifyingDay }),
+            storedTask(0, { completed: qualifyingDay }),
+            storedTask(0, { completed: qualifyingDay }),
+            storedCalendarTask(90, { completed: qualifyingDay }),
+        ])
+        getDb.mockReturnValue(db)
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+
+        const results = await reconcileProjectDayRateTimeLogsBackfill(
+            {
+                id: 'project-1',
+                projectStartDate,
+                dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+            },
+            'user-1',
+            Date.UTC(2026, 3, 30, 12, 0, 0),
+            endTimestamp
+        )
+
+        expect(results).toEqual([
+            {
+                adjustmentMinutes: 390,
+                realDoneTasksAmount: 5,
+                realLoggedMinutes: 90,
+                updated: true,
+            },
+        ])
+        expect(mockDocUpdate).toHaveBeenCalledWith({
+            'dayRateTimeLog.backfilledUntilByUser.user-1': moment(endTimestamp).endOf('day').valueOf(),
+        })
+    })
+
+    it('can force a backfill from project start even when a cursor exists', async () => {
+        const projectStartDate = Date.UTC(2026, 3, 28, 12, 0, 0)
+        const qualifyingDay = Date.UTC(2026, 3, 29, 12, 0, 0)
+        const endTimestamp = Date.UTC(2026, 3, 30, 23, 59, 59)
+        getDb.mockReturnValue(
+            createMockDb([
+                storedTask(0, { completed: qualifyingDay }),
+                storedTask(0, { completed: qualifyingDay }),
+                storedTask(0, { completed: qualifyingDay }),
+                storedTask(0, { completed: qualifyingDay }),
+                storedCalendarTask(90, { completed: qualifyingDay }),
+            ])
+        )
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+
+        const results = await reconcileProjectDayRateTimeLogsBackfill(
+            {
+                id: 'project-1',
+                projectStartDate,
+                dayRateTimeLog: {
+                    enabled: true,
+                    targetMinutes: 480,
+                    triggerTasks: 5,
+                    backfilledUntilByUser: {
+                        'user-1': Date.UTC(2026, 3, 30, 23, 59, 59),
+                    },
+                },
+            },
+            'user-1',
+            Date.UTC(2026, 3, 30, 12, 0, 0),
+            endTimestamp,
+            { forceFromProjectStart: true }
+        )
+
+        expect(results).toHaveLength(1)
+        expect(results[0]).toMatchObject({
+            adjustmentMinutes: 390,
+            realDoneTasksAmount: 5,
+            updated: true,
+        })
     })
 })

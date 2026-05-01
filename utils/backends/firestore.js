@@ -3680,11 +3680,13 @@ export function mapProjectData(projectId, project, customData) {
                   enabled: project.dayRateTimeLog.enabled === true,
                   targetMinutes: project.dayRateTimeLog.targetMinutes || 480,
                   triggerTasks: project.dayRateTimeLog.triggerTasks || 5,
+                  backfilledUntilByUser: project.dayRateTimeLog.backfilledUntilByUser || {},
               }
             : {
                   enabled: false,
                   targetMinutes: 480,
                   triggerTasks: 5,
+                  backfilledUntilByUser: {},
               },
         lastChatActionDate: project.lastChatActionDate
             ? project.lastChatActionDate

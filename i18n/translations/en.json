@@ -1809,5 +1809,7 @@
     "Hours per day": "Hours per day",
     "Task trigger": "Task trigger",
     "Mark day worked": "Mark day worked",
+    "Backfill from project start": "Backfill from project start",
+    "Backfilling...": "Backfilling...",
     "Off": "Off"
 }
