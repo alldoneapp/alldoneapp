@@ -1,4 +1,4 @@
-import moment from 'moment'
+import moment from 'moment-timezone'
 
 import { BatchWrapper } from '../functions/BatchWrapper/batchWrapper'
 import {
@@ -36,8 +36,55 @@ export function isDayRateTimeLogTask(task = {}) {
     return task.genericData?.type === DAY_RATE_TIME_LOG_TYPE
 }
 
-export function getDayRateTimeLogRange(timestamp) {
-    const day = moment(timestamp)
+export function normalizeDayRateTimezoneOffset(value) {
+    if (value === null || value === undefined || value === '') return null
+
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) return null
+        return Math.abs(value) <= 16 ? value * 60 : value
+    }
+
+    if (typeof value !== 'string') return null
+
+    const trimmedValue = value.trim()
+    const numericValue = Number(trimmedValue)
+    if (Number.isFinite(numericValue)) return normalizeDayRateTimezoneOffset(numericValue)
+
+    const offsetMatch = trimmedValue.match(/^(?:UTC|GMT)?([+-])(\d{1,2})(?::?(\d{2}))?$/i)
+    if (!offsetMatch) return null
+
+    const sign = offsetMatch[1] === '-' ? -1 : 1
+    const hours = Number(offsetMatch[2])
+    const minutes = Number(offsetMatch[3] || 0)
+    return sign * (hours * 60 + minutes)
+}
+
+export function getDayRateTimezone(timezone) {
+    if (timezone !== undefined && timezone !== null && timezone !== '') return timezone
+
+    const loggedUser = store.getState().loggedUser || {}
+    const storedTimezoneName = loggedUser.timezoneName || loggedUser.preferredTimezone || loggedUser.timeZone
+    if (storedTimezoneName && moment.tz.zone(storedTimezoneName)) return storedTimezoneName
+
+    const detectedTimezone = moment.tz.guess()
+    if (detectedTimezone) return detectedTimezone
+
+    return loggedUser.timezone ?? loggedUser.timezoneOffset ?? loggedUser.timezoneMinutes ?? null
+}
+
+function getDayRateMoment(timestamp, timezone) {
+    const resolvedTimezone = getDayRateTimezone(timezone)
+
+    if (typeof resolvedTimezone === 'string' && moment.tz.zone(resolvedTimezone)) {
+        return moment(timestamp).tz(resolvedTimezone)
+    }
+
+    const timezoneOffset = normalizeDayRateTimezoneOffset(resolvedTimezone)
+    return timezoneOffset !== null ? moment(timestamp).utcOffset(timezoneOffset) : moment(timestamp)
+}
+
+export function getDayRateTimeLogRange(timestamp, timezone) {
+    const day = getDayRateMoment(timestamp, timezone)
     return {
         start: day.clone().startOf('day').valueOf(),
         end: day.clone().endOf('day').valueOf(),
@@ -45,12 +92,26 @@ export function getDayRateTimeLogRange(timestamp) {
     }
 }
 
+export function getDayRateTaskEstimation(task = {}) {
+    const estimations = task.estimations || {}
+    const estimation =
+        estimations[OPEN_STEP] ??
+        estimations[String(OPEN_STEP)] ??
+        estimations['-1'] ??
+        estimations.Open ??
+        estimations.open ??
+        0
+    const numericEstimation = Number(estimation)
+
+    return Number.isFinite(numericEstimation) ? numericEstimation : 0
+}
+
 export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, forceWorkedDay = false) {
     const normalizedConfig = normalizeDayRateTimeLogConfig(config)
     const realDoneTasks = tasks.filter(task => !task.parentId && !isDayRateTimeLogTask(task))
-    const realLoggedMinutes = realDoneTasks.reduce((total, task) => total + (task.estimations?.[OPEN_STEP] || 0), 0)
+    const realLoggedMinutes = realDoneTasks.reduce((total, task) => total + getDayRateTaskEstimation(task), 0)
     const hasManualNonCalendarLoggedTime = realDoneTasks.some(
-        task => !task.calendarData && (task.estimations?.[OPEN_STEP] || 0) > 0
+        task => !task.calendarData && getDayRateTaskEstimation(task) > 0
     )
     const shouldLogDay =
         forceWorkedDay || (!hasManualNonCalendarLoggedTime && realDoneTasks.length >= normalizedConfig.triggerTasks)
@@ -64,8 +125,8 @@ export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, force
     }
 }
 
-async function getDoneTasksForDay(projectId, userId, timestamp) {
-    const { start, end } = getDayRateTimeLogRange(timestamp)
+async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
+    const { start, end } = getDayRateTimeLogRange(timestamp, timezone)
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', userId)
@@ -91,10 +152,10 @@ async function getDoneTasksForRange(projectId, userId, start, end) {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(task => task.done === true)
 }
 
-function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, manual) {
+function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, manual, timezone) {
     const now = Date.now()
     const { loggedUser } = store.getState()
-    const dayKey = getDayRateTimeLogRange(completed).dayKey
+    const dayKey = getDayRateTimeLogRange(completed, timezone).dayKey
     const safeUserId = String(userId).replace(/\//g, '_')
     const taskId = `${DAY_RATE_TIME_LOG_TYPE}_${safeUserId}_${dayKey}`
 
@@ -174,19 +235,33 @@ async function upsertDayRateTimeLogTask({
     existingTask,
     existingManual,
     manual,
+    timezone,
 }) {
     const batch = new BatchWrapper(getDb())
     const now = Date.now()
     const nextManual = manual === true || existingManual === true
 
     if (existingTask) {
-        const oldEstimation = existingTask.estimations?.[OPEN_STEP] || 0
+        const oldEstimation = getDayRateTaskEstimation(existingTask)
         const updateData = {
+            userId,
+            userIds: [userId],
+            currentReviewerId: DONE_STEP,
+            done: true,
+            inDone: true,
+            isPrivate: true,
+            isPublicFor: [userId],
+            parentId: null,
+            parentDone: false,
+            isSubtask: false,
             [`estimations.${OPEN_STEP}`]: adjustmentMinutes,
             completed,
             dueDate: completed,
             lastEditionDate: now,
             lastEditorId: store.getState().loggedUser.uid || userId,
+            'genericData.type': DAY_RATE_TIME_LOG_TYPE,
+            'genericData.projectId': projectId,
+            'genericData.day': getDayRateTimeLogRange(completed, timezone).dayKey,
             'genericData.manual': nextManual,
         }
 
@@ -197,7 +272,7 @@ async function upsertDayRateTimeLogTask({
 
         batch.update(getDb().doc(`items/${projectId}/tasks/${existingTask.id}`), updateData)
     } else {
-        const task = buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, nextManual)
+        const task = buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, nextManual, timezone)
         const { id, ...taskData } = task
         batch.set(getDb().doc(`items/${projectId}/tasks/${id}`), taskData)
         updateStatistics(projectId, userId, adjustmentMinutes, false, true, completed, batch)
@@ -210,10 +285,11 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
     const project = ProjectHelper.getProjectById(projectId)
     const config = normalizeDayRateTimeLogConfig(options.config || project?.dayRateTimeLog)
     const manual = options.manual === true
+    const timezone = getDayRateTimezone(options.timezone)
 
     if (!projectId || !userId || !timestamp || (!config.enabled && !manual)) return null
 
-    const tasks = await getDoneTasksForDay(projectId, userId, timestamp)
+    const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
     const existingTask = tasks.find(isDayRateTimeLogTask)
     const existingManual = existingTask?.genericData?.manual === true
     const {
@@ -236,6 +312,7 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         existingTask,
         existingManual,
         manual,
+        timezone,
     })
 
     return { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes, updated: true }
@@ -244,10 +321,11 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
 export async function reconcileExistingDayRateTimeLog(projectId, userId, timestamp) {
     const project = ProjectHelper.getProjectById(projectId)
     const config = normalizeDayRateTimeLogConfig(project?.dayRateTimeLog)
+    const timezone = getDayRateTimezone()
 
     if (!projectId || !userId || !timestamp) return null
 
-    const tasks = await getDoneTasksForDay(projectId, userId, timestamp)
+    const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
     const existingTask = tasks.find(isDayRateTimeLogTask)
     if (!existingTask) return { updated: false }
 
@@ -266,26 +344,36 @@ export async function reconcileExistingDayRateTimeLog(projectId, userId, timesta
         existingTask,
         existingManual,
         manual: false,
+        timezone,
     })
 
     return { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes, updated: true }
 }
 
-export async function reconcileDayRateTimeLogsForPastDays(projectId, userId, startTimestamp, endTimestamp) {
+export async function reconcileDayRateTimeLogsForPastDays(
+    projectId,
+    userId,
+    startTimestamp,
+    endTimestamp,
+    options = {}
+) {
     if (!projectId || !userId || !startTimestamp || !endTimestamp) return []
 
-    const start = moment(startTimestamp).startOf('day').valueOf()
-    const end = moment(endTimestamp).endOf('day').valueOf()
+    const timezone = getDayRateTimezone(options.timezone)
+    const start = getDayRateTimeLogRange(startTimestamp, timezone).start
+    const end = getDayRateTimeLogRange(endTimestamp, timezone).end
     if (start > end) return []
 
     const tasks = await getDoneTasksForRange(projectId, userId, start, end)
     const dayTimestamps = [
-        ...new Set(tasks.filter(task => task.completed).map(task => moment(task.completed).startOf('day').valueOf())),
+        ...new Set(
+            tasks.filter(task => task.completed).map(task => getDayRateTimeLogRange(task.completed, timezone).start)
+        ),
     ].sort((a, b) => a - b)
 
     const results = []
     for (let i = 0; i < dayTimestamps.length; i++) {
-        results.push(await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i]))
+        results.push(await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i], { timezone }))
     }
     return results
 }
@@ -302,13 +390,16 @@ export async function reconcileProjectDayRateTimeLogsBackfill(
     const rawConfig = project.dayRateTimeLog || {}
     const cursor = rawConfig[DAY_RATE_BACKFILL_CURSOR_FIELD]?.[userId]
     const projectStart = project.projectStartDate || project.created || fallbackStartTimestamp
+    const timezone = getDayRateTimezone(options.timezone)
     const startTimestamp =
-        cursor && !options.forceFromProjectStart ? moment(cursor).add(1, 'day').startOf('day').valueOf() : projectStart
-    const end = moment(endTimestamp).endOf('day').valueOf()
+        cursor && !options.forceFromProjectStart
+            ? getDayRateMoment(cursor, timezone).add(1, 'day').startOf('day').valueOf()
+            : projectStart
+    const end = getDayRateTimeLogRange(endTimestamp, timezone).end
 
     if (!startTimestamp || startTimestamp > end) return []
 
-    const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end)
+    const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end, { timezone })
     await getDb()
         .doc(`/projects/${project.id}`)
         .update({ [`dayRateTimeLog.${DAY_RATE_BACKFILL_CURSOR_FIELD}.${userId}`]: end })

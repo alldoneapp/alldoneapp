@@ -34,13 +34,16 @@ jest.mock('../components/TaskListView/Utils/TasksHelper', () => ({
 }))
 
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
-import moment from 'moment'
+import moment from 'moment-timezone'
 import { getDb, updateStatistics } from './backends/firestore'
 import {
     calculateDayRateTimeLogAdjustment,
     DAY_RATE_TIME_LOG_TASK_NAME,
     DAY_RATE_TIME_LOG_TYPE,
+    getDayRateTimeLogRange,
+    getDayRateTaskEstimation,
     isDayRateTimeLogTask,
+    normalizeDayRateTimezoneOffset,
     reconcileDayRateTimeLog,
     reconcileProjectDayRateTimeLogsBackfill,
 } from './DayRateTimeLogHelper'
@@ -213,6 +216,40 @@ describe('DayRateTimeLogHelper', () => {
         expect(isDayRateTimeLogTask(task(60))).toBe(false)
     })
 
+    it('reads calendar task estimations from open-step aliases', () => {
+        expect(getDayRateTaskEstimation({ estimations: { Open: 30 } })).toBe(30)
+        expect(getDayRateTaskEstimation({ estimations: { open: 45 } })).toBe(45)
+        expect(getDayRateTaskEstimation({ estimations: { '-1': 60 } })).toBe(60)
+        expect(getDayRateTaskEstimation({ estimations: { '-1': '90' } })).toBe(90)
+    })
+
+    it('tops up against all visible calendar estimation aliases', () => {
+        const result = calculateDayRateTimeLogAdjustment(
+            [calendarTask(60), { parentId: null, calendarData: { id: 'calendar-event-2' }, estimations: { open: 30 } }],
+            { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+            true
+        )
+
+        expect(result.realLoggedMinutes).toBe(90)
+        expect(result.adjustmentMinutes).toBe(390)
+    })
+
+    it('normalizes stored timezone offsets to minutes', () => {
+        expect(normalizeDayRateTimezoneOffset(2)).toBe(120)
+        expect(normalizeDayRateTimezoneOffset(90)).toBe(90)
+        expect(normalizeDayRateTimezoneOffset('+02:30')).toBe(150)
+        expect(normalizeDayRateTimezoneOffset('UTC-05')).toBe(-300)
+    })
+
+    it('builds day ranges in the requested IANA timezone', () => {
+        const timestamp = Date.UTC(2026, 2, 31, 22, 30, 0)
+        const range = getDayRateTimeLogRange(timestamp, 'Europe/Berlin')
+
+        expect(range.dayKey).toBe('20260401')
+        expect(range.start).toBe(moment.tz('2026-04-01 00:00:00.000', 'Europe/Berlin').valueOf())
+        expect(range.end).toBe(moment.tz('2026-04-01 23:59:59.999', 'Europe/Berlin').valueOf())
+    })
+
     it('creates a missing generated task when a day newly qualifies', async () => {
         const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
         ProjectHelper.getProjectById.mockReturnValue({
@@ -261,6 +298,86 @@ describe('DayRateTimeLogHelper', () => {
             true,
             completed,
             expect.anything()
+        )
+    })
+
+    it('uses the timezone day when creating generated task ids', async () => {
+        const completed = Date.UTC(2026, 2, 31, 22, 30, 0)
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+        getDb.mockReturnValue(
+            createMockDb([
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedCalendarTask(90, { completed }),
+            ])
+        )
+
+        const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed, {
+            timezone: 'Europe/Berlin',
+        })
+
+        expect(result).toEqual({
+            adjustmentMinutes: 390,
+            realDoneTasksAmount: 5,
+            realLoggedMinutes: 90,
+            updated: true,
+        })
+        expect(mockBatchSet).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'items/project-1/tasks/dayRateTimeLog_user-1_20260401' }),
+            expect.objectContaining({
+                completed,
+                genericData: expect.objectContaining({
+                    day: '20260401',
+                }),
+            })
+        )
+    })
+
+    it('repairs existing generated task visibility when updating it', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+        getDb.mockReturnValue(
+            createMockDb([
+                storedCalendarTask(90, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(0, { completed }),
+                storedTask(420, {
+                    id: 'dayRateTimeLog_user-1_20260501',
+                    completed,
+                    genericData: { type: DAY_RATE_TIME_LOG_TYPE },
+                    isPublicFor: [],
+                }),
+            ])
+        )
+
+        await reconcileDayRateTimeLog('project-1', 'user-1', completed, { manual: true })
+
+        expect(mockBatchUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'items/project-1/tasks/dayRateTimeLog_user-1_20260501' }),
+            expect.objectContaining({
+                userId: 'user-1',
+                userIds: ['user-1'],
+                currentReviewerId: 'Done',
+                done: true,
+                inDone: true,
+                isPrivate: true,
+                isPublicFor: ['user-1'],
+                parentId: null,
+                parentDone: false,
+                isSubtask: false,
+                'genericData.type': DAY_RATE_TIME_LOG_TYPE,
+                'genericData.projectId': 'project-1',
+                'genericData.day': '20260501',
+                'genericData.manual': true,
+            })
         )
     })
 
