@@ -1361,5 +1361,7 @@
     "Mark day worked": "Tag als gearbeitet markieren",
     "Backfill from project start": "Ab Projektstart nachtragen",
     "Backfilling...": "Wird nachgetragen...",
+    "Reset and backfill day-rate": "Tagessatz zurücksetzen und nachtragen",
+    "Backfilling day-rate...": "Tagessatz wird nachgetragen...",
     "Off": "Aus"
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { View, StyleSheet } from 'react-native'
+import moment from 'moment'
 
 import StatisticItem from './StatisticItem'
 import { getDateRangesTimestamps, parseNumberToUseThousand } from '../statisticsHelper'
@@ -30,7 +31,11 @@ import FilterByUser from './FilterByUser'
 import InvoiceInfoWrapper from '../../Invoicing/InvoiceInfoWrapper'
 import { formatCurrency } from '../../../utils/CurrencyConverter'
 import Button from '../../UIControls/Button'
-import { markDayRateDayWorked, normalizeDayRateTimeLogConfig } from '../../../utils/DayRateTimeLogHelper'
+import {
+    markDayRateDayWorked,
+    normalizeDayRateTimeLogConfig,
+    reconcileProjectDayRateTimeLogsBackfill,
+} from '../../../utils/DayRateTimeLogHelper'
 
 export default function StatisticsSection({
     projectId,
@@ -49,6 +54,7 @@ export default function StatisticsSection({
     const { doneTasks, gold, donePoints, doneTime, xp } = statisticsData
     const { allDoneTasks, allDonePoints, allGold, allDoneTime, allXp, allMoneyEarned } = allStatisticsData
     const [selectedChart, setSelectedChart] = useState(STATISTIC_CHART_DONE_TASKS)
+    const [backfillingDayRate, setBackfillingDayRate] = useState(false)
     const estimationTypeToUse = getEstimationTypeToUse(projectId)
 
     const isGuide = !!project.parentTemplateId
@@ -59,9 +65,30 @@ export default function StatisticsSection({
     const canMarkDayWorked = dayRateTimeLog.enabled && timestamp1.isSame(timestamp2, 'day')
 
     const markWorkedDay = () => {
-        markDayRateDayWorked(projectId, loggedUserId, timestamp1.valueOf()).catch(error => {
+        markDayRateDayWorked(projectId, loggedUserId, timestamp1.valueOf(), {
+            source: 'statistics-mark-day-worked',
+        }).catch(error => {
             console.log(error)
         })
+    }
+
+    const backfillDayRateProject = async () => {
+        if (!project || backfillingDayRate) return
+
+        setBackfillingDayRate(true)
+        try {
+            await reconcileProjectDayRateTimeLogsBackfill(
+                project,
+                loggedUserId,
+                project.projectStartDate || project.created,
+                moment().subtract(1, 'day').endOf('day').valueOf(),
+                { forceFromProjectStart: true, source: 'statistics-reset-backfill' }
+            )
+        } catch (error) {
+            console.log(error)
+        } finally {
+            setBackfillingDayRate(false)
+        }
     }
 
     useEffect(() => {
@@ -134,6 +161,18 @@ export default function StatisticsSection({
                             title={translate('Mark day worked')}
                             type="ghost"
                             onPress={markWorkedDay}
+                            buttonStyle={localStyles.markWorkedButton}
+                        />
+                    )}
+                    {dayRateTimeLog.enabled && (
+                        <Button
+                            icon="rotate-cw"
+                            title={translate(
+                                backfillingDayRate ? 'Backfilling day-rate...' : 'Reset and backfill day-rate'
+                            )}
+                            type="ghost"
+                            onPress={backfillDayRateProject}
+                            disabled={backfillingDayRate}
                             buttonStyle={localStyles.markWorkedButton}
                         />
                     )}

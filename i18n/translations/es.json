@@ -1798,5 +1798,7 @@
     "Mark day worked": "Marcar día trabajado",
     "Backfill from project start": "Rellenar desde el inicio del proyecto",
     "Backfilling...": "Rellenando...",
+    "Reset and backfill day-rate": "Restablecer y rellenar tarifa diaria",
+    "Backfilling day-rate...": "Rellenando tarifa diaria...",
     "Off": "Desactivado"
 }

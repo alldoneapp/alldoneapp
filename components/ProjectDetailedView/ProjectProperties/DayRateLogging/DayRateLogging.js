@@ -41,6 +41,7 @@ function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
                     ? parsedTriggerTasks
                     : DEFAULT_DAY_RATE_TRIGGER_TASKS,
             backfilledUntilByUser: dayRateTimeLog?.backfilledUntilByUser || {},
+            backfillVersionByUser: dayRateTimeLog?.backfillVersionByUser || {},
         }
 
         setProjectDayRateTimeLog(projectId, nextConfig)
@@ -58,7 +59,7 @@ function DayRateLoggingModal({ projectId, dayRateTimeLog, closePopover }) {
                 loggedUserId,
                 project.projectStartDate || project.created,
                 moment().subtract(1, 'day').endOf('day').valueOf(),
-                { forceFromProjectStart: true }
+                { forceFromProjectStart: true, source: 'day-rate-popup-reset-backfill' }
             )
             closePopover()
         } catch (error) {

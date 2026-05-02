@@ -105,7 +105,9 @@ export default function EndDayStatisticsModal() {
 
         try {
             const yesterday = moment().subtract(1, 'day').endOf('day').valueOf()
-            await reconcileProjectDayRateTimeLogsBackfill(project, loggedUserId, startTimestamp, yesterday)
+            await reconcileProjectDayRateTimeLogsBackfill(project, loggedUserId, startTimestamp, yesterday, {
+                source: 'new-day-modal',
+            })
         } catch (error) {
             console.log(error)
         }

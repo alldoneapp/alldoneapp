@@ -1811,5 +1811,7 @@
     "Mark day worked": "Mark day worked",
     "Backfill from project start": "Backfill from project start",
     "Backfilling...": "Backfilling...",
+    "Reset and backfill day-rate": "Reset and backfill day-rate",
+    "Backfilling day-rate...": "Backfilling day-rate...",
     "Off": "Off"
 }

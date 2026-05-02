@@ -628,6 +628,7 @@ class ProjectHelper {
                 targetMinutes: 480,
                 triggerTasks: 5,
                 backfilledUntilByUser: {},
+                backfillVersionByUser: {},
             },
             lastChatActionDate: moment().subtract(30, 'year').valueOf(),
             usersData: {},

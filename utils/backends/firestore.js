@@ -3681,12 +3681,14 @@ export function mapProjectData(projectId, project, customData) {
                   targetMinutes: project.dayRateTimeLog.targetMinutes || 480,
                   triggerTasks: project.dayRateTimeLog.triggerTasks || 5,
                   backfilledUntilByUser: project.dayRateTimeLog.backfilledUntilByUser || {},
+                  backfillVersionByUser: project.dayRateTimeLog.backfillVersionByUser || {},
               }
             : {
                   enabled: false,
                   targetMinutes: 480,
                   triggerTasks: 5,
                   backfilledUntilByUser: {},
+                  backfillVersionByUser: {},
               },
         lastChatActionDate: project.lastChatActionDate
             ? project.lastChatActionDate

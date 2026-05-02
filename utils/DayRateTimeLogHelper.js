@@ -15,7 +15,14 @@ export const DAY_RATE_TIME_LOG_TASK_NAME = 'Time log for day rate'
 export const DAY_RATE_TIME_LOG_TYPE = 'dayRateTimeLog'
 export const DEFAULT_DAY_RATE_TARGET_MINUTES = 480
 export const DEFAULT_DAY_RATE_TRIGGER_TASKS = 5
+export const DAY_RATE_BACKFILL_VERSION = 2
 const DAY_RATE_BACKFILL_CURSOR_FIELD = 'backfilledUntilByUser'
+const DAY_RATE_BACKFILL_VERSION_FIELD = 'backfillVersionByUser'
+const DAY_RATE_LOG_PREFIX = '[day-rate-time-log]'
+
+function logDayRateTimeLog(event, data = {}) {
+    console.log(DAY_RATE_LOG_PREFIX, event, data)
+}
 
 export function normalizeDayRateTimeLogConfig(config = {}) {
     const targetMinutes = Number(config.targetMinutes)
@@ -83,6 +90,18 @@ function getDayRateMoment(timestamp, timezone) {
     return timezoneOffset !== null ? moment(timestamp).utcOffset(timezoneOffset) : moment(timestamp)
 }
 
+function formatDayRateTimestamp(timestamp, timezone) {
+    if (!timestamp) return null
+
+    const timestampMoment = getDayRateMoment(timestamp, timezone)
+    return {
+        timestamp,
+        iso: moment(timestamp).toISOString(),
+        local: timestampMoment.format('YYYY-MM-DD HH:mm:ss Z'),
+        dayKey: timestampMoment.format('YYYYMMDD'),
+    }
+}
+
 export function getDayRateTimeLogRange(timestamp, timezone) {
     const day = getDayRateMoment(timestamp, timezone)
     return {
@@ -106,6 +125,20 @@ export function getDayRateTaskEstimation(task = {}) {
     return Number.isFinite(numericEstimation) ? numericEstimation : 0
 }
 
+function getDayRateTaskLogSummary(task = {}, timezone) {
+    return {
+        id: task.id,
+        userId: task.userId,
+        done: task.done,
+        inDone: task.inDone,
+        parentId: task.parentId || null,
+        generated: isDayRateTimeLogTask(task),
+        calendar: !!task.calendarData,
+        estimation: getDayRateTaskEstimation(task),
+        completed: formatDayRateTimestamp(task.completed, timezone),
+    }
+}
+
 export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, forceWorkedDay = false) {
     const normalizedConfig = normalizeDayRateTimeLogConfig(config)
     const realDoneTasks = tasks.filter(task => !task.parentId && !isDayRateTimeLogTask(task))
@@ -127,6 +160,14 @@ export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, force
 
 async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
     const { start, end } = getDayRateTimeLogRange(timestamp, timezone)
+    logDayRateTimeLog('fetch-day-start', {
+        projectId,
+        userId,
+        day: formatDayRateTimestamp(timestamp, timezone),
+        start: formatDayRateTimestamp(start, timezone),
+        end: formatDayRateTimestamp(end, timezone),
+    })
+
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', userId)
@@ -136,7 +177,19 @@ async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
         .orderBy('completed', 'desc')
         .get()
 
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(task => task.done === true)
+    const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(task => task.done === true)
+
+    logDayRateTimeLog('fetch-day-result', {
+        projectId,
+        userId,
+        day: formatDayRateTimestamp(timestamp, timezone),
+        docsAmount: snapshot.docs.length,
+        doneTasksAmount: tasks.length,
+        generatedTasksAmount: tasks.filter(isDayRateTimeLogTask).length,
+        tasks: tasks.map(task => getDayRateTaskLogSummary(task, timezone)),
+    })
+
+    return tasks
 }
 
 async function getDoneTasksForRange(projectId, userId, start, end) {
@@ -270,15 +323,42 @@ async function upsertDayRateTimeLogTask({
             updateStatistics(projectId, userId, adjustmentMinutes, false, true, completed, batch)
         }
 
+        logDayRateTimeLog('upsert-existing', {
+            projectId,
+            userId,
+            taskId: existingTask.id,
+            completed: formatDayRateTimestamp(completed, timezone),
+            previousCompleted: formatDayRateTimestamp(existingTask.completed, timezone),
+            oldEstimation,
+            adjustmentMinutes,
+            statsUpdated: oldEstimation !== adjustmentMinutes || existingTask.completed !== completed,
+            manual: nextManual,
+        })
+
         batch.update(getDb().doc(`items/${projectId}/tasks/${existingTask.id}`), updateData)
     } else {
         const task = buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, nextManual, timezone)
         const { id, ...taskData } = task
+        logDayRateTimeLog('upsert-new', {
+            projectId,
+            userId,
+            taskId: id,
+            completed: formatDayRateTimestamp(completed, timezone),
+            adjustmentMinutes,
+            manual: nextManual,
+        })
         batch.set(getDb().doc(`items/${projectId}/tasks/${id}`), taskData)
         updateStatistics(projectId, userId, adjustmentMinutes, false, true, completed, batch)
     }
 
     await batch.commit()
+    logDayRateTimeLog('upsert-committed', {
+        projectId,
+        userId,
+        completed: formatDayRateTimestamp(completed, timezone),
+        adjustmentMinutes,
+        existingTask: !!existingTask,
+    })
 }
 
 export async function reconcileDayRateTimeLog(projectId, userId, timestamp, options = {}) {
@@ -286,8 +366,26 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
     const config = normalizeDayRateTimeLogConfig(options.config || project?.dayRateTimeLog)
     const manual = options.manual === true
     const timezone = getDayRateTimezone(options.timezone)
+    const source = options.source || (manual ? 'manual-day' : 'day-reconcile')
 
-    if (!projectId || !userId || !timestamp || (!config.enabled && !manual)) return null
+    if (!projectId || !userId || !timestamp || (!config.enabled && !manual)) {
+        logDayRateTimeLog('day-reconcile-skipped', {
+            source,
+            projectId,
+            userId,
+            timestamp: formatDayRateTimestamp(timestamp, timezone),
+            config,
+            manual,
+            reason: !projectId
+                ? 'missing-project'
+                : !userId
+                ? 'missing-user'
+                : !timestamp
+                ? 'missing-timestamp'
+                : 'disabled',
+        })
+        return null
+    }
 
     const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
     const existingTask = tasks.find(isDayRateTimeLogTask)
@@ -299,7 +397,33 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         realLoggedMinutes,
     } = calculateDayRateTimeLogAdjustment(tasks, config, manual || existingManual)
 
+    logDayRateTimeLog('day-reconcile-calculated', {
+        source,
+        projectId,
+        userId,
+        timestamp: formatDayRateTimestamp(timestamp, timezone),
+        config,
+        manual,
+        existingTaskId: existingTask?.id || null,
+        existingManual,
+        shouldLogDay,
+        adjustmentMinutes,
+        realDoneTasksAmount,
+        realLoggedMinutes,
+        tasks: tasks.map(task => getDayRateTaskLogSummary(task, timezone)),
+    })
+
     if ((!shouldLogDay || adjustmentMinutes === 0) && !existingTask) {
+        logDayRateTimeLog('day-reconcile-noop', {
+            source,
+            projectId,
+            userId,
+            timestamp: formatDayRateTimestamp(timestamp, timezone),
+            shouldLogDay,
+            adjustmentMinutes,
+            realDoneTasksAmount,
+            realLoggedMinutes,
+        })
         return { adjustmentMinutes: 0, realDoneTasksAmount, realLoggedMinutes, updated: false }
     }
 
@@ -315,6 +439,16 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         timezone,
     })
 
+    logDayRateTimeLog('day-reconcile-finished', {
+        source,
+        projectId,
+        userId,
+        completed: formatDayRateTimestamp(completed, timezone),
+        adjustmentMinutes,
+        realDoneTasksAmount,
+        realLoggedMinutes,
+    })
+
     return { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes, updated: true }
 }
 
@@ -327,7 +461,15 @@ export async function reconcileExistingDayRateTimeLog(projectId, userId, timesta
 
     const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
     const existingTask = tasks.find(isDayRateTimeLogTask)
-    if (!existingTask) return { updated: false }
+    if (!existingTask) {
+        logDayRateTimeLog('existing-reconcile-skipped', {
+            projectId,
+            userId,
+            timestamp: formatDayRateTimestamp(timestamp, timezone),
+            reason: 'missing-generated-task',
+        })
+        return { updated: false }
+    }
 
     const existingManual = existingTask?.genericData?.manual === true
     const { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes } = calculateDayRateTimeLogAdjustment(
@@ -360,9 +502,20 @@ export async function reconcileDayRateTimeLogsForPastDays(
     if (!projectId || !userId || !startTimestamp || !endTimestamp) return []
 
     const timezone = getDayRateTimezone(options.timezone)
+    const source = options.source || 'range-backfill'
     const start = getDayRateTimeLogRange(startTimestamp, timezone).start
     const end = getDayRateTimeLogRange(endTimestamp, timezone).end
-    if (start > end) return []
+    if (start > end) {
+        logDayRateTimeLog('range-backfill-skipped', {
+            source,
+            projectId,
+            userId,
+            start: formatDayRateTimestamp(startTimestamp, timezone),
+            end: formatDayRateTimestamp(endTimestamp, timezone),
+            reason: 'start-after-end',
+        })
+        return []
+    }
 
     const tasks = await getDoneTasksForRange(projectId, userId, start, end)
     const dayTimestamps = [
@@ -371,10 +524,44 @@ export async function reconcileDayRateTimeLogsForPastDays(
         ),
     ].sort((a, b) => a - b)
 
+    logDayRateTimeLog('range-backfill-days', {
+        source,
+        projectId,
+        userId,
+        start: formatDayRateTimestamp(start, timezone),
+        end: formatDayRateTimestamp(end, timezone),
+        taskCount: tasks.length,
+        days: dayTimestamps.map(dayTimestamp => formatDayRateTimestamp(dayTimestamp, timezone)),
+    })
+
     const results = []
     for (let i = 0; i < dayTimestamps.length; i++) {
-        results.push(await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i], { timezone }))
+        try {
+            results.push(
+                await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i], {
+                    timezone,
+                    source,
+                })
+            )
+        } catch (error) {
+            logDayRateTimeLog('range-backfill-day-error', {
+                source,
+                projectId,
+                userId,
+                day: formatDayRateTimestamp(dayTimestamps[i], timezone),
+                error,
+            })
+            throw error
+        }
     }
+    logDayRateTimeLog('range-backfill-finished', {
+        source,
+        projectId,
+        userId,
+        resultsAmount: results.length,
+        updatedAmount: results.filter(result => result?.updated).length,
+        results,
+    })
     return results
 }
 
@@ -385,28 +572,80 @@ export async function reconcileProjectDayRateTimeLogsBackfill(
     endTimestamp,
     options = {}
 ) {
-    if (!project?.id || !userId || !endTimestamp) return []
+    const source =
+        options.source || (options.forceFromProjectStart ? 'project-backfill-reset' : 'project-backfill-incremental')
+    if (!project?.id || !userId || !endTimestamp) {
+        logDayRateTimeLog('project-backfill-skipped', {
+            source,
+            projectId: project?.id,
+            userId,
+            endTimestamp,
+            reason: !project?.id ? 'missing-project' : !userId ? 'missing-user' : 'missing-end',
+        })
+        return []
+    }
 
     const rawConfig = project.dayRateTimeLog || {}
     const cursor = rawConfig[DAY_RATE_BACKFILL_CURSOR_FIELD]?.[userId]
+    const backfillVersion = rawConfig[DAY_RATE_BACKFILL_VERSION_FIELD]?.[userId]
+    const shouldIgnoreCursor = options.forceFromProjectStart || backfillVersion !== DAY_RATE_BACKFILL_VERSION
     const projectStart = project.projectStartDate || project.created || fallbackStartTimestamp
     const timezone = getDayRateTimezone(options.timezone)
     const startTimestamp =
-        cursor && !options.forceFromProjectStart
+        cursor && !shouldIgnoreCursor
             ? getDayRateMoment(cursor, timezone).add(1, 'day').startOf('day').valueOf()
             : projectStart
     const end = getDayRateTimeLogRange(endTimestamp, timezone).end
 
-    if (!startTimestamp || startTimestamp > end) return []
+    logDayRateTimeLog('project-backfill-start', {
+        source,
+        projectId: project.id,
+        userId,
+        cursor: formatDayRateTimestamp(cursor, timezone),
+        backfillVersion,
+        currentBackfillVersion: DAY_RATE_BACKFILL_VERSION,
+        shouldIgnoreCursor,
+        projectStart: formatDayRateTimestamp(projectStart, timezone),
+        fallbackStart: formatDayRateTimestamp(fallbackStartTimestamp, timezone),
+        start: formatDayRateTimestamp(startTimestamp, timezone),
+        end: formatDayRateTimestamp(end, timezone),
+    })
 
-    const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end, { timezone })
+    if (!startTimestamp || startTimestamp > end) {
+        logDayRateTimeLog('project-backfill-skipped', {
+            source,
+            projectId: project.id,
+            userId,
+            start: formatDayRateTimestamp(startTimestamp, timezone),
+            end: formatDayRateTimestamp(end, timezone),
+            reason: !startTimestamp ? 'missing-start' : 'start-after-end',
+        })
+        return []
+    }
+
+    const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end, {
+        timezone,
+        source,
+    })
     await getDb()
         .doc(`/projects/${project.id}`)
-        .update({ [`dayRateTimeLog.${DAY_RATE_BACKFILL_CURSOR_FIELD}.${userId}`]: end })
+        .update({
+            [`dayRateTimeLog.${DAY_RATE_BACKFILL_CURSOR_FIELD}.${userId}`]: end,
+            [`dayRateTimeLog.${DAY_RATE_BACKFILL_VERSION_FIELD}.${userId}`]: DAY_RATE_BACKFILL_VERSION,
+        })
+    logDayRateTimeLog('project-backfill-cursor-updated', {
+        source,
+        projectId: project.id,
+        userId,
+        cursor: formatDayRateTimestamp(end, timezone),
+        backfillVersion: DAY_RATE_BACKFILL_VERSION,
+        resultsAmount: results.length,
+        updatedAmount: results.filter(result => result?.updated).length,
+    })
 
     return results
 }
 
-export async function markDayRateDayWorked(projectId, userId, timestamp) {
-    return reconcileDayRateTimeLog(projectId, userId, timestamp, { manual: true })
+export async function markDayRateDayWorked(projectId, userId, timestamp, options = {}) {
+    return reconcileDayRateTimeLog(projectId, userId, timestamp, { ...options, manual: true })
 }
