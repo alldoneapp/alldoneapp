@@ -21,7 +21,16 @@ const DAY_RATE_BACKFILL_VERSION_FIELD = 'backfillVersionByUser'
 const DAY_RATE_LOG_PREFIX = '[day-rate-time-log]'
 
 function logDayRateTimeLog(event, data = {}) {
-    console.log(DAY_RATE_LOG_PREFIX, event, data)
+    const safeData = JSON.stringify(data, (key, value) => {
+        if (value instanceof Error) {
+            return {
+                message: value.message,
+                stack: value.stack,
+            }
+        }
+        return value
+    })
+    console.log(`${DAY_RATE_LOG_PREFIX} ${event} ${safeData}`)
 }
 
 export function normalizeDayRateTimeLogConfig(config = {}) {
@@ -137,6 +146,33 @@ function getDayRateTaskLogSummary(task = {}, timezone) {
         estimation: getDayRateTaskEstimation(task),
         completed: formatDayRateTimestamp(task.completed, timezone),
     }
+}
+
+async function getDayRateStatisticsForDay(projectId, userId, timestamp, timezone) {
+    const day = getDayRateMoment(timestamp, timezone)
+    const dateKey = day.format('DDMMYYYY')
+    const docPath = `statistics/${projectId}/${userId}/${dateKey}`
+    const doc = await getDb().doc(docPath).get()
+    const data = doc.exists === false ? null : doc.data?.()
+    const doneTime = Number(data?.doneTime || 0)
+
+    const statistics = {
+        docPath,
+        dateKey,
+        exists: !!data,
+        doneTime: Number.isFinite(doneTime) ? doneTime : 0,
+        timestamp: data?.timestamp || null,
+        day: data?.day || null,
+    }
+
+    logDayRateTimeLog('stats-day-result', {
+        projectId,
+        userId,
+        day: formatDayRateTimestamp(timestamp, timezone),
+        statistics,
+    })
+
+    return statistics
 }
 
 export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, forceWorkedDay = false) {
@@ -285,6 +321,8 @@ async function upsertDayRateTimeLogTask({
     userId,
     completed,
     adjustmentMinutes,
+    statisticsRepairDelta = 0,
+    oldEstimationForStats = 0,
     existingTask,
     existingManual,
     manual,
@@ -318,9 +356,22 @@ async function upsertDayRateTimeLogTask({
             'genericData.manual': nextManual,
         }
 
-        if (oldEstimation !== adjustmentMinutes || existingTask.completed !== completed) {
-            updateStatistics(projectId, userId, oldEstimation, true, true, existingTask.completed, batch)
+        if (oldEstimationForStats > 0) {
+            updateStatistics(projectId, userId, oldEstimationForStats, true, true, existingTask.completed, batch)
+        }
+        if (adjustmentMinutes > 0) {
             updateStatistics(projectId, userId, adjustmentMinutes, false, true, completed, batch)
+        }
+        if (statisticsRepairDelta !== 0) {
+            updateStatistics(
+                projectId,
+                userId,
+                Math.abs(statisticsRepairDelta),
+                statisticsRepairDelta < 0,
+                true,
+                completed,
+                batch
+            )
         }
 
         logDayRateTimeLog('upsert-existing', {
@@ -330,8 +381,10 @@ async function upsertDayRateTimeLogTask({
             completed: formatDayRateTimestamp(completed, timezone),
             previousCompleted: formatDayRateTimestamp(existingTask.completed, timezone),
             oldEstimation,
+            oldEstimationForStats,
             adjustmentMinutes,
-            statsUpdated: oldEstimation !== adjustmentMinutes || existingTask.completed !== completed,
+            statisticsRepairDelta,
+            statsUpdated: oldEstimationForStats > 0 || adjustmentMinutes > 0 || statisticsRepairDelta !== 0,
             manual: nextManual,
         })
 
@@ -345,10 +398,24 @@ async function upsertDayRateTimeLogTask({
             taskId: id,
             completed: formatDayRateTimestamp(completed, timezone),
             adjustmentMinutes,
+            statisticsRepairDelta,
             manual: nextManual,
         })
         batch.set(getDb().doc(`items/${projectId}/tasks/${id}`), taskData)
-        updateStatistics(projectId, userId, adjustmentMinutes, false, true, completed, batch)
+        if (adjustmentMinutes > 0) {
+            updateStatistics(projectId, userId, adjustmentMinutes, false, true, completed, batch)
+        }
+        if (statisticsRepairDelta !== 0) {
+            updateStatistics(
+                projectId,
+                userId,
+                Math.abs(statisticsRepairDelta),
+                statisticsRepairDelta < 0,
+                true,
+                completed,
+                batch
+            )
+        }
     }
 
     await batch.commit()
@@ -357,6 +424,7 @@ async function upsertDayRateTimeLogTask({
         userId,
         completed: formatDayRateTimestamp(completed, timezone),
         adjustmentMinutes,
+        statisticsRepairDelta,
         existingTask: !!existingTask,
     })
 }
@@ -390,12 +458,16 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
     const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
     const existingTask = tasks.find(isDayRateTimeLogTask)
     const existingManual = existingTask?.genericData?.manual === true
-    const {
-        adjustmentMinutes,
-        shouldLogDay,
-        realDoneTasksAmount,
-        realLoggedMinutes,
-    } = calculateDayRateTimeLogAdjustment(tasks, config, manual || existingManual)
+    const taskAdjustment = calculateDayRateTimeLogAdjustment(tasks, config, manual || existingManual)
+    const { shouldLogDay, realDoneTasksAmount, realLoggedMinutes } = taskAdjustment
+    const statistics = await getDayRateStatisticsForDay(projectId, userId, timestamp, timezone)
+    const oldGeneratedEstimation = existingTask ? getDayRateTaskEstimation(existingTask) : 0
+    const oldGeneratedIncludedInStats = existingTask && statistics.doneTime >= oldGeneratedEstimation
+    const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
+    const adjustmentMinutes = taskAdjustment.adjustmentMinutes
+    const statsAfterGeneratedUpdate = statistics.doneTime - oldEstimationForStats + adjustmentMinutes
+    const statisticsRepairDelta =
+        shouldLogDay && (adjustmentMinutes > 0 || existingTask) ? config.targetMinutes - statsAfterGeneratedUpdate : 0
 
     logDayRateTimeLog('day-reconcile-calculated', {
         source,
@@ -408,12 +480,19 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         existingManual,
         shouldLogDay,
         adjustmentMinutes,
+        taskBasedAdjustmentMinutes: taskAdjustment.adjustmentMinutes,
+        statisticsDoneTime: statistics.doneTime,
+        oldGeneratedEstimation,
+        oldGeneratedIncludedInStats,
+        oldEstimationForStats,
+        statsAfterGeneratedUpdate,
+        statisticsRepairDelta,
         realDoneTasksAmount,
         realLoggedMinutes,
         tasks: tasks.map(task => getDayRateTaskLogSummary(task, timezone)),
     })
 
-    if ((!shouldLogDay || adjustmentMinutes === 0) && !existingTask) {
+    if ((!shouldLogDay || (adjustmentMinutes === 0 && statisticsRepairDelta === 0)) && !existingTask) {
         logDayRateTimeLog('day-reconcile-noop', {
             source,
             projectId,
@@ -433,6 +512,8 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         userId,
         completed,
         adjustmentMinutes,
+        statisticsRepairDelta,
+        oldEstimationForStats,
         existingTask,
         existingManual,
         manual,
@@ -445,6 +526,7 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         userId,
         completed: formatDayRateTimestamp(completed, timezone),
         adjustmentMinutes,
+        statisticsRepairDelta,
         realDoneTasksAmount,
         realLoggedMinutes,
     })
@@ -472,17 +554,25 @@ export async function reconcileExistingDayRateTimeLog(projectId, userId, timesta
     }
 
     const existingManual = existingTask?.genericData?.manual === true
-    const { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes } = calculateDayRateTimeLogAdjustment(
-        tasks,
-        config,
-        existingManual
-    )
+    const taskAdjustment = calculateDayRateTimeLogAdjustment(tasks, config, existingManual)
+    const { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes } = taskAdjustment
+    const statistics = await getDayRateStatisticsForDay(projectId, userId, timestamp, timezone)
+    const oldGeneratedEstimation = getDayRateTaskEstimation(existingTask)
+    const oldGeneratedIncludedInStats = statistics.doneTime >= oldGeneratedEstimation
+    const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
+    const statsAfterGeneratedUpdate = statistics.doneTime - oldEstimationForStats + adjustmentMinutes
+    const statisticsRepairDelta =
+        taskAdjustment.shouldLogDay && (adjustmentMinutes > 0 || existingTask)
+            ? config.targetMinutes - statsAfterGeneratedUpdate
+            : 0
 
     await upsertDayRateTimeLogTask({
         projectId,
         userId,
         completed: existingTask.completed,
         adjustmentMinutes,
+        statisticsRepairDelta,
+        oldEstimationForStats,
         existingTask,
         existingManual,
         manual: false,

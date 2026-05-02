@@ -77,7 +77,19 @@ const storedCalendarTask = (estimation, data = {}) => ({
     ...data,
 })
 
-const createMockDb = tasks => {
+const createMockDb = (tasks, statisticsByPath = {}) => {
+    const getDefaultStatistics = path => {
+        if (!path.startsWith('statistics/')) return null
+
+        const [, , userId, dateKey] = path.split('/')
+        const doneTime = tasks
+            .filter(task => task.userId === userId && task.done === true && task.inDone === true)
+            .filter(task => task.completed && moment(task.completed).format('DDMMYYYY') === dateKey)
+            .reduce((total, task) => total + getDayRateTaskEstimation(task), 0)
+
+        return doneTime > 0 ? { doneTime } : null
+    }
+
     const createQuery = () => {
         const filters = []
         const query = {
@@ -112,7 +124,19 @@ const createMockDb = tasks => {
     }
     return {
         collection: jest.fn(() => createQuery()),
-        doc: jest.fn(path => ({ path, update: mockDocUpdate })),
+        doc: jest.fn(path => {
+            const statistics = Object.prototype.hasOwnProperty.call(statisticsByPath, path)
+                ? statisticsByPath[path]
+                : getDefaultStatistics(path)
+            return {
+                path,
+                update: mockDocUpdate,
+                get: jest.fn(async () => ({
+                    exists: !!statistics,
+                    data: () => statistics,
+                })),
+            }
+        }),
     }
 }
 
@@ -300,6 +324,60 @@ describe('DayRateTimeLogHelper', () => {
             'project-1',
             'user-1',
             390,
+            false,
+            true,
+            completed,
+            expect.anything()
+        )
+    })
+
+    it('repairs statistics when task minutes and stored stats differ', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
+        ProjectHelper.getProjectById.mockReturnValue({
+            dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 },
+        })
+        getDb.mockReturnValue(
+            createMockDb(
+                [
+                    storedTask(0, { completed }),
+                    storedTask(0, { completed }),
+                    storedTask(0, { completed }),
+                    storedTask(0, { completed }),
+                    storedCalendarTask(90, { completed }),
+                ],
+                {
+                    'statistics/project-1/user-1/01052026': { doneTime: 60 },
+                }
+            )
+        )
+
+        const result = await reconcileDayRateTimeLog('project-1', 'user-1', completed)
+
+        expect(result).toEqual({
+            adjustmentMinutes: 390,
+            realDoneTasksAmount: 5,
+            realLoggedMinutes: 90,
+            updated: true,
+        })
+        expect(mockBatchSet).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'items/project-1/tasks/dayRateTimeLog_user-1_20260501' }),
+            expect.objectContaining({
+                estimations: { Open: 390 },
+            })
+        )
+        expect(updateStatistics).toHaveBeenCalledWith(
+            'project-1',
+            'user-1',
+            390,
+            false,
+            true,
+            completed,
+            expect.anything()
+        )
+        expect(updateStatistics).toHaveBeenCalledWith(
+            'project-1',
+            'user-1',
+            30,
             false,
             true,
             completed,
