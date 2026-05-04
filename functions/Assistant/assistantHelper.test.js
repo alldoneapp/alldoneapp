@@ -111,6 +111,13 @@ jest.mock('../shared/projectDescriptionUpdateHelper', () => ({
 jest.mock('../shared/userDescriptionUpdateHelper', () => ({
     updateUserDescription: jest.fn(),
 }))
+jest.mock('./userMemoryHelper', () => {
+    const actual = jest.requireActual('./userMemoryHelper')
+    return {
+        ...actual,
+        updateUserMemory: jest.fn(),
+    }
+})
 jest.mock('../GAnalytics/GAnalytics', () => ({
     logEvent: jest.fn(),
 }))
@@ -217,6 +224,7 @@ const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
 const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
+const { updateUserMemory } = require('./userMemoryHelper')
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
@@ -2364,6 +2372,52 @@ describe('assistant thread compaction tool', () => {
         await expect(
             getAssistantThreadStateContextMessage('project-1', 'topics', 'chat-1', 'assistant-1')
         ).resolves.toContain('Operations done. Marketing next.')
+    })
+})
+
+describe('assistant user memory tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    test('records memory feed updates as the assistant actor', async () => {
+        updateUserMemory.mockResolvedValue({
+            success: true,
+            skipped: false,
+            noteId: 'note-1',
+            projectId: 'project-1',
+            message: 'User memory saved in project "project-1"',
+        })
+
+        const result = await executeToolNatively(
+            'update_user_memory',
+            {
+                fact: 'Prefers short summaries',
+                category: 'preference',
+                reason: 'Helps tune assistant replies',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(updateUserMemory).toHaveBeenCalledWith(
+            expect.objectContaining({
+                db: expect.any(Object),
+                projectId: 'project-1',
+                requestUserId: 'user-1',
+                fact: 'Prefers short summaries',
+                category: 'preference',
+                reason: 'Helps tune assistant replies',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
+        expect(result).toMatchObject({
+            success: true,
+            skipped: false,
+            noteId: 'note-1',
+        })
     })
 })
 

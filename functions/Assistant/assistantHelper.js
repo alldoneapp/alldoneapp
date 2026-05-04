@@ -5248,6 +5248,7 @@ async function executeToolNatively(
 
         case 'update_user_memory': {
             const db = admin.firestore()
+            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
             return await updateUserMemory({
                 db,
@@ -5256,6 +5257,7 @@ async function executeToolNatively(
                 fact: toolArgs.fact,
                 category: toolArgs.category,
                 reason: toolArgs.reason,
+                feedUser,
             })
         }
 
