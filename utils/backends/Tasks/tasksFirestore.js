@@ -1067,7 +1067,9 @@ export const setTaskAssistant = async (projectId, taskId, assistantId, needGener
 }
 
 export const setTaskNote = async (projectId, taskId, noteId) => {
-    await updateTaskData(projectId, taskId, { noteId }, null)
+    const updateData = { noteId }
+    updateEditionData(updateData)
+    await updateTaskDataDirectly(projectId, taskId, updateData, null)
 }
 
 export async function setTaskPrivacy(projectId, taskId, isPrivate, isPublicFor, task) {
