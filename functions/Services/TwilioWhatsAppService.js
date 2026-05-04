@@ -43,6 +43,9 @@ function buildConversationUrl(baseUrl, projectId, objectId, objectType = 'tasks'
 
 const MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH = 1400
 const READ_FULL_MESSAGE_PREFIX = '\n\nRead full message: '
+const TASK_COMPLETION_TEMPLATE_SID = 'HX9ca2c1ff5fa4e0eadba28bf1a008712e'
+const GENERIC_NOTIFICATION_TEMPLATE_SID = 'HX627be85ad459e8748030b035ae231e8a'
+const MAX_TEMPLATE_RESULT_LENGTH = 300
 
 function truncateMessageWithConversationLink(message, conversationUrl) {
     const normalizedMessage = typeof message === 'string' ? message : String(message ?? '')
@@ -226,8 +229,8 @@ class TwilioWhatsAppService {
             adjustments.push('Collapsed blank lines (including whitespace-only lines) to a single newline.')
         }
 
-        if (value.length > 300) {
-            value = value.slice(0, 300) + '...'
+        if (value.length > MAX_TEMPLATE_RESULT_LENGTH) {
+            value = value.slice(0, MAX_TEMPLATE_RESULT_LENGTH - 3).trimEnd() + '...'
             adjustments.push('Truncated task result to 300 characters to satisfy WhatsApp template limits.')
         }
 
@@ -592,79 +595,42 @@ class TwilioWhatsAppService {
                 preview: previewSingleLine,
             })
 
-            // Content variables for the template
+            // Content variables for the task completion template
             // {{1}}: Assistant Name
+            // {{2}}: Sanitized AI task result
             const assistantDisplayName = assistantName || 'Assistant'
 
-            // {{2}}: Project Name
-            let projectName = 'Project'
-            try {
-                const projectDoc = await admin.firestore().collection('projects').doc(projectId).get()
-                if (projectDoc.exists) {
-                    projectName = projectDoc.data().name || 'Project'
-                }
-            } catch (error) {
-                console.error('Error fetching project name:', error.message)
-            }
-
-            // {{3}}: Topic/Task Name
-            let topicName = 'Task'
-            try {
-                // First try to get from taskData
-                if (taskData && taskData.name) {
-                    topicName = taskData.name
-                } else {
-                    // Fetch from Firestore if not in taskData
-                    const taskDoc = await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).get()
-                    if (taskDoc.exists) {
-                        topicName = taskDoc.data().name || 'Task'
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching task name:', error.message)
-            }
-
-            // {{4}}: AI Task result - flatten newlines to spaces to satisfy stricter template constraints
-            const templateValue = preparedContent.value
+            // Flatten newlines to spaces to satisfy stricter template constraints.
+            let templateValue = preparedContent.value
                 .replace(/\n/g, ' ')
                 .replace(/\s{2,}/g, ' ')
                 .trim()
+
+            if (templateValue.length > MAX_TEMPLATE_RESULT_LENGTH) {
+                templateValue = templateValue.slice(0, MAX_TEMPLATE_RESULT_LENGTH - 3).trimEnd() + '...'
+            }
+
             console.log('WhatsApp template value metrics:', {
                 originalLength: preparedContent.value.length,
                 templateLength: templateValue.length,
             })
 
-            // {{5}}: Conversation Link
-            const baseUrl = getBaseUrl()
-            const conversationUrl = buildConversationUrl(baseUrl, projectId, taskId, taskData?.objectType)
-
-            // {{6}}: Total open tasks count across all projects
-            const openTasksCount = await this._countUserOpenTasks(userId)
-
             const contentVariables = JSON.stringify({
                 1: assistantDisplayName,
-                2: projectName,
-                3: topicName,
-                4: templateValue,
-                5: conversationUrl,
-                6: openTasksCount.toString(),
+                2: templateValue,
             })
 
             console.log('Sending WhatsApp message with Content Template:', {
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
-                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
+                contentSid: TASK_COMPLETION_TEMPLATE_SID,
                 contentVariables,
                 assistantName: assistantDisplayName,
-                projectName,
-                topicName,
-                openTasksCount,
-                conversationUrl,
                 timestamp: new Date().toISOString(),
             })
 
             const response = await client.messages.create({
-                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
+                contentSid: TASK_COMPLETION_TEMPLATE_SID,
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
@@ -791,12 +757,12 @@ class TwilioWhatsAppService {
 
             console.log('Sending WhatsApp generic template:', {
                 to: formattedTo,
-                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
+                contentSid: GENERIC_NOTIFICATION_TEMPLATE_SID,
                 contentVariables,
             })
 
             const response = await client.messages.create({
-                contentSid: 'HX627be85ad459e8748030b035ae231e8a',
+                contentSid: GENERIC_NOTIFICATION_TEMPLATE_SID,
                 contentVariables,
                 from: this.twilioWhatsAppFrom,
                 to: formattedTo,
@@ -930,4 +896,6 @@ module.exports.__private__ = {
     buildConversationUrl,
     truncateMessageWithConversationLink,
     MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH,
+    TASK_COMPLETION_TEMPLATE_SID,
+    GENERIC_NOTIFICATION_TEMPLATE_SID,
 }

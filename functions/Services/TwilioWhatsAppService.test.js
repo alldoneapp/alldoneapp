@@ -1,3 +1,5 @@
+const mockMessagesCreate = jest.fn()
+
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({
         options: {
@@ -14,7 +16,16 @@ jest.mock('../envFunctionsHelper', () => ({
     })),
 }))
 
-const { __private__ } = require('./TwilioWhatsAppService')
+jest.mock('twilio', () =>
+    jest.fn(() => ({
+        messages: {
+            create: mockMessagesCreate,
+        },
+    }))
+)
+
+const TwilioWhatsAppService = require('./TwilioWhatsAppService')
+const { __private__ } = TwilioWhatsAppService
 
 describe('TwilioWhatsAppService conversation links', () => {
     test('builds task chat URLs for task notifications', () => {
@@ -67,5 +78,40 @@ describe('TwilioWhatsAppService conversation links', () => {
         expect(result.message.length).toBeLessThanOrEqual(__private__.MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH)
         expect(result.message).toContain(`Read full message: ${conversationUrl}`)
         expect(result.message.endsWith(`Read full message: ${conversationUrl}`)).toBe(true)
+    })
+})
+
+describe('TwilioWhatsAppService task completion template', () => {
+    beforeEach(() => {
+        mockMessagesCreate.mockReset()
+        mockMessagesCreate.mockResolvedValue({ sid: 'SM123', status: 'queued' })
+    })
+
+    test('sends the first-message template with assistant name and sanitized result only', async () => {
+        const service = new TwilioWhatsAppService()
+
+        const result = await service.sendTaskCompletionNotification(
+            '+1234567890',
+            'user-1',
+            'project-1',
+            'task-1',
+            'Anna',
+            { name: 'Morning check-in' },
+            `First line\n${'A'.repeat(350)}`
+        )
+
+        expect(result.success).toBe(true)
+        expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
+
+        const payload = mockMessagesCreate.mock.calls[0][0]
+        expect(payload.contentSid).toBe(__private__.TASK_COMPLETION_TEMPLATE_SID)
+        expect(payload.from).toBe('whatsapp:+10000000000')
+        expect(payload.to).toBe('whatsapp:+1234567890')
+
+        const contentVariables = JSON.parse(payload.contentVariables)
+        expect(Object.keys(contentVariables)).toEqual(['1', '2'])
+        expect(contentVariables['1']).toBe('Anna')
+        expect(contentVariables['2']).not.toContain('\n')
+        expect(contentVariables['2'].length).toBeLessThanOrEqual(300)
     })
 })
