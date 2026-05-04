@@ -20,7 +20,7 @@ import {
 import { FOLLOWED_TAB } from './Utils/FeedsConstants'
 import { shouldDisplayLocalFeedInDetailedView } from './Utils/DetailFeedHelper'
 
-export default function FeedDVList({ projectId, innerFeeds, feedViewData, objectId }) {
+export default function FeedDVList({ projectId, innerFeeds, feedViewData, objectId, relatedObjectIds }) {
     const newLocalFeedData = useSelector(state => state.newLocalFeedData)
 
     const [showShowLessButton, setShowShowLessButton] = useState(false)
@@ -88,7 +88,7 @@ export default function FeedDVList({ projectId, innerFeeds, feedViewData, object
         ) {
             const { feed, object, params } = newLocalFeedData
 
-            if (shouldDisplayLocalFeedInDetailedView(objectId, object)) {
+            if (shouldDisplayLocalFeedInDetailedView(objectId, object, relatedObjectIds)) {
                 if (params && params.editModeData) {
                     const { editModeData } = params
                     const { feedId, lastChangeDate } = editModeData

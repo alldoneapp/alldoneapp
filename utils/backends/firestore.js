@@ -5827,24 +5827,38 @@ export async function getLastObjectFeed(projectId, objectTypes, feedObjectId, nL
     callback(feeds)
 }
 
-export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback) {
+export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback, relatedFeedSources = []) {
     const MAX_NUMBER_OF_FEEDS_TO_SHOW = 99
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
-    feedsDetailedViewUnsub = db
-        .collection(`projectsInnerFeeds/${projectId}/${objectTypes}/${feedObjectId}/feeds/`)
-        .limit(MAX_NUMBER_OF_FEEDS_TO_SHOW)
-        .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
-        .orderBy('lastChangeDate', 'desc')
-        .onSnapshot(feedsData => {
-            const feeds = []
-            feedsData.forEach(doc => {
-                const feed = doc.data()
-                feed.id = doc.id
-                feeds.push(feed)
+    const feedSources = [{ objectTypes, feedObjectId }, ...relatedFeedSources].filter(
+        feedSource => feedSource && feedSource.objectTypes && feedSource.feedObjectId
+    )
+    const feedsBySource = {}
+    const unsubs = feedSources.map(feedSource => {
+        const sourceKey = `${feedSource.objectTypes}/${feedSource.feedObjectId}`
+        return db
+            .collection(`projectsInnerFeeds/${projectId}/${feedSource.objectTypes}/${feedSource.feedObjectId}/feeds/`)
+            .limit(MAX_NUMBER_OF_FEEDS_TO_SHOW)
+            .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
+            .orderBy('lastChangeDate', 'desc')
+            .onSnapshot(feedsData => {
+                const feeds = []
+                feedsData.forEach(doc => {
+                    const feed = doc.data()
+                    feed.id = doc.id
+                    feeds.push(feed)
+                })
+                feedsBySource[sourceKey] = feeds
+                callback(
+                    Object.values(feedsBySource)
+                        .flat()
+                        .sort((a, b) => b.lastChangeDate - a.lastChangeDate)
+                        .slice(0, MAX_NUMBER_OF_FEEDS_TO_SHOW)
+                )
             })
-            callback(feeds)
-        })
+    })
+    feedsDetailedViewUnsub = () => unsubs.forEach(unsub => unsub())
 }
 
 export function unsubDetailedViewFeeds() {

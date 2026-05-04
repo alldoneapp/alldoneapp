@@ -7,11 +7,15 @@ import { useSelector } from 'react-redux'
 import URLsContacts, { URL_CONTACT_DETAILS_FEED } from '../../URLSystem/Contacts/URLsContacts'
 import Backend from '../../utils/BackendBridge'
 import { DV_TAB_CONTACT_UPDATES } from '../../utils/TabNavigationConstants'
+import { filterDetailedViewFeeds, getAttachedNoteFeedSource, getAttachedNoteId } from './Utils/DetailFeedHelper'
 
 export default function RootViewFeedsContact({ contact, contactId, projectId }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
 
     const [innerFeeds, setInnerFeeds] = useState(null)
+    const noteId = getAttachedNoteId(contact, projectId)
+    const relatedObjectIds = noteId ? [noteId] : []
+    const relatedFeedSources = [getAttachedNoteFeedSource(noteId)].filter(Boolean)
 
     const feedViewData = { type: 'contact', contactId, contact }
 
@@ -24,7 +28,7 @@ export default function RootViewFeedsContact({ contact, contactId, projectId }) 
 
     useEffect(() => {
         Backend.unsubDetailedViewFeeds()
-        Backend.watchDetailedViewFeeds(projectId, 'contacts', contactId, setInnerFeeds)
+        Backend.watchDetailedViewFeeds(projectId, 'contacts', contactId, setInnerFeeds, relatedFeedSources)
         writeBrowserURL()
     }, [])
 
@@ -43,8 +47,9 @@ export default function RootViewFeedsContact({ contact, contactId, projectId }) 
             <FeedDVList
                 projectId={projectId}
                 feedViewData={feedViewData}
-                innerFeeds={innerFeeds}
+                innerFeeds={filterDetailedViewFeeds(innerFeeds, contactId, relatedObjectIds)}
                 objectId={contactId}
+                relatedObjectIds={relatedObjectIds}
             />
         </View>
     )

@@ -551,8 +551,8 @@ export default class Backend {
         return await bridge.getLastObjectFeed(projectId, objectTypes, feedObjectId, nLast, callback)
     }
 
-    static watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback) {
-        return bridge.watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback)
+    static watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback, relatedFeedSources) {
+        return bridge.watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback, relatedFeedSources)
     }
 
     static unsubDetailedViewFeeds() {

@@ -7,11 +7,15 @@ import { useSelector } from 'react-redux'
 import Backend from '../../utils/BackendBridge'
 import { DV_TAB_ASSISTANT_UPDATES } from '../../utils/TabNavigationConstants'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_UPDATES } from '../../URLSystem/Assistants/URLsAssistants'
+import { filterDetailedViewFeeds, getAttachedNoteFeedSource, getAttachedNoteId } from './Utils/DetailFeedHelper'
 
 export default function RootViewFeedsAssistant({ projectId, assistant }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
 
     const [innerFeeds, setInnerFeeds] = useState(null)
+    const noteId = getAttachedNoteId(assistant, projectId)
+    const relatedObjectIds = noteId ? [noteId] : []
+    const relatedFeedSources = [getAttachedNoteFeedSource(noteId)].filter(Boolean)
 
     const feedViewData = { type: 'assistant', assistantId: assistant.uid, assistant }
 
@@ -24,7 +28,7 @@ export default function RootViewFeedsAssistant({ projectId, assistant }) {
 
     useEffect(() => {
         Backend.unsubDetailedViewFeeds()
-        Backend.watchDetailedViewFeeds(projectId, 'assistants', assistant.uid, setInnerFeeds)
+        Backend.watchDetailedViewFeeds(projectId, 'assistants', assistant.uid, setInnerFeeds, relatedFeedSources)
         writeBrowserURL()
     }, [])
 
@@ -43,8 +47,9 @@ export default function RootViewFeedsAssistant({ projectId, assistant }) {
             <FeedDVList
                 projectId={projectId}
                 feedViewData={feedViewData}
-                innerFeeds={innerFeeds}
+                innerFeeds={filterDetailedViewFeeds(innerFeeds, assistant.uid, relatedObjectIds)}
                 objectId={assistant.uid}
+                relatedObjectIds={relatedObjectIds}
             />
         </View>
     )

@@ -7,11 +7,15 @@ import { useSelector } from 'react-redux'
 import URLsGoals, { URL_GOAL_DETAILS_FEED } from '../../URLSystem/Goals/URLsGoals'
 import Backend from '../../utils/BackendBridge'
 import { DV_TAB_GOAL_UPDATES } from '../../utils/TabNavigationConstants'
+import { filterDetailedViewFeeds, getAttachedNoteFeedSource, getAttachedNoteId } from './Utils/DetailFeedHelper'
 
 export default function RootViewFeedsGoal({ projectId, goal, goalId }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
 
     const [innerFeeds, setInnerFeeds] = useState(null)
+    const noteId = getAttachedNoteId(goal, projectId)
+    const relatedObjectIds = noteId ? [noteId] : []
+    const relatedFeedSources = [getAttachedNoteFeedSource(noteId)].filter(Boolean)
 
     const feedViewData = { type: 'goal', goalId, goal }
 
@@ -24,7 +28,7 @@ export default function RootViewFeedsGoal({ projectId, goal, goalId }) {
 
     useEffect(() => {
         Backend.unsubDetailedViewFeeds()
-        Backend.watchDetailedViewFeeds(projectId, 'goals', goalId, setInnerFeeds)
+        Backend.watchDetailedViewFeeds(projectId, 'goals', goalId, setInnerFeeds, relatedFeedSources)
         writeBrowserURL()
     }, [])
 
@@ -40,7 +44,13 @@ export default function RootViewFeedsGoal({ projectId, goal, goalId }) {
     return (
         <View style={localStyles.container}>
             <HeaderGoal />
-            <FeedDVList projectId={projectId} feedViewData={feedViewData} innerFeeds={innerFeeds} objectId={goalId} />
+            <FeedDVList
+                projectId={projectId}
+                feedViewData={feedViewData}
+                innerFeeds={filterDetailedViewFeeds(innerFeeds, goalId, relatedObjectIds)}
+                objectId={goalId}
+                relatedObjectIds={relatedObjectIds}
+            />
         </View>
     )
 }
