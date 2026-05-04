@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { getOpenTasksContextMessage, parseTextForUseLiKePrompt } = require('./assistantHelper')
 const {
     addTimestampToContextContent,
@@ -21,6 +22,11 @@ const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
+
+const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE =
+    'Heartbeat paused because you\u2019re out of gold. Add gold to resume assistant heartbeats here https://my.alldone.app/settings/premium'
+const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD = 'heartbeatInsufficientGoldNoticeAt'
+const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS = 24 * 60 * 60 * 1000
 
 /**
  * Fetch recent conversation history from a topic for context.
@@ -195,6 +201,109 @@ function getCurrentHeartbeatWindowStart(now, intervalMs) {
     return Math.floor(now / intervalMs) * intervalMs
 }
 
+function getTimestampMillis(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (value instanceof Date) return value.getTime()
+    if (value && typeof value.toMillis === 'function') return value.toMillis()
+    if (value && typeof value.seconds === 'number') return value.seconds * 1000
+    return 0
+}
+
+async function reserveHeartbeatInsufficientGoldNotice(userId, now = Date.now()) {
+    const userRef = admin.firestore().doc(`users/${userId}`)
+
+    return await admin.firestore().runTransaction(async transaction => {
+        const userDoc = await transaction.get(userRef)
+        const userData = userDoc.exists ? userDoc.data() || {} : {}
+        const currentGold = typeof userData.gold === 'number' ? userData.gold : 0
+
+        if (currentGold > 0) {
+            return { shouldNotify: false, hasGold: true, userData: { id: userId, ...userData } }
+        }
+
+        const lastNoticeAt = getTimestampMillis(userData[HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD])
+        if (lastNoticeAt && now - lastNoticeAt < HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS) {
+            return { shouldNotify: false, hasGold: false, userData: { id: userId, ...userData } }
+        }
+
+        transaction.set(
+            userRef,
+            {
+                [HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD]: now,
+            },
+            { merge: true }
+        )
+
+        return { shouldNotify: true, hasGold: false, userData: { id: userId, ...userData } }
+    })
+}
+
+async function postHeartbeatInsufficientGoldNotice(projectId, assistant, userId, userData) {
+    const { chatId } = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid, userData)
+
+    await createInitialStatusMessage(
+        projectId,
+        'topics',
+        chatId,
+        assistant.uid,
+        HEARTBEAT_INSUFFICIENT_GOLD_NOTICE,
+        [userId],
+        [FEED_PUBLIC_FOR_ALL],
+        [userId]
+    )
+
+    return { channel: 'topic', chatId }
+}
+
+async function sendHeartbeatInsufficientGoldNotice(projectId, assistant, userId, userData) {
+    try {
+        const sendWhatsApp = getEffectiveHeartbeatSendWhatsApp(assistant, userData)
+        const userPhone = userData?.phone
+
+        if (sendWhatsApp && userPhone) {
+            const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
+            const whatsappService = new TwilioWhatsAppService()
+            const whatsappResult = await whatsappService.sendWhatsAppMessage(
+                userPhone,
+                HEARTBEAT_INSUFFICIENT_GOLD_NOTICE
+            )
+
+            if (whatsappResult?.success) {
+                console.log('Heartbeat: Insufficient gold notice sent by WhatsApp:', {
+                    projectId,
+                    assistantId: assistant.uid,
+                    userId,
+                })
+                return { channel: 'whatsapp' }
+            }
+
+            console.warn('Heartbeat: WhatsApp insufficient gold notice failed, falling back to topic:', {
+                projectId,
+                assistantId: assistant.uid,
+                userId,
+                error: whatsappResult?.error || whatsappResult?.message || null,
+            })
+        }
+
+        const result = await postHeartbeatInsufficientGoldNotice(projectId, assistant, userId, userData)
+        console.log('Heartbeat: Insufficient gold notice posted to topic:', {
+            projectId,
+            assistantId: assistant.uid,
+            userId,
+            chatId: result.chatId,
+        })
+        return result
+    } catch (error) {
+        console.error('Heartbeat: Failed to send insufficient gold notice:', {
+            projectId,
+            assistantId: assistant.uid,
+            userId,
+            error: error.message,
+        })
+        return { channel: null, error: error.message }
+    }
+}
+
 /**
  * Normalize timezone offset from user data.
  * User timezone can be stored as a number (offset in minutes or hours) or a string.
@@ -298,7 +407,7 @@ async function checkAndExecuteHeartbeats() {
                     for (const userId of projectMembers) {
                         if (!activeUsersMap.has(userId)) continue
 
-                        const userData = activeUsersMap.get(userId)
+                        let userData = activeUsersMap.get(userId)
                         const chancePercent = getEffectiveChancePercent(assistant, projectId, userData)
 
                         if (chancePercent <= 0) continue
@@ -326,12 +435,30 @@ async function checkAndExecuteHeartbeats() {
 
                         processedWindowUpdates[`heartbeatLastProcessedWindowByUser.${userId}`] = currentWindowStart
 
+                        // Check gold
+                        if (!userData.gold || userData.gold <= 0) {
+                            const noticeReservation = await reserveHeartbeatInsufficientGoldNotice(userId)
+                            if (noticeReservation.hasGold) {
+                                userData = { ...userData, ...noticeReservation.userData }
+                            } else {
+                                if (noticeReservation.shouldNotify) {
+                                    await sendHeartbeatInsufficientGoldNotice(
+                                        projectId,
+                                        assistant,
+                                        userId,
+                                        noticeReservation.userData || userData
+                                    )
+                                }
+                                console.log('Heartbeat: Skipping - no gold:', { userId, projectId })
+                                continue
+                            }
+                        }
+
                         // Roll dice
                         if (Math.random() * 100 >= chancePercent) {
                             continue
                         }
 
-                        // Check gold
                         if (!userData.gold || userData.gold <= 0) {
                             console.log('Heartbeat: Skipping - no gold:', { userId, projectId })
                             continue
