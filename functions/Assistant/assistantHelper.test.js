@@ -327,6 +327,12 @@ describe('assistant attachment handoff helpers', () => {
                 fromAssistant: true,
             })
         )
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                isLoading: false,
+                isThinking: false,
+            })
+        )
     })
 
     test('adds timestamps to multimodal context content without dropping images', () => {

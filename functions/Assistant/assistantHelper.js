@@ -7375,6 +7375,12 @@ async function storeChunks(
 
         // Flush any pending updates before final operations
         await flushPendingUpdate()
+        if (committed) {
+            await commentRefRawUpdate({
+                isLoading: false,
+                isThinking: false,
+            })
+        }
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log('Finished processing stream chunks:', {
