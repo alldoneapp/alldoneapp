@@ -239,6 +239,12 @@ const TaskDetailedView = ({ navigation }) => {
         idsField: 'linkedParentTasksIds',
     }
 
+    const onNoteCreated = noteId => {
+        const updatedTask = { ...task, noteId }
+        setTask(updatedTask)
+        dispatch(setTaskInDetailView(updatedTask))
+    }
+
     const projectCopy = project ? { ...project, id: projectId } : null
 
     return (
@@ -314,6 +320,7 @@ const TaskDetailedView = ({ navigation }) => {
                                         hideCreateNoteSection={hideCreateNoteSection}
                                         creatorId={task.creatorId}
                                         autoStartTranscription={navigation.getParam('autoStartTranscription', false)}
+                                        onNoteCreated={onNoteCreated}
                                     />
                                 )}
                                 {selectedTab === DV_TAB_TASK_CHAT && (

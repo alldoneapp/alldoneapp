@@ -59,6 +59,7 @@ const NoteIntegration = ({
     creatorId,
     isInGlobalProject,
     autoStartTranscription,
+    onNoteCreated,
 }) => {
     const dispatch = useDispatch()
     const openModals = useSelector(state => state.openModals)
@@ -129,9 +130,13 @@ const NoteIntegration = ({
 
     const onCreate = () => {
         setIsCreating(true)
-        createNoteInObject(project.id, objectId, creatorId, objectName, objectType, objectPrivacy, setNote).then(() => {
-            setIsCreating(false)
-        })
+        createNoteInObject(project.id, objectId, creatorId, objectName, objectType, objectPrivacy, setNote)
+            .then(note => {
+                if (note) onNoteCreated?.(note.id, note)
+            })
+            .finally(() => {
+                setIsCreating(false)
+            })
     }
 
     return (

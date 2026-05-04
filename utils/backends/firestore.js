@@ -7003,27 +7003,30 @@ export async function createNoteInObject(
         userId: creatorId,
         creatorId,
     }
-    await uploadNewNote(projectId, noteData, false).then(async note => {
-        if (objectType === 'tasks') {
-            await setTaskNote(projectId, objectId, noteId)
-        } else if (objectType === 'goals') {
-            await updateGoalNote(projectId, objectId, noteId)
-        } else if (objectType === 'users') {
-            await setUserNote(projectId, objectId, noteId)
-        } else if (objectType === 'contacts') {
-            await updateContactNote(projectId, objectId, noteId)
-        } else if (objectType === 'topics') {
-            await updateChatNote(projectId, objectId, noteId)
-        } else if (objectType === 'skills') {
-            await updateSkillNote(projectId, objectId, noteId)
-        } else if (objectType === 'assistants') {
-            await updateAssistantNote(projectId, objectId, noteId)
-        }
-        setSelectedNote(note)
-        followers.forEach(userId => {
-            addFollowerWithoutFeeds(projectId, userId, 'notes', note.id, null)
-        })
+    const note = await uploadNewNote(projectId, noteData, false)
+
+    if (objectType === 'tasks') {
+        await setTaskNote(projectId, objectId, noteId)
+    } else if (objectType === 'goals') {
+        await updateGoalNote(projectId, objectId, noteId)
+    } else if (objectType === 'users') {
+        await setUserNote(projectId, objectId, noteId)
+    } else if (objectType === 'contacts') {
+        await updateContactNote(projectId, objectId, noteId)
+    } else if (objectType === 'topics') {
+        await updateChatNote(projectId, objectId, noteId)
+    } else if (objectType === 'skills') {
+        await updateSkillNote(projectId, objectId, noteId)
+    } else if (objectType === 'assistants') {
+        await updateAssistantNote(projectId, objectId, noteId)
+    }
+
+    setSelectedNote?.(note)
+    followers.forEach(userId => {
+        addFollowerWithoutFeeds(projectId, userId, 'notes', note.id, null)
     })
+
+    return note
 }
 
 // Calendar Functions
