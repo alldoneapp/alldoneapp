@@ -246,6 +246,7 @@ const TaskDetailedView = ({ navigation }) => {
     }
 
     const projectCopy = project ? { ...project, id: projectId } : null
+    const hideNavigationBar = isFullscreen && (selectedTab === DV_TAB_TASK_NOTE || selectedTab === DV_TAB_TASK_CHAT)
 
     return (
         <View style={localStyles.container} onLayout={onLayout}>
@@ -285,7 +286,7 @@ const TaskDetailedView = ({ navigation }) => {
                                 />
                             )}
                             <View style={{ flex: 1 }}>
-                                {!isFullscreen && (
+                                {!hideNavigationBar && (
                                     <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
                                         <NavigationBar isSecondary tabs={navigationTabs} />
                                     </View>
