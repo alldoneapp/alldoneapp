@@ -6609,6 +6609,7 @@ async function storeChunks(
     silentModeMarker = null
 ) {
     const chunksStartTime = Date.now()
+    let chunkCount = 0
     console.log('🔄 [TIMING] storeChunks START', {
         timestamp: new Date().toISOString(),
         projectId,
@@ -6630,7 +6631,6 @@ async function storeChunks(
         let thinkingMode = false
         let thinkingContent = ''
         let answerContent = ''
-        let chunkCount = 0
         let toolAlreadyExecuted = false
 
         const silentModeEnabled = typeof silentModeMarker === 'string' && silentModeMarker.length > 0
