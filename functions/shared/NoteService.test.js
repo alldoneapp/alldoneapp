@@ -110,6 +110,20 @@ describe('NoteService patch planning', () => {
 })
 
 describe('NoteService patch storage updates', () => {
+    test('includes the assistant actor and note owner as update feed followers', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteUpdateFeedFollowers(
+                {
+                    userId: 'user-1',
+                    followersIds: ['user-1', 'user-2'],
+                },
+                { uid: 'assistant-1' }
+            )
+        ).toEqual(['assistant-1', 'user-1', 'user-2'])
+    })
+
     test('updates storage content and metadata for a safe patch', async () => {
         let savedBuffer = null
         const file = {
@@ -231,5 +245,69 @@ describe('NoteService patch storage updates', () => {
             error: 'PATCH_EDITS_REQUIRED',
             persisted: false,
         })
+    })
+
+    test('persists a feed when content is appended directly to storage', async () => {
+        let savedBuffer = null
+        const file = {
+            exists: jest.fn(async () => [true]),
+            download: jest.fn(async () => [encodePlainContent('# Karsten memory\n\n')]),
+            save: jest.fn(async buffer => {
+                savedBuffer = buffer
+            }),
+        }
+        const noteDoc = {
+            update: jest.fn(async () => {}),
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    id: 'note-1',
+                    title: 'karsten memory',
+                    extendedTitle: 'Karsten memory',
+                    userId: 'user-1',
+                    isPrivate: false,
+                    isPublicFor: [0, 'user-1'],
+                }),
+            })),
+        }
+        const service = createService({
+            enableFeeds: true,
+            storage: {
+                bucket: jest.fn(() => ({
+                    file: jest.fn(() => file),
+                })),
+            },
+            database: {
+                doc: jest.fn(() => noteDoc),
+            },
+        })
+        const createNoteFeedSpy = jest.spyOn(service, 'createNoteFeed').mockResolvedValue({
+            feedId: 'feed-1',
+            feed: { id: 'feed-1' },
+        })
+        const persistNoteUpdateFeedSpy = jest.spyOn(service, 'persistNoteUpdateFeed').mockResolvedValue(true)
+
+        await service.addContentToStorage('project-1', 'note-1', '2026-03-11: Prefers short summaries\n', {
+            uid: 'assistant-1',
+            displayName: 'Assistant',
+        })
+
+        expect(decodeContent(savedBuffer)).toBe('2026-03-11: Prefers short summaries\n# Karsten memory\n\n')
+        expect(createNoteFeedSpy).toHaveBeenCalledWith(
+            'updated',
+            expect.objectContaining({
+                noteId: 'note-1',
+                projectId: 'project-1',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+            })
+        )
+        expect(persistNoteUpdateFeedSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                noteId: 'note-1',
+                feedUser: expect.objectContaining({ uid: 'assistant-1' }),
+                feedData: expect.objectContaining({ feedId: 'feed-1' }),
+            })
+        )
     })
 })

@@ -417,6 +417,13 @@ class NoteService {
         }
     }
 
+    getNoteUpdateFeedFollowers(note, feedUser) {
+        const actorId = feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
+        const ownerId = note && note.userId
+        const existingFollowers = Array.isArray(note?.followersIds) ? note.followersIds : []
+        return Array.from(new Set([actorId, ownerId, ...existingFollowers].filter(Boolean)))
+    }
+
     async persistNoteUpdateFeed({ projectId, noteId, note, feedUser, feedData }) {
         if (!this.options.enableFeeds || !this.options.isCloudFunction || !this.options.database || !feedUser) {
             return false
@@ -445,6 +452,10 @@ class NoteService {
             const feedsBatch = new BatchWrapper(this.options.database)
             if (feedsBatch.setProjectContext) {
                 feedsBatch.setProjectContext(projectId)
+            }
+            feedsBatch.feedChainFollowersIds = {
+                ...(feedsBatch.feedChainFollowersIds || {}),
+                [noteId]: this.getNoteUpdateFeedFollowers(note, creator),
             }
 
             const lastStateRef = this.options.database.doc(`feedsObjectsLastStates/${projectId}/notes/${noteId}`)
@@ -1731,7 +1742,8 @@ class NoteService {
             const db = this.options.database
             if (db) {
                 try {
-                    await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
+                    const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
+                    const updateData = {
                         preview: preview,
                         lastEditionDate: Date.now(),
                         ...(feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
@@ -1740,18 +1752,40 @@ class NoteService {
                         ...(feedUser && (feedUser.displayName || feedUser.name)
                             ? { lastEditorName: feedUser.displayName || feedUser.name }
                             : {}),
-                    })
+                    }
+                    await noteDocRef.update(updateData)
                     console.log(`NoteService: Updated preview in Firestore, length: ${preview.length}`)
 
                     // Generate feed for note edit (like startEditNoteFeedsChain)
                     if (this.options.enableFeeds && feedUser) {
-                        await this.createNoteFeed('updated', {
-                            note: { id: noteId, preview },
+                        let updatedNote = { id: noteId, preview }
+                        try {
+                            const updatedNoteDoc = typeof noteDocRef.get === 'function' ? await noteDocRef.get() : null
+                            updatedNote = updatedNoteDoc?.exists
+                                ? { id: noteId, ...updatedNoteDoc.data(), ...updateData }
+                                : { id: noteId, preview, ...updateData }
+                        } catch (readError) {
+                            console.warn(
+                                'NoteService: Failed to read updated note metadata for feed:',
+                                readError.message
+                            )
+                        }
+
+                        const feedData = await this.createNoteFeed('updated', {
+                            note: updatedNote,
+                            noteId,
                             projectId,
                             feedUser,
                             changes: ['content updated'],
                         })
-                        console.log(`NoteService: Generated feed for note update`)
+                        const feedPersisted = await this.persistNoteUpdateFeed({
+                            projectId,
+                            noteId,
+                            note: updatedNote,
+                            feedUser,
+                            feedData,
+                        })
+                        console.log(`NoteService: Generated feed for note update`, { feedPersisted })
                     }
                 } catch (error) {
                     console.warn(`NoteService: Failed to update metadata:`, error.message)
@@ -1853,7 +1887,8 @@ class NoteService {
             const db = this.options.database
             if (db) {
                 try {
-                    await db.doc(`noteItems/${projectId}/notes/${noteId}`).update({
+                    const noteDocRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
+                    const updateData = {
                         preview: preview,
                         lastEditionDate: Date.now(),
                         ...(feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
@@ -1862,18 +1897,40 @@ class NoteService {
                         ...(feedUser && (feedUser.displayName || feedUser.name)
                             ? { lastEditorName: feedUser.displayName || feedUser.name }
                             : {}),
-                    })
+                    }
+                    await noteDocRef.update(updateData)
                     console.log(`NoteService: Updated preview in Firestore, length: ${preview.length}`)
 
                     // Generate feed for note edit (like startEditNoteFeedsChain)
                     if (this.options.enableFeeds && feedUser) {
-                        await this.createNoteFeed('updated', {
-                            note: { id: noteId, preview },
+                        let updatedNote = { id: noteId, preview }
+                        try {
+                            const updatedNoteDoc = typeof noteDocRef.get === 'function' ? await noteDocRef.get() : null
+                            updatedNote = updatedNoteDoc?.exists
+                                ? { id: noteId, ...updatedNoteDoc.data(), ...updateData }
+                                : { id: noteId, preview, ...updateData }
+                        } catch (readError) {
+                            console.warn(
+                                'NoteService: Failed to read updated note metadata for feed:',
+                                readError.message
+                            )
+                        }
+
+                        const feedData = await this.createNoteFeed('updated', {
+                            note: updatedNote,
+                            noteId,
                             projectId,
                             feedUser,
                             changes: ['content updated'],
                         })
-                        console.log(`NoteService: Generated feed for note update`)
+                        const feedPersisted = await this.persistNoteUpdateFeed({
+                            projectId,
+                            noteId,
+                            note: updatedNote,
+                            feedUser,
+                            feedData,
+                        })
+                        console.log(`NoteService: Generated feed for note update`, { feedPersisted })
                     }
                 } catch (error) {
                     console.warn(`NoteService: Failed to update metadata:`, error.message)
