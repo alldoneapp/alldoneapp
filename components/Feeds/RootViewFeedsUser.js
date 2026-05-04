@@ -7,6 +7,7 @@ import { useSelector } from 'react-redux'
 import URLsPeople, { URL_PEOPLE_DETAILS_FEED } from '../../URLSystem/People/URLsPeople'
 import Backend from '../../utils/BackendBridge'
 import { DV_TAB_USER_UPDATES } from '../../utils/TabNavigationConstants'
+import { filterUserObjectFeeds } from './Utils/DetailFeedHelper'
 
 export default function RootViewFeedsUser({ user, userId, projectId }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -40,7 +41,12 @@ export default function RootViewFeedsUser({ user, userId, projectId }) {
     return (
         <View style={localStyles.container}>
             <HeaderUser />
-            <FeedDVList projectId={projectId} feedViewData={feedViewData} innerFeeds={innerFeeds} objectId={userId} />
+            <FeedDVList
+                projectId={projectId}
+                feedViewData={feedViewData}
+                innerFeeds={filterUserObjectFeeds(innerFeeds, userId)}
+                objectId={userId}
+            />
         </View>
     )
 }
