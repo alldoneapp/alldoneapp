@@ -79,6 +79,26 @@ import { generateUserIdsToNotifyForNewComments } from '../../assistantHelper'
 
 export const ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY = 'allProjects'
 
+const isActiveProjectUserId = (projectId, userId) => {
+    const { loggedUser } = store.getState()
+    return !!userId && (userId === loggedUser.uid || !!TasksHelper.getUserInProject(projectId, userId))
+}
+
+const filterActiveProjectUserIds = (projectId, userIds, context) => {
+    const validUserIds = uniq((userIds || []).filter(userId => isActiveProjectUserId(projectId, userId)))
+    const skippedUserIds = difference(uniq((userIds || []).filter(Boolean)), validUserIds)
+
+    if (skippedUserIds.length > 0) {
+        console.warn('[TaskComments] Ignoring stale project user ids while saving comment metadata', {
+            projectId,
+            context,
+            skippedUserIds,
+        })
+    }
+
+    return validUserIds
+}
+
 export const getProjectChatLastNotification = (projectId, projectNotifications, projectChatLastNotification) => {
     const lastNotifications = {
         ...projectChatLastNotification,
@@ -298,7 +318,9 @@ const updateParentObjectAssistantIfNeeded = (projectId, assistantId, objectId, o
 }
 
 const updateLastAssistantCommentData = async (projectId, objectId, objectType, creatorId, followerIds, batch) => {
-    followerIds.forEach(followerId => {
+    const activeFollowerIds = filterActiveProjectUserIds(projectId, followerIds, 'lastAssistantCommentData')
+
+    activeFollowerIds.forEach(followerId => {
         const updateData = { objectType, objectId, creatorId, creatorType: 'user', date: moment().utc().valueOf() }
         batch.update(getDb().doc(`users/${followerId}`), {
             [`lastAssistantCommentData.${projectId}`]: updateData,
@@ -499,7 +521,11 @@ export async function createObjectMessage(
                 objectId,
                 prompt: comment,
                 taskMetadata: object.taskMetadata,
-                userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
+                userIdsToNotify: filterActiveProjectUserIds(
+                    projectId,
+                    generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
+                    'webhookTaskNotifications'
+                ),
                 isPublicFor,
                 assistantId,
             })
@@ -512,17 +538,23 @@ export async function createObjectMessage(
                 })
         }
 
-        const userIdsToNotify = generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId)
-
-        const { followerIds, newFollowerIds, newMentionIds } = await getFollowerLists(
+        const userIdsToNotify = filterActiveProjectUserIds(
             projectId,
-            objectType,
-            objectId,
-            creatorId,
-            oldComment,
-            comment,
-            isPublicFor
+            generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
+            'commentNotifications'
         )
+
+        const {
+            followerIds: unfilteredFollowerIds,
+            newFollowerIds: unfilteredNewFollowerIds,
+            newMentionIds,
+        } = await getFollowerLists(projectId, objectType, objectId, creatorId, oldComment, comment, isPublicFor)
+        const followerIds = filterActiveProjectUserIds(projectId, unfilteredFollowerIds, 'commentFollowers')
+        const activeFollowerIdsMap = followerIds.reduce((map, userId) => {
+            map[userId] = true
+            return map
+        }, {})
+        const newFollowerIds = unfilteredNewFollowerIds.filter(userId => activeFollowerIdsMap[userId])
 
         assistantId = updateParentObjectAssistantIfNeeded(projectId, assistantId, objectId, objectType)
 
