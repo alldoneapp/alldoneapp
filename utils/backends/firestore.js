@@ -94,6 +94,7 @@ import {
     FEED_ASSISTANT_BACKLINK,
 } from '../../components/Feeds/Utils/FeedsConstants'
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
+import { selectNewFeeds } from './Feeds/newFeedsHelper'
 import {
     setAllFeeds,
     setFollowedFeeds,
@@ -5647,60 +5648,6 @@ function watchNewFeedsTab(projectId, userId, tab, callback) {
             const newFeedsData = selectNewFeeds(notificationsData.data(), MAX_NEW_FEEDS_TO_SHOW, userId)
             callback(projectId, newFeedsData)
         })
-}
-
-function selectNewFeeds(newFeeds, amountFeedsToShow, userId) {
-    const newFeedsData = { feedsAmount: 0, feedsData: [] }
-    if (newFeeds) {
-        const objectTypes = Object.keys(newFeeds)
-        let linealFeeds = []
-        if (objectTypes.length > 0) {
-            for (let t = 0; t < objectTypes.length; t++) {
-                const type = objectTypes[t]
-                const objectsIds = Object.keys(newFeeds[type])
-                if (objectsIds.length > 0) {
-                    for (let i = 0; i < objectsIds.length; i++) {
-                        const objectId = objectsIds[i]
-                        const feeds = newFeeds[type][objectId]
-
-                        if (!feeds.isPrivate || feeds.isPrivate === userId) {
-                            delete feeds.isPrivate
-                            const feedsIds = Object.keys(feeds)
-
-                            for (let n = 0; n < feedsIds.length; n++) {
-                                const feedId = feedsIds[n]
-                                const feedData = feeds[feedId]
-                                feedData.feed.id = feedId
-                                feedData.feed.objectId = objectId
-                                feedData.objectId = objectId
-                                feedData.objectTypes = type
-                                linealFeeds.push(feedData.feed)
-                            }
-                        }
-                    }
-
-                    orderFeedsByDate(linealFeeds)
-
-                    newFeedsData.feedsAmount = linealFeeds.length
-                    newFeedsData.feedsData = linealFeeds.slice(0, amountFeedsToShow)
-                }
-            }
-        }
-    }
-
-    return newFeedsData
-}
-
-function orderFeedsByDate(feedsData) {
-    feedsData.sort(function (a, b) {
-        if (a.lastChangeDate > b.lastChangeDate) {
-            return -1
-        }
-        if (a.lastChangeDate < b.lastChangeDate) {
-            return 1
-        }
-        return 0
-    })
 }
 
 export function resetAllNewFeeds(projectId, feedActiveTab) {

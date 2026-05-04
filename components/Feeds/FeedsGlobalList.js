@@ -131,6 +131,18 @@ export default function FeedsGlobalList({
         processInitialFeedsInTab()
     }
 
+    const getNewFeedObjectsAmount = () => {
+        const objectKeys = new Set()
+
+        counterNewFeedsData?.forEach(feed => {
+            if (newFeedsIds.includes(feed.id)) {
+                objectKeys.add(`${feed.objectTypes || feed.type}/${feed.objectId}`)
+            }
+        })
+
+        return objectKeys.size
+    }
+
     useEffect(() => {
         if (activeMode !== LOADING_MODE) {
             if (activeMode === NEW_FEEDS_MODE) {
@@ -143,8 +155,8 @@ export default function FeedsGlobalList({
     }, [displayedFeedsOrdered])
 
     useEffect(() => {
-        updateProjectNewFeedAmount(projectId, newFeedsIds.length)
-    }, [newFeedsIds])
+        updateProjectNewFeedAmount(projectId, getNewFeedObjectsAmount())
+    }, [newFeedsIds, counterNewFeedsData])
 
     useEffect(() => {
         if (activeMode !== LOADING_MODE) {
