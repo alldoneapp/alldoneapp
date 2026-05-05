@@ -19,16 +19,32 @@ import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
 import { setUserPhone, setUserReceiveWhatsApp } from '../../utils/backends/Users/usersFirestore'
 import URLTrigger from '../../URLSystem/URLTrigger'
-import URLSystemTrigger from '../../URLSystem/URLSystemTrigger'
 import NavigationService from '../../utils/NavigationService'
-import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 import Icon from '../Icon'
 import SplitLayout from './SplitLayout'
 import { startServerSideAuth } from '../../apis/google/GoogleOAuthServerSide'
 import { requestNotificationPermission, logEvent } from '../../utils/backends/firestore'
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
-import { disableMorningReminderTask } from '../../utils/backends/Tasks/tasksFirestore'
+import { updateAssistantHeartbeatSettings } from '../../utils/backends/Assistants/assistantsFirestore'
 import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../utils/CountryCodes'
+
+const DEFAULT_POST_ONBOARDING_URL = '/projects/tasks/open'
+
+const getPostOnboardingUrl = nextUrl => {
+    if (!nextUrl || nextUrl === '/') {
+        return DEFAULT_POST_ONBOARDING_URL
+    }
+
+    if (
+        nextUrl.startsWith('/onboarding') ||
+        nextUrl.startsWith('/starttrial') ||
+        nextUrl.startsWith('/paymentsuccess')
+    ) {
+        return DEFAULT_POST_ONBOARDING_URL
+    }
+
+    return nextUrl
+}
 
 const ProgressBar = ({ current, total }) => {
     const progress = useRef(new Animated.Value(0)).current
@@ -64,6 +80,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     const [showCountryPicker, setShowCountryPicker] = useState(false)
     const [validationError, setValidationError] = useState('')
     const [saving, setSaving] = useState(false)
+    const [savingCheckInPreference, setSavingCheckInPreference] = useState(false)
     const [showWhatsAppSuccess, setShowWhatsAppSuccess] = useState(false)
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const phoneInputRef = useRef()
@@ -73,6 +90,9 @@ export default function WhatsAppOnboarding({ navigation }) {
         state.loggedUserProjects && state.loggedUserProjects.length > 0 ? state.loggedUserProjects[0].id : null
     )
     const projectId = defaultProjectId || firstProjectId
+    const project = useSelector(state => (projectId ? state.loggedUserProjectsMap?.[projectId] : null))
+    const projectAssistants = useSelector(state => (projectId ? state.projectAssistants?.[projectId] || [] : []))
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
 
     const nextUrl = navigation.getParam('nextUrl', '/')
     const isDesktop = windowWidth > 768
@@ -80,7 +100,7 @@ export default function WhatsAppOnboarding({ navigation }) {
 
     const titleStyle = [localStyles.title, isMobile && { fontSize: 24, marginBottom: 8 }]
 
-    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: MorningReminder, 3: Push (Gmail step disabled)
+    const [step, setStep] = useState(0) // 0: WhatsApp, 1: Calendar, 2: Check-in preference, 3: Push (Gmail step disabled)
     const [connectingService, setConnectingService] = useState(null)
     const [showSuccess, setShowSuccess] = useState(null)
     const blinkAnim = useRef(new Animated.Value(1)).current
@@ -140,7 +160,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 blinkAnim.setValue(1) // Reset animation
                 if (service === 'calendar') {
                     logEvent('onboarding_calendar_connected')
-                    setStep(2) // Skip Gmail, go to MorningReminder
+                    setStep(2) // Skip Gmail, go to check-in preference
                 }
                 // Gmail step is disabled
                 // else {
@@ -231,14 +251,7 @@ export default function WhatsAppOnboarding({ navigation }) {
     }
 
     const proceed = () => {
-        // If user doesn't have premium, redirect to Stripe trial first
-        if (loggedUser?.premium?.status !== PLAN_STATUS_PREMIUM) {
-            // Save the intended destination so we can redirect after Stripe
-            localStorage.setItem('alldone_post_trial_redirect', nextUrl)
-            URLSystemTrigger.redirectToStripe('monthly')
-            return
-        }
-        URLTrigger.processUrl(NavigationService, nextUrl)
+        URLTrigger.processUrl(NavigationService, getPostOnboardingUrl(nextUrl))
     }
 
     const onPhoneChange = newPhone => {
@@ -283,7 +296,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                 blinkAnim.setValue(1) // Reset animation
                 if (service === 'calendar') {
                     logEvent('onboarding_calendar_connected')
-                    setStep(2) // Skip Gmail, go to MorningReminder
+                    setStep(2) // Skip Gmail, go to check-in preference
                 }
                 // Gmail step is disabled
                 // else {
@@ -312,18 +325,42 @@ export default function WhatsAppOnboarding({ navigation }) {
         proceed()
     }
 
-    const handleMorningReminder = async enabled => {
-        if (!enabled) {
-            try {
-                // If user disabled, find the Daily Focus Task and set recurrence to never
-                await disableMorningReminderTask(projectId)
-            } catch (error) {
-                console.error('Error disabling morning reminder:', error)
-            }
-            logEvent('onboarding_morning_reminder_skipped')
+    const getOnboardingAssistant = () => {
+        const projectAssistantId = project?.assistantId
+        const projectAssistant =
+            projectAssistants.find(assistant => assistant.uid === projectAssistantId) ||
+            projectAssistants.find(assistant => assistant.isDefault) ||
+            projectAssistants[0]
+
+        return projectAssistant || defaultAssistant
+    }
+
+    const handleCheckInPreference = async enabled => {
+        if (savingCheckInPreference) return
+
+        setSavingCheckInPreference(true)
+        const assistant = getOnboardingAssistant()
+        const heartbeatChancePercent = enabled ? 50 : 0
+
+        if (!assistant?.uid || !projectId) {
+            console.warn('Unable to update onboarding heartbeat preference: missing project or assistant', {
+                projectId,
+                assistantId: assistant?.uid,
+            })
         } else {
-            logEvent('onboarding_morning_reminder_enabled')
+            try {
+                await updateAssistantHeartbeatSettings(projectId, assistant, { heartbeatChancePercent })
+            } catch (error) {
+                console.error('Error updating onboarding heartbeat preference:', error)
+            }
         }
+
+        if (enabled) {
+            logEvent('onboarding_check_in_preference_enabled')
+        } else {
+            logEvent('onboarding_check_in_preference_skipped')
+        }
+        setSavingCheckInPreference(false)
         setStep(3) // Go to Push notifications step
     }
 
@@ -510,7 +547,7 @@ export default function WhatsAppOnboarding({ navigation }) {
                     style={[localStyles.secondaryButton, isMobile && { paddingVertical: 8 }]}
                     onPress={() => {
                         logEvent('onboarding_calendar_skipped')
-                        setStep(2) // Skip Gmail, go directly to MorningReminder
+                        setStep(2) // Skip Gmail, go directly to check-in preference
                     }}
                     disabled={connectingService === 'calendar'}
                 >
@@ -579,7 +616,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         )
     }
 
-    const renderMorningReminderStep = () => (
+    const renderCheckInPreferenceStep = () => (
         <View style={localStyles.contentContainer}>
             <Icon
                 name="bell"
@@ -593,15 +630,19 @@ export default function WhatsAppOnboarding({ navigation }) {
             </Text>
             <TouchableOpacity
                 style={[localStyles.primaryButton, isMobile && { paddingVertical: 10, marginBottom: 10 }]}
-                onPress={() => handleMorningReminder(true)}
+                onPress={() => handleCheckInPreference(true)}
+                disabled={savingCheckInPreference}
             >
-                <Text style={[localStyles.primaryButtonText, isMobile && { fontSize: 16 }]}>{translate('Enable')}</Text>
+                <Text style={[localStyles.primaryButtonText, isMobile && { fontSize: 16 }]}>
+                    {savingCheckInPreference ? translate('working_on_it') : translate('Yes')}
+                </Text>
             </TouchableOpacity>
             <TouchableOpacity
                 style={[localStyles.secondaryButton, isMobile && { paddingVertical: 8 }]}
-                onPress={() => handleMorningReminder(false)}
+                onPress={() => handleCheckInPreference(false)}
+                disabled={savingCheckInPreference}
             >
-                <Text style={[localStyles.secondaryButtonText, isMobile && { fontSize: 14 }]}>{translate('Skip')}</Text>
+                <Text style={[localStyles.secondaryButtonText, isMobile && { fontSize: 14 }]}>{translate('No')}</Text>
             </TouchableOpacity>
         </View>
     )
@@ -642,7 +683,7 @@ export default function WhatsAppOnboarding({ navigation }) {
             {step === 0 && renderWhatsAppStep()}
             {step === 1 && renderCalendarConnection()}
             {/* Gmail step disabled: {step === 2 && renderGmailConnection()} */}
-            {step === 2 && renderMorningReminderStep()}
+            {step === 2 && renderCheckInPreferenceStep()}
             {step === 3 && renderPushNotificationStep()}
         </SplitLayout>
     )

@@ -476,7 +476,7 @@ export async function updateAssistantHeartbeatSettings(projectId, assistant, dat
             settingsData
         )
     } else {
-        updateAssistantData(projectId, assistant.uid, data, null)
+        await updateAssistantData(projectId, assistant.uid, data, null)
     }
 }
 
