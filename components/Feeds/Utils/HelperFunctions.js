@@ -44,7 +44,7 @@ import {
     FOLLOWED_TAB,
 } from './FeedsConstants'
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
-import { getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { getDvMainTabLink, getDvNoteTabLink } from '../../../utils/LinkingHelper'
 import store from '../../../redux/store'
 import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 
@@ -614,6 +614,23 @@ export const getObjectData = (data = OBJECT_DATA, commentedFeed) => {
             : assistantId
 }
 
-export const goToFeedSource = (navService, projectId, feedObjectType, sourceId) => {
-    URLTrigger.processUrl(navService, getDvMainTabLink(projectId, sourceId, `${feedObjectType}s`))
+const getNoteFeedSourceLink = async (projectId, noteId, source) => {
+    const note = source || (await Backend.getNote(projectId, noteId))
+    const parentObject = note?.parentObject
+
+    if (parentObject) {
+        const objectType = parentObject.type === 'topics' ? 'chats' : parentObject.type
+        return getDvNoteTabLink(projectId, parentObject.id, objectType)
+    }
+
+    return getDvMainTabLink(projectId, noteId, 'notes')
+}
+
+export const goToFeedSource = async (navService, projectId, feedObjectType, sourceId, source) => {
+    const link =
+        feedObjectType === 'note'
+            ? await getNoteFeedSourceLink(projectId, sourceId, source)
+            : getDvMainTabLink(projectId, sourceId, `${feedObjectType}s`)
+
+    URLTrigger.processUrl(navService, link)
 }

@@ -17,6 +17,7 @@ export default function FeedSourceButton({
     smallScreen,
     text,
     feedObject,
+    source,
     disabled,
     actionBeforeSave,
 }) {
@@ -27,7 +28,7 @@ export default function FeedSourceButton({
             dispatch(startLoadingData())
             actionBeforeSave()
         } else {
-            goToFeedSource(NavigationService, projectId, feedObjectType, sourceId)
+            goToFeedSource(NavigationService, projectId, feedObjectType, sourceId, source)
         }
     }
 

@@ -189,6 +189,7 @@ export default function FeedInteractionBarBody(props) {
                         feedObjectType={feedObjectType}
                         smallScreen={smallScreen}
                         text={isHeaderObject ? 'Open' : 'Source'}
+                        source={source}
                         disabled={!accessGranted}
                     />
                 )}
