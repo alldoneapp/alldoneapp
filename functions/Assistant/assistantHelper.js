@@ -4212,6 +4212,67 @@ async function executeToolNatively(
             return result
         }
 
+        case 'get_updates': {
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const { UpdateRetrievalService } = require('../shared/UpdateRetrievalService')
+
+            const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data()
+
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+
+            console.log('📰 GET_UPDATES TOOL: Request params', {
+                userId: creatorId,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
+                allProjects: toolArgs.allProjects !== false,
+                date: toolArgs.date || null,
+                recentHours: toolArgs.recentHours || null,
+                objectTypes: Array.isArray(toolArgs.objectTypes) ? toolArgs.objectTypes : null,
+                limit: toolArgs.limit || null,
+                rawTimezone: rawTz,
+                normalizedTimezoneOffset: timezoneOffset,
+                currentProjectId: projectId || null,
+            })
+
+            const retrievalService = new UpdateRetrievalService({
+                database: admin.firestore(),
+                moment: require('moment'),
+                isCloudFunction: true,
+            })
+            await retrievalService.initialize()
+
+            const result = await retrievalService.getUpdates({
+                userId: creatorId,
+                currentProjectId: projectId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+                allProjects: toolArgs.allProjects !== false,
+                includeArchived: toolArgs.includeArchived === true,
+                includeCommunity: toolArgs.includeCommunity === true,
+                date: toolArgs.date || null,
+                recentHours: toolArgs.recentHours,
+                objectTypes: toolArgs.objectTypes,
+                limit: toolArgs.limit,
+                timezoneOffset,
+            })
+
+            console.log('📰 GET_UPDATES TOOL: Results', {
+                updatesReturned: result.count,
+                appliedFilters: result.appliedFilters,
+            })
+
+            return result
+        }
+
         case 'get_contacts': {
             const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
             const { ContactRetrievalService } = require('../shared/ContactRetrievalService')

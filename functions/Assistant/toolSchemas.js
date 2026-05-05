@@ -228,6 +228,70 @@ const toolSchemas = {
         },
     },
 
+    get_updates: {
+        type: 'function',
+        function: {
+            name: 'get_updates',
+            description:
+                'Retrieves recent object activity updates from the existing activity feed across accessible projects. Use this when the user asks what happened, what changed, what updates occurred, or asks for a project/activity recap across tasks, notes, goals, contacts, projects, users, skills, and assistants. Defaults to all accessible active projects. This does not include chat message history; use get_chats for conversation activity.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    date: {
+                        type: 'string',
+                        description:
+                            'Optional: filter updates by timeframe. Supports "today", "yesterday", "last week", "last 7 days", "last 30 days", "this week", "this month", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
+                    },
+                    recentHours: {
+                        type: 'number',
+                        description:
+                            'Optional: return updates from the last N hours. Use this for questions like "what happened in the last 2 hours?". When provided, it takes precedence over date.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit updates to a specific accessible project ID. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit updates to a specific accessible project by exact or partial project name. If multiple projects match, the tool will return an ambiguity error.',
+                    },
+                    allProjects: {
+                        type: 'boolean',
+                        description:
+                            'If true, retrieves updates from all accessible active projects. Defaults to true unless a specific project is provided. If false and no project is provided, uses the current assistant project.',
+                    },
+                    includeArchived: {
+                        type: 'boolean',
+                        description:
+                            'If true, includes archived projects when querying all accessible projects. Defaults to false.',
+                    },
+                    includeCommunity: {
+                        type: 'boolean',
+                        description:
+                            'If true, includes community/template/guide projects when querying all accessible projects. Defaults to false.',
+                    },
+                    objectTypes: {
+                        type: 'array',
+                        items: {
+                            type: 'string',
+                            enum: ['tasks', 'notes', 'goals', 'contacts', 'projects', 'users', 'skills', 'assistants'],
+                        },
+                        description:
+                            'Optional: object types to include in the update feed. Unknown event types are still returned without object title enrichment.',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of updates to return after merging projects. Default is 100, maximum is 500.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     get_contacts: {
         type: 'function',
         function: {

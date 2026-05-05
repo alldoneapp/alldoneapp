@@ -188,6 +188,21 @@
                     "order": "DESCENDING"
                 }
             ]
+        },
+        {
+            "__comment__": "Activity feed - visible updates ordered by last activity",
+            "collectionGroup": "all",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": [

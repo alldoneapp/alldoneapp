@@ -72,6 +72,25 @@ jest.mock('../shared/ChatRetrievalService', () => ({
         }),
     })),
 }))
+jest.mock('../shared/UpdateRetrievalService', () => ({
+    UpdateRetrievalService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        getUpdates: jest.fn().mockResolvedValue({
+            updates: [],
+            count: 0,
+            appliedFilters: {
+                allProjects: true,
+                projectId: null,
+                projectName: null,
+                date: null,
+                recentHours: null,
+                objectTypes: null,
+                limit: 100,
+            },
+            queriedProjects: [],
+        }),
+    })),
+}))
 jest.mock('../shared/ContactRetrievalService', () => ({
     ContactRetrievalService: jest.fn().mockImplementation(() => ({
         initialize: jest.fn().mockResolvedValue(undefined),
@@ -220,6 +239,7 @@ jest.mock(
 const { ProjectService } = require('../shared/ProjectService')
 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
 const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
+const { UpdateRetrievalService } = require('../shared/UpdateRetrievalService')
 const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
 const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
@@ -1308,6 +1328,94 @@ describe('assistant get chats tool', () => {
                 projectId: 'project-2',
                 projectName: 'Marketing',
             },
+        })
+    })
+})
+
+describe('assistant get updates tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        UpdateRetrievalService.mockClear()
+    })
+
+    test('delegates update retrieval with normalized filters and timezone', async () => {
+        const getUpdates = jest.fn().mockResolvedValue({
+            updates: [
+                {
+                    id: 'feed-1',
+                    projectId: 'project-2',
+                    projectName: 'Marketing',
+                    objectType: 'tasks',
+                    objectId: 'task-1',
+                    objectTitle: 'Launch checklist',
+                    eventType: 'FEED_TASK_UPDATED',
+                    eventText: 'updated task',
+                    creatorId: 'user-2',
+                    creatorName: 'Alice Example',
+                    updatedAt: 1774970400000,
+                },
+            ],
+            count: 1,
+            appliedFilters: {
+                allProjects: true,
+                projectId: null,
+                projectName: null,
+                date: 'last 7 days',
+                recentHours: null,
+                objectTypes: ['tasks'],
+                limit: 50,
+            },
+            queriedProjects: [{ id: 'project-2', name: 'Marketing', type: 'regular' }],
+        })
+
+        UpdateRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUpdates,
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                timezone: 'UTC+02:00',
+            }),
+        })
+
+        const result = await executeToolNatively(
+            'get_updates',
+            {
+                date: 'last 7 days',
+                objectTypes: ['tasks'],
+                limit: 50,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getUpdates).toHaveBeenCalledWith({
+            userId: 'user-1',
+            currentProjectId: 'project-1',
+            projectId: '',
+            projectName: '',
+            allProjects: true,
+            includeArchived: false,
+            includeCommunity: false,
+            date: 'last 7 days',
+            recentHours: undefined,
+            objectTypes: ['tasks'],
+            limit: 50,
+            timezoneOffset: 120,
+        })
+        expect(result).toMatchObject({
+            count: 1,
+            updates: [
+                {
+                    id: 'feed-1',
+                    objectTitle: 'Launch checklist',
+                    eventText: 'updated task',
+                },
+            ],
         })
     })
 })

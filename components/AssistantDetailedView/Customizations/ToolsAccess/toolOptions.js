@@ -11,6 +11,7 @@ export const TOOL_OPTIONS = [
     { key: 'update_assistant_settings', labelKey: 'Update assistant settings' },
     { key: 'compact_thread_context', labelKey: 'Compact thread context' },
     { key: 'get_tasks', labelKey: 'Get tasks' },
+    { key: 'get_updates', labelKey: 'Get updates' },
     { key: 'get_goals', labelKey: 'Get goals' },
     { key: 'get_chats', labelKey: 'Get chats' },
     { key: 'get_contacts', labelKey: 'Get contacts' },

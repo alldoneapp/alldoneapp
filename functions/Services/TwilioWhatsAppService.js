@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getUserLocalDayBounds } = require('../Assistant/contextTimestampHelper')
+const { getMentionData } = require('../Utils/parseTextUtils')
 
 /**
  * Get the correct base URL based on environment
@@ -39,6 +40,19 @@ function getBaseUrl() {
 function buildConversationUrl(baseUrl, projectId, objectId, objectType = 'tasks') {
     const normalizedObjectType = objectType === 'topics' ? 'chats' : 'tasks'
     return `${baseUrl}/projects/${projectId}/${normalizedObjectType}/${objectId}/chat`
+}
+
+function sanitizeTextForWhatsApp(rawText) {
+    const text = typeof rawText === 'string' ? rawText : String(rawText ?? '')
+
+    return text.replace(/(^|\s)(@[^\s]+)/g, (match, leadingWhitespace, mentionToken) => {
+        const trailingPunctuation = mentionToken.match(/[.,;:!?)]*$/)[0]
+        const tokenWithoutTrailingPunctuation = trailingPunctuation
+            ? mentionToken.slice(0, -trailingPunctuation.length)
+            : mentionToken
+        const { mentionText } = getMentionData(tokenWithoutTrailingPunctuation, true)
+        return `${leadingWhitespace}${mentionText.replace(/^@/, '')}${trailingPunctuation}`
+    })
 }
 
 const MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH = 1400
@@ -218,6 +232,12 @@ class TwilioWhatsAppService {
 
         // Normalise line endings for consistent processing
         value = value.replace(/\r\n?/g, '\n')
+
+        const valueWithoutMentionMeta = sanitizeTextForWhatsApp(value)
+        if (valueWithoutMentionMeta !== value) {
+            value = valueWithoutMentionMeta
+            adjustments.push('Converted app mention metadata to plain display names.')
+        }
 
         if (!value.trim()) {
             value = 'Task completed successfully'
@@ -453,7 +473,8 @@ class TwilioWhatsAppService {
             const baseUrl = getBaseUrl()
             const conversationUrl =
                 projectId && objectId ? buildConversationUrl(baseUrl, projectId, objectId, objectType) : undefined
-            const preparedMessage = truncateMessageWithConversationLink(message, conversationUrl)
+            const sanitizedMessage = sanitizeTextForWhatsApp(message)
+            const preparedMessage = truncateMessageWithConversationLink(sanitizedMessage, conversationUrl)
 
             if (preparedMessage.truncated) {
                 console.log('WhatsApp plain message truncated before send:', {
@@ -461,6 +482,7 @@ class TwilioWhatsAppService {
                     objectId,
                     objectType,
                     originalLength: typeof message === 'string' ? message.length : String(message ?? '').length,
+                    sanitizedLength: sanitizedMessage.length,
                     truncatedLength: preparedMessage.message.length,
                     hasConversationUrl: !!conversationUrl,
                     conversationUrl,
@@ -894,6 +916,7 @@ module.exports = TwilioWhatsAppService
 module.exports.__private__ = {
     getBaseUrl,
     buildConversationUrl,
+    sanitizeTextForWhatsApp,
     truncateMessageWithConversationLink,
     MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH,
     TASK_COMPLETION_TEMPLATE_SID,

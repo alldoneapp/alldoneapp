@@ -28,6 +28,11 @@ const TwilioWhatsAppService = require('./TwilioWhatsAppService')
 const { __private__ } = TwilioWhatsAppService
 
 describe('TwilioWhatsAppService conversation links', () => {
+    beforeEach(() => {
+        mockMessagesCreate.mockReset()
+        mockMessagesCreate.mockResolvedValue({ sid: 'SM123', status: 'queued' })
+    })
+
     test('builds task chat URLs for task notifications', () => {
         expect(__private__.buildConversationUrl('https://my.alldone.app', 'project-1', 'task-1', 'tasks')).toBe(
             'https://my.alldone.app/projects/project-1/tasks/task-1/chat'
@@ -79,6 +84,24 @@ describe('TwilioWhatsAppService conversation links', () => {
         expect(result.message).toContain(`Read full message: ${conversationUrl}`)
         expect(result.message.endsWith(`Read full message: ${conversationUrl}`)).toBe(true)
     })
+
+    test('converts internal mention tokens to plain names for WhatsApp', () => {
+        expect(
+            __private__.sanitizeTextForWhatsApp(
+                'Please check @JohnM2mVOSjAVPPKweLDoe#user-1 and @JaneM2mVOSjAVPPKweLSmith#contact-1###avatar'
+            )
+        ).toBe('Please check John Doe and Jane Smith')
+    })
+
+    test('sends plain WhatsApp messages with display names instead of mention markup', async () => {
+        const service = new TwilioWhatsAppService()
+
+        const result = await service.sendWhatsAppMessage('+1234567890', 'Done for @JohnM2mVOSjAVPPKweLDoe#user-1.')
+
+        expect(result.success).toBe(true)
+        expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
+        expect(mockMessagesCreate.mock.calls[0][0].body).toBe('Done for John Doe.')
+    })
 })
 
 describe('TwilioWhatsAppService task completion template', () => {
@@ -113,5 +136,25 @@ describe('TwilioWhatsAppService task completion template', () => {
         expect(contentVariables['1']).toBe('Anna')
         expect(contentVariables['2']).not.toContain('\n')
         expect(contentVariables['2'].length).toBeLessThanOrEqual(300)
+    })
+
+    test('sends template WhatsApp results with display names instead of mention markup', async () => {
+        const service = new TwilioWhatsAppService()
+
+        const result = await service.sendTaskCompletionNotification(
+            '+1234567890',
+            'user-1',
+            'project-1',
+            'task-1',
+            'Anna',
+            { name: 'Mention check' },
+            'Task is assigned to @JohnM2mVOSjAVPPKweLDoe#user-1.'
+        )
+
+        expect(result.success).toBe(true)
+
+        const payload = mockMessagesCreate.mock.calls[0][0]
+        const contentVariables = JSON.parse(payload.contentVariables)
+        expect(contentVariables['2']).toBe('Task is assigned to John Doe.')
     })
 })

@@ -241,6 +241,37 @@ describe('Get chats assistant tool schema', () => {
     })
 })
 
+describe('Get updates assistant tool schema', () => {
+    test('exposes get_updates only when allowed', () => {
+        expect(getToolSchemas(['get_updates']).map(schema => schema.function.name)).toEqual(['get_updates'])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('documents update timeframe, scope, object type, and limit filters', () => {
+        const properties = toolSchemas.get_updates.function.parameters.properties
+
+        expect(properties.date.type).toBe('string')
+        expect(properties.recentHours.type).toBe('number')
+        expect(properties.projectId.type).toBe('string')
+        expect(properties.projectName.type).toBe('string')
+        expect(properties.allProjects.type).toBe('boolean')
+        expect(properties.includeArchived.type).toBe('boolean')
+        expect(properties.includeCommunity.type).toBe('boolean')
+        expect(properties.limit.type).toBe('number')
+        expect(properties.objectTypes).toEqual({
+            type: 'array',
+            items: {
+                type: 'string',
+                enum: ['tasks', 'notes', 'goals', 'contacts', 'projects', 'users', 'skills', 'assistants'],
+            },
+            description:
+                'Optional: object types to include in the update feed. Unknown event types are still returned without object title enrichment.',
+        })
+        expect(toolSchemas.get_updates.function.description).toContain('activity feed')
+        expect(toolSchemas.get_updates.function.description).toContain('use get_chats')
+    })
+})
+
 describe('Get contacts assistant tool schema', () => {
     test('exposes get_contacts only when allowed', () => {
         expect(getToolSchemas(['get_contacts']).map(schema => schema.function.name)).toEqual(['get_contacts'])
