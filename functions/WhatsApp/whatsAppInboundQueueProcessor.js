@@ -134,7 +134,11 @@ async function processBatchForUser(userId, batch) {
 
         const service = new TwilioWhatsAppService()
         const sendStart = Date.now()
-        await service.sendWhatsAppMessage(fromNumber, finalResponse)
+        await service.sendWhatsAppMessage(fromNumber, finalResponse, {
+            projectId,
+            objectId: chatId,
+            objectType: 'topics',
+        })
         markBatchStage('sendWhatsAppMessage', sendStart, { hasFromNumber: !!fromNumber })
 
         const deleteStart = Date.now()

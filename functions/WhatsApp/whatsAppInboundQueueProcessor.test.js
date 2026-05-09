@@ -29,6 +29,7 @@ jest.mock('./whatsAppAssistantBridge', () => ({
 
 const { getOrCreateWhatsAppDailyTopic, storeUserMessageInTopic } = require('./whatsAppDailyTopic')
 const { processWhatsAppAssistantMessage } = require('./whatsAppAssistantBridge')
+const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { processBatchForUser } = require('./whatsAppInboundQueueProcessor')
 
 describe('WhatsApp inbound queue processor', () => {
@@ -76,5 +77,12 @@ describe('WhatsApp inbound queue processor', () => {
                 messageId: 'comment-2',
             })
         )
+
+        const whatsappService = TwilioWhatsAppService.mock.results[0].value
+        expect(whatsappService.sendWhatsAppMessage).toHaveBeenCalledWith('whatsapp:+123', 'Processed', {
+            projectId: 'project-1',
+            objectId: 'chat-1',
+            objectType: 'topics',
+        })
     })
 })
