@@ -92,6 +92,7 @@ export default function TagsArea({
                     />
                     {taskViewToggleSection === 'Open' && (
                         <TaskHeaderMoreButton
+                            projectIdOverride={projectId}
                             userId={currentUserId}
                             wrapperStyle={localStyles.taskMoreWrapper}
                             buttonStyle={localStyles.taskMoreButton}

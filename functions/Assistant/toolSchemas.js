@@ -184,6 +184,59 @@ const toolSchemas = {
         },
     },
 
+    get_project_okrs: {
+        type: 'function',
+        function: {
+            name: 'get_project_okrs',
+            description:
+                'Retrieves personal project OKRs for the current user. Use this when the user asks about OKRs, objectives, key results, targets, current OKR progress, or previous OKR periods. Defaults to active OKRs in the current project.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    status: {
+                        type: 'string',
+                        enum: ['active', 'closed', 'all'],
+                        description: 'Filter OKRs by status. Defaults to "active".',
+                    },
+                    allProjects: {
+                        type: 'boolean',
+                        description: 'If true, retrieves OKRs from all accessible active projects. Defaults to false.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit OKRs to a specific accessible project ID. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit OKRs to a specific accessible project by exact or partial project name.',
+                    },
+                    ownerId: {
+                        type: 'string',
+                        description:
+                            'Optional owner user ID. For privacy, only the requesting user can be returned; other values are ignored.',
+                    },
+                    periodStart: {
+                        type: 'number',
+                        description:
+                            'Optional Unix timestamp in milliseconds. Only OKRs whose period overlaps this start are returned.',
+                    },
+                    periodEnd: {
+                        type: 'number',
+                        description:
+                            'Optional Unix timestamp in milliseconds. Only OKRs whose period overlaps this end are returned.',
+                    },
+                    limit: {
+                        type: 'number',
+                        description: 'Optional maximum number of OKRs to return. Default is 100, maximum is 1000.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     get_chats: {
         type: 'function',
         function: {

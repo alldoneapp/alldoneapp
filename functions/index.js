@@ -2734,6 +2734,19 @@ exports.autoPostponeOverdueTasksSecondGen = onSchedule(
     }
 )
 
+exports.renewExpiredOKRsSecondGen = onSchedule(
+    {
+        schedule: '0 * * * *',
+        timeoutSeconds: 900,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { processExpiredOKRs } = require('./OKRs/okrRenewal')
+        return await processExpiredOKRs()
+    }
+)
+
 exports.pollGmailLabelingSecondGen = onSchedule(
     {
         schedule: '*/5 * * * *',

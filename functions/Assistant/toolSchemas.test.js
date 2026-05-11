@@ -197,6 +197,22 @@ describe('User memory assistant tool schemas', () => {
     })
 })
 
+describe('OKR assistant tool schemas', () => {
+    test('exposes project OKR read tool when allowed', () => {
+        expect(getToolSchemas(['get_project_okrs']).map(schema => schema.function.name)).toEqual(['get_project_okrs'])
+    })
+
+    test('defines optional filters for project OKRs', () => {
+        const properties = toolSchemas.get_project_okrs.function.parameters.properties
+        expect(properties.status.enum).toEqual(['active', 'closed', 'all'])
+        expect(properties.projectId.type).toBe('string')
+        expect(properties.projectName.type).toBe('string')
+        expect(properties.ownerId.type).toBe('string')
+        expect(properties.periodStart.type).toBe('number')
+        expect(properties.periodEnd.type).toBe('number')
+    })
+})
+
 describe('Get tasks assistant tool schema', () => {
     test('documents hour-based recency filters for done tasks', () => {
         expect(toolSchemas.get_tasks.function.parameters.properties.recentHours).toEqual({

@@ -280,6 +280,7 @@ export const initialState = {
     openMilestonesByProjectInTasks: {},
     doneMilestonesByProjectInTasks: {},
     goalsByProjectInTasks: {},
+    okrsByProjectInTasks: {},
     skillsByProject: {},
     activeDragSkillModeId: null,
     skillsDefaultPrivacyByProject: {},
@@ -1838,6 +1839,13 @@ export const theReducer = (state = initialState, action) => {
             const goalsByProjectInTasks = { ...state.goalsByProjectInTasks }
             goals ? (goalsByProjectInTasks[projectId] = goals) : delete goalsByProjectInTasks[projectId]
             return { ...state, goalsByProjectInTasks }
+        }
+
+        case 'Set OKRs in project in tasks': {
+            const { projectId, okrs } = action
+            const okrsByProjectInTasks = { ...state.okrsByProjectInTasks }
+            okrs ? (okrsByProjectInTasks[projectId] = okrs) : delete okrsByProjectInTasks[projectId]
+            return { ...state, okrsByProjectInTasks }
         }
 
         case 'Set adding user to community': {

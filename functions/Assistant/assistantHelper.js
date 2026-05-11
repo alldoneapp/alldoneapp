@@ -633,6 +633,25 @@ function mapAssistantGoalForToolResponse(goal) {
     }
 }
 
+function mapAssistantOKRForToolResponse(okr) {
+    return {
+        id: okr?.id,
+        label: okr?.label || '',
+        currentValue: Number.isFinite(Number(okr?.currentValue)) ? Number(okr.currentValue) : 0,
+        targetValue: Number.isFinite(Number(okr?.targetValue)) ? Number(okr.targetValue) : 0,
+        unit: okr?.unit || '',
+        cadence: okr?.cadence || 'monthly',
+        status: okr?.status || 'active',
+        progressPercent: Number.isFinite(Number(okr?.progress)) ? Number(okr.progress) : 0,
+        periodStart: Number.isFinite(Number(okr?.periodStart)) ? Number(okr.periodStart) : null,
+        periodEnd: Number.isFinite(Number(okr?.periodEnd)) ? Number(okr.periodEnd) : null,
+        remaining: okr?.remaining || '',
+        projectId: okr?.projectId || null,
+        projectName: okr?.projectName || null,
+        ownerId: okr?.ownerId || '',
+    }
+}
+
 function mapAssistantContactForToolResponse(contact) {
     const lastEditedAt = Number(contact?.lastEditedAt)
 
@@ -4365,6 +4384,49 @@ async function executeToolNatively(
 
             return {
                 goals: (result.goals || []).map(mapAssistantGoalForToolResponse),
+                count: result.count || 0,
+                appliedFilters: result.appliedFilters || null,
+            }
+        }
+
+        case 'get_project_okrs': {
+            const { OKRRetrievalService } = require('../shared/OKRRetrievalService')
+
+            console.log('📊 GET_PROJECT_OKRS TOOL: Request params', {
+                userId: creatorId,
+                ownerId: toolArgs.ownerId || null,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
+                allProjects: toolArgs.allProjects === true,
+                status: toolArgs.status || 'active',
+                currentProjectId: projectId || null,
+            })
+
+            const retrievalService = new OKRRetrievalService({
+                database: admin.firestore(),
+            })
+            await retrievalService.initialize()
+
+            const result = await retrievalService.getOKRs({
+                userId: creatorId,
+                ownerId: toolArgs.ownerId || creatorId,
+                currentProjectId: projectId,
+                projectId: toolArgs.projectId || '',
+                projectName: toolArgs.projectName || '',
+                allProjects: toolArgs.allProjects === true,
+                status: toolArgs.status || 'active',
+                periodStart: toolArgs.periodStart,
+                periodEnd: toolArgs.periodEnd,
+                limit: toolArgs.limit,
+            })
+
+            console.log('📊 GET_PROJECT_OKRS TOOL: Results', {
+                okrsReturned: result.count,
+                appliedFilters: result.appliedFilters,
+            })
+
+            return {
+                okrs: (result.okrs || []).map(mapAssistantOKRForToolResponse),
                 count: result.count || 0,
                 appliedFilters: result.appliedFilters || null,
             }
@@ -8252,6 +8314,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks to show, list, review, or check their goals, use get_goals instead of generic search unless they are clearly asking for keyword-based goal search.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_project_okrs')) {
+        messages.push([
+            'system',
+            'When the user asks about OKRs, objectives, key results, targets, or OKR progress, use get_project_okrs instead of guessing from chat history.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_contacts')) {

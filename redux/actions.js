@@ -2075,6 +2075,15 @@ export const setGoalsInProjectInTasks = (projectId, goals) => {
     }
     return action
 }
+
+export const setOKRsInProjectInTasks = (projectId, okrs) => {
+    const action = {
+        type: 'Set OKRs in project in tasks',
+        projectId,
+        okrs,
+    }
+    return action
+}
 //////////////ENDDDDDDDD
 
 export const setSkillsByProject = (projectId, skills) => {

@@ -93,7 +93,7 @@ export default function ProjectHeader({
 const localStyles = StyleSheet.create({
     borderContainer: {
         borderBottomWidth: 1,
-        borderBottomColor: colors.Grey300,
+        borderBottomColor: colors.Grey400,
     },
     container: {
         flex: 1,

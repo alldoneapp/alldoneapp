@@ -16,11 +16,15 @@ import {
     setTasksArrowButtonIsExpanded,
     setDoneMilestonesInProjectInTasks,
     setGoalsInProjectInTasks,
+    setOKRsInProjectInTasks,
     setOpenMilestonesInProjectInTasks,
 } from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
+import OKRSection from '../OKRs/OKRSection'
+import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
+import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -35,6 +39,7 @@ export default function OpenTasksByProject({
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
+    const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
 
@@ -52,7 +57,10 @@ export default function OpenTasksByProject({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const hideProjectData = !inSelectedProject && (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
+    const hideProjectData =
+        !inSelectedProject &&
+        okrsInProject.length === 0 &&
+        (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
 
     // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
@@ -92,6 +100,15 @@ export default function OpenTasksByProject({
             dispatch(setGoalsInProjectInTasks(projectId, null))
         }
     }, [projectId])
+
+    useEffect(() => {
+        const watcherKey = v4()
+        watchProjectOKRs(projectId, currentUserId, watcherKey)
+        return () => {
+            Backend.unwatch(watcherKey)
+            dispatch(setOKRsInProjectInTasks(projectId, null))
+        }
+    }, [projectId, currentUserId])
 
     useEffect(() => {
         if (currentUserId) {
@@ -143,6 +160,8 @@ export default function OpenTasksByProject({
                             <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
                         </View>
                     )}
+                    <OKRSection projectId={projectId} />
+                    <UpcomingMilestoneRow projectId={projectId} />
                     {filteredOpenTasksDates.map((dateFormated, index) => {
                         return (
                             <OpenTasksByDate

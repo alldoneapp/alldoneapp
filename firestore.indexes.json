@@ -1,6 +1,25 @@
 {
     "indexes": [
         {
+            "__comment__": "OKRs - Scheduled renewal of expired active OKRs",
+            "collectionGroup": "projectOkrs",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {
+                    "fieldPath": "objectType",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "status",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "periodEnd",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "Tasks - Template tasks query",
             "collectionGroup": "items",
             "queryScope": "COLLECTION",
