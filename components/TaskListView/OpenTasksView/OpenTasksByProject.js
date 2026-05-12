@@ -39,7 +39,6 @@ export default function OpenTasksByProject({
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
-    const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
 
@@ -57,10 +56,7 @@ export default function OpenTasksByProject({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const hideProjectData =
-        !inSelectedProject &&
-        okrsInProject.length === 0 &&
-        (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
+    const hideProjectData = !inSelectedProject && (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
 
     // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
