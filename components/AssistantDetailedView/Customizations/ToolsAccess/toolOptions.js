@@ -13,6 +13,7 @@ export const TOOL_OPTIONS = [
     { key: 'get_tasks', labelKey: 'Get tasks' },
     { key: 'get_updates', labelKey: 'Get updates' },
     { key: 'get_goals', labelKey: 'Get goals' },
+    { key: 'get_project_okrs', labelKey: 'Get project OKRs' },
     { key: 'get_chats', labelKey: 'Get chats' },
     { key: 'get_contacts', labelKey: 'Get contacts' },
     { key: 'get_focus_task', labelKey: 'Get focus task' },
