@@ -82,7 +82,6 @@ const localStyles = StyleSheet.create({
     },
     headerText: {
         color: colors.Text03,
-        textTransform: 'uppercase',
         marginRight: 8,
     },
     privacyButton: {

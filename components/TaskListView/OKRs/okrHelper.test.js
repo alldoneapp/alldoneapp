@@ -4,6 +4,13 @@ import {
     OKR_CADENCE_MONTHLY,
     OKR_CADENCE_QUARTERLY,
     OKR_CADENCE_WEEKLY,
+    OKR_PACE_AHEAD,
+    OKR_PACE_AT_RISK,
+    OKR_PACE_COMPLETED,
+    OKR_PACE_ENDED,
+    OKR_PACE_OFF_TRACK,
+    OKR_PACE_ON_TRACK,
+    calculateOkrPace,
     calculateOkrProgress,
     getOkrPeriodForCadence,
 } from './okrHelper'
@@ -33,5 +40,53 @@ describe('okrHelper', () => {
         expect(moment(monthly.periodEnd).month()).toBe(4)
         expect(moment(quarterly.periodStart).month()).toBe(3)
         expect(moment(quarterly.periodEnd).month()).toBe(5)
+    })
+
+    test('calculates expected linear progress and clamps elapsed time', () => {
+        const okr = { currentValue: 25, targetValue: 100, periodStart: 1000, periodEnd: 2000 }
+
+        expect(calculateOkrPace(okr, 500)).toMatchObject({
+            actualPercent: 25,
+            expectedPercent: 0,
+            delta: 25,
+            status: OKR_PACE_AHEAD,
+        })
+        expect(calculateOkrPace(okr, 1500)).toMatchObject({
+            actualPercent: 25,
+            expectedPercent: 50,
+            delta: -25,
+            status: OKR_PACE_OFF_TRACK,
+        })
+        expect(calculateOkrPace(okr, 2500)).toMatchObject({
+            actualPercent: 25,
+            expectedPercent: 100,
+            delta: -75,
+            status: OKR_PACE_ENDED,
+        })
+    })
+
+    test('classifies OKR pace at status thresholds', () => {
+        const base = { targetValue: 100, periodStart: 0, periodEnd: 1000 }
+
+        expect(calculateOkrPace({ ...base, currentValue: 100 }, 500).status).toBe(OKR_PACE_COMPLETED)
+        expect(calculateOkrPace({ ...base, currentValue: 60 }, 500).status).toBe(OKR_PACE_AHEAD)
+        expect(calculateOkrPace({ ...base, currentValue: 45 }, 500).status).toBe(OKR_PACE_ON_TRACK)
+        expect(calculateOkrPace({ ...base, currentValue: 30 }, 500).status).toBe(OKR_PACE_AT_RISK)
+        expect(calculateOkrPace({ ...base, currentValue: 29 }, 500).status).toBe(OKR_PACE_OFF_TRACK)
+    })
+
+    test('handles invalid period length safely', () => {
+        expect(
+            calculateOkrPace({ currentValue: 0, targetValue: 10, periodStart: 1000, periodEnd: 1000 }, 999)
+        ).toMatchObject({
+            expectedPercent: 0,
+            status: OKR_PACE_ON_TRACK,
+        })
+        expect(
+            calculateOkrPace({ currentValue: 0, targetValue: 10, periodStart: 1000, periodEnd: 1000 }, 1000)
+        ).toMatchObject({
+            expectedPercent: 100,
+            status: OKR_PACE_ENDED,
+        })
     })
 })

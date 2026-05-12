@@ -7,6 +7,13 @@ export const OKR_CADENCE_QUARTERLY = 'quarterly'
 export const OKR_STATUS_ACTIVE = 'active'
 export const OKR_STATUS_CLOSED = 'closed'
 
+export const OKR_PACE_COMPLETED = 'completed'
+export const OKR_PACE_AHEAD = 'ahead'
+export const OKR_PACE_ON_TRACK = 'onTrack'
+export const OKR_PACE_AT_RISK = 'atRisk'
+export const OKR_PACE_OFF_TRACK = 'offTrack'
+export const OKR_PACE_ENDED = 'ended'
+
 export const OKR_CADENCES = [OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
 
 export function normalizeOkrNumber(value, fallback = 0) {
@@ -19,6 +26,80 @@ export function calculateOkrProgress(currentValue, targetValue) {
     const target = normalizeOkrNumber(targetValue)
     if (target <= 0) return 0
     return Math.max(0, Math.min(100, Math.round((current / target) * 100)))
+}
+
+export function clampOkrPercent(value) {
+    const number = normalizeOkrNumber(value)
+    return Math.max(0, Math.min(100, number))
+}
+
+export function calculateOkrPace(okr, now = Date.now()) {
+    const actualPercent = calculateOkrProgress(okr.currentValue, okr.targetValue)
+    const periodStart = normalizeOkrNumber(okr.periodStart)
+    const periodEnd = normalizeOkrNumber(okr.periodEnd)
+    const duration = periodEnd - periodStart
+    const expectedPercent =
+        duration > 0 ? clampOkrPercent(((now - periodStart) / duration) * 100) : now >= periodEnd ? 100 : 0
+    const roundedExpectedPercent = Math.round(expectedPercent)
+    const delta = actualPercent - roundedExpectedPercent
+
+    if (actualPercent >= 100) {
+        return {
+            actualPercent,
+            expectedPercent: roundedExpectedPercent,
+            delta,
+            status: OKR_PACE_COMPLETED,
+            textKey: 'OKR pace completed',
+        }
+    }
+
+    if (now >= periodEnd) {
+        return {
+            actualPercent,
+            expectedPercent: roundedExpectedPercent,
+            delta,
+            status: OKR_PACE_ENDED,
+            textKey: 'OKR pace ended',
+        }
+    }
+
+    if (delta >= 10) {
+        return {
+            actualPercent,
+            expectedPercent: roundedExpectedPercent,
+            delta,
+            status: OKR_PACE_AHEAD,
+            textKey: 'OKR pace ahead',
+        }
+    }
+
+    if (delta >= -5) {
+        return {
+            actualPercent,
+            expectedPercent: roundedExpectedPercent,
+            delta,
+            status: OKR_PACE_ON_TRACK,
+            textKey: 'OKR pace on track',
+        }
+    }
+
+    if (delta >= -20) {
+        return {
+            actualPercent,
+            expectedPercent: roundedExpectedPercent,
+            delta,
+            status: OKR_PACE_AT_RISK,
+            textKey: 'OKR pace at risk',
+        }
+    }
+
+    return {
+        actualPercent,
+        expectedPercent: roundedExpectedPercent,
+        delta,
+        status: OKR_PACE_OFF_TRACK,
+        textKey: 'OKR pace off track',
+    }
 }
 
 export function getOkrPeriodForCadence(cadence, timestamp = Date.now()) {

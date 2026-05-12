@@ -9,7 +9,14 @@ import { translate } from '../../../i18n/TranslationService'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
 import { updateOKRCurrentValue } from '../../../utils/backends/OKRs/okrsFirestore'
 import OKRModal from './OKRModal'
-import { formatOkrValue, getOkrTimeLeftParts } from './okrHelper'
+import {
+    OKR_PACE_AT_RISK,
+    OKR_PACE_ENDED,
+    OKR_PACE_OFF_TRACK,
+    calculateOkrPace,
+    formatOkrValue,
+    getOkrTimeLeftParts,
+} from './okrHelper'
 
 const SEGMENTS = [0, 1, 2, 3, 4]
 const CELEBRATION_DOTS = [
@@ -18,13 +25,26 @@ const CELEBRATION_DOTS = [
     { x: 20, y: -20, color: colors.UtilityBlue200 },
 ]
 
+const OKR_PACE_COLORS = {
+    default: colors.UtilityGreen200,
+    [OKR_PACE_AT_RISK]: colors.UtilityYellow200,
+    [OKR_PACE_OFF_TRACK]: colors.Red200,
+    [OKR_PACE_ENDED]: colors.Red200,
+}
+
+function getPaceColor(status) {
+    return OKR_PACE_COLORS[status] || OKR_PACE_COLORS.default
+}
+
 export default function OKRItem({ projectId, okr, canUpdate }) {
     const [isOpen, setIsOpen] = useState(false)
     const [incrementing, setIncrementing] = useState(false)
     const celebration = useRef(new Animated.Value(0)).current
     const mobile = useSelector(state => state.smallScreenNavigation)
     const timeLeft = getOkrTimeLeftParts(okr.periodEnd)
-    const progress = okr.progress || 0
+    const pace = calculateOkrPace(okr)
+    const progress = pace.actualPercent
+    const paceColor = getPaceColor(pace.status)
 
     const runCelebration = () => {
         celebration.stopAnimation()
@@ -57,6 +77,7 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
             onPress={() => canUpdate && setIsOpen(true)}
             disabled={!canUpdate}
         >
+            <View style={[localStyles.statusAccent, { backgroundColor: paceColor }]} />
             <View style={[localStyles.titleArea, mobile && localStyles.titleAreaMobile]}>
                 <Text style={[styles.subtitle1, localStyles.title]} numberOfLines={mobile ? 2 : 1}>
                     {okr.label}
@@ -80,7 +101,13 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
                     </TouchableOpacity>
                     <CelebrationBurst animation={celebration} />
                 </View>
-                <View style={[localStyles.chart, mobile && localStyles.chartMobile]}>
+                <View
+                    style={[localStyles.chart, mobile && localStyles.chartMobile]}
+                    accessibilityLabel={translate('OKR expected progress marker', {
+                        expected: pace.expectedPercent,
+                    })}
+                >
+                    <View style={[localStyles.expectedMarker, { left: `${pace.expectedPercent}%` }]} />
                     {SEGMENTS.map(index => {
                         const segmentProgress = Math.max(0, Math.min(20, progress - index * 20)) / 20
                         return (
@@ -89,6 +116,7 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
                                     style={[
                                         localStyles.segmentFill,
                                         mobile && localStyles.segmentFillMobile,
+                                        { backgroundColor: paceColor },
                                         { height: `${segmentProgress * 100}%` },
                                     ]}
                                 />
@@ -97,11 +125,16 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
                     })}
                 </View>
                 <View style={[localStyles.progressTextArea, mobile && localStyles.progressTextAreaMobile]}>
-                    <Text style={[styles.subtitle2, localStyles.percent, mobile && localStyles.percentMobile]}>
-                        {`${progress}%`}
-                    </Text>
-                    <Text style={[styles.caption1, localStyles.timeLeft, mobile && localStyles.timeLeftMobile]}>
-                        {translate(timeLeft.textKey, timeLeft.interpolations)}
+                    <View style={localStyles.progressNumbers}>
+                        <Text style={[styles.subtitle2, localStyles.percent, mobile && localStyles.percentMobile]}>
+                            {`${progress}%`}
+                        </Text>
+                        <Text style={[styles.caption1, localStyles.timeLeft, mobile && localStyles.timeLeftMobile]}>
+                            {translate(timeLeft.textKey, timeLeft.interpolations)}
+                        </Text>
+                    </View>
+                    <Text style={[styles.caption1, localStyles.paceLabel, { color: paceColor }]} numberOfLines={1}>
+                        {translate(pace.textKey)}
                     </Text>
                 </View>
             </View>
@@ -242,6 +275,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingVertical: 8,
+        paddingLeft: 8,
     },
     containerMobile: {
         minHeight: 92,
@@ -286,6 +320,14 @@ const localStyles = StyleSheet.create({
     },
     disabled: {
         opacity: 0.6,
+    },
+    statusAccent: {
+        position: 'absolute',
+        left: 0,
+        top: 8,
+        bottom: 8,
+        width: 3,
+        borderRadius: 2,
     },
     titleArea: {
         flex: 1,
@@ -359,6 +401,7 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-end',
         marginRight: 8,
+        position: 'relative',
     },
     chartMobile: {
         width: 76,
@@ -381,18 +424,20 @@ const localStyles = StyleSheet.create({
     },
     segmentFill: {
         width: 6,
-        backgroundColor: colors.Primary100,
     },
     segmentFillMobile: {
         width: 10,
     },
     progressTextArea: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
     },
     progressTextAreaMobile: {
         flex: 1,
         justifyContent: 'flex-end',
+    },
+    progressNumbers: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     percent: {
         color: colors.Text01,
@@ -410,5 +455,20 @@ const localStyles = StyleSheet.create({
     },
     timeLeftMobile: {
         width: 96,
+    },
+    paceLabel: {
+        marginTop: 1,
+        maxWidth: 120,
+        textAlign: 'right',
+    },
+    expectedMarker: {
+        position: 'absolute',
+        top: -2,
+        bottom: -2,
+        width: 2,
+        borderRadius: 1,
+        backgroundColor: colors.Text02,
+        opacity: 0.45,
+        zIndex: 2,
     },
 })
