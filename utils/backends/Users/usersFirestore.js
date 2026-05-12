@@ -933,6 +933,10 @@ export async function setUserSidebarExpanded(userId, expanded) {
     getDb().doc(`users/${userId}`).update({ sidebarExpanded: expanded })
 }
 
+export async function setUserOKRPrivacyMode(userId, okrPrivacyMode) {
+    updateUserData(userId, { okrPrivacyMode }, null)
+}
+
 export async function updateUserDefaultCurrency(userId, defaultCurrency) {
     getDb().doc(`users/${userId}`).update({ defaultCurrency })
 }

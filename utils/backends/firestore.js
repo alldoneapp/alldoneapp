@@ -3610,6 +3610,7 @@ export function mapUserData(userId, user) {
         activeTaskProjectId: user.activeTaskProjectId ? user.activeTaskProjectId : '',
         showAllProjectsByTime: user.showAllProjectsByTime ? user.showAllProjectsByTime : false,
         lastAssistantCommentData: user.lastAssistantCommentData ? user.lastAssistantCommentData : {},
+        okrPrivacyMode: user.okrPrivacyMode ? user.okrPrivacyMode : false,
     }
 }
 

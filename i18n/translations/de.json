@@ -1374,6 +1374,8 @@
     "Set the current OKR value": "Setze den aktuellen OKR-Wert",
     "Delete OKR confirmation": "Dieses OKR löschen? Das kann nicht rückgängig gemacht werden.",
     "Increase OKR by 1": "OKR um 1 erhöhen",
+    "Hide OKRs": "OKRs ausblenden",
+    "Show OKRs": "OKRs anzeigen",
     "OKR target label": "Zielwert",
     "OKR target placeholder": "10k Umsatz erreichen",
     "Current value": "Aktueller Wert",

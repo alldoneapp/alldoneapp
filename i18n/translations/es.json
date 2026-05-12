@@ -1811,6 +1811,8 @@
     "Set the current OKR value": "Define el valor actual del OKR",
     "Delete OKR confirmation": "¿Eliminar este OKR? Esta acción no se puede deshacer.",
     "Increase OKR by 1": "Aumentar OKR en 1",
+    "Hide OKRs": "Ocultar OKR",
+    "Show OKRs": "Mostrar OKR",
     "OKR target label": "Objetivo",
     "OKR target placeholder": "Alcanzar 10k en ingresos",
     "Current value": "Valor actual",

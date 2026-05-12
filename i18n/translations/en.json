@@ -1824,6 +1824,8 @@
     "Set the current OKR value": "Set the current OKR value",
     "Delete OKR confirmation": "Delete this OKR? This cannot be undone.",
     "Increase OKR by 1": "Increase OKR by 1",
+    "Hide OKRs": "Hide OKRs",
+    "Show OKRs": "Show OKRs",
     "OKR target label": "Target",
     "OKR target placeholder": "Reach 10k in revenue",
     "Current value": "Current value",
