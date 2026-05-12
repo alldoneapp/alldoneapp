@@ -57,7 +57,7 @@ export default function AllProjectsLine({ showActions = true }) {
 const localStyles = StyleSheet.create({
     container: {
         borderBottomWidth: 1,
-        borderBottomColor: colors.Grey300,
+        borderBottomColor: colors.Grey400,
         flex: 1,
         height: 56,
         minHeight: 56,
