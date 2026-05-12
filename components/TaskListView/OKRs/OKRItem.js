@@ -23,6 +23,7 @@ import {
     isRevenueOkr,
     resolveOkrCurrentValue,
     getOkrAllProjectsTodayKey,
+    getOkrUserTimezone,
 } from './okrHelper'
 import useOkrRevenueValue from './useOkrRevenueValue'
 
@@ -50,7 +51,8 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
     const [incrementing, setIncrementing] = useState(false)
     const celebration = useRef(new Animated.Value(0)).current
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const loggedUser = useSelector(state => state.loggedUser)
+    const loggedUserId = loggedUser.uid
     const revenueOkr = isRevenueOkr(okr)
     const revenueValue = useOkrRevenueValue({
         projectId,
@@ -98,7 +100,12 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
 
     const hideInAllProjectsToday = event => {
         event?.stopPropagation?.()
-        setUserOKRHiddenInAllProjectsToday(loggedUserId, projectId, okr.id, getOkrAllProjectsTodayKey())
+        setUserOKRHiddenInAllProjectsToday(
+            loggedUserId,
+            projectId,
+            okr.id,
+            getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
+        )
     }
 
     const showInAllProjectsToday = event => {

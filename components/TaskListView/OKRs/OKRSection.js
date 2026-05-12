@@ -9,7 +9,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserOKRPrivacyMode } from '../../../utils/backends/Users/usersFirestore'
 import OKRItem, { OKREmptyItem } from './OKRItem'
-import { getOkrAllProjectsTodayKey } from './okrHelper'
+import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from './okrHelper'
 
 export default function OKRSection({ projectId, inAllProjects }) {
     const okrs = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
@@ -17,7 +17,7 @@ export default function OKRSection({ projectId, inAllProjects }) {
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const okrPrivacyMode = !!loggedUser.okrPrivacyMode
-    const todayKey = getOkrAllProjectsTodayKey()
+    const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
     const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
     const okrsToShow = inAllProjects ? okrs.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey) : okrs
 

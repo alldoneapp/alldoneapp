@@ -1,4 +1,4 @@
-import moment from 'moment'
+import moment from 'moment-timezone'
 
 export const OKR_CADENCE_WEEKLY = 'weekly'
 export const OKR_CADENCE_DAILY = 'daily'
@@ -26,12 +26,51 @@ export function normalizeOkrNumber(value, fallback = 0) {
     return Number.isFinite(number) ? number : fallback
 }
 
+export function normalizeOkrTimezoneOffset(value) {
+    if (value === undefined || value === null || value === '') return null
+
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) return null
+        return Math.abs(value) <= 16 ? value * 60 : value
+    }
+
+    if (typeof value !== 'string') return null
+
+    const trimmedValue = value.trim()
+    const numericValue = Number(trimmedValue)
+    if (Number.isFinite(numericValue)) return normalizeOkrTimezoneOffset(numericValue)
+
+    const offsetMatch = trimmedValue.match(/^(?:UTC|GMT)?([+-])(\d{1,2})(?::?(\d{2}))?$/i)
+    if (!offsetMatch) return null
+
+    const sign = offsetMatch[1] === '-' ? -1 : 1
+    const hours = Number(offsetMatch[2])
+    const minutes = Number(offsetMatch[3] || 0)
+    return sign * (hours * 60 + minutes)
+}
+
+export function getOkrUserTimezone(user = {}) {
+    const timezoneName = user.timezoneName || user.preferredTimezone || user.timeZone
+    if (timezoneName && moment.tz.zone(timezoneName)) return timezoneName
+
+    return user.timezone ?? user.timezoneOffset ?? user.timezoneMinutes ?? null
+}
+
 export function normalizeOkrType(type) {
     return OKR_TYPES.includes(type) ? type : OKR_TYPE_MANUAL
 }
 
-export function getOkrAllProjectsTodayKey(timestamp = Date.now()) {
-    return moment(timestamp).format('YYYY-MM-DD')
+export function getOkrMoment(timestamp, timezone) {
+    if (typeof timezone === 'string' && moment.tz.zone(timezone)) {
+        return moment(timestamp).tz(timezone)
+    }
+
+    const timezoneOffset = normalizeOkrTimezoneOffset(timezone)
+    return timezoneOffset !== null ? moment(timestamp).utcOffset(timezoneOffset) : moment(timestamp)
+}
+
+export function getOkrAllProjectsTodayKey(timestamp = Date.now(), timezone) {
+    return getOkrMoment(timestamp, timezone).format('YYYY-MM-DD')
 }
 
 export function isRevenueOkr(okr) {

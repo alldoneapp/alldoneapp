@@ -25,7 +25,7 @@ import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
-import { getOkrAllProjectsTodayKey } from '../OKRs/okrHelper'
+import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -59,7 +59,7 @@ export default function OpenTasksByProject({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const todayKey = getOkrAllProjectsTodayKey()
+    const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
     const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
     const visibleOkrsInAllProjects = okrsInProject.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey)
     const hideProjectData =

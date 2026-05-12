@@ -10,7 +10,6 @@ import { Themes } from './Themes'
 import Backend from '../../utils/BackendBridge'
 import NavigationService from '../../utils/NavigationService'
 import { navigateToSettings, setSelectedNavItem, switchProject } from '../../redux/actions'
-import { convertCurrency, formatCurrency } from '../../utils/CurrencyConverter'
 import { DV_TAB_PROJECT_STATISTICS, DV_TAB_SETTINGS_STATISTICS } from '../../utils/TabNavigationConstants'
 import Icon from '../Icon'
 import {
@@ -41,7 +40,6 @@ export default function TasksStatisticsArea() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProject = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const loggedUserId = useSelector(state => state.loggedUser.uid)
-    const loggedUser = useSelector(state => state.loggedUser)
     const smallScreen = useSelector(state => state.smallScreen)
     const topBarWidth = useSelector(state => state.topBarWidth)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -57,72 +55,6 @@ export default function TasksStatisticsArea() {
     const doneTasksToShow = getValueToShow(doneTasksByProject)
     const donePointsToShow = getValueToShow(donePointsByProject)
     const doneTimeToShow = getValueToShow(doneTimeByProject)
-
-    // Check if hourly rate and currency are configured for the selected project
-    const hasHourlyRateConfigured = () => {
-        if (!selectedProject || !selectedProject.hourlyRatesData) return false
-        const { currency, hourlyRates } = selectedProject.hourlyRatesData
-        const userHourlyRate = hourlyRates[loggedUserId]
-        return currency && userHourlyRate && userHourlyRate > 0
-    }
-
-    // Check if any project has hourly rate configured (for "All Projects" view)
-    const hasAnyProjectWithHourlyRate = () => {
-        const { loggedUserProjects } = store.getState()
-        return loggedUserProjects.some(project => {
-            if (!project.hourlyRatesData) return false
-            const { currency, hourlyRates } = project.hourlyRatesData
-            const userHourlyRate = hourlyRates[loggedUserId]
-            return currency && userHourlyRate && userHourlyRate > 0
-        })
-    }
-
-    // Calculate money earned for the logged user across all projects
-    const calculateMoneyEarnedAllProjects = () => {
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const defaultCurrency = loggedUser.defaultCurrency || 'EUR'
-        let totalEarned = 0
-
-        loggedUserProjects.forEach(project => {
-            if (!project.hourlyRatesData) return
-            const { currency, hourlyRates } = project.hourlyRatesData
-            const userHourlyRate = hourlyRates[loggedUserId]
-
-            if (currency && userHourlyRate && userHourlyRate > 0) {
-                const projectTimeLogged = doneTimeByProject[project.id] || 0
-                if (projectTimeLogged > 0) {
-                    const timeInHours = projectTimeLogged / 60 // Convert minutes to hours
-                    const projectEarnedInProjectCurrency = timeInHours * userHourlyRate
-
-                    // Convert project earnings to user's default currency
-                    const projectEarnedInDefaultCurrency = convertCurrency(
-                        projectEarnedInProjectCurrency,
-                        currency,
-                        defaultCurrency
-                    )
-
-                    totalEarned += projectEarnedInDefaultCurrency
-                }
-            }
-        })
-
-        return totalEarned
-    }
-
-    // Calculate money earned for the logged user
-    const calculateMoneyEarned = () => {
-        if (!hasHourlyRateConfigured() || doneTimeToShow === 0) return 0
-        const { hourlyRates } = selectedProject.hourlyRatesData
-        const userHourlyRate = hourlyRates[loggedUserId]
-        const timeInHours = doneTimeToShow / 60 // Convert minutes to hours
-        return timeInHours * userHourlyRate
-    }
-
-    const showMoneyInsteadOfTime = selectedProject ? hasHourlyRateConfigured() : hasAnyProjectWithHourlyRate()
-    const moneyEarned = selectedProject ? calculateMoneyEarned() : calculateMoneyEarnedAllProjects()
-    const currency = selectedProject
-        ? selectedProject?.hourlyRatesData?.currency || 'EUR'
-        : loggedUser.defaultCurrency || 'EUR'
 
     const useMobile =
         smallScreen ||
@@ -266,20 +198,18 @@ export default function TasksStatisticsArea() {
                         <View style={localStyle.textContainer}>
                             {useMobile ? (
                                 <Icon
-                                    name={showMoneyInsteadOfTime ? 'credit-card' : 'clock'}
+                                    name="clock"
                                     size={20}
                                     color={smallScreenNavigation ? theme.iconColorMobile : theme.iconColor}
                                 />
                             ) : (
                                 <Text style={[localStyle.text, smallScreenNavigation ? theme.textMobile : theme.text]}>
-                                    {translate(showMoneyInsteadOfTime ? 'earned' : 'time')}
+                                    {translate('time')}
                                 </Text>
                             )}
 
                             <Text style={[localStyle.value, theme.value]}>
-                                {showMoneyInsteadOfTime
-                                    ? formatCurrency(moneyEarned, currency)
-                                    : convertMinutesInHours(doneTimeToShow).toFixed(1)}
+                                {convertMinutesInHours(doneTimeToShow).toFixed(1)}
                             </Text>
                         </View>
                     </View>

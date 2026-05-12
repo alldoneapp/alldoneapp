@@ -19,6 +19,8 @@ import {
     formatOkrValue,
     getOkrAllProjectsTodayKey,
     getOkrPeriodForCadence,
+    getOkrUserTimezone,
+    normalizeOkrTimezoneOffset,
     normalizeOkrType,
     resolveOkrProgress,
 } from './okrHelper'
@@ -39,6 +41,21 @@ describe('okrHelper', () => {
 
     test('formats all-projects OKR done-for-today key', () => {
         expect(getOkrAllProjectsTodayKey(moment('2026-05-12T08:00:00.000Z').valueOf())).toBe('2026-05-12')
+    })
+
+    test('formats all-projects OKR done-for-today key in the user timezone', () => {
+        const timestamp = moment('2026-05-12T22:30:00.000Z').valueOf()
+
+        expect(getOkrAllProjectsTodayKey(timestamp, 'Europe/Berlin')).toBe('2026-05-13')
+        expect(getOkrAllProjectsTodayKey(timestamp, -4)).toBe('2026-05-12')
+        expect(getOkrAllProjectsTodayKey(timestamp, 'UTC+02:00')).toBe('2026-05-13')
+    })
+
+    test('resolves OKR user timezone from profile fields', () => {
+        expect(getOkrUserTimezone({ preferredTimezone: 'Europe/Berlin', timezone: -4 })).toBe('Europe/Berlin')
+        expect(getOkrUserTimezone({ timezone: -4 })).toBe(-4)
+        expect(normalizeOkrTimezoneOffset(-4)).toBe(-240)
+        expect(normalizeOkrTimezoneOffset('UTC+05:30')).toBe(330)
     })
 
     test('calculates revenue OKR current value from minutes and hourly rate', () => {
