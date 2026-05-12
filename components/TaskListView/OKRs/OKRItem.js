@@ -16,7 +16,10 @@ import {
     calculateOkrPace,
     formatOkrValue,
     getOkrTimeLeftParts,
+    isRevenueOkr,
+    resolveOkrCurrentValue,
 } from './okrHelper'
+import useOkrRevenueValue from './useOkrRevenueValue'
 
 const SEGMENTS = [0, 1, 2, 3, 4]
 const CELEBRATION_DOTS = [
@@ -41,10 +44,25 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
     const [incrementing, setIncrementing] = useState(false)
     const celebration = useRef(new Animated.Value(0)).current
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const timeLeft = getOkrTimeLeftParts(okr.periodEnd)
-    const pace = calculateOkrPace(okr)
+    const revenueOkr = isRevenueOkr(okr)
+    const revenueValue = useOkrRevenueValue({
+        projectId,
+        ownerId: revenueOkr ? okr.ownerId : null,
+        periodStart: okr.periodStart,
+        periodEnd: okr.periodEnd,
+    })
+    const currentValue = resolveOkrCurrentValue(okr, revenueValue.currentValue)
+    const resolvedOkr = { ...okr, currentValue, resolvedCurrentValue: currentValue }
+    const timeLeft = getOkrTimeLeftParts(resolvedOkr.periodEnd)
+    const pace = calculateOkrPace(resolvedOkr)
     const progress = pace.actualPercent
     const paceColor = getPaceColor(pace.status)
+    const metaText = `${formatOkrValue(currentValue, okr.unit)} / ${formatOkrValue(
+        okr.targetValue,
+        okr.unit
+    )} · ${translate(`OKR cadence ${okr.cadence}`)}${
+        revenueOkr && revenueValue.missingHourlyRate ? ` · ${translate('OKR hourly rate missing')}` : ''
+    }`
 
     const runCelebration = () => {
         celebration.stopAnimation()
@@ -61,7 +79,7 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
 
     const incrementOKR = async event => {
         event?.stopPropagation?.()
-        if (!canUpdate || incrementing) return
+        if (!canUpdate || incrementing || revenueOkr) return
         setIncrementing(true)
         runCelebration()
         try {
@@ -83,24 +101,23 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
                     {okr.label}
                 </Text>
                 <Text style={[styles.caption1, localStyles.meta]} numberOfLines={mobile ? 2 : 1}>
-                    {`${formatOkrValue(okr.currentValue, okr.unit)} / ${formatOkrValue(
-                        okr.targetValue,
-                        okr.unit
-                    )} · ${translate(`OKR cadence ${okr.cadence}`)}`}
+                    {metaText}
                 </Text>
             </View>
             <View style={[localStyles.progressArea, mobile && localStyles.progressAreaMobile]}>
-                <View style={localStyles.incrementContainer}>
-                    <TouchableOpacity
-                        style={[localStyles.incrementButton, incrementing && localStyles.incrementButtonDisabled]}
-                        onPress={incrementOKR}
-                        disabled={!canUpdate || incrementing}
-                        accessibilityLabel={translate('Increase OKR by 1')}
-                    >
-                        <Icon name="plus" size={16} color="#ffffff" />
-                    </TouchableOpacity>
-                    <CelebrationBurst animation={celebration} />
-                </View>
+                {!revenueOkr && (
+                    <View style={localStyles.incrementContainer}>
+                        <TouchableOpacity
+                            style={[localStyles.incrementButton, incrementing && localStyles.incrementButtonDisabled]}
+                            onPress={incrementOKR}
+                            disabled={!canUpdate || incrementing}
+                            accessibilityLabel={translate('Increase OKR by 1')}
+                        >
+                            <Icon name="plus" size={16} color="#ffffff" />
+                        </TouchableOpacity>
+                        <CelebrationBurst animation={celebration} />
+                    </View>
+                )}
                 <View
                     style={[localStyles.chart, mobile && localStyles.chartMobile]}
                     accessibilityLabel={translate('OKR expected progress marker', {

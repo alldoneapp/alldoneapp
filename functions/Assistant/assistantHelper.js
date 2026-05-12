@@ -636,6 +636,7 @@ function mapAssistantGoalForToolResponse(goal) {
 function mapAssistantOKRForToolResponse(okr) {
     return {
         id: okr?.id,
+        type: okr?.type || 'manual',
         label: okr?.label || '',
         currentValue: Number.isFinite(Number(okr?.currentValue)) ? Number(okr.currentValue) : 0,
         targetValue: Number.isFinite(Number(okr?.targetValue)) ? Number(okr.targetValue) : 0,

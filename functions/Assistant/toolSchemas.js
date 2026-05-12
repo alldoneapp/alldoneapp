@@ -189,7 +189,7 @@ const toolSchemas = {
         function: {
             name: 'get_project_okrs',
             description:
-                'Retrieves personal project OKRs for the current user. Use this when the user asks about OKRs, objectives, key results, targets, current OKR progress, or previous OKR periods. Defaults to active OKRs in the current project.',
+                'Retrieves personal project OKRs for the current user, including calculated revenue OKR progress from logged time when applicable. Use this when the user asks about OKRs, objectives, key results, targets, current OKR progress, or previous OKR periods. Defaults to active OKRs in the current project.',
             parameters: {
                 type: 'object',
                 properties: {

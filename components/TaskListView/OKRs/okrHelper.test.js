@@ -10,9 +10,14 @@ import {
     OKR_PACE_ENDED,
     OKR_PACE_OFF_TRACK,
     OKR_PACE_ON_TRACK,
+    OKR_TYPE_MANUAL,
+    OKR_TYPE_TIME_LOGGED_REVENUE,
+    calculateRevenueOkrCurrentValue,
     calculateOkrPace,
     calculateOkrProgress,
     getOkrPeriodForCadence,
+    normalizeOkrType,
+    resolveOkrProgress,
 } from './okrHelper'
 
 describe('okrHelper', () => {
@@ -21,6 +26,26 @@ describe('okrHelper', () => {
         expect(calculateOkrProgress(15, 10)).toBe(100)
         expect(calculateOkrProgress(-5, 10)).toBe(0)
         expect(calculateOkrProgress(10, 0)).toBe(0)
+    })
+
+    test('defaults missing OKR type to manual', () => {
+        expect(normalizeOkrType()).toBe(OKR_TYPE_MANUAL)
+        expect(normalizeOkrType(OKR_TYPE_TIME_LOGGED_REVENUE)).toBe(OKR_TYPE_TIME_LOGGED_REVENUE)
+        expect(normalizeOkrType('other')).toBe(OKR_TYPE_MANUAL)
+    })
+
+    test('calculates revenue OKR current value from minutes and hourly rate', () => {
+        expect(calculateRevenueOkrCurrentValue(90, 100)).toBe(150)
+        expect(calculateRevenueOkrCurrentValue(45, 80)).toBe(60)
+        expect(calculateRevenueOkrCurrentValue(120, 0)).toBe(0)
+        expect(calculateRevenueOkrCurrentValue(120, undefined)).toBe(0)
+    })
+
+    test('uses derived revenue value for progress and stored value for manual OKRs', () => {
+        expect(resolveOkrProgress({ type: OKR_TYPE_TIME_LOGGED_REVENUE, currentValue: 0, targetValue: 200 }, 100)).toBe(
+            50
+        )
+        expect(resolveOkrProgress({ currentValue: 25, targetValue: 100 }, 100)).toBe(25)
     })
 
     test('calculates weekly period using iso weeks', () => {

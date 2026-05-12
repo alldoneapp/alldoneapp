@@ -1,7 +1,14 @@
 'use strict'
 
 const { ProjectService } = require('./ProjectService')
-const { OKRS_COLLECTION, OKR_STATUS_ACTIVE, getRemainingText, mapOKRData, normalizeStatus } = require('./OKRHelper')
+const {
+    OKRS_COLLECTION,
+    OKR_STATUS_ACTIVE,
+    getRemainingText,
+    mapOKRData,
+    normalizeStatus,
+    resolveOkrDataForProject,
+} = require('./OKRHelper')
 
 const DEFAULT_OKR_LIMIT = 100
 const MAX_OKR_LIMIT = 1000
@@ -110,16 +117,16 @@ class OKRRetrievalService {
 
         const snapshot = await query.get()
         const okrs = []
-        snapshot.forEach(doc => {
-            const okr = mapOKRData(doc.id, doc.data())
-            if (Number.isFinite(periodStart) && okr.periodEnd < periodStart) return
-            if (Number.isFinite(periodEnd) && okr.periodStart > periodEnd) return
+        for (const doc of snapshot.docs) {
+            const okr = await resolveOkrDataForProject(this.options.database, project, mapOKRData(doc.id, doc.data()))
+            if (Number.isFinite(periodStart) && okr.periodEnd < periodStart) continue
+            if (Number.isFinite(periodEnd) && okr.periodStart > periodEnd) continue
             okrs.push({
                 ...okr,
                 projectName: project.name || project.id,
                 remaining: getRemainingText(okr.periodEnd),
             })
-        })
+        }
         return okrs
     }
 

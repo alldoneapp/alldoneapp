@@ -2,9 +2,12 @@ import { getDb, getId, globalWatcherUnsub } from '../firestore'
 import store from '../../../redux/store'
 import { setOKRsInProjectInTasks } from '../../../redux/actions'
 import {
+    OKR_TYPE_MANUAL,
+    OKR_TYPE_TIME_LOGGED_REVENUE,
     OKR_STATUS_ACTIVE,
     calculateOkrProgress,
     getOkrPeriodForCadence,
+    normalizeOkrType,
     normalizeOkrNumber,
 } from '../../../components/TaskListView/OKRs/okrHelper'
 
@@ -17,6 +20,7 @@ export function mapOKRData(okrId, okr) {
     return {
         id: okr.id || okrId,
         objectType: 'okr',
+        type: normalizeOkrType(okr.type),
         label: okr.label || '',
         currentValue,
         targetValue,
@@ -60,6 +64,7 @@ export function watchProjectOKRs(projectId, ownerId, watcherKey) {
 export async function createOKR(projectId, data) {
     const { loggedUser, currentUser } = store.getState()
     const cadence = data.cadence || 'monthly'
+    const type = normalizeOkrType(data.type)
     const { periodStart, periodEnd } = getOkrPeriodForCadence(cadence)
     const okrId = getId()
     const now = Date.now()
@@ -67,10 +72,11 @@ export async function createOKR(projectId, data) {
     const okr = {
         id: okrId,
         objectType: 'okr',
+        type,
         projectId,
         ownerId: currentUser.uid,
         label: String(data.label || '').trim(),
-        currentValue: normalizeOkrNumber(data.currentValue),
+        currentValue: type === OKR_TYPE_TIME_LOGGED_REVENUE ? 0 : normalizeOkrNumber(data.currentValue),
         targetValue: normalizeOkrNumber(data.targetValue),
         unit: String(data.unit || '').trim(),
         cadence,
@@ -103,6 +109,7 @@ export async function updateOKRCurrentValue(projectId, okrId, currentValue) {
 export async function updateOKR(projectId, okr, data) {
     const { loggedUser } = store.getState()
     const cadence = data.cadence || okr.cadence || 'monthly'
+    const type = normalizeOkrType(data.type || okr.type || OKR_TYPE_MANUAL)
     const cadenceChanged = cadence !== okr.cadence
     const period = cadenceChanged ? getOkrPeriodForCadence(cadence) : {}
 
@@ -110,7 +117,8 @@ export async function updateOKR(projectId, okr, data) {
         .doc(`okrs/${projectId}/${OKRS_COLLECTION}/${okr.id}`)
         .update({
             label: String(data.label || '').trim(),
-            currentValue: normalizeOkrNumber(data.currentValue),
+            type,
+            currentValue: type === OKR_TYPE_TIME_LOGGED_REVENUE ? 0 : normalizeOkrNumber(data.currentValue),
             targetValue: normalizeOkrNumber(data.targetValue),
             unit: String(data.unit || '').trim(),
             cadence,

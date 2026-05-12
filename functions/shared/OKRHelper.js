@@ -8,7 +8,11 @@ const OKR_STATUS_CLOSED = 'closed'
 const OKR_CADENCE_WEEKLY = 'weekly'
 const OKR_CADENCE_MONTHLY = 'monthly'
 const OKR_CADENCE_QUARTERLY = 'quarterly'
+const OKR_TYPE_MANUAL = 'manual'
+const OKR_TYPE_TIME_LOGGED_REVENUE = 'timeLoggedRevenue'
 const VALID_OKR_STATUSES = [OKR_STATUS_ACTIVE, OKR_STATUS_CLOSED, 'all']
+const VALID_OKR_TYPES = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
+const ESTIMATION_TYPE_TIME = 'TIME'
 
 function normalizeOkrNumber(value, fallback = 0) {
     const number = Number(value)
@@ -20,6 +24,69 @@ function calculateOkrProgress(currentValue, targetValue) {
     const target = normalizeOkrNumber(targetValue)
     if (target <= 0) return 0
     return Math.max(0, Math.min(100, Math.round((current / target) * 100)))
+}
+
+function normalizeOkrType(type) {
+    return VALID_OKR_TYPES.includes(type) ? type : OKR_TYPE_MANUAL
+}
+
+function isRevenueOkr(okr = {}) {
+    return normalizeOkrType(okr.type) === OKR_TYPE_TIME_LOGGED_REVENUE
+}
+
+function calculateRevenueOkrCurrentValue(doneTimeMinutes, hourlyRate) {
+    const minutes = normalizeOkrNumber(doneTimeMinutes)
+    const rate = normalizeOkrNumber(hourlyRate)
+    if (minutes <= 0 || rate <= 0) return 0
+    return Number(((minutes / 60) * rate).toFixed(2))
+}
+
+function getProjectCurrency(project = {}) {
+    return project?.hourlyRatesData?.currency || 'EUR'
+}
+
+function getOwnerHourlyRate(project = {}, ownerId) {
+    return normalizeOkrNumber(project?.hourlyRatesData?.hourlyRates?.[ownerId])
+}
+
+async function getDoneTimeMinutesForPeriod(db, project, ownerId, periodStart, periodEnd) {
+    if (!db || !project?.id || !ownerId) return 0
+    if ((project.estimationType || ESTIMATION_TYPE_TIME) !== ESTIMATION_TYPE_TIME) return 0
+
+    const dayDate1 = parseInt(moment(periodStart).format('YYYYMMDD'))
+    const dayDate2 = parseInt(moment(periodEnd).format('YYYYMMDD'))
+    if (!Number.isFinite(dayDate1) || !Number.isFinite(dayDate2)) return 0
+
+    const snapshot = await db
+        .collection(`statistics/${project.id}/${ownerId}`)
+        .where('day', '>=', dayDate1)
+        .where('day', '<=', dayDate2)
+        .get()
+
+    return snapshot.docs.reduce((total, doc) => total + normalizeOkrNumber(doc.data()?.doneTime), 0)
+}
+
+async function resolveOkrDataForProject(db, project, okr) {
+    const normalizedOkr = { ...okr, type: normalizeOkrType(okr?.type) }
+    if (!isRevenueOkr(normalizedOkr)) return normalizedOkr
+
+    const doneTimeMinutes = await getDoneTimeMinutesForPeriod(
+        db,
+        project,
+        normalizedOkr.ownerId,
+        normalizedOkr.periodStart,
+        normalizedOkr.periodEnd
+    )
+    const currentValue = calculateRevenueOkrCurrentValue(
+        doneTimeMinutes,
+        getOwnerHourlyRate(project, normalizedOkr.ownerId)
+    )
+    return {
+        ...normalizedOkr,
+        currentValue,
+        unit: normalizedOkr.unit || getProjectCurrency(project),
+        progress: calculateOkrProgress(currentValue, normalizedOkr.targetValue),
+    }
 }
 
 function getMomentForUser(userData = {}, timestamp = Date.now()) {
@@ -64,6 +131,7 @@ function mapOKRData(okrId, okr = {}) {
     return {
         id: okr.id || okrId,
         objectType: 'okr',
+        type: normalizeOkrType(okr.type),
         projectId: okr.projectId || '',
         ownerId: okr.ownerId || '',
         label: okr.label || '',
@@ -108,11 +176,20 @@ module.exports = {
     OKR_CADENCE_WEEKLY,
     OKR_CADENCE_MONTHLY,
     OKR_CADENCE_QUARTERLY,
+    OKR_TYPE_MANUAL,
+    OKR_TYPE_TIME_LOGGED_REVENUE,
     calculateOkrProgress,
+    calculateRevenueOkrCurrentValue,
     getNextOkrPeriod,
     getOkrPeriodForCadence,
+    getDoneTimeMinutesForPeriod,
     getRemainingText,
+    getOwnerHourlyRate,
+    getProjectCurrency,
+    isRevenueOkr,
     mapOKRData,
     normalizeOkrNumber,
+    normalizeOkrType,
     normalizeStatus,
+    resolveOkrDataForProject,
 }

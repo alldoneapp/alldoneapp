@@ -89,6 +89,8 @@ class ProjectService {
                 description: data.description || '',
                 createdAt: data.createdAt,
                 userIds: data.userIds || [],
+                estimationType: data.estimationType,
+                hourlyRatesData: data.hourlyRatesData || { currency: 'EUR', hourlyRates: {} },
                 projectType,
                 active: typeof data.active === 'boolean' ? data.active : undefined,
                 parentTemplateId: data.parentTemplateId || '',

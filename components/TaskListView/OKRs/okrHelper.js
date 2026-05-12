@@ -7,6 +7,9 @@ export const OKR_CADENCE_QUARTERLY = 'quarterly'
 export const OKR_STATUS_ACTIVE = 'active'
 export const OKR_STATUS_CLOSED = 'closed'
 
+export const OKR_TYPE_MANUAL = 'manual'
+export const OKR_TYPE_TIME_LOGGED_REVENUE = 'timeLoggedRevenue'
+
 export const OKR_PACE_COMPLETED = 'completed'
 export const OKR_PACE_AHEAD = 'ahead'
 export const OKR_PACE_ON_TRACK = 'onTrack'
@@ -15,10 +18,34 @@ export const OKR_PACE_OFF_TRACK = 'offTrack'
 export const OKR_PACE_ENDED = 'ended'
 
 export const OKR_CADENCES = [OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
+export const OKR_TYPES = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 
 export function normalizeOkrNumber(value, fallback = 0) {
     const number = Number(value)
     return Number.isFinite(number) ? number : fallback
+}
+
+export function normalizeOkrType(type) {
+    return OKR_TYPES.includes(type) ? type : OKR_TYPE_MANUAL
+}
+
+export function isRevenueOkr(okr) {
+    return normalizeOkrType(okr?.type) === OKR_TYPE_TIME_LOGGED_REVENUE
+}
+
+export function calculateRevenueOkrCurrentValue(doneTimeMinutes, hourlyRate) {
+    const minutes = normalizeOkrNumber(doneTimeMinutes)
+    const rate = normalizeOkrNumber(hourlyRate)
+    if (minutes <= 0 || rate <= 0) return 0
+    return Number(((minutes / 60) * rate).toFixed(2))
+}
+
+export function resolveOkrCurrentValue(okr, revenueCurrentValue) {
+    return isRevenueOkr(okr) ? normalizeOkrNumber(revenueCurrentValue) : normalizeOkrNumber(okr?.currentValue)
+}
+
+export function resolveOkrProgress(okr, revenueCurrentValue) {
+    return calculateOkrProgress(resolveOkrCurrentValue(okr, revenueCurrentValue), okr?.targetValue)
 }
 
 export function calculateOkrProgress(currentValue, targetValue) {
@@ -34,7 +61,7 @@ export function clampOkrPercent(value) {
 }
 
 export function calculateOkrPace(okr, now = Date.now()) {
-    const actualPercent = calculateOkrProgress(okr.currentValue, okr.targetValue)
+    const actualPercent = calculateOkrProgress(resolveOkrCurrentValue(okr, okr?.resolvedCurrentValue), okr.targetValue)
     const periodStart = normalizeOkrNumber(okr.periodStart)
     const periodEnd = normalizeOkrNumber(okr.periodEnd)
     const duration = periodEnd - periodStart

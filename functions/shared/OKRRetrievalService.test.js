@@ -31,6 +31,8 @@ class FakeQuery {
             results = results.filter(row => {
                 const fieldValue = row.data[filter.field]
                 if (filter.operator === '==') return fieldValue === filter.value
+                if (filter.operator === '>=') return fieldValue >= filter.value
+                if (filter.operator === '<=') return fieldValue <= filter.value
                 throw new Error(`Unsupported operator: ${filter.operator}`)
             })
         }
@@ -42,6 +44,11 @@ function createFakeDb() {
     const projects = {
         'project-1': { name: 'Operations' },
         'project-2': { name: 'Marketing' },
+        'project-3': {
+            name: 'Revenue',
+            estimationType: 'TIME',
+            hourlyRatesData: { currency: 'EUR', hourlyRates: { 'user-1': 100 } },
+        },
         'project-archived': { name: 'Archived' },
     }
 
@@ -107,6 +114,30 @@ function createFakeDb() {
                 },
             },
         ],
+        'project-3': [
+            {
+                id: 'okr-revenue',
+                data: {
+                    objectType: 'okr',
+                    type: 'timeLoggedRevenue',
+                    label: 'Earn revenue',
+                    ownerId: 'user-1',
+                    currentValue: 0,
+                    targetValue: 300,
+                    cadence: 'monthly',
+                    periodStart: Date.UTC(2026, 0, 1),
+                    periodEnd: Date.UTC(2026, 0, 31),
+                    status: 'active',
+                },
+            },
+        ],
+    }
+
+    const statisticsByPath = {
+        'statistics/project-3/user-1': [
+            { id: '01012026', data: { day: 20260101, doneTime: 60 } },
+            { id: '02012026', data: { day: 20260102, doneTime: 30 } },
+        ],
     }
 
     return {
@@ -120,7 +151,7 @@ function createFakeDb() {
                                 return {
                                     exists: true,
                                     data: () => ({
-                                        projectIds: ['project-1', 'project-2', 'project-archived'],
+                                        projectIds: ['project-1', 'project-2', 'project-3', 'project-archived'],
                                         archivedProjectIds: ['project-archived'],
                                     }),
                                 }
@@ -149,6 +180,9 @@ function createFakeDb() {
 
             const okrMatch = path.match(/^okrs\/([^/]+)\/projectOkrs$/)
             if (okrMatch) return new FakeQuery(okrsByProject[okrMatch[1]] || [])
+
+            const statisticsMatch = path.match(/^statistics\/([^/]+)\/([^/]+)$/)
+            if (statisticsMatch) return new FakeQuery(statisticsByPath[path] || [])
 
             throw new Error(`Unexpected collection path: ${path}`)
         },
@@ -195,5 +229,24 @@ describe('OKRRetrievalService', () => {
         expect(result.okrs.map(okr => okr.id)).toEqual(['okr-active-owned', 'okr-marketing'])
         expect(result.okrs.map(okr => okr.progress)).toEqual([50, 40])
         expect(result.appliedFilters.allProjects).toBe(true)
+    })
+
+    test('resolves revenue OKR progress from owner statistics and project hourly rate', async () => {
+        const service = new OKRRetrievalService({ database: createFakeDb() })
+        const result = await service.getOKRs({
+            userId: 'user-1',
+            projectId: 'project-3',
+            status: 'active',
+        })
+
+        expect(result.okrs).toHaveLength(1)
+        expect(result.okrs[0]).toMatchObject({
+            id: 'okr-revenue',
+            type: 'timeLoggedRevenue',
+            currentValue: 150,
+            targetValue: 300,
+            unit: 'EUR',
+            progress: 50,
+        })
     })
 })

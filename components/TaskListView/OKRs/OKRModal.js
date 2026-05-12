@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
 import Icon from '../../Icon'
@@ -10,13 +11,27 @@ import { translate } from '../../../i18n/TranslationService'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import { createOKR, deleteOKR, updateOKR } from '../../../utils/backends/OKRs/okrsFirestore'
-import { OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY, OKR_CADENCE_WEEKLY, normalizeOkrNumber } from './okrHelper'
+import {
+    OKR_CADENCE_MONTHLY,
+    OKR_CADENCE_QUARTERLY,
+    OKR_CADENCE_WEEKLY,
+    OKR_TYPE_MANUAL,
+    OKR_TYPE_TIME_LOGGED_REVENUE,
+    formatOkrValue,
+    getOkrPeriodForCadence,
+    normalizeOkrNumber,
+    normalizeOkrType,
+} from './okrHelper'
+import useOkrRevenueValue from './useOkrRevenueValue'
 
 const CADENCE_OPTIONS = [OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
+const TYPE_OPTIONS = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 
 export default function OKRModal({ projectId, okr, closePopover }) {
-    const [width, height] = useWindowSize()
+    const [, height] = useWindowSize()
+    const currentUserId = useSelector(state => state.currentUser.uid)
     const editing = !!okr
+    const [type, setType] = useState(okr ? normalizeOkrType(okr.type) : OKR_TYPE_MANUAL)
     const [label, setLabel] = useState(okr ? okr.label : '')
     const [currentValue, setCurrentValue] = useState(okr ? `${okr.currentValue}` : '0')
     const [targetValue, setTargetValue] = useState(okr ? `${okr.targetValue}` : '')
@@ -24,13 +39,26 @@ export default function OKRModal({ projectId, okr, closePopover }) {
     const [cadence, setCadence] = useState(okr ? okr.cadence : OKR_CADENCE_MONTHLY)
     const [saving, setSaving] = useState(false)
     const [confirmingDelete, setConfirmingDelete] = useState(false)
+    const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
+    const revenueOkr = type === OKR_TYPE_TIME_LOGGED_REVENUE
+    const previewPeriod = useMemo(() => {
+        if (editing && cadence === okr.cadence) {
+            return { periodStart: okr.periodStart, periodEnd: okr.periodEnd }
+        }
+        return getOkrPeriodForCadence(cadence)
+    }, [cadence, editing, okr])
+    const revenueValue = useOkrRevenueValue({
+        projectId,
+        ownerId: revenueOkr ? okr?.ownerId || currentUserId : null,
+        periodStart: previewPeriod.periodStart,
+        periodEnd: previewPeriod.periodEnd,
+    })
 
     const currentNumber = normalizeOkrNumber(currentValue, NaN)
     const targetNumber = normalizeOkrNumber(targetValue, NaN)
     const canSave =
         label.trim() &&
-        Number.isFinite(currentNumber) &&
-        currentNumber >= 0 &&
+        (revenueOkr || (Number.isFinite(currentNumber) && currentNumber >= 0)) &&
         Number.isFinite(targetNumber) &&
         targetNumber > 0
 
@@ -41,17 +69,19 @@ export default function OKRModal({ projectId, okr, closePopover }) {
             if (editing) {
                 await updateOKR(projectId, okr, {
                     label,
-                    currentValue: currentNumber,
+                    type,
+                    currentValue: revenueOkr ? 0 : currentNumber,
                     targetValue: targetNumber,
-                    unit,
+                    unit: revenueOkr ? revenueValue.currency : unit,
                     cadence,
                 })
             } else {
                 await createOKR(projectId, {
                     label,
-                    currentValue: currentNumber,
+                    type,
+                    currentValue: revenueOkr ? 0 : currentNumber,
                     targetValue: targetNumber,
-                    unit,
+                    unit: revenueOkr ? revenueValue.currency : unit,
                     cadence,
                 })
             }
@@ -95,6 +125,14 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                     </View>
                 </Hotkeys>
 
+                <Text style={localStyles.label}>{translate('OKR type')}</Text>
+                <OKRTypeDropdown
+                    type={type}
+                    setType={setType}
+                    isOpen={typeDropdownOpen}
+                    setIsOpen={setTypeDropdownOpen}
+                />
+
                 <Text style={localStyles.label}>{translate('OKR target label')}</Text>
                 <TextInput
                     style={localStyles.input}
@@ -107,14 +145,29 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                 <View style={localStyles.row}>
                     <View style={localStyles.halfInput}>
                         <Text style={localStyles.label}>{translate('Current value')}</Text>
-                        <TextInput
-                            style={localStyles.input}
-                            value={currentValue}
-                            onChangeText={setCurrentValue}
-                            placeholder="0"
-                            placeholderTextColor={colors.Text03}
-                            keyboardType="numeric"
-                        />
+                        {revenueOkr ? (
+                            <View style={localStyles.calculatedValue}>
+                                <Text style={[styles.body1, localStyles.calculatedValueText]}>
+                                    {formatOkrValue(revenueValue.currentValue, revenueValue.currency)}
+                                </Text>
+                                <Text style={[styles.caption1, localStyles.calculatedValueHint]} numberOfLines={2}>
+                                    {translate(
+                                        revenueValue.missingHourlyRate
+                                            ? 'OKR hourly rate missing'
+                                            : 'OKR revenue current value hint'
+                                    )}
+                                </Text>
+                            </View>
+                        ) : (
+                            <TextInput
+                                style={localStyles.input}
+                                value={currentValue}
+                                onChangeText={setCurrentValue}
+                                placeholder="0"
+                                placeholderTextColor={colors.Text03}
+                                keyboardType="numeric"
+                            />
+                        )}
                     </View>
                     <View style={localStyles.halfInput}>
                         <Text style={localStyles.label}>{translate('Target value')}</Text>
@@ -129,14 +182,22 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                     </View>
                 </View>
 
-                <Text style={localStyles.label}>{translate('Unit optional')}</Text>
-                <TextInput
-                    style={localStyles.input}
-                    value={unit}
-                    onChangeText={setUnit}
-                    placeholder={translate('Unit placeholder')}
-                    placeholderTextColor={colors.Text03}
-                />
+                {revenueOkr ? (
+                    <Text style={[styles.caption1, localStyles.currencyHint]}>
+                        {translate('OKR revenue currency hint', { currency: revenueValue.currency })}
+                    </Text>
+                ) : (
+                    <>
+                        <Text style={localStyles.label}>{translate('Unit optional')}</Text>
+                        <TextInput
+                            style={localStyles.input}
+                            value={unit}
+                            onChangeText={setUnit}
+                            placeholder={translate('Unit placeholder')}
+                            placeholderTextColor={colors.Text03}
+                        />
+                    </>
+                )}
 
                 <Text style={localStyles.label}>{translate('Cadence')}</Text>
                 <View style={localStyles.cadenceContainer}>
@@ -207,6 +268,50 @@ export default function OKRModal({ projectId, okr, closePopover }) {
     )
 }
 
+function OKRTypeDropdown({ type, setType, isOpen, setIsOpen }) {
+    const selectType = option => {
+        setType(option)
+        setIsOpen(false)
+    }
+
+    return (
+        <View style={localStyles.typeDropdownWrapper}>
+            <TouchableOpacity style={localStyles.typeDropdownButton} onPress={() => setIsOpen(!isOpen)}>
+                <Text style={[styles.body1, localStyles.typeDropdownText]} numberOfLines={1}>
+                    {translate(`OKR type ${type}`)}
+                </Text>
+                <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.Text03} />
+            </TouchableOpacity>
+            {isOpen && (
+                <View style={localStyles.typeDropdownMenu}>
+                    {TYPE_OPTIONS.map(option => {
+                        const selected = option === type
+                        return (
+                            <TouchableOpacity
+                                key={option}
+                                style={[localStyles.typeDropdownOption, selected && localStyles.typeDropdownSelected]}
+                                onPress={() => selectType(option)}
+                            >
+                                <Text
+                                    style={[
+                                        styles.subtitle2,
+                                        selected
+                                            ? localStyles.typeDropdownSelectedText
+                                            : localStyles.typeDropdownOptionText,
+                                    ]}
+                                >
+                                    {translate(`OKR type ${option}`)}
+                                </Text>
+                                {selected && <Icon name="check" size={16} color="#ffffff" />}
+                            </TouchableOpacity>
+                        )
+                    })}
+                </View>
+            )}
+        </View>
+    )
+}
+
 const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
@@ -254,6 +359,82 @@ const localStyles = StyleSheet.create({
     halfInput: {
         flex: 1,
         marginHorizontal: 4,
+    },
+    typeDropdownWrapper: {
+        zIndex: 3,
+    },
+    typeDropdownButton: {
+        height: 40,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        borderRadius: 4,
+        marginTop: 4,
+    },
+    typeDropdownText: {
+        color: '#ffffff',
+        flex: 1,
+        marginRight: 8,
+    },
+    typeDropdownMenu: {
+        position: 'absolute',
+        top: 46,
+        left: 0,
+        right: 0,
+        paddingVertical: 4,
+        borderRadius: 4,
+        backgroundColor: colors.Secondary400,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        elevation: 3,
+        zIndex: 4,
+    },
+    typeDropdownOption: {
+        minHeight: 40,
+        paddingHorizontal: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    typeDropdownSelected: {
+        backgroundColor: colors.Primary100,
+    },
+    typeDropdownOptionText: {
+        color: colors.Text02,
+        flex: 1,
+        marginRight: 8,
+    },
+    typeDropdownSelectedText: {
+        color: '#ffffff',
+        flex: 1,
+        marginRight: 8,
+    },
+    calculatedValue: {
+        minHeight: 40,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        borderRadius: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        justifyContent: 'center',
+    },
+    calculatedValueText: {
+        color: '#ffffff',
+    },
+    calculatedValueHint: {
+        color: colors.Text03,
+        marginTop: 2,
+    },
+    currencyHint: {
+        color: colors.Text03,
+        marginTop: 8,
     },
     cadenceContainer: {
         flexDirection: 'row',

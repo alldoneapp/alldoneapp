@@ -38,7 +38,7 @@ function createDoc(id, data, path, db) {
     }
 }
 
-function createFakeFirestore(initialOldData) {
+function createFakeFirestore(initialOldData, statisticsRows = []) {
     const writes = {
         oldData: { ...initialOldData },
         docs: {},
@@ -49,6 +49,30 @@ function createFakeFirestore(initialOldData) {
     const db = {
         doc(path) {
             return { path }
+        },
+        collection(path) {
+            if (path !== 'statistics/project-1/user-1') throw new Error(`Unexpected collection path: ${path}`)
+            const filters = []
+            return {
+                where(field, operator, value) {
+                    filters.push({ field, operator, value })
+                    return this
+                },
+                async get() {
+                    const docs = statisticsRows
+                        .filter(row =>
+                            filters.every(filter => {
+                                const fieldValue = row[filter.field]
+                                if (filter.operator === '>=') return fieldValue >= filter.value
+                                if (filter.operator === '<=') return fieldValue <= filter.value
+                                if (filter.operator === '==') return fieldValue === filter.value
+                                throw new Error(`Unsupported operator: ${filter.operator}`)
+                            })
+                        )
+                        .map(row => ({ data: () => row }))
+                    return { docs }
+                },
+            }
         },
         async runTransaction(callback) {
             const transaction = {
@@ -127,6 +151,61 @@ describe('OKR renewal', () => {
             label: 'Reach revenue',
             targetValue: 10,
             renewalProcessedAt: null,
+        })
+
+        Date.now = originalNow
+    })
+
+    test('snapshots revenue OKR current value and renews with type metadata', async () => {
+        const originalNow = Date.now
+        Date.now = jest.fn(() => Date.UTC(2026, 1, 2, 12))
+
+        const db = createFakeFirestore(
+            {
+                objectType: 'okr',
+                type: 'timeLoggedRevenue',
+                ownerId: 'user-1',
+                label: 'Earn revenue',
+                currentValue: 0,
+                targetValue: 300,
+                unit: '',
+                cadence: 'weekly',
+                periodStart: Date.UTC(2026, 0, 26),
+                periodEnd: Date.UTC(2026, 1, 1, 23, 59, 59, 999),
+                status: 'active',
+                renewalProcessedAt: null,
+            },
+            [{ day: 20260126, doneTime: 90 }]
+        )
+        admin.firestore.mockReturnValue(db)
+
+        const okrDoc = createDoc('okr-1', db.writes.oldData, 'okrs/project-1/projectOkrs/okr-1', db)
+        const renewed = await renewOKRDoc(
+            okrDoc,
+            { timezone: 'UTC' },
+            {
+                id: 'project-1',
+                estimationType: 'TIME',
+                hourlyRatesData: { currency: 'EUR', hourlyRates: { 'user-1': 100 } },
+            }
+        )
+
+        expect(renewed).toMatchObject({
+            type: 'timeLoggedRevenue',
+            currentValue: 150,
+            unit: 'EUR',
+            progress: 50,
+        })
+        expect(db.writes.updates[0].patch).toMatchObject({
+            status: 'closed',
+            currentValue: 150,
+            unit: 'EUR',
+        })
+        expect(db.writes.sets[0].data).toMatchObject({
+            type: 'timeLoggedRevenue',
+            currentValue: 0,
+            unit: 'EUR',
+            previousOkrId: 'okr-1',
         })
 
         Date.now = originalNow

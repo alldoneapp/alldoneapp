@@ -10,6 +10,7 @@ const {
     calculateOkrProgress,
     getNextOkrPeriod,
     mapOKRData,
+    resolveOkrDataForProject,
 } = require('../shared/OKRHelper')
 const {
     addBaseInstructions,
@@ -142,12 +143,14 @@ async function createRecapTopic({ projectId, ownerId, project, user, okrs }) {
     return chatId
 }
 
-async function renewOKRDoc(okrDoc, user) {
+async function renewOKRDoc(okrDoc, user, projectData = null) {
     const db = admin.firestore()
     const okr = mapOKRData(okrDoc.id, okrDoc.data())
     if (okr.status !== OKR_STATUS_ACTIVE || okr.renewalProcessedAt) return null
 
     const projectId = okrDoc.ref.parent.parent.id
+    const project = projectData || { id: projectId }
+    const resolvedOkr = await resolveOkrDataForProject(db, project, { ...okr, projectId })
     const nextPeriod = getNextOkrPeriod(okr.cadence, okr.periodEnd, user)
     const nextOkrId = buildNextOKRId(okr.id, nextPeriod.periodStart)
     const nextOkrRef = db.doc(`okrs/${projectId}/${OKRS_COLLECTION}/${nextOkrId}`)
@@ -161,6 +164,8 @@ async function renewOKRDoc(okrDoc, user) {
 
         transaction.update(okrDoc.ref, {
             status: OKR_STATUS_CLOSED,
+            currentValue: resolvedOkr.currentValue,
+            unit: resolvedOkr.unit,
             renewalProcessedAt: now,
             lastEditionDate: now,
             lastEditorId: 'system',
@@ -171,7 +176,9 @@ async function renewOKRDoc(okrDoc, user) {
                 ...freshOldDoc.data(),
                 id: nextOkrId,
                 projectId,
+                type: resolvedOkr.type,
                 currentValue: 0,
+                unit: resolvedOkr.unit,
                 status: OKR_STATUS_ACTIVE,
                 previousOkrId: freshOld.id,
                 periodStart: nextPeriod.periodStart,
@@ -184,7 +191,7 @@ async function renewOKRDoc(okrDoc, user) {
             })
         }
 
-        return { ...freshOld, projectId }
+        return { ...freshOld, ...resolvedOkr, projectId }
     })
 }
 
@@ -216,8 +223,10 @@ async function processExpiredOKRs() {
     for (const okrDoc of snapshot.docs) {
         const ownerId = okrDoc.data().ownerId
         const user = usersById.get(ownerId)
+        const projectId = okrDoc.ref.parent.parent.id
+        const project = projectsById.get(projectId)
         if (!user) continue
-        const renewed = await renewOKRDoc(okrDoc, user)
+        const renewed = await renewOKRDoc(okrDoc, user, project)
         if (renewed) renewedOKRs.push(renewed)
     }
 
