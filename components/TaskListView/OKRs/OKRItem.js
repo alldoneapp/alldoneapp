@@ -8,6 +8,10 @@ import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
 import { updateOKRCurrentValue } from '../../../utils/backends/OKRs/okrsFirestore'
+import {
+    clearUserOKRHiddenInAllProjectsToday,
+    setUserOKRHiddenInAllProjectsToday,
+} from '../../../utils/backends/Users/usersFirestore'
 import OKRModal from './OKRModal'
 import {
     OKR_PACE_AT_RISK,
@@ -18,6 +22,7 @@ import {
     getOkrTimeLeftParts,
     isRevenueOkr,
     resolveOkrCurrentValue,
+    getOkrAllProjectsTodayKey,
 } from './okrHelper'
 import useOkrRevenueValue from './useOkrRevenueValue'
 
@@ -39,11 +44,12 @@ function getPaceColor(status) {
     return OKR_PACE_COLORS[status] || OKR_PACE_COLORS.default
 }
 
-export default function OKRItem({ projectId, okr, canUpdate }) {
+export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hiddenInAllProjectsToday }) {
     const [isOpen, setIsOpen] = useState(false)
     const [incrementing, setIncrementing] = useState(false)
     const celebration = useRef(new Animated.Value(0)).current
     const mobile = useSelector(state => state.smallScreenNavigation)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
     const revenueOkr = isRevenueOkr(okr)
     const revenueValue = useOkrRevenueValue({
         projectId,
@@ -89,6 +95,18 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
         }
     }
 
+    const hideInAllProjectsToday = event => {
+        event?.stopPropagation?.()
+        setUserOKRHiddenInAllProjectsToday(loggedUserId, projectId, okr.id, getOkrAllProjectsTodayKey())
+    }
+
+    const showInAllProjectsToday = event => {
+        event?.stopPropagation?.()
+        clearUserOKRHiddenInAllProjectsToday(loggedUserId, projectId, okr.id)
+    }
+
+    const showAllProjectsVisibilityAction = inAllProjects || hiddenInAllProjectsToday
+
     const trigger = (
         <TouchableOpacity
             style={[localStyles.container, mobile && localStyles.containerMobile, !canUpdate && localStyles.disabled]}
@@ -97,25 +115,59 @@ export default function OKRItem({ projectId, okr, canUpdate }) {
         >
             <View style={[localStyles.statusAccent, { backgroundColor: paceColor }]} />
             <View style={[localStyles.titleArea, mobile && localStyles.titleAreaMobile]}>
-                <Text style={[styles.subtitle1, localStyles.title]} numberOfLines={mobile ? 2 : 1}>
-                    {okr.label}
-                </Text>
+                <View style={localStyles.titleRow}>
+                    <Text
+                        style={[styles.subtitle1, localStyles.title, localStyles.titleInRow]}
+                        numberOfLines={mobile ? 2 : 1}
+                    >
+                        {okr.label}
+                    </Text>
+                    {showAllProjectsVisibilityAction && (
+                        <TouchableOpacity
+                            style={[
+                                localStyles.allProjectsDoneButton,
+                                hiddenInAllProjectsToday && localStyles.allProjectsRestoreButton,
+                            ]}
+                            onPress={hiddenInAllProjectsToday ? showInAllProjectsToday : hideInAllProjectsToday}
+                            disabled={!loggedUserId}
+                            accessibilityLabel={translate(
+                                hiddenInAllProjectsToday
+                                    ? 'Show OKR in All Projects for today'
+                                    : 'Hide OKR in All Projects for today'
+                            )}
+                        >
+                            <Icon
+                                name={hiddenInAllProjectsToday ? 'rotate-ccw' : 'check'}
+                                size={12}
+                                color={colors.Text03}
+                            />
+                            <Text style={[styles.caption1, localStyles.allProjectsDoneText]}>
+                                {translate(hiddenInAllProjectsToday ? 'Undo for today' : 'Done for today')}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
                 <Text style={[styles.caption1, localStyles.meta]} numberOfLines={mobile ? 2 : 1}>
                     {metaText}
                 </Text>
             </View>
             <View style={[localStyles.progressArea, mobile && localStyles.progressAreaMobile]}>
                 {!revenueOkr && (
-                    <View style={localStyles.incrementContainer}>
-                        <TouchableOpacity
-                            style={[localStyles.incrementButton, incrementing && localStyles.incrementButtonDisabled]}
-                            onPress={incrementOKR}
-                            disabled={!canUpdate || incrementing}
-                            accessibilityLabel={translate('Increase OKR by 1')}
-                        >
-                            <Icon name="plus" size={16} color="#ffffff" />
-                        </TouchableOpacity>
-                        <CelebrationBurst animation={celebration} />
+                    <View style={localStyles.rowActions}>
+                        <View style={localStyles.incrementContainer}>
+                            <TouchableOpacity
+                                style={[
+                                    localStyles.incrementButton,
+                                    incrementing && localStyles.incrementButtonDisabled,
+                                ]}
+                                onPress={incrementOKR}
+                                disabled={!canUpdate || incrementing}
+                                accessibilityLabel={translate('Increase OKR by 1')}
+                            >
+                                <Icon name="plus" size={16} color="#ffffff" />
+                            </TouchableOpacity>
+                            <CelebrationBurst animation={celebration} />
+                        </View>
                     </View>
                 )}
                 <View
@@ -351,6 +403,16 @@ const localStyles = StyleSheet.create({
     title: {
         color: colors.Text01,
     },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        maxWidth: '100%',
+    },
+    titleInRow: {
+        flexShrink: 1,
+        marginRight: 12,
+    },
     meta: {
         color: colors.Text03,
         marginTop: 2,
@@ -367,12 +429,16 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         marginTop: 10,
     },
+    rowActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 8,
+    },
     incrementContainer: {
         width: 32,
         height: 32,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 8,
     },
     incrementButton: {
         width: 28,
@@ -384,6 +450,24 @@ const localStyles = StyleSheet.create({
     },
     incrementButtonDisabled: {
         opacity: 0.72,
+    },
+    allProjectsDoneButton: {
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: '#ffffff',
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    allProjectsRestoreButton: {
+        backgroundColor: '#ffffff',
+    },
+    allProjectsDoneText: {
+        color: colors.Text03,
+        marginLeft: 4,
     },
     celebrationLayer: {
         position: 'absolute',

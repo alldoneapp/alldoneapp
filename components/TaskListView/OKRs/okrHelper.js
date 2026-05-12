@@ -29,6 +29,10 @@ export function normalizeOkrType(type) {
     return OKR_TYPES.includes(type) ? type : OKR_TYPE_MANUAL
 }
 
+export function getOkrAllProjectsTodayKey(timestamp = Date.now()) {
+    return moment(timestamp).format('YYYY-MM-DD')
+}
+
 export function isRevenueOkr(okr) {
     return normalizeOkrType(okr?.type) === OKR_TYPE_TIME_LOGGED_REVENUE
 }

@@ -3611,6 +3611,9 @@ export function mapUserData(userId, user) {
         showAllProjectsByTime: user.showAllProjectsByTime ? user.showAllProjectsByTime : false,
         lastAssistantCommentData: user.lastAssistantCommentData ? user.lastAssistantCommentData : {},
         okrPrivacyMode: user.okrPrivacyMode ? user.okrPrivacyMode : false,
+        okrsHiddenInAllProjectsTodayByProjectAndOkr: user.okrsHiddenInAllProjectsTodayByProjectAndOkr
+            ? user.okrsHiddenInAllProjectsTodayByProjectAndOkr
+            : {},
     }
 }
 

@@ -15,6 +15,7 @@ import {
     calculateRevenueOkrCurrentValue,
     calculateOkrPace,
     calculateOkrProgress,
+    getOkrAllProjectsTodayKey,
     getOkrPeriodForCadence,
     normalizeOkrType,
     resolveOkrProgress,
@@ -32,6 +33,10 @@ describe('okrHelper', () => {
         expect(normalizeOkrType()).toBe(OKR_TYPE_MANUAL)
         expect(normalizeOkrType(OKR_TYPE_TIME_LOGGED_REVENUE)).toBe(OKR_TYPE_TIME_LOGGED_REVENUE)
         expect(normalizeOkrType('other')).toBe(OKR_TYPE_MANUAL)
+    })
+
+    test('formats all-projects OKR done-for-today key', () => {
+        expect(getOkrAllProjectsTodayKey(moment('2026-05-12T08:00:00.000Z').valueOf())).toBe('2026-05-12')
     })
 
     test('calculates revenue OKR current value from minutes and hourly rate', () => {

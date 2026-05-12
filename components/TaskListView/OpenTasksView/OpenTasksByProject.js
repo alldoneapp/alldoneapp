@@ -25,6 +25,7 @@ import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
+import { getOkrAllProjectsTodayKey } from '../OKRs/okrHelper'
 
 export default function OpenTasksByProject({
     firstProject,
@@ -36,9 +37,11 @@ export default function OpenTasksByProject({
     const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId]?.index)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const currentUserId = useSelector(state => state.currentUser.uid)
+    const loggedUser = useSelector(state => state.loggedUser)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
+    const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
     const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
 
@@ -56,7 +59,13 @@ export default function OpenTasksByProject({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const hideProjectData = !inSelectedProject && (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
+    const todayKey = getOkrAllProjectsTodayKey()
+    const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
+    const visibleOkrsInAllProjects = okrsInProject.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey)
+    const hideProjectData =
+        !inSelectedProject &&
+        visibleOkrsInAllProjects.length === 0 &&
+        (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
 
     // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
@@ -156,7 +165,7 @@ export default function OpenTasksByProject({
                             <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
                         </View>
                     )}
-                    <OKRSection projectId={projectId} />
+                    <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
                     <UpcomingMilestoneRow projectId={projectId} />
                     {filteredOpenTasksDates.map((dateFormated, index) => {
                         return (

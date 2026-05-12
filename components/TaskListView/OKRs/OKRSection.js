@@ -9,13 +9,17 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserOKRPrivacyMode } from '../../../utils/backends/Users/usersFirestore'
 import OKRItem, { OKREmptyItem } from './OKRItem'
+import { getOkrAllProjectsTodayKey } from './okrHelper'
 
-export default function OKRSection({ projectId }) {
+export default function OKRSection({ projectId, inAllProjects }) {
     const okrs = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const okrPrivacyMode = !!loggedUser.okrPrivacyMode
+    const todayKey = getOkrAllProjectsTodayKey()
+    const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
+    const okrsToShow = inAllProjects ? okrs.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey) : okrs
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const loggedUserIsBoardOwner = loggedUser.uid === currentUserId
@@ -26,7 +30,7 @@ export default function OKRSection({ projectId }) {
         setUserOKRPrivacyMode(loggedUser.uid, !okrPrivacyMode)
     }
 
-    if (okrs.length === 0) return null
+    if (okrsToShow.length === 0) return null
 
     return (
         <View style={localStyles.container}>
@@ -57,10 +61,21 @@ export default function OKRSection({ projectId }) {
                         )}
                     </TouchableOpacity>
                 </View>
-                <OKREmptyItem projectId={projectId} canUpdate={canUpdate} compact />
+                <View style={localStyles.headerRight}>
+                    <OKREmptyItem projectId={projectId} canUpdate={canUpdate} compact />
+                </View>
             </View>
             {!okrPrivacyMode &&
-                okrs.map(okr => <OKRItem key={okr.id} projectId={projectId} okr={okr} canUpdate={canUpdate} />)}
+                okrsToShow.map(okr => (
+                    <OKRItem
+                        key={okr.id}
+                        projectId={projectId}
+                        okr={okr}
+                        canUpdate={canUpdate}
+                        inAllProjects={inAllProjects}
+                        hiddenInAllProjectsToday={okrsHiddenTodayById[okr.id] === todayKey}
+                    />
+                ))}
         </View>
     )
 }
@@ -84,11 +99,16 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginRight: 8,
     },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     privacyButton: {
         height: 22,
         paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
+        marginRight: 8,
     },
     privacyText: {
         color: colors.Text03,

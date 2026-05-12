@@ -937,6 +937,22 @@ export async function setUserOKRPrivacyMode(userId, okrPrivacyMode) {
     updateUserData(userId, { okrPrivacyMode }, null)
 }
 
+export async function setUserOKRHiddenInAllProjectsToday(userId, projectId, okrId, todayKey) {
+    if (!userId || !projectId || !okrId || !todayKey) return
+    updateUserData(userId, { [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: todayKey }, null)
+}
+
+export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, okrId) {
+    if (!userId || !projectId || !okrId) return
+    updateUserData(
+        userId,
+        {
+            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: firebase.firestore.FieldValue.delete(),
+        },
+        null
+    )
+}
+
 export async function updateUserDefaultCurrency(userId, defaultCurrency) {
     getDb().doc(`users/${userId}`).update({ defaultCurrency })
 }
