@@ -173,7 +173,10 @@ export function getOkrTimeLeftParts(periodEnd, now = Date.now()) {
 
 export function formatOkrValue(value, unit) {
     const number = normalizeOkrNumber(value)
-    const formattedNumber = Number.isInteger(number) ? `${number}` : `${number.toFixed(2).replace(/\.?0+$/, '')}`
+    const formattedNumber = number.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    })
     const cleanUnit = typeof unit === 'string' ? unit.trim() : ''
     return cleanUnit ? `${formattedNumber} ${cleanUnit}` : formattedNumber
 }

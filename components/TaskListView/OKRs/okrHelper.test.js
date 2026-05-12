@@ -15,6 +15,7 @@ import {
     calculateRevenueOkrCurrentValue,
     calculateOkrPace,
     calculateOkrProgress,
+    formatOkrValue,
     getOkrAllProjectsTodayKey,
     getOkrPeriodForCadence,
     normalizeOkrType,
@@ -44,6 +45,12 @@ describe('okrHelper', () => {
         expect(calculateRevenueOkrCurrentValue(45, 80)).toBe(60)
         expect(calculateRevenueOkrCurrentValue(120, 0)).toBe(0)
         expect(calculateRevenueOkrCurrentValue(120, undefined)).toBe(0)
+    })
+
+    test('formats OKR values with readable large numbers', () => {
+        expect(formatOkrValue(1234567, 'EUR')).toBe('1,234,567 EUR')
+        expect(formatOkrValue(1234567.89, '')).toBe('1,234,567.89')
+        expect(formatOkrValue(1234567.891, 'users')).toBe('1,234,567.89 users')
     })
 
     test('uses derived revenue value for progress and stored value for manual OKRs', () => {
