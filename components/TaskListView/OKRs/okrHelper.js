@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 export const OKR_CADENCE_WEEKLY = 'weekly'
+export const OKR_CADENCE_DAILY = 'daily'
 export const OKR_CADENCE_MONTHLY = 'monthly'
 export const OKR_CADENCE_QUARTERLY = 'quarterly'
 
@@ -17,7 +18,7 @@ export const OKR_PACE_AT_RISK = 'atRisk'
 export const OKR_PACE_OFF_TRACK = 'offTrack'
 export const OKR_PACE_ENDED = 'ended'
 
-export const OKR_CADENCES = [OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
+export const OKR_CADENCES = [OKR_CADENCE_DAILY, OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
 export const OKR_TYPES = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 
 export function normalizeOkrNumber(value, fallback = 0) {
@@ -135,6 +136,13 @@ export function calculateOkrPace(okr, now = Date.now()) {
 
 export function getOkrPeriodForCadence(cadence, timestamp = Date.now()) {
     const date = moment(timestamp)
+
+    if (cadence === OKR_CADENCE_DAILY) {
+        return {
+            periodStart: date.clone().startOf('day').valueOf(),
+            periodEnd: date.clone().endOf('day').valueOf(),
+        }
+    }
 
     if (cadence === OKR_CADENCE_WEEKLY) {
         return {

@@ -1,4 +1,5 @@
 const {
+    OKR_CADENCE_DAILY,
     OKR_CADENCE_MONTHLY,
     OKR_STATUS_ACTIVE,
     OKR_STATUS_CLOSED,
@@ -90,5 +91,13 @@ describe('OKRHelper', () => {
     test('gets next monthly period after ended period', () => {
         const next = getNextOkrPeriod(OKR_CADENCE_MONTHLY, Date.UTC(2026, 4, 31, 23, 59, 59, 999))
         expect(new Date(next.periodStart).getUTCMonth()).toBe(5)
+    })
+
+    test('gets next daily period after ended period', () => {
+        const next = getNextOkrPeriod(OKR_CADENCE_DAILY, Date.UTC(2026, 4, 12, 23, 59, 59, 999), {
+            timezone: 'UTC',
+        })
+        expect(new Date(next.periodStart).getUTCDate()).toBe(13)
+        expect(new Date(next.periodEnd).getUTCHours()).toBe(23)
     })
 })

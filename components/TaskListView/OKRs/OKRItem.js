@@ -39,6 +39,7 @@ const OKR_PACE_COLORS = {
     [OKR_PACE_OFF_TRACK]: colors.Red200,
     [OKR_PACE_ENDED]: colors.Red200,
 }
+const OKR_POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 
 function getPaceColor(status) {
     return OKR_PACE_COLORS[status] || OKR_PACE_COLORS.default
@@ -215,6 +216,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
+            containerStyle={OKR_POPOVER_CONTAINER_STYLE}
             padding={4}
             onClickOutside={() => setIsOpen(false)}
             contentLocation={args => popoverToSafePosition(args, false)}
@@ -324,6 +326,7 @@ export function OKREmptyItem({ projectId, canUpdate, compact }) {
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
+            containerStyle={OKR_POPOVER_CONTAINER_STYLE}
             padding={4}
             onClickOutside={() => setIsOpen(false)}
             contentLocation={args => popoverToSafePosition(args, false)}

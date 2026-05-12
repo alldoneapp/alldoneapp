@@ -12,6 +12,7 @@ import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFu
 import useWindowSize from '../../../utils/useWindowSize'
 import { createOKR, deleteOKR, updateOKR } from '../../../utils/backends/OKRs/okrsFirestore'
 import {
+    OKR_CADENCE_DAILY,
     OKR_CADENCE_MONTHLY,
     OKR_CADENCE_QUARTERLY,
     OKR_CADENCE_WEEKLY,
@@ -24,7 +25,7 @@ import {
 } from './okrHelper'
 import useOkrRevenueValue from './useOkrRevenueValue'
 
-const CADENCE_OPTIONS = [OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
+const CADENCE_OPTIONS = [OKR_CADENCE_DAILY, OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
 const TYPE_OPTIONS = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 
 export default function OKRModal({ projectId, okr, closePopover }) {
@@ -202,20 +203,21 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                 <Text style={localStyles.label}>{translate('Cadence')}</Text>
                 <View style={localStyles.cadenceContainer}>
                     {CADENCE_OPTIONS.map(option => (
-                        <TouchableOpacity
-                            key={option}
-                            style={[localStyles.cadenceButton, cadence === option && localStyles.selectedCadence]}
-                            onPress={() => setCadence(option)}
-                        >
-                            <Text
-                                style={[
-                                    styles.subtitle2,
-                                    cadence === option ? localStyles.selectedCadenceText : localStyles.cadenceText,
-                                ]}
+                        <View key={option} style={localStyles.cadenceButtonWrapper}>
+                            <TouchableOpacity
+                                style={[localStyles.cadenceButton, cadence === option && localStyles.selectedCadence]}
+                                onPress={() => setCadence(option)}
                             >
-                                {translate(`OKR cadence ${option}`)}
-                            </Text>
-                        </TouchableOpacity>
+                                <Text
+                                    style={[
+                                        styles.subtitle2,
+                                        cadence === option ? localStyles.selectedCadenceText : localStyles.cadenceText,
+                                    ]}
+                                >
+                                    {translate(`OKR cadence ${option}`)}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     ))}
                 </View>
 
@@ -314,6 +316,8 @@ function OKRTypeDropdown({ type, setType, isOpen, setIsOpen }) {
 
 const localStyles = StyleSheet.create({
     container: {
+        position: 'relative',
+        zIndex: 9999,
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         shadowColor: 'rgba(78, 93, 120, 0.56)',
@@ -438,7 +442,13 @@ const localStyles = StyleSheet.create({
     },
     cadenceContainer: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         marginTop: 4,
+        marginRight: -8,
+        marginBottom: 0,
+    },
+    cadenceButtonWrapper: {
+        marginRight: 8,
         marginBottom: 8,
     },
     cadenceButton: {
@@ -447,7 +457,6 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 10,
         borderWidth: 1,
         borderColor: colors.Grey400,
-        marginRight: 8,
         borderRadius: 4,
     },
     selectedCadence: {

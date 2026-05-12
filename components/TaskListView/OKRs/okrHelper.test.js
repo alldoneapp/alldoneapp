@@ -1,6 +1,7 @@
 import moment from 'moment'
 
 import {
+    OKR_CADENCE_DAILY,
     OKR_CADENCE_MONTHLY,
     OKR_CADENCE_QUARTERLY,
     OKR_CADENCE_WEEKLY,
@@ -51,6 +52,16 @@ describe('okrHelper', () => {
         expect(formatOkrValue(1234567, 'EUR')).toBe('1,234,567 EUR')
         expect(formatOkrValue(1234567.89, '')).toBe('1,234,567.89')
         expect(formatOkrValue(1234567.891, 'users')).toBe('1,234,567.89 users')
+    })
+
+    test('calculates daily period', () => {
+        const timestamp = moment('2026-05-13T12:00:00.000Z').valueOf()
+        const period = getOkrPeriodForCadence(OKR_CADENCE_DAILY, timestamp)
+
+        expect(moment(period.periodStart).hour()).toBe(0)
+        expect(moment(period.periodStart).minute()).toBe(0)
+        expect(moment(period.periodEnd).date()).toBe(13)
+        expect(moment(period.periodEnd).hour()).toBe(23)
     })
 
     test('uses derived revenue value for progress and stored value for manual OKRs', () => {

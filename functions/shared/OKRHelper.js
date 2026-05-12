@@ -5,6 +5,7 @@ const moment = require('moment-timezone')
 const OKRS_COLLECTION = 'projectOkrs'
 const OKR_STATUS_ACTIVE = 'active'
 const OKR_STATUS_CLOSED = 'closed'
+const OKR_CADENCE_DAILY = 'daily'
 const OKR_CADENCE_WEEKLY = 'weekly'
 const OKR_CADENCE_MONTHLY = 'monthly'
 const OKR_CADENCE_QUARTERLY = 'quarterly'
@@ -101,6 +102,13 @@ function getMomentForUser(userData = {}, timestamp = Date.now()) {
 function getOkrPeriodForCadence(cadence, timestamp = Date.now(), userData = {}) {
     const date = getMomentForUser(userData, timestamp)
 
+    if (cadence === OKR_CADENCE_DAILY) {
+        return {
+            periodStart: date.clone().startOf('day').valueOf(),
+            periodEnd: date.clone().endOf('day').valueOf(),
+        }
+    }
+
     if (cadence === OKR_CADENCE_WEEKLY) {
         return {
             periodStart: date.clone().startOf('isoWeek').valueOf(),
@@ -173,6 +181,7 @@ module.exports = {
     OKRS_COLLECTION,
     OKR_STATUS_ACTIVE,
     OKR_STATUS_CLOSED,
+    OKR_CADENCE_DAILY,
     OKR_CADENCE_WEEKLY,
     OKR_CADENCE_MONTHLY,
     OKR_CADENCE_QUARTERLY,
