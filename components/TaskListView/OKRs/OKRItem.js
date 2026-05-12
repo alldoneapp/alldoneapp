@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
 import Icon from '../../Icon'
-import styles, { colors, windowTagStyle } from '../../styles/global'
+import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { popoverToSafePosition } from '../../../utils/HelperFunctions'
 import { updateOKRCurrentValue } from '../../../utils/backends/OKRs/okrsFirestore'
@@ -249,17 +249,16 @@ export function OKREmptyItem({ projectId, canUpdate, compact }) {
         >
             <View style={localStyles.compactAddIcon}>
                 <Icon
-                    name={compact ? 'plus-square' : 'add-task'}
-                    size={16}
+                    name={compact ? 'plus' : 'add-task'}
+                    size={compact ? 14 : 16}
                     color={compact ? colors.Text03 : colors.Primary100}
                 />
             </View>
             {!shrinkTag && (
                 <Text
                     style={[
-                        compact ? styles.subtitle2 : styles.subtitle1,
+                        compact ? styles.caption1 : styles.subtitle1,
                         compact ? localStyles.compactAddText : localStyles.emptyText,
-                        compact && windowTagStyle(),
                     ]}
                 >
                     {translate('Add OKR')}
@@ -309,18 +308,15 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
     },
     compactAddButton: {
-        height: 24,
-        borderRadius: 50,
+        height: 22,
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: colors.Text03,
-        paddingHorizontal: 4,
+        paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
     },
     compactAddButtonMobile: {
-        width: 24,
-        height: 24,
+        width: 22,
+        height: 22,
     },
     compactAddIcon: {
         flexDirection: 'row',
@@ -332,8 +328,7 @@ const localStyles = StyleSheet.create({
     },
     compactAddText: {
         color: colors.Text03,
-        marginLeft: 6,
-        marginRight: 4,
+        marginLeft: 4,
     },
     disabled: {
         opacity: 0.6,
