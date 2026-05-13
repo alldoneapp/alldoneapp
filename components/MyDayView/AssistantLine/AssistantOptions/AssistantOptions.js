@@ -22,6 +22,7 @@ import Spinner from '../../../UIComponents/Spinner'
 import Icon from '../../../Icon'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
+import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 
 export default function AssistantOptions({
     amountOfButtonOptions,
@@ -174,7 +175,7 @@ export default function AssistantOptions({
         amountOfButtonOptions
     )
 
-    const hasQuickActions = optionsLikeButtons.length > 0 || showSubmenu
+    const hasQuickActions = true
     const canSend = message.trim().length > 0 && !isSending
 
     const sendLabel = translate('Send')
@@ -236,6 +237,7 @@ export default function AssistantOptions({
             </View>
             {hasQuickActions && (
                 <View style={localStyles.quickActions}>
+                    <AssistantTaskSearchButtonWrapper />
                     <OptionButtons projectId={assistantProject.id} options={optionsLikeButtons} assistant={assistant} />
                     {showSubmenu && (
                         <MoreOptionsWrapper

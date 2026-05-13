@@ -4,18 +4,27 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 
-export default function OptionButton({ containerStyle, text, icon, onPress, disabled = false }) {
+export default function OptionButton({
+    containerStyle,
+    text,
+    icon,
+    onPress,
+    disabled = false,
+    buttonStyle,
+    iconColor = colors.Text03,
+    textStyle,
+}) {
     return (
         <TouchableOpacity
-            style={[localStyles.tag, containerStyle, disabled && { opacity: 0.3, pointerEvents: 'none' }]}
+            style={[localStyles.tag, buttonStyle, containerStyle, disabled && { opacity: 0.3, pointerEvents: 'none' }]}
             onPress={disabled ? undefined : onPress}
             disabled={disabled}
             activeOpacity={disabled ? 1 : 0.2}
         >
             <View style={localStyles.icon}>
-                <Icon name={icon} size={16} color={colors.Text03} />
+                <Icon name={icon} size={16} color={iconColor} />
             </View>
-            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{text}</Text>
+            <Text style={[styles.subtitle2, localStyles.text, windowTagStyle(), textStyle]}>{text}</Text>
         </TouchableOpacity>
     )
 }

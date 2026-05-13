@@ -5397,6 +5397,18 @@ const updateEditonForFollowUnfollowAnObject = async (projectId, objectId, type, 
     }
 }
 
+const updateEditonForFollowUnfollowAnObjectSafely = (projectId, objectId, type, editorId) => {
+    updateEditonForFollowUnfollowAnObject(projectId, objectId, type, editorId).catch(error => {
+        console.warn('Unable to update edition data for followed object', {
+            projectId,
+            objectId,
+            type,
+            code: error?.code,
+            message: error?.message,
+        })
+    })
+}
+
 export async function addFollowerWithoutFeeds(
     projectId,
     userFollowingId,
@@ -5459,7 +5471,7 @@ export async function addFollower(projectId, followData, externalBatch) {
 
     const batch = externalBatch ? externalBatch : new BatchWrapper(db)
 
-    updateEditonForFollowUnfollowAnObject(projectId, followObjectId, followObjectsType, userFollowingId)
+    updateEditonForFollowUnfollowAnObjectSafely(projectId, followObjectId, followObjectsType, userFollowingId)
     addFollowerWithoutFeeds(projectId, userFollowingId, followObjectsType, followObjectId, actionType, batch)
     addFollowerToChat(projectId, followObjectId, userFollowingId)
 
@@ -5486,7 +5498,7 @@ export async function addFollower(projectId, followData, externalBatch) {
             : await getFeedObjectLastState(projectId, followObjectsType, followObjectId).subtaskIds
         if (subtaskIds) {
             subtaskIds.forEach(subtaskId => {
-                updateEditonForFollowUnfollowAnObject(projectId, subtaskId, followObjectsType, userFollowingId)
+                updateEditonForFollowUnfollowAnObjectSafely(projectId, subtaskId, followObjectsType, userFollowingId)
                 addFollowerWithoutFeeds(projectId, userFollowingId, followObjectsType, subtaskId, null, batch)
                 addFollowerToChat(projectId, subtaskId, userFollowingId)
             })
@@ -5522,7 +5534,7 @@ export async function addFollower(projectId, followData, externalBatch) {
 }
 
 async function removeFollowerWithoutFeeds(projectId, userFollowingId, followObjectsType, followObjectId, batch) {
-    updateEditonForFollowUnfollowAnObject(projectId, followObjectId, followObjectsType, userFollowingId)
+    updateEditonForFollowUnfollowAnObjectSafely(projectId, followObjectId, followObjectsType, userFollowingId)
 
     const userFollowingRef = db.doc(`usersFollowing/${projectId}/entries/${userFollowingId}`)
     batch.update(userFollowingRef, {
@@ -6053,6 +6065,18 @@ function parseNewFeeds(newFeeds) {
     }
     orderFeedsByDate(linealFeeds)
     return linealFeeds
+}
+
+function orderFeedsByDate(feedsData) {
+    feedsData.sort(function (a, b) {
+        if (a.lastChangeDate > b.lastChangeDate) {
+            return -1
+        }
+        if (a.lastChangeDate < b.lastChangeDate) {
+            return 1
+        }
+        return 0
+    })
 }
 
 function parseInvertedNewFeeds(newFeeds) {

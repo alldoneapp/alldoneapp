@@ -68,7 +68,7 @@ const localStyles = StyleSheet.create({
     amountText: {
         textAlign: 'left',
         alignSelf: 'flex-start',
-        marginTop: -8,
+        marginTop: 4,
         paddingLeft: 12,
     },
 })

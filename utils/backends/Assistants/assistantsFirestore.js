@@ -36,6 +36,7 @@ import { updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { RECURRENCE_NEVER } from '../../../components/TaskListView/Utils/TasksHelper'
+import { getAssistantPreConfigSearchRows, sortPreConfigTaskSearchItems } from './preConfigTaskSearchHelper'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -216,6 +217,37 @@ export async function getPreConfigTasksForProject(projectId) {
     }
 
     return allTasks.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+}
+
+export async function getPreConfigTasksForAllProjects() {
+    const { loggedUserProjects, projectAssistants, globalAssistants } = store.getState()
+    const rows = getAssistantPreConfigSearchRows({ loggedUserProjects, projectAssistants, globalAssistants })
+    const allTasks = []
+
+    for (const { project, assistant } of rows) {
+        const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : project.id
+        const collectionPath = getAssistantTasksCollectionPath(tasksProjectId, assistant.uid)
+        let query = getDb().collection(collectionPath)
+
+        if (isGlobalAssistant(assistant.uid)) {
+            query = query.where('assistantId', '==', assistant.uid)
+        }
+
+        const snapshot = await query.get()
+        snapshot.forEach(doc => {
+            const task = doc.data()
+            task.id = doc.id
+            task.searchId = `${project.id}_${assistant.uid}_${doc.id}`
+            task.projectId = project.id
+            task.project = project
+            task.assistant = assistant
+            task.assistantId = assistant.uid
+            task.isPreConfigTask = true
+            allTasks.push(task)
+        })
+    }
+
+    return sortPreConfigTaskSearchItems(allTasks)
 }
 
 export async function getPreConfigTask(projectId, assistantId, taskId) {
