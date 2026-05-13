@@ -39,6 +39,7 @@ const ProjectDetailedView = ({ navigation }) => {
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const projectIndex = navigation.getParam('projectIndex', undefined)
+    const statisticsFilterData = navigation.getParam('statisticsFilterData', null)
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
     const type = ProjectHelper.getTypeOfProject(loggedUser, project.id)
     const dispatch = useDispatch()
@@ -125,7 +126,13 @@ const ProjectDetailedView = ({ navigation }) => {
                                     case DV_TAB_PROJECT_UPDATES:
                                         return <RootViewFeedsProject projectId={project.id} />
                                     case DV_TAB_PROJECT_STATISTICS:
-                                        return <StatisticsView projectId={project.id} userId={loggedUser.uid} />
+                                        return (
+                                            <StatisticsView
+                                                projectId={project.id}
+                                                userId={loggedUser.uid}
+                                                initialFilterData={statisticsFilterData}
+                                            />
+                                        )
                                     case DV_TAB_PROJECT_BACKLINKS:
                                         return (
                                             <BacklinksView

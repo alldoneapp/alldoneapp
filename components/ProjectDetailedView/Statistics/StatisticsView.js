@@ -8,6 +8,7 @@ import {
     getDateRangesTimestamps,
     getFilterOption,
     getStatisticsFilterData,
+    STATISTIC_RANGE_CURRENT_MONTH,
 } from '../../StatisticsView/statisticsHelper'
 import { getEstimationTypeByProjectId } from '../../../utils/EstimationHelper'
 import Backend from '../../../utils/BackendBridge'
@@ -15,11 +16,13 @@ import StatisticsSection from '../../StatisticsView/StatisticsSection/Statistics
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../redux/store'
 
-export default function StatisticsView({ projectId, userId }) {
+export default function StatisticsView({ projectId, userId, initialFilterData }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const statisticsSelectedUsersIds = useSelector(state => state.loggedUser.statisticsSelectedUsersIds[projectId])
-    const [filterData, setFilterData] = useState({ filter: 'Current month', customDateRange: [] })
+    const [filterData, setFilterData] = useState(
+        () => initialFilterData || getStatisticsFilterData(STATISTIC_RANGE_CURRENT_MONTH)
+    )
     const statisticsDataRef = useRef({})
     const allStatisticsDataRef = useRef({})
     const [statisticsData, setStatisticsData] = useState({})
@@ -60,6 +63,12 @@ export default function StatisticsView({ projectId, userId }) {
     useEffect(() => {
         writeBrowserURL()
     }, [])
+
+    useEffect(() => {
+        if (initialFilterData) {
+            setFilterData(initialFilterData)
+        }
+    }, [JSON.stringify(initialFilterData)])
 
     useEffect(() => {
         const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData)

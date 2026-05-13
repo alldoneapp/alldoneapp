@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
 import Icon from '../../Icon'
@@ -24,13 +24,19 @@ import {
     normalizeOkrType,
 } from './okrHelper'
 import useOkrRevenueValue from './useOkrRevenueValue'
+import { STATISTIC_RANGE_CUSTOM } from '../../StatisticsView/statisticsHelper'
+import { setSelectedNavItem, switchProject } from '../../../redux/actions'
+import { DV_TAB_PROJECT_STATISTICS } from '../../../utils/TabNavigationConstants'
+import NavigationService from '../../../utils/NavigationService'
 
 const CADENCE_OPTIONS = [OKR_CADENCE_DAILY, OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
 const TYPE_OPTIONS = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 
 export default function OKRModal({ projectId, okr, closePopover }) {
+    const dispatch = useDispatch()
     const [, height] = useWindowSize()
     const currentUserId = useSelector(state => state.currentUser.uid)
+    const projectIndex = useSelector(state => state.loggedUserProjects.findIndex(project => project.id === projectId))
     const editing = !!okr
     const [type, setType] = useState(okr ? normalizeOkrType(okr.type) : OKR_TYPE_MANUAL)
     const [label, setLabel] = useState(okr ? okr.label : '')
@@ -62,6 +68,22 @@ export default function OKRModal({ projectId, okr, closePopover }) {
         (revenueOkr || (Number.isFinite(currentNumber) && currentNumber >= 0)) &&
         Number.isFinite(targetNumber) &&
         targetNumber > 0
+
+    const openProjectStatistics = event => {
+        event?.preventDefault?.()
+        event?.stopPropagation?.()
+        if (projectIndex < 0) return
+
+        closePopover()
+        dispatch([setSelectedNavItem(DV_TAB_PROJECT_STATISTICS), switchProject(projectIndex)])
+        NavigationService.navigate('ProjectDetailedView', {
+            projectIndex,
+            statisticsFilterData: {
+                filter: STATISTIC_RANGE_CUSTOM,
+                customDateRange: [previewPeriod.periodStart, previewPeriod.periodEnd],
+            },
+        })
+    }
 
     const save = async () => {
         if (!canSave || saving || confirmingDelete) return
@@ -148,9 +170,16 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                         <Text style={localStyles.label}>{translate('Current value')}</Text>
                         {revenueOkr ? (
                             <View style={localStyles.calculatedValue}>
-                                <Text style={[styles.body1, localStyles.calculatedValueText]}>
-                                    {formatOkrValue(revenueValue.currentValue, revenueValue.currency)}
-                                </Text>
+                                <TouchableOpacity
+                                    style={localStyles.calculatedValueLink}
+                                    onPress={openProjectStatistics}
+                                    disabled={projectIndex < 0}
+                                    accessibilityRole="link"
+                                >
+                                    <Text style={[styles.body1, localStyles.calculatedValueText]}>
+                                        {formatOkrValue(revenueValue.currentValue, revenueValue.currency)}
+                                    </Text>
+                                </TouchableOpacity>
                                 <Text style={[styles.caption1, localStyles.calculatedValueHint]} numberOfLines={2}>
                                     {translate(
                                         revenueValue.missingHourlyRate
@@ -429,8 +458,12 @@ const localStyles = StyleSheet.create({
         paddingVertical: 6,
         justifyContent: 'center',
     },
+    calculatedValueLink: {
+        alignSelf: 'flex-start',
+    },
     calculatedValueText: {
-        color: '#ffffff',
+        color: colors.Primary100,
+        textDecorationLine: 'underline',
     },
     calculatedValueHint: {
         color: colors.Text03,
