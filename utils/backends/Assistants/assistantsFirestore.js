@@ -50,11 +50,47 @@ const DEFAULT_HEARTBEAT_CHANCE_PERCENT = 0
 const DEFAULT_HEARTBEAT_SEND_WHATSAPP = false
 export const DEFAULT_HEARTBEAT_PROMPT =
     'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
+const ASSISTANT_TASKS_CACHE_MAX_AGE = 120000
+const assistantTasksCache = {}
 
 function getAssistantTasksCollectionPath(projectId, assistantId) {
     return isGlobalAssistant(assistantId)
         ? `assistantTasks/${projectId}/preConfigTasks`
         : `assistantTasks/${projectId}/${assistantId}`
+}
+
+const getAssistantTasksCacheKey = (projectId, assistantId) => `${projectId}/${assistantId}`
+
+const sortAssistantTasks = tasks => {
+    tasks.sort((a, b) => {
+        const typeRank = value => {
+            if (!value) return 1
+            return value === 'prompt' ? 0 : 1
+        }
+
+        const typeDiff = typeRank(a.type) - typeRank(b.type)
+        if (typeDiff !== 0) return typeDiff
+
+        return (a.order ?? 0) - (b.order ?? 0)
+    })
+    return tasks
+}
+
+const setAssistantTasksCache = (projectId, assistantId, tasks) => {
+    assistantTasksCache[getAssistantTasksCacheKey(projectId, assistantId)] = {
+        tasks: tasks.map(task => ({ ...task })),
+        updatedAt: Date.now(),
+    }
+}
+
+const getAssistantTasksCache = (projectId, assistantId) => {
+    const cachedData = assistantTasksCache[getAssistantTasksCacheKey(projectId, assistantId)]
+    if (!cachedData || Date.now() - cachedData.updatedAt > ASSISTANT_TASKS_CACHE_MAX_AGE) return null
+    return cachedData.tasks.map(task => ({ ...task }))
+}
+
+const clearAssistantTasksCache = (projectId, assistantId) => {
+    delete assistantTasksCache[getAssistantTasksCacheKey(projectId, assistantId)]
 }
 
 function getAssistantTaskDocRef(projectId, assistantId, taskId) {
@@ -166,18 +202,8 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
             tasks.push(task)
         })
 
-        tasks.sort((a, b) => {
-            const typeRank = value => {
-                if (!value) return 1
-                return value === 'prompt' ? 0 : 1
-            }
-
-            const typeDiff = typeRank(a.type) - typeRank(b.type)
-            if (typeDiff !== 0) return typeDiff
-
-            return (a.order ?? 0) - (b.order ?? 0)
-        })
-
+        sortAssistantTasks(tasks)
+        setAssistantTasksCache(projectId, assistantId, tasks)
         callback(tasks)
         if (firstSnap) {
             firstSnap = false
@@ -195,57 +221,85 @@ export async function getPreConfigTasksForProject(projectId) {
     const enabledGlobalAssistants = globalAssistants.filter(a => project?.globalAssistantIds?.includes(a.uid))
     const assistantsInProject = [...projectSpecificAssistants, ...enabledGlobalAssistants]
 
-    const allTasks = []
-    for (const assistant of assistantsInProject) {
-        const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : projectId
-        const collectionPath = getAssistantTasksCollectionPath(tasksProjectId, assistant.uid)
-        let query = getDb().collection(collectionPath)
-
-        if (isGlobalAssistant(assistant.uid)) {
-            query = query.where('assistantId', '==', assistant.uid)
-        }
-
-        const snapshot = await query.get()
-        snapshot.forEach(doc => {
-            const task = doc.data()
-            task.id = doc.id
-            task.assistant = assistant // Attach for display
-            task.isPreConfigTask = true
-            task.assistantId = assistant.uid
-            allTasks.push(task)
+    const taskGroups = await Promise.all(
+        assistantsInProject.map(async assistant => {
+            const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : projectId
+            const tasks = await getAssistantTasks(tasksProjectId, assistant.uid)
+            return tasks.map(task => ({
+                ...task,
+                id: task.id,
+                assistant, // Attach for display
+                isPreConfigTask: true,
+                assistantId: assistant.uid,
+            }))
         })
+    )
+
+    return taskGroups.flat().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+}
+
+async function getAssistantTasks(projectId, assistantId) {
+    const cachedTasks = getAssistantTasksCache(projectId, assistantId)
+    if (cachedTasks) return cachedTasks
+
+    const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
+    let query = getDb().collection(collectionPath)
+
+    if (isGlobalAssistant(assistantId)) {
+        query = query.where('assistantId', '==', assistantId)
     }
 
-    return allTasks.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    const snapshot = await query.get()
+    const tasks = []
+    snapshot.forEach(doc => {
+        const task = doc.data()
+        task.id = doc.id
+        tasks.push(task)
+    })
+
+    sortAssistantTasks(tasks)
+    setAssistantTasksCache(projectId, assistantId, tasks)
+    return tasks
 }
 
 export async function getPreConfigTasksForAllProjects() {
     const { loggedUserProjects, projectAssistants, globalAssistants } = store.getState()
     const rows = getAssistantPreConfigSearchRows({ loggedUserProjects, projectAssistants, globalAssistants })
+    const sourcesByCacheKey = {}
     const allTasks = []
 
-    for (const { project, assistant } of rows) {
+    rows.forEach(({ project, assistant }) => {
         const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : project.id
-        const collectionPath = getAssistantTasksCollectionPath(tasksProjectId, assistant.uid)
-        let query = getDb().collection(collectionPath)
-
-        if (isGlobalAssistant(assistant.uid)) {
-            query = query.where('assistantId', '==', assistant.uid)
+        const cacheKey = getAssistantTasksCacheKey(tasksProjectId, assistant.uid)
+        if (!sourcesByCacheKey[cacheKey]) {
+            sourcesByCacheKey[cacheKey] = {
+                tasksProjectId,
+                assistantId: assistant.uid,
+                rows: [],
+            }
         }
+        sourcesByCacheKey[cacheKey].rows.push({ project, assistant })
+    })
 
-        const snapshot = await query.get()
-        snapshot.forEach(doc => {
-            const task = doc.data()
-            task.id = doc.id
-            task.searchId = `${project.id}_${assistant.uid}_${doc.id}`
-            task.projectId = project.id
-            task.project = project
-            task.assistant = assistant
-            task.assistantId = assistant.uid
-            task.isPreConfigTask = true
-            allTasks.push(task)
+    await Promise.all(
+        Object.values(sourcesByCacheKey).map(async source => {
+            const tasks = await getAssistantTasks(source.tasksProjectId, source.assistantId)
+            source.rows.forEach(({ project, assistant }) => {
+                tasks.forEach(task => {
+                    allTasks.push({
+                        ...task,
+                        id: task.id,
+                        searchId: `${project.id}_${assistant.uid}_${task.id}`,
+                        projectId: project.id,
+                        project,
+                        assistant,
+                        assistantId: assistant.uid,
+                        isPreConfigTask: true,
+                    })
+                })
+            })
         })
-    }
+    )
 
     return sortPreConfigTaskSearchItems(allTasks)
 }
@@ -715,6 +769,7 @@ export async function discoverExternalToolsForIframeLink(link) {
 }
 
 export function uploadNewPreConfigTask(projectId, assistantId, task) {
+    clearAssistantTasksCache(projectId, assistantId)
     const taskId = getId()
     task.id = taskId
 
@@ -793,6 +848,7 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
 }
 
 export function updatePreConfigTask(projectId, assistantId, task) {
+    clearAssistantTasksCache(projectId, assistantId)
     const taskToStore = { ...task }
     delete taskToStore.id
     taskToStore.assistantId = assistantId
@@ -850,6 +906,7 @@ export function updatePreConfigTask(projectId, assistantId, task) {
 }
 
 export async function toggleRecurringTaskActivation(projectId, assistantId, taskId, recurrenceValue = null) {
+    clearAssistantTasksCache(projectId, assistantId)
     const { loggedUser } = store.getState()
     if (!loggedUser?.uid || !taskId) return
 
@@ -901,6 +958,7 @@ export async function toggleRecurringTaskActivation(projectId, assistantId, task
 }
 
 export function deletePreConfigTask(projectId, assistantId, taskId) {
+    clearAssistantTasksCache(projectId, assistantId)
     const batch = new BatchWrapper(getDb())
     updateAssistantData(projectId, assistantId, {}, batch)
     batch.delete(getAssistantTaskDocRef(projectId, assistantId, taskId))
@@ -913,6 +971,7 @@ export function deletePreConfigTask(projectId, assistantId, taskId) {
 }
 
 export function updateAssistantTasksOrder(projectId, assistantId, tasks) {
+    clearAssistantTasksCache(projectId, assistantId)
     // Create a batch operation
     const batch = new BatchWrapper(getDb())
 
