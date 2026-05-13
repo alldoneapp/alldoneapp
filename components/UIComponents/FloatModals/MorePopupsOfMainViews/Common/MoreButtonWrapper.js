@@ -31,6 +31,9 @@ function MoreButtonWrapper(
     const [isOpen, setIsOpen] = useState(false)
     const dispatch = useDispatch()
     const timeoutsRef = useRef([])
+    const contentKey = customModal
+        ? `custom-${customModal.key || customModal.type?.displayName || customModal.type?.name || 'modal'}`
+        : 'main-menu'
 
     useImperativeHandle(ref, () => ({
         close: () => closeModal(),
@@ -72,6 +75,7 @@ function MoreButtonWrapper(
         <View style={wrapperStyle}>
             {isOpen ? (
                 <Popover
+                    key={contentKey}
                     content={
                         customModal || (
                             <MoreButtonModal

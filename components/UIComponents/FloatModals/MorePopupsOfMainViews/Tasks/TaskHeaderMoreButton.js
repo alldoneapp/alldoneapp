@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 
 import MoreButtonWrapper from '../Common/MoreButtonWrapper'
@@ -31,6 +31,7 @@ export default function TaskHeaderMoreButton({
     const projectOKRs = useSelector(state => (projectId ? state.okrsByProjectInTasks[projectId] || [] : []))
     const [showAddOKR, setShowAddOKR] = useState(false)
     const modalRef = useRef()
+    const openAddOKRTimeoutRef = useRef()
 
     const inSelectedProject = !!projectId
     const showAddOKRItem = !!projectId && projectOKRs.length === 0
@@ -43,20 +44,41 @@ export default function TaskHeaderMoreButton({
         modalRef?.current?.close()
     }
 
+    const clearOpenAddOKRTimeout = () => {
+        if (openAddOKRTimeoutRef.current) {
+            clearTimeout(openAddOKRTimeoutRef.current)
+            openAddOKRTimeoutRef.current = null
+        }
+    }
+
     const openAddOKR = e => {
         e?.preventDefault?.()
         e?.stopPropagation?.()
-        setShowAddOKR(true)
+        e?.nativeEvent?.stopImmediatePropagation?.()
+
+        clearOpenAddOKRTimeout()
+        openAddOKRTimeoutRef.current = setTimeout(() => {
+            openAddOKRTimeoutRef.current = null
+            setShowAddOKR(true)
+        })
     }
 
     const closeAddOKR = () => {
+        clearOpenAddOKRTimeout()
         setShowAddOKR(false)
         dismissModal()
     }
 
     const onCloseMainModal = () => {
+        clearOpenAddOKRTimeout()
         setShowAddOKR(false)
     }
+
+    useEffect(() => {
+        return () => {
+            clearOpenAddOKRTimeout()
+        }
+    }, [])
 
     const renderItems = () => {
         const list = []
