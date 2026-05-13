@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react'
-import { StyleSheet, View, TextInput, Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 import Popover from 'react-tiny-popover'
@@ -20,6 +20,8 @@ import { translate } from '../../../../i18n/TranslationService'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
 import Spinner from '../../../UIComponents/Spinner'
 import Icon from '../../../Icon'
+import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
+import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 
 export default function AssistantOptions({
     amountOfButtonOptions,
@@ -41,7 +43,10 @@ export default function AssistantOptions({
     const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const [inputHeight, setInputHeight] = useState(40)
+    const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const isSendingRef = useRef(false)
+    const inputRef = useRef(null)
+    const isShiftPressed = useRef(false)
 
     const assistantId = assistantIdOverride || defaultAssistantId
 
@@ -95,6 +100,7 @@ export default function AssistantOptions({
 
             setMessage('')
             setInputHeight(40)
+            inputRef.current?.clear()
 
             // Unblock the input now that the thread has been created
             isSendingRef.current = false
@@ -119,15 +125,43 @@ export default function AssistantOptions({
         }
     }, [assistant, assistantProject, assistantProjectId, message, gold])
 
-    const handleKeyPress = useCallback(
-        e => {
-            if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
-                e.preventDefault()
+    const updateMessage = useCallback(text => {
+        setMessage(text)
+
+        const lineCount = text.split('\n').length
+        setInputHeight(Math.min(Math.max(40, lineCount * 34 + 6), 120))
+    }, [])
+
+    const handleKeyDown = useCallback(
+        event => {
+            if (!inputRef.current?.isFocused?.()) return
+
+            if (event.key === 'Enter' && !isShiftPressed.current && !mentionsModalActive && message.trim().length > 0) {
+                event.preventDefault()
                 handleSendMessage()
             }
+
+            if (event.key === 'Shift') {
+                isShiftPressed.current = true
+            }
         },
-        [handleSendMessage]
+        [handleSendMessage, mentionsModalActive, message]
     )
+
+    const handleKeyUp = useCallback(event => {
+        if (inputRef.current?.isFocused?.() && event.key === 'Shift') {
+            isShiftPressed.current = false
+        }
+    }, [])
+
+    useEffect(() => {
+        document.addEventListener('keydown', handleKeyDown)
+        document.addEventListener('keyup', handleKeyUp)
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown)
+            document.removeEventListener('keyup', handleKeyUp)
+        }
+    }, [handleKeyDown, handleKeyUp])
 
     if (!tasks || !assistant || !assistant.uid || !assistantProject) {
         return null
@@ -165,25 +199,18 @@ export default function AssistantOptions({
                 <View style={localStyles.avatarWrapper}>
                     <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
                 </View>
-                <TextInput
-                    style={[
-                        localStyles.messageInput,
-                        { height: inputHeight },
-                        inputHeight < 120 && { overflowY: 'hidden' },
-                    ]}
-                    value={message}
-                    onChangeText={setMessage}
+                <CustomTextInput3
+                    ref={inputRef}
+                    containerStyle={localStyles.messageInput}
+                    fixedHeight={inputHeight}
+                    maxHeight={120}
+                    onChangeText={updateMessage}
                     placeholder={translate('Start a new chat')}
-                    placeholderTextColor={colors.Text03}
-                    editable={!isSending}
-                    autoCorrect={true}
-                    multiline={true}
-                    scrollEnabled={inputHeight >= 120}
-                    onKeyPress={handleKeyPress}
-                    onContentSizeChange={e => {
-                        const h = e.nativeEvent.contentSize.height
-                        setInputHeight(Math.min(Math.max(h, 40), 120))
-                    }}
+                    projectId={assistantProject.id}
+                    styleTheme={TASK_THEME}
+                    disabledEdition={isSending}
+                    setMentionsModalActive={setMentionsModalActive}
+                    keepBreakLines={true}
                 />
                 <Popover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
@@ -261,7 +288,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: 'white',
         minHeight: 40,
         maxHeight: 120,
-        paddingVertical: 8,
+        paddingVertical: 3,
         paddingHorizontal: 12,
         fontSize: 14,
         lineHeight: 22,

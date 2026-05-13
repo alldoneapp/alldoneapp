@@ -103,6 +103,7 @@ export default function MentionsContacts({
                                     dotsBackgroundColor={{ backgroundColor: colors.Secondary400 }}
                                     maxHeight={20}
                                     shortTags={true}
+                                    singleLine={true}
                                 />
                             )}
                         </View>
@@ -148,11 +149,12 @@ const localStyles = StyleSheet.create({
     },
     textContainer: {
         flex: 1,
+        minWidth: 0,
+        marginLeft: 8,
     },
     name: {
         ...styles.subtitle1,
         color: '#FFFFFF',
-        marginLeft: 8,
     },
     activeName: {
         color: '#FFFFFF',
@@ -163,7 +165,7 @@ const localStyles = StyleSheet.create({
     },
     infoContainer: {
         maxHeight: 20,
-        marginLeft: 8,
         overflow: 'hidden',
+        minWidth: 0,
     },
 })
