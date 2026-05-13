@@ -8,6 +8,8 @@ const {
     calculateRevenueOkrCurrentValue,
     calculateOkrProgress,
     getNextOkrPeriod,
+    getOkrIsPublicFor,
+    isOkrPrivate,
     mapOKRData,
     normalizeOkrType,
     normalizeStatus,
@@ -38,8 +40,21 @@ describe('OKRHelper', () => {
             cadence: OKR_CADENCE_MONTHLY,
             status: OKR_STATUS_ACTIVE,
             type: OKR_TYPE_MANUAL,
+            isPrivate: false,
+            isPublicFor: [0],
             progress: 50,
         })
+    })
+
+    test('maps OKR privacy fields', () => {
+        const okr = mapOKRData('okr-1', {
+            ownerId: 'user-1',
+            isPrivate: true,
+            isPublicFor: ['user-1'],
+        })
+
+        expect(getOkrIsPublicFor(okr)).toEqual(['user-1'])
+        expect(isOkrPrivate(okr)).toBe(true)
     })
 
     test('normalizes OKR types and calculates revenue current value', () => {

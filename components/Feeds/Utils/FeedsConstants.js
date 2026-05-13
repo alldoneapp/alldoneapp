@@ -15,6 +15,7 @@ export const FEED_CHAT_OBJECT_TYPE = 'chat'
 export const FEED_WORKSTREAM_OBJECT_TYPE = 'workstream'
 export const FEED_OBJECT_NOTE_OBJECT_TYPE = 'objectNote'
 export const FEED_SKILL_OBJECT_TYPE = 'skill'
+export const FEED_OKR_OBJECT_TYPE = 'okr'
 export const DEFAULT_SKILL_PRIVACY_OBJECT_TYPE = 'defaultSkill'
 export const FEED_ASSISTANT_OBJECT_TYPE = 'assistant'
 

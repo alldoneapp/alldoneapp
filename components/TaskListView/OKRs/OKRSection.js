@@ -41,7 +41,7 @@ export default function OKRSection({ projectId, inAllProjects }) {
                         style={localStyles.privacyButton}
                         onPress={togglePrivacyMode}
                         disabled={!loggedUser.uid}
-                        accessibilityLabel={translate(okrPrivacyMode ? 'Show OKRs' : 'Hide OKRs')}
+                        accessibilityLabel={translate(okrPrivacyMode ? 'Show all OKRs' : 'Hide all OKRs')}
                     >
                         <Icon
                             name={okrPrivacyMode ? 'eye-off' : 'eye'}
@@ -56,7 +56,7 @@ export default function OKRSection({ projectId, inAllProjects }) {
                                     okrPrivacyMode && localStyles.privacyTextActive,
                                 ]}
                             >
-                                {translate('Privacy')}
+                                {translate(okrPrivacyMode ? 'Show all' : 'Hide all')}
                             </Text>
                         )}
                     </TouchableOpacity>

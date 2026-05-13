@@ -14,6 +14,7 @@ const OKR_TYPE_TIME_LOGGED_REVENUE = 'timeLoggedRevenue'
 const VALID_OKR_STATUSES = [OKR_STATUS_ACTIVE, OKR_STATUS_CLOSED, 'all']
 const VALID_OKR_TYPES = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 const ESTIMATION_TYPE_TIME = 'TIME'
+const FEED_PUBLIC_FOR_ALL = 0
 
 function normalizeOkrNumber(value, fallback = 0) {
     const number = Number(value)
@@ -29,6 +30,16 @@ function calculateOkrProgress(currentValue, targetValue) {
 
 function normalizeOkrType(type) {
     return VALID_OKR_TYPES.includes(type) ? type : OKR_TYPE_MANUAL
+}
+
+function getOkrIsPublicFor(okr = {}) {
+    if (Array.isArray(okr.isPublicFor) && okr.isPublicFor.length > 0) return okr.isPublicFor
+    if (okr.isPrivate) return [okr.ownerId || okr.creatorId].filter(Boolean)
+    return [FEED_PUBLIC_FOR_ALL]
+}
+
+function isOkrPrivate(okr = {}) {
+    return !getOkrIsPublicFor(okr).includes(FEED_PUBLIC_FOR_ALL)
 }
 
 function isRevenueOkr(okr = {}) {
@@ -156,6 +167,8 @@ function mapOKRData(okrId, okr = {}) {
         lastEditionDate: okr.lastEditionDate || Date.now(),
         lastEditorId: okr.lastEditorId || '',
         renewalProcessedAt: okr.renewalProcessedAt || null,
+        isPrivate: isOkrPrivate(okr),
+        isPublicFor: getOkrIsPublicFor(okr),
         progress: calculateOkrProgress(currentValue, targetValue),
     }
 }
@@ -187,6 +200,7 @@ module.exports = {
     OKR_CADENCE_QUARTERLY,
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
+    FEED_PUBLIC_FOR_ALL,
     calculateOkrProgress,
     calculateRevenueOkrCurrentValue,
     getNextOkrPeriod,
@@ -194,8 +208,10 @@ module.exports = {
     getDoneTimeMinutesForPeriod,
     getRemainingText,
     getOwnerHourlyRate,
+    getOkrIsPublicFor,
     getProjectCurrency,
     isRevenueOkr,
+    isOkrPrivate,
     mapOKRData,
     normalizeOkrNumber,
     normalizeOkrType,

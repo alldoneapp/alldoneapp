@@ -5,11 +5,15 @@ import {
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
     OKR_STATUS_ACTIVE,
+    canUserSeeOkr,
     calculateOkrProgress,
+    getOkrIsPublicFor,
+    isOkrPrivate,
     getOkrPeriodForCadence,
     normalizeOkrType,
     normalizeOkrNumber,
 } from '../../../components/TaskListView/OKRs/okrHelper'
+import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 
 export const OKRS_COLLECTION = 'projectOkrs'
 
@@ -37,6 +41,8 @@ export function mapOKRData(okrId, okr) {
         lastEditionDate: okr.lastEditionDate || Date.now(),
         lastEditorId: okr.lastEditorId || '',
         renewalProcessedAt: okr.renewalProcessedAt || null,
+        isPrivate: isOkrPrivate(okr),
+        isPublicFor: getOkrIsPublicFor(okr),
         progress: calculateOkrProgress(currentValue, targetValue),
     }
 }
@@ -50,8 +56,10 @@ export function watchProjectOKRs(projectId, ownerId, watcherKey) {
         .where('status', '==', OKR_STATUS_ACTIVE)
         .onSnapshot(snapshot => {
             const okrs = []
+            const { loggedUser } = store.getState()
             snapshot.forEach(doc => {
-                okrs.push(mapOKRData(doc.id, doc.data()))
+                const okr = mapOKRData(doc.id, doc.data())
+                if (canUserSeeOkr(okr, loggedUser.uid)) okrs.push(okr)
             })
             okrs.sort((a, b) => {
                 if (a.periodEnd !== b.periodEnd) return a.periodEnd - b.periodEnd
@@ -89,6 +97,8 @@ export async function createOKR(projectId, data) {
         lastEditionDate: now,
         lastEditorId: loggedUser.uid,
         renewalProcessedAt: null,
+        isPrivate: data.isPrivate || false,
+        isPublicFor: data.isPrivate ? data.isPublicFor || [currentUser.uid] : [FEED_PUBLIC_FOR_ALL],
     }
 
     await getDb().doc(`okrs/${projectId}/${OKRS_COLLECTION}/${okrId}`).set(okr)
@@ -123,6 +133,20 @@ export async function updateOKR(projectId, okr, data) {
             unit: String(data.unit || '').trim(),
             cadence,
             ...period,
+            isPrivate: data.isPrivate || false,
+            isPublicFor: data.isPrivate ? data.isPublicFor || [okr.ownerId] : [FEED_PUBLIC_FOR_ALL],
+            lastEditionDate: Date.now(),
+            lastEditorId: loggedUser.uid,
+        })
+}
+
+export async function updateOKRPrivacy(projectId, okrId, isPrivate, isPublicFor) {
+    const { loggedUser } = store.getState()
+    await getDb()
+        .doc(`okrs/${projectId}/${OKRS_COLLECTION}/${okrId}`)
+        .update({
+            isPrivate,
+            isPublicFor: isPrivate ? isPublicFor : [FEED_PUBLIC_FOR_ALL],
             lastEditionDate: Date.now(),
             lastEditorId: loggedUser.uid,
         })

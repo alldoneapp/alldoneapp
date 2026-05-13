@@ -13,13 +13,16 @@ import {
     OKR_PACE_ON_TRACK,
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
+    canUserSeeOkr,
     calculateRevenueOkrCurrentValue,
     calculateOkrPace,
     calculateOkrProgress,
     formatOkrValue,
     getOkrAllProjectsTodayKey,
+    getOkrIsPublicFor,
     getOkrPeriodForCadence,
     getOkrUserTimezone,
+    isOkrPrivate,
     normalizeOkrTimezoneOffset,
     normalizeOkrType,
     resolveOkrProgress,
@@ -56,6 +59,18 @@ describe('okrHelper', () => {
         expect(getOkrUserTimezone({ timezone: -4 })).toBe(-4)
         expect(normalizeOkrTimezoneOffset(-4)).toBe(-240)
         expect(normalizeOkrTimezoneOffset('UTC+05:30')).toBe(330)
+    })
+
+    test('defaults OKR privacy to project-wide and filters private OKRs by user', () => {
+        const publicOkr = { ownerId: 'owner-1' }
+        const privateOkr = { ownerId: 'owner-1', isPrivate: true, isPublicFor: ['owner-1'] }
+
+        expect(getOkrIsPublicFor(publicOkr)).toEqual([0])
+        expect(isOkrPrivate(publicOkr)).toBe(false)
+        expect(isOkrPrivate(privateOkr)).toBe(true)
+        expect(canUserSeeOkr(privateOkr, 'owner-1')).toBe(true)
+        expect(canUserSeeOkr(privateOkr, 'user-2')).toBe(false)
+        expect(canUserSeeOkr({ ...privateOkr, isPublicFor: ['owner-1', 'user-2'] }, 'user-2')).toBe(true)
     })
 
     test('calculates revenue OKR current value from minutes and hourly rate', () => {

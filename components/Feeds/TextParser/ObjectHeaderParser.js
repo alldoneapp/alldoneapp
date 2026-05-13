@@ -47,7 +47,6 @@ export default function ObjectHeaderParser({
     disebledTags,
     maxHeight,
     shortTags,
-    singleLine,
 }) {
     const [showDots, setShowDots] = useState(false)
     const containerWidth = useRef(getPopoverWidth())
@@ -191,16 +190,7 @@ export default function ObjectHeaderParser({
         } else if (type === TEXT_ELEMENT) {
             const extraSpace = elements[index - 1] && elements[index - 1].type === URL_ELEMENT ? ' ' : ''
             return (
-                <Text
-                    key={index}
-                    style={[
-                        localStyles.entry,
-                        localStyles.element,
-                        entryExternalStyle,
-                        singleLine && localStyles.singleLineEntry,
-                    ]}
-                    numberOfLines={singleLine ? 1 : undefined}
-                >
+                <Text key={index} style={[localStyles.entry, localStyles.element, entryExternalStyle]}>
                     {extraSpace + text}
                 </Text>
             )
@@ -354,17 +344,14 @@ export default function ObjectHeaderParser({
 
     return onPress ? (
         <TouchableOpacity onPress={onPress} style={[localStyles.body, containerExternalStyle]} onLayout={onLayout}>
-            <View style={[localStyles.innerContainer, singleLine && localStyles.singleLineInnerContainer]}>
+            <View style={localStyles.innerContainer}>
                 {linkBack && <LinkBack link={linkBack} text={'Link'} disabled={disebledTags} />}
                 {renderedElements}
             </View>
         </TouchableOpacity>
     ) : (
         <View style={[localStyles.body, containerExternalStyle]} onLayout={onLayout}>
-            <View
-                style={[localStyles.innerContainer, singleLine && localStyles.singleLineInnerContainer]}
-                onLayout={maxHeight != undefined ? onLayoutInnerContainer : null}
-            >
+            <View style={localStyles.innerContainer} onLayout={maxHeight != undefined ? onLayoutInnerContainer : null}>
                 {linkBack && <LinkBack link={linkBack} text={'Link'} disabled={disebledTags} />}
                 {renderedElements}
             </View>
@@ -377,17 +364,11 @@ const localStyles = StyleSheet.create({
     body: {
         marginLeft: 12,
         flex: 1,
-        minWidth: 0,
     },
     innerContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
-    },
-    singleLineInnerContainer: {
-        flexWrap: 'nowrap',
-        overflow: 'hidden',
-        minWidth: 0,
     },
     dots: {
         ...styles.body1,
@@ -405,10 +386,6 @@ const localStyles = StyleSheet.create({
     entry: {
         ...styles.body1,
         overflow: 'hidden',
-    },
-    singleLineEntry: {
-        flexShrink: 1,
-        minWidth: 0,
     },
     tag: {
         height: 24,

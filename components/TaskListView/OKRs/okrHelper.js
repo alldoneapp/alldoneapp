@@ -1,5 +1,7 @@
 import moment from 'moment-timezone'
 
+import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
+
 export const OKR_CADENCE_WEEKLY = 'weekly'
 export const OKR_CADENCE_DAILY = 'daily'
 export const OKR_CADENCE_MONTHLY = 'monthly'
@@ -58,6 +60,26 @@ export function getOkrUserTimezone(user = {}) {
 
 export function normalizeOkrType(type) {
     return OKR_TYPES.includes(type) ? type : OKR_TYPE_MANUAL
+}
+
+export function getOkrIsPublicFor(okr = {}) {
+    if (Array.isArray(okr.isPublicFor) && okr.isPublicFor.length > 0) return okr.isPublicFor
+    if (okr.isPrivate) return [okr.ownerId || okr.creatorId].filter(Boolean)
+    return [FEED_PUBLIC_FOR_ALL]
+}
+
+export function isOkrPrivate(okr = {}) {
+    return !getOkrIsPublicFor(okr).includes(FEED_PUBLIC_FOR_ALL)
+}
+
+export function canUserSeeOkr(okr = {}, userId) {
+    const isPublicFor = getOkrIsPublicFor(okr)
+    return (
+        isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
+        okr.ownerId === userId ||
+        okr.creatorId === userId ||
+        isPublicFor.includes(userId)
+    )
 }
 
 export function getOkrMoment(timestamp, timezone) {

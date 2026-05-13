@@ -11,6 +11,7 @@ import {
     FEED_CONTACT_OBJECT_TYPE,
     FEED_GOAL_OBJECT_TYPE,
     FEED_NOTE_OBJECT_TYPE,
+    FEED_OKR_OBJECT_TYPE,
     FEED_PROJECT_OBJECT_TYPE,
     FEED_PUBLIC_FOR_ALL,
     FEED_SKILL_OBJECT_TYPE,
@@ -43,6 +44,7 @@ import { setTaskPrivacy } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { updateNotePrivacy } from '../../../../utils/backends/Notes/notesFirestore'
 import { updateChatPrivacy } from '../../../../utils/backends/Chats/chatsFirestore'
 import { setUserPrivacyInProject } from '../../../../utils/backends/Users/usersFirestore'
+import { updateOKRPrivacy } from '../../../../utils/backends/OKRs/okrsFirestore'
 
 const getOwnersId = (object, objectType) => {
     switch (objectType) {
@@ -62,6 +64,8 @@ const getOwnersId = (object, objectType) => {
             return object.assigneesIds
         case FEED_SKILL_OBJECT_TYPE:
             return [object.userId]
+        case FEED_OKR_OBJECT_TYPE:
+            return [object.ownerId]
         case DEFAULT_SKILL_PRIVACY_OBJECT_TYPE:
             return [object.userId]
     }
@@ -85,6 +89,8 @@ const getObjectTypeData = objectType => {
             return { ownerText: 'Assignee', objectText: 'goal' }
         case FEED_SKILL_OBJECT_TYPE:
             return { ownerText: 'Owner', objectText: 'skill' }
+        case FEED_OKR_OBJECT_TYPE:
+            return { ownerText: 'Owner', objectText: 'OKR' }
         case DEFAULT_SKILL_PRIVACY_OBJECT_TYPE:
             return { ownerText: 'Owner', objectText: 'skill' }
     }
@@ -237,6 +243,9 @@ function PrivacyModal({
                 case FEED_SKILL_OBJECT_TYPE:
                     Backend.updateSkillPrivacy(projectId, object, isPublicFor)
                     break
+                case FEED_OKR_OBJECT_TYPE:
+                    updateOKRPrivacy(projectId, object.id, isPrivate, isPublicFor)
+                    break
             }
             if (callback) callback(isPrivate, isPublicFor)
             closePopover()
@@ -280,7 +289,11 @@ function PrivacyModal({
         const { workstreamIds, userIds } = project
 
         let restOptionList = userIds.filter(uid => !ownerIds.includes(uid))
-        if (objectType === FEED_TASK_OBJECT_TYPE || objectType === FEED_GOAL_OBJECT_TYPE) {
+        if (
+            objectType === FEED_TASK_OBJECT_TYPE ||
+            objectType === FEED_GOAL_OBJECT_TYPE ||
+            objectType === FEED_OKR_OBJECT_TYPE
+        ) {
             restOptionList = [...workstreamIds.filter(uid => !ownerIds.includes(uid)), ...restOptionList]
         }
 
@@ -334,7 +347,7 @@ function PrivacyModal({
                         delayClosePopover()
                     }}
                     title={translate(
-                        DEFAULT_SKILL_PRIVACY_OBJECT_TYPE
+                        objectType === DEFAULT_SKILL_PRIVACY_OBJECT_TYPE
                             ? 'Select who will see the new skills'
                             : `Select who will see this ${objectText}`
                     )}

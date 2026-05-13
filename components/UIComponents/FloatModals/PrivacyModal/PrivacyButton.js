@@ -23,6 +23,7 @@ export default function PrivacyButton({
     shortcutText,
     inEditComponent,
     callback,
+    onShowPopup,
     onDismissPopup,
 }) {
     const dispatch = useDispatch()
@@ -49,6 +50,7 @@ export default function PrivacyButton({
     const showPopover = () => {
         setVisiblePopover(true)
         dispatch(showFloatPopup())
+        if (onShowPopup) onShowPopup()
     }
 
     if (objectType === FEED_USER_OBJECT_TYPE) {

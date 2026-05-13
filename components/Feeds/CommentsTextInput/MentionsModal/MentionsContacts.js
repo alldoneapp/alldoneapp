@@ -1,12 +1,11 @@
 import React, { useEffect } from 'react'
-import { Image, StyleSheet, TouchableOpacity, View } from 'react-native'
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
 import ContactsHelper, { PHOTO_SIZE_50 } from '../../../ContactsView/Utils/ContactsHelper'
 import SVGGenericUser from '../../../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_CONTACTS_TAB } from '../textInputHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
-import ObjectHeaderParser from '../../TextParser/ObjectHeaderParser'
 import SocialText from '../../../UIControls/SocialText/SocialText'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 
@@ -94,17 +93,9 @@ export default function MentionsContacts({
                             </SocialText>
 
                             {!!info && (
-                                <ObjectHeaderParser
-                                    text={info}
-                                    projectId={projectId}
-                                    entryExternalStyle={localStyles.info}
-                                    containerExternalStyle={localStyles.infoContainer}
-                                    inMentionModalDescription={true}
-                                    dotsBackgroundColor={{ backgroundColor: colors.Secondary400 }}
-                                    maxHeight={20}
-                                    shortTags={true}
-                                    singleLine={true}
-                                />
+                                <Text style={localStyles.info} numberOfLines={1}>
+                                    {info}
+                                </Text>
                             )}
                         </View>
                     </TouchableOpacity>
@@ -162,10 +153,6 @@ const localStyles = StyleSheet.create({
     info: {
         ...styles.caption2,
         color: colors.Text03,
-    },
-    infoContainer: {
-        maxHeight: 20,
         overflow: 'hidden',
-        minWidth: 0,
     },
 })

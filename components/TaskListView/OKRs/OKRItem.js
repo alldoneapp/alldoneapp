@@ -24,6 +24,7 @@ import {
     resolveOkrCurrentValue,
     getOkrAllProjectsTodayKey,
     getOkrUserTimezone,
+    isOkrPrivate,
 } from './okrHelper'
 import useOkrRevenueValue from './useOkrRevenueValue'
 
@@ -54,6 +55,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserId = loggedUser.uid
     const revenueOkr = isRevenueOkr(okr)
+    const privateOkr = isOkrPrivate(okr)
     const revenueValue = useOkrRevenueValue({
         projectId,
         ownerId: revenueOkr ? okr.ownerId : null,
@@ -130,6 +132,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
                     >
                         {okr.label}
                     </Text>
+                    {privateOkr && <Icon name="lock" size={12} color={colors.Text03} style={localStyles.lockIcon} />}
                     {showAllProjectsVisibilityAction && (
                         <TouchableOpacity
                             style={[
@@ -225,6 +228,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
             align="start"
             containerStyle={OKR_POPOVER_CONTAINER_STYLE}
             padding={4}
+            disableReposition
             onClickOutside={() => setIsOpen(false)}
             contentLocation={args => popoverToSafePosition(args, false)}
             content={<OKRModal projectId={projectId} okr={okr} closePopover={() => setIsOpen(false)} />}
@@ -335,6 +339,7 @@ export function OKREmptyItem({ projectId, canUpdate, compact }) {
             align="start"
             containerStyle={OKR_POPOVER_CONTAINER_STYLE}
             padding={4}
+            disableReposition
             onClickOutside={() => setIsOpen(false)}
             contentLocation={args => popoverToSafePosition(args, false)}
             content={<OKRModal projectId={projectId} closePopover={() => setIsOpen(false)} />}
@@ -353,7 +358,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingVertical: 8,
-        paddingLeft: 8,
+        paddingLeft: 16,
     },
     containerMobile: {
         minHeight: 92,
@@ -421,6 +426,9 @@ const localStyles = StyleSheet.create({
     },
     titleInRow: {
         flexShrink: 1,
+        marginRight: 12,
+    },
+    lockIcon: {
         marginRight: 12,
     },
     meta: {

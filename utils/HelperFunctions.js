@@ -285,30 +285,13 @@ export const popoverToSafePosition = (
         return { top: top + scrollY, left: left + scrollX }
     }
 
-    // For desktop/tablet, use the original center logic with sidebar adjustment
+    // For desktop/tablet, use centered positioning with hard viewport clamping.
+    // If the popover is taller than the available viewport, keep the top edge visible.
     let top = viewportHeight / 2 - popoverRect.height / 2
     let left = viewportWidth / 2 - popoverRect.width / 2 + sidebarDiff
 
-    // Ensure the popover doesn't go off-screen
-    // Check top boundary
-    if (top < padding) {
-        top = padding
-    }
-
-    // Check bottom boundary
-    if (top + popoverRect.height > dim.height - padding) {
-        top = dim.height - popoverRect.height - padding
-    }
-
-    // Check left boundary
-    if (left < padding) {
-        left = padding
-    }
-
-    // Check right boundary
-    if (left + popoverRect.width > dim.width - padding) {
-        left = dim.width - popoverRect.width - padding
-    }
+    top = clampToRange(top, padding, Math.max(padding, viewportHeight - popoverRect.height - padding))
+    left = clampToRange(left, padding, Math.max(padding, viewportWidth - popoverRect.width - padding))
 
     return { top: top + scrollY, left: left + scrollX }
 }

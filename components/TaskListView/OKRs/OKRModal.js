@@ -6,11 +6,14 @@ import Hotkeys from 'react-hot-keys'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import CustomScrollView from '../../UIControls/CustomScrollView'
+import PrivacyModal from '../../UIComponents/FloatModals/PrivacyModal/PrivacyModal'
+import ButtonUsersGroup from '../../UIComponents/FloatModals/PrivacyModal/ButtonUsersGroup'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import { createOKR, deleteOKR, updateOKR } from '../../../utils/backends/OKRs/okrsFirestore'
+import { FEED_OKR_OBJECT_TYPE, FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import {
     OKR_CADENCE_DAILY,
     OKR_CADENCE_MONTHLY,
@@ -19,7 +22,9 @@ import {
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
     formatOkrValue,
+    getOkrIsPublicFor,
     getOkrPeriodForCadence,
+    isOkrPrivate,
     normalizeOkrNumber,
     normalizeOkrType,
 } from './okrHelper'
@@ -44,6 +49,9 @@ export default function OKRModal({ projectId, okr, closePopover }) {
     const [targetValue, setTargetValue] = useState(okr ? `${okr.targetValue}` : '')
     const [unit, setUnit] = useState(okr ? okr.unit : '')
     const [cadence, setCadence] = useState(okr ? okr.cadence : OKR_CADENCE_MONTHLY)
+    const [isPrivate, setIsPrivate] = useState(okr ? isOkrPrivate(okr) : false)
+    const [isPublicFor, setIsPublicFor] = useState(okr ? getOkrIsPublicFor(okr) : [FEED_PUBLIC_FOR_ALL])
+    const [privacyModalOpen, setPrivacyModalOpen] = useState(false)
     const [saving, setSaving] = useState(false)
     const [confirmingDelete, setConfirmingDelete] = useState(false)
     const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
@@ -97,6 +105,8 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                     targetValue: targetNumber,
                     unit: revenueOkr ? revenueValue.currency : unit,
                     cadence,
+                    isPrivate,
+                    isPublicFor,
                 })
             } else {
                 await createOKR(projectId, {
@@ -106,6 +116,8 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                     targetValue: targetNumber,
                     unit: revenueOkr ? revenueValue.currency : unit,
                     cadence,
+                    isPrivate,
+                    isPublicFor,
                 })
             }
             closePopover()
@@ -128,11 +140,41 @@ export default function OKRModal({ projectId, okr, closePopover }) {
     useEffect(() => {
         if (typeof document === 'undefined') return undefined
         const onKeyDown = event => {
-            if (event.key === 'Escape') closePopover()
+            if (event.key === 'Escape' && !privacyModalOpen) closePopover()
         }
         document.addEventListener('keydown', onKeyDown)
         return () => document.removeEventListener('keydown', onKeyDown)
-    }, [closePopover])
+    }, [closePopover, privacyModalOpen])
+
+    const savePrivacyBeforeSaveObject = (nextIsPrivate, nextIsPublicFor) => {
+        setIsPrivate(nextIsPrivate)
+        setIsPublicFor(nextIsPublicFor)
+    }
+
+    const privacyObject = {
+        ...(okr || {}),
+        id: okr?.id || 'new-okr',
+        objectType: FEED_OKR_OBJECT_TYPE,
+        ownerId: okr?.ownerId || currentUserId,
+        isPrivate,
+        isPublicFor,
+    }
+    const closePrivacyModal = () => {
+        setPrivacyModalOpen(false)
+    }
+
+    if (privacyModalOpen) {
+        return (
+            <PrivacyModal
+                projectId={projectId}
+                object={privacyObject}
+                objectType={FEED_OKR_OBJECT_TYPE}
+                closePopover={closePrivacyModal}
+                delayClosePopover={closePrivacyModal}
+                savePrivacyBeforeSaveObject={savePrivacyBeforeSaveObject}
+            />
+        )
+    }
 
     return (
         <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
@@ -155,6 +197,26 @@ export default function OKRModal({ projectId, okr, closePopover }) {
                     isOpen={typeDropdownOpen}
                     setIsOpen={setTypeDropdownOpen}
                 />
+
+                <View style={localStyles.privacyRow}>
+                    <Text style={[localStyles.label, localStyles.privacyLabel]}>{translate('Privacy')}</Text>
+                    <TouchableOpacity
+                        style={localStyles.privacySelector}
+                        onPress={() => setPrivacyModalOpen(true)}
+                        disabled={saving}
+                    >
+                        {isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? (
+                            <Icon name="unlock" size={16} color={colors.Text03} style={localStyles.privacyIcon} />
+                        ) : (
+                            <View style={localStyles.privacyUsers}>
+                                <ButtonUsersGroup projectId={projectId} users={isPublicFor} />
+                            </View>
+                        )}
+                        <Text style={[styles.subtitle2, localStyles.privacySelectorText]}>
+                            {translate(isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ? 'Project-wide' : 'Private')}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
 
                 <Text style={localStyles.label}>{translate('OKR target label')}</Text>
                 <TextInput
@@ -428,6 +490,30 @@ const localStyles = StyleSheet.create({
         shadowRadius: 16,
         elevation: 3,
         zIndex: 4,
+    },
+    privacyRow: {
+        marginTop: 8,
+    },
+    privacyLabel: {
+        marginTop: 0,
+    },
+    privacySelector: {
+        alignSelf: 'flex-start',
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: colors.Secondary300,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+    },
+    privacyIcon: {
+        marginRight: 6,
+    },
+    privacyUsers: {
+        marginRight: 6,
+    },
+    privacySelectorText: {
+        color: colors.Text03,
     },
     typeDropdownOption: {
         minHeight: 40,
