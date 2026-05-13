@@ -5,6 +5,13 @@ const {
     OKR_STATUS_CLOSED,
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
+    OKR_PACE_AHEAD,
+    OKR_PACE_AT_RISK,
+    OKR_PACE_COMPLETED,
+    OKR_PACE_ENDED,
+    OKR_PACE_OFF_TRACK,
+    OKR_PACE_ON_TRACK,
+    calculateOkrPace,
     calculateRevenueOkrCurrentValue,
     calculateOkrProgress,
     getNextOkrPeriod,
@@ -22,6 +29,23 @@ describe('OKRHelper', () => {
         expect(calculateOkrProgress(125, 100)).toBe(100)
         expect(calculateOkrProgress(-10, 100)).toBe(0)
         expect(calculateOkrProgress(10, 0)).toBe(0)
+    })
+
+    test('calculates expected linear pace with app thresholds', () => {
+        const base = { targetValue: 100, periodStart: 0, periodEnd: 1000 }
+
+        expect(calculateOkrPace({ ...base, currentValue: 100 }, 500)).toMatchObject({
+            actualPercent: 100,
+            expectedPercent: 50,
+            delta: 50,
+            status: OKR_PACE_COMPLETED,
+            label: 'Completed',
+        })
+        expect(calculateOkrPace({ ...base, currentValue: 60 }, 500).status).toBe(OKR_PACE_AHEAD)
+        expect(calculateOkrPace({ ...base, currentValue: 45 }, 500).status).toBe(OKR_PACE_ON_TRACK)
+        expect(calculateOkrPace({ ...base, currentValue: 30 }, 500).status).toBe(OKR_PACE_AT_RISK)
+        expect(calculateOkrPace({ ...base, currentValue: 29 }, 500).status).toBe(OKR_PACE_OFF_TRACK)
+        expect(calculateOkrPace({ ...base, currentValue: 25 }, 1500).status).toBe(OKR_PACE_ENDED)
     })
 
     test('maps OKR data with defaults', () => {

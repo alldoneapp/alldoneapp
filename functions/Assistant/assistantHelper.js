@@ -644,6 +644,12 @@ function mapAssistantOKRForToolResponse(okr) {
         cadence: okr?.cadence || 'monthly',
         status: okr?.status || 'active',
         progressPercent: Number.isFinite(Number(okr?.progress)) ? Number(okr.progress) : 0,
+        expectedProgressPercent: Number.isFinite(Number(okr?.expectedProgressPercent))
+            ? Number(okr.expectedProgressPercent)
+            : 0,
+        paceDeltaPercent: Number.isFinite(Number(okr?.paceDeltaPercent)) ? Number(okr.paceDeltaPercent) : 0,
+        paceStatus: okr?.paceStatus || '',
+        paceLabel: okr?.paceLabel || '',
         periodStart: Number.isFinite(Number(okr?.periodStart)) ? Number(okr.periodStart) : null,
         periodEnd: Number.isFinite(Number(okr?.periodEnd)) ? Number(okr.periodEnd) : null,
         remaining: okr?.remaining || '',

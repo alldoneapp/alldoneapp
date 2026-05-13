@@ -4,6 +4,7 @@ const { ProjectService } = require('./ProjectService')
 const {
     OKRS_COLLECTION,
     OKR_STATUS_ACTIVE,
+    calculateOkrPace,
     getRemainingText,
     mapOKRData,
     normalizeStatus,
@@ -17,6 +18,7 @@ class OKRRetrievalService {
     constructor(options = {}) {
         this.options = {
             database: null,
+            now: Date.now,
             ...options,
         }
         this.initialized = false
@@ -42,6 +44,11 @@ class OKRRetrievalService {
         const numericLimit = Number(limit)
         if (!Number.isFinite(numericLimit) || numericLimit <= 0) return DEFAULT_OKR_LIMIT
         return Math.min(Math.trunc(numericLimit), MAX_OKR_LIMIT)
+    }
+
+    getNow() {
+        const now = typeof this.options.now === 'function' ? this.options.now() : Number(this.options.now)
+        return Number.isFinite(now) ? now : Date.now()
     }
 
     async getAccessibleProjects(userId) {
@@ -117,14 +124,20 @@ class OKRRetrievalService {
 
         const snapshot = await query.get()
         const okrs = []
+        const now = this.getNow()
         for (const doc of snapshot.docs) {
             const okr = await resolveOkrDataForProject(this.options.database, project, mapOKRData(doc.id, doc.data()))
+            const pace = calculateOkrPace(okr, now)
             if (Number.isFinite(periodStart) && okr.periodEnd < periodStart) continue
             if (Number.isFinite(periodEnd) && okr.periodStart > periodEnd) continue
             okrs.push({
                 ...okr,
                 projectName: project.name || project.id,
-                remaining: getRemainingText(okr.periodEnd),
+                remaining: getRemainingText(okr.periodEnd, now),
+                expectedProgressPercent: pace.expectedPercent,
+                paceDeltaPercent: pace.delta,
+                paceStatus: pace.status,
+                paceLabel: pace.label,
             })
         }
         return okrs

@@ -1,5 +1,7 @@
 const { OKRRetrievalService } = require('./OKRRetrievalService')
 
+const TEST_NOW = Date.UTC(2026, 4, 13)
+
 function createSnapshot(rows) {
     const docs = rows.map(row => ({
         id: row.id,
@@ -191,7 +193,7 @@ function createFakeDb() {
 
 describe('OKRRetrievalService', () => {
     test('returns only current-user OKRs even when another ownerId is requested', async () => {
-        const service = new OKRRetrievalService({ database: createFakeDb() })
+        const service = new OKRRetrievalService({ database: createFakeDb(), now: TEST_NOW })
         const result = await service.getOKRs({
             userId: 'user-1',
             ownerId: 'user-2',
@@ -206,7 +208,7 @@ describe('OKRRetrievalService', () => {
     })
 
     test('enforces project access when an explicit projectId is requested', async () => {
-        const service = new OKRRetrievalService({ database: createFakeDb() })
+        const service = new OKRRetrievalService({ database: createFakeDb(), now: TEST_NOW })
 
         await expect(
             service.getOKRs({
@@ -217,7 +219,7 @@ describe('OKRRetrievalService', () => {
     })
 
     test('filters by status and overlapping period range across accessible projects', async () => {
-        const service = new OKRRetrievalService({ database: createFakeDb() })
+        const service = new OKRRetrievalService({ database: createFakeDb(), now: TEST_NOW })
         const result = await service.getOKRs({
             userId: 'user-1',
             allProjects: true,
@@ -228,11 +230,17 @@ describe('OKRRetrievalService', () => {
 
         expect(result.okrs.map(okr => okr.id)).toEqual(['okr-active-owned', 'okr-marketing'])
         expect(result.okrs.map(okr => okr.progress)).toEqual([50, 40])
+        expect(result.okrs[0]).toMatchObject({
+            expectedProgressPercent: 100,
+            paceDeltaPercent: -50,
+            paceStatus: 'ended',
+            paceLabel: 'Ended',
+        })
         expect(result.appliedFilters.allProjects).toBe(true)
     })
 
     test('resolves revenue OKR progress from owner statistics and project hourly rate', async () => {
-        const service = new OKRRetrievalService({ database: createFakeDb() })
+        const service = new OKRRetrievalService({ database: createFakeDb(), now: TEST_NOW })
         const result = await service.getOKRs({
             userId: 'user-1',
             projectId: 'project-3',
@@ -247,6 +255,10 @@ describe('OKRRetrievalService', () => {
             targetValue: 300,
             unit: 'EUR',
             progress: 50,
+            expectedProgressPercent: 100,
+            paceDeltaPercent: -50,
+            paceStatus: 'ended',
+            paceLabel: 'Ended',
         })
     })
 })

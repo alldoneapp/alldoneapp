@@ -11,6 +11,12 @@ const OKR_CADENCE_MONTHLY = 'monthly'
 const OKR_CADENCE_QUARTERLY = 'quarterly'
 const OKR_TYPE_MANUAL = 'manual'
 const OKR_TYPE_TIME_LOGGED_REVENUE = 'timeLoggedRevenue'
+const OKR_PACE_COMPLETED = 'completed'
+const OKR_PACE_AHEAD = 'ahead'
+const OKR_PACE_ON_TRACK = 'onTrack'
+const OKR_PACE_AT_RISK = 'atRisk'
+const OKR_PACE_OFF_TRACK = 'offTrack'
+const OKR_PACE_ENDED = 'ended'
 const VALID_OKR_STATUSES = [OKR_STATUS_ACTIVE, OKR_STATUS_CLOSED, 'all']
 const VALID_OKR_TYPES = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
 const ESTIMATION_TYPE_TIME = 'TIME'
@@ -26,6 +32,58 @@ function calculateOkrProgress(currentValue, targetValue) {
     const target = normalizeOkrNumber(targetValue)
     if (target <= 0) return 0
     return Math.max(0, Math.min(100, Math.round((current / target) * 100)))
+}
+
+function clampOkrPercent(value) {
+    const number = normalizeOkrNumber(value)
+    return Math.max(0, Math.min(100, number))
+}
+
+function getOkrPaceLabel(status) {
+    switch (status) {
+        case OKR_PACE_COMPLETED:
+            return 'Completed'
+        case OKR_PACE_AHEAD:
+            return 'Ahead'
+        case OKR_PACE_ON_TRACK:
+            return 'On track'
+        case OKR_PACE_AT_RISK:
+            return 'At risk'
+        case OKR_PACE_OFF_TRACK:
+            return 'Off track'
+        case OKR_PACE_ENDED:
+            return 'Ended'
+        default:
+            return ''
+    }
+}
+
+function buildOkrPace(actualPercent, expectedPercent, status) {
+    return {
+        actualPercent,
+        expectedPercent,
+        delta: actualPercent - expectedPercent,
+        status,
+        label: getOkrPaceLabel(status),
+    }
+}
+
+function calculateOkrPace(okr = {}, now = Date.now()) {
+    const actualPercent = calculateOkrProgress(okr.currentValue, okr.targetValue)
+    const periodStart = normalizeOkrNumber(okr.periodStart)
+    const periodEnd = normalizeOkrNumber(okr.periodEnd)
+    const duration = periodEnd - periodStart
+    const expectedPercent =
+        duration > 0 ? clampOkrPercent(((now - periodStart) / duration) * 100) : now >= periodEnd ? 100 : 0
+    const roundedExpectedPercent = Math.round(expectedPercent)
+    const delta = actualPercent - roundedExpectedPercent
+
+    if (actualPercent >= 100) return buildOkrPace(actualPercent, roundedExpectedPercent, OKR_PACE_COMPLETED)
+    if (now >= periodEnd) return buildOkrPace(actualPercent, roundedExpectedPercent, OKR_PACE_ENDED)
+    if (delta >= 10) return buildOkrPace(actualPercent, roundedExpectedPercent, OKR_PACE_AHEAD)
+    if (delta >= -5) return buildOkrPace(actualPercent, roundedExpectedPercent, OKR_PACE_ON_TRACK)
+    if (delta >= -20) return buildOkrPace(actualPercent, roundedExpectedPercent, OKR_PACE_AT_RISK)
+    return buildOkrPace(actualPercent, roundedExpectedPercent, OKR_PACE_OFF_TRACK)
 }
 
 function normalizeOkrType(type) {
@@ -200,7 +258,14 @@ module.exports = {
     OKR_CADENCE_QUARTERLY,
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
+    OKR_PACE_COMPLETED,
+    OKR_PACE_AHEAD,
+    OKR_PACE_ON_TRACK,
+    OKR_PACE_AT_RISK,
+    OKR_PACE_OFF_TRACK,
+    OKR_PACE_ENDED,
     FEED_PUBLIC_FOR_ALL,
+    calculateOkrPace,
     calculateOkrProgress,
     calculateRevenueOkrCurrentValue,
     getNextOkrPeriod,
