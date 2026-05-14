@@ -213,29 +213,35 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
 }
 
 export async function getPreConfigTasksForProject(projectId) {
-    const { projectAssistants, globalAssistants } = store.getState()
+    const { projectAssistants, globalAssistants, loggedUser } = store.getState()
     const project = ProjectHelper.getProjectById(projectId)
 
-    // Get assistants accessible in this project
-    const projectSpecificAssistants = projectAssistants[projectId] || []
-    const enabledGlobalAssistants = globalAssistants.filter(a => project?.globalAssistantIds?.includes(a.uid))
-    const assistantsInProject = [...projectSpecificAssistants, ...enabledGlobalAssistants]
+    const rows = getAssistantPreConfigSearchRows({
+        loggedUserProjects: project ? [project] : [],
+        projectAssistants,
+        globalAssistants,
+        loggedUserId: loggedUser?.uid,
+    })
 
     const taskGroups = await Promise.all(
-        assistantsInProject.map(async assistant => {
+        rows.map(async ({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
             const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : projectId
             const tasks = await getAssistantTasks(tasksProjectId, assistant.uid)
             return tasks.map(task => ({
                 ...task,
                 id: task.id,
+                projectId,
+                project,
                 assistant, // Attach for display
                 isPreConfigTask: true,
                 assistantId: assistant.uid,
+                projectSearchOrder,
+                assistantSearchOrder,
             }))
         })
     )
 
-    return taskGroups.flat().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    return sortPreConfigTaskSearchItems(taskGroups.flat(), loggedUser?.uid)
 }
 
 async function getAssistantTasks(projectId, assistantId) {
@@ -263,12 +269,17 @@ async function getAssistantTasks(projectId, assistantId) {
 }
 
 export async function getPreConfigTasksForAllProjects() {
-    const { loggedUserProjects, projectAssistants, globalAssistants } = store.getState()
-    const rows = getAssistantPreConfigSearchRows({ loggedUserProjects, projectAssistants, globalAssistants })
+    const { loggedUserProjects, projectAssistants, globalAssistants, loggedUser } = store.getState()
+    const rows = getAssistantPreConfigSearchRows({
+        loggedUserProjects,
+        projectAssistants,
+        globalAssistants,
+        loggedUserId: loggedUser?.uid,
+    })
     const sourcesByCacheKey = {}
     const allTasks = []
 
-    rows.forEach(({ project, assistant }) => {
+    rows.forEach(({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
         const tasksProjectId = isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : project.id
         const cacheKey = getAssistantTasksCacheKey(tasksProjectId, assistant.uid)
         if (!sourcesByCacheKey[cacheKey]) {
@@ -278,13 +289,13 @@ export async function getPreConfigTasksForAllProjects() {
                 rows: [],
             }
         }
-        sourcesByCacheKey[cacheKey].rows.push({ project, assistant })
+        sourcesByCacheKey[cacheKey].rows.push({ project, assistant, projectSearchOrder, assistantSearchOrder })
     })
 
     await Promise.all(
         Object.values(sourcesByCacheKey).map(async source => {
             const tasks = await getAssistantTasks(source.tasksProjectId, source.assistantId)
-            source.rows.forEach(({ project, assistant }) => {
+            source.rows.forEach(({ project, assistant, projectSearchOrder, assistantSearchOrder }) => {
                 tasks.forEach(task => {
                     allTasks.push({
                         ...task,
@@ -295,13 +306,15 @@ export async function getPreConfigTasksForAllProjects() {
                         assistant,
                         assistantId: assistant.uid,
                         isPreConfigTask: true,
+                        projectSearchOrder,
+                        assistantSearchOrder,
                     })
                 })
             })
         })
     )
 
-    return sortPreConfigTaskSearchItems(allTasks)
+    return sortPreConfigTaskSearchItems(allTasks, loggedUser?.uid)
 }
 
 export async function getPreConfigTask(projectId, assistantId, taskId) {
