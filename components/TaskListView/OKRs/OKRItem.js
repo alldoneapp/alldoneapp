@@ -153,7 +153,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
                                 color={colors.Text03}
                             />
                             <Text style={[styles.caption1, localStyles.allProjectsDoneText]}>
-                                {translate(hiddenInAllProjectsToday ? 'Undo for today' : 'Done for today')}
+                                {translate(hiddenInAllProjectsToday ? 'Show again in All Projects' : 'Done for today')}
                             </Text>
                         </TouchableOpacity>
                     )}
