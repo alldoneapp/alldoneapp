@@ -24,13 +24,7 @@ import {
 } from '../StatisticsView/statisticsHelper'
 import { translate } from '../../i18n/TranslationService'
 import store from '../../redux/store'
-import {
-    convertMinutesInHours,
-    ESTIMATION_TYPE_BOTH,
-    ESTIMATION_TYPE_POINTS,
-    ESTIMATION_TYPE_TIME,
-    getEstimationTypeToUse,
-} from '../../utils/EstimationHelper'
+import { ESTIMATION_TYPE_BOTH, ESTIMATION_TYPE_POINTS, getEstimationTypeToUse } from '../../utils/EstimationHelper'
 import { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function TasksStatisticsArea() {
@@ -45,7 +39,6 @@ export default function TasksStatisticsArea() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [doneTasksByProject, setDoneTasksByProject] = useState({ total: 0 })
     const [donePointsByProject, setDonePointsByProject] = useState({ total: 0 })
-    const [doneTimeByProject, setDoneTimeByProject] = useState({ total: 0 })
     const estimationTypeToUse = getEstimationTypeToUse()
 
     const getValueToShow = valuesMap => {
@@ -54,13 +47,8 @@ export default function TasksStatisticsArea() {
 
     const doneTasksToShow = getValueToShow(doneTasksByProject)
     const donePointsToShow = getValueToShow(donePointsByProject)
-    const doneTimeToShow = getValueToShow(doneTimeByProject)
 
-    const useMobile =
-        smallScreen ||
-        (donePointsToShow > 0 && doneTimeToShow === 0 && topBarWidth < 840) ||
-        (donePointsToShow === 0 && doneTimeToShow > 0 && topBarWidth < 890) ||
-        (donePointsToShow > 0 && doneTimeToShow > 0 && topBarWidth < 970)
+    const useMobile = smallScreen || (donePointsToShow > 0 && topBarWidth < 840)
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.TasksStatisticsArea')
 
@@ -71,10 +59,9 @@ export default function TasksStatisticsArea() {
     }
 
     const updateStatistics = (projectId, statistics) => {
-        const { doneTasks, donePoints, doneTime } = statistics
+        const { doneTasks, donePoints } = statistics
         setDoneTasksByProject(state => updateValues(projectId, state, doneTasks))
         setDonePointsByProject(state => updateValues(projectId, state, donePoints))
-        setDoneTimeByProject(state => updateValues(projectId, state, doneTime))
     }
 
     const navigateToStatistics = () => {
@@ -187,29 +174,6 @@ export default function TasksStatisticsArea() {
 
                             <Text style={[localStyle.value, theme.value]}>
                                 {parseNumberToUseThousand(donePointsToShow)}
-                            </Text>
-                        </View>
-                    </View>
-                )}
-            {doneTimeToShow > 0 &&
-                (estimationTypeToUse === ESTIMATION_TYPE_TIME || estimationTypeToUse === ESTIMATION_TYPE_BOTH) && (
-                    <View style={{ flexDirection: 'row' }}>
-                        <View style={[localStyle.line, smallScreenNavigation ? theme.lineMobile : theme.line]} />
-                        <View style={localStyle.textContainer}>
-                            {useMobile ? (
-                                <Icon
-                                    name="clock"
-                                    size={20}
-                                    color={smallScreenNavigation ? theme.iconColorMobile : theme.iconColor}
-                                />
-                            ) : (
-                                <Text style={[localStyle.text, smallScreenNavigation ? theme.textMobile : theme.text]}>
-                                    {translate('time')}
-                                </Text>
-                            )}
-
-                            <Text style={[localStyle.value, theme.value]}>
-                                {convertMinutesInHours(doneTimeToShow).toFixed(1)}
                             </Text>
                         </View>
                     </View>
