@@ -6,14 +6,16 @@ import { translate } from '../../i18n/TranslationService'
 
 const ContactsHeader = ({ contactAmount }) => {
     const parseText = number => {
-        return translate(number > 1 ? 'Amount members' : 'Amount member', { amount: number })
+        return translate(number === 1 ? 'Amount member' : 'Amount members', { amount: number })
     }
 
     return (
         <View style={localStyles.container}>
-            <Text style={[styles.caption2, localStyles.amountText, { color: colors.Text02 }]}>
-                {parseText(contactAmount)}
-            </Text>
+            {contactAmount > 0 && (
+                <Text style={[styles.caption2, localStyles.amountText, { color: colors.Text02 }]}>
+                    {parseText(contactAmount)}
+                </Text>
+            )}
         </View>
     )
 }
@@ -27,7 +29,7 @@ const localStyles = StyleSheet.create({
     amountText: {
         textAlign: 'left',
         alignSelf: 'flex-start',
-        marginTop: -8,
+        marginTop: 4,
         paddingLeft: 12,
     },
 })
