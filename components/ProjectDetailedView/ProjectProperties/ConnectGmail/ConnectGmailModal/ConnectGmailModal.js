@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../../UIControls/Button'
@@ -21,13 +21,14 @@ const MAX_MODAL_WIDTH = 760
 export default function ConnectGmailModal({ projectId, authStatus, closePopover, setAuthStatus }) {
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const { width: windowWidth, height: windowHeight } = useWindowDimensions()
+    const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'))
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
     const [closingAfterSave, setClosingAfterSave] = useState(false)
     const closeHandlersRef = useRef({})
 
     const isConnectedAndSignedIn = isConnected && authStatus?.hasCredentials
+    const { width: windowWidth, height: windowHeight } = windowDimensions
     const horizontalMargin = smallScreenNavigation ? MOBILE_MODAL_HORIZONTAL_MARGIN : MODAL_HORIZONTAL_MARGIN
     const availableWidth = Math.max(windowWidth - horizontalMargin * 2, 0)
     const containerWidth = Math.min(availableWidth, MAX_MODAL_WIDTH)
@@ -37,6 +38,18 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
     useEffect(() => {
         storeModal(CONNECT_GMAIL_MODAL_ID)
         return () => removeModal(CONNECT_GMAIL_MODAL_ID)
+    }, [])
+
+    useEffect(() => {
+        const updateDimensions = ({ window }) => {
+            setWindowDimensions(window)
+        }
+
+        Dimensions.addEventListener('change', updateDimensions)
+
+        return () => {
+            Dimensions.removeEventListener('change', updateDimensions)
+        }
     }, [])
 
     const onRequestClose = () => {
