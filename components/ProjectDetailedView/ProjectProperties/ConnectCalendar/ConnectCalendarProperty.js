@@ -6,11 +6,13 @@ import ConnectCalendarModal from './ConnectCalendarModal/ConnectCalendarModal'
 import GoogleApi from '../../../../apis/google/GoogleApi'
 import ConnectCalendarButton from './ConnectCalendarButton'
 import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../../apis/google/GoogleOAuthServerSide'
+import { popoverToSafePosition } from '../../../../utils/HelperFunctions'
 
 export default function ConnectCalendarProperty({ projectId, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     const [isSignedIn, setIsSignedIn] = useState(false)
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     // Check for server-side auth on mount and when connection status changes
     useEffect(() => {
@@ -55,8 +57,15 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
             isOpen={isOpen}
             position={['right', 'bottom', 'left', 'top']}
             padding={4}
+            windowBorderPadding={16}
             align={'end'}
-            contentLocation={false ? null : undefined}
+            contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
+            containerStyle={{
+                maxWidth: 'calc(100vw - 32px)',
+                maxHeight: 'calc(100vh - 32px)',
+                overflow: 'visible',
+                zIndex: '9999',
+            }}
         >
             <ConnectCalendarButton
                 projectId={projectId}

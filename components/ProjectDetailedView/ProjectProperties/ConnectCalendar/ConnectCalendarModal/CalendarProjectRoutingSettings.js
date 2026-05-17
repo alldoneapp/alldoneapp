@@ -311,10 +311,14 @@ const localStyles = StyleSheet.create({
     sectionTitle: {
         ...styles.subtitle1,
         color: '#ffffff',
+        flex: 1,
+        marginRight: 12,
     },
     inputLabel: {
         ...styles.subtitle2,
         color: '#ffffff',
+        flex: 1,
+        marginRight: 12,
     },
     helperText: {
         ...styles.body2,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../../UIControls/Button'
@@ -12,18 +12,27 @@ import ActionButton from './ActionButton'
 import ConnectedUserData from './ConnectedUserData'
 import CalendarProjectRoutingSettings from './CalendarProjectRoutingSettings'
 
+const MODAL_HORIZONTAL_MARGIN = 32
+const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
+const MODAL_VERTICAL_MARGIN = 16
+const MODAL_PADDING = 16
+const MAX_MODAL_WIDTH = 760
+
 export default function ConnectCalendarModal({ projectId, isSignedIn, closePopover, setIsSignedIn }) {
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const { width: windowWidth, height: windowHeight } = Dimensions.get('window')
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions()
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
     const [closingAfterSave, setClosingAfterSave] = useState(false)
     const closeHandlersRef = useRef({})
 
     const isConnectedAndSignedIn = isConnected && isSignedIn
-    const containerWidth = Math.min(Math.max(windowWidth - (smallScreenNavigation ? 24 : 64), 320), 760)
-    const scrollMaxHeight = Math.max(Math.min(windowHeight - 160, 760), 320)
+    const horizontalMargin = smallScreenNavigation ? MOBILE_MODAL_HORIZONTAL_MARGIN : MODAL_HORIZONTAL_MARGIN
+    const availableWidth = Math.max(windowWidth - horizontalMargin * 2, 0)
+    const containerWidth = Math.min(availableWidth, MAX_MODAL_WIDTH)
+    const containerMaxHeight = Math.max(windowHeight - MODAL_VERTICAL_MARGIN * 2, 0)
+    const scrollMaxHeight = Math.max(containerMaxHeight - MODAL_PADDING * 2, 0)
 
     useEffect(() => {
         storeModal(CONNECT_CALENDAR_MODAL_ID)
@@ -56,9 +65,13 @@ export default function ConnectCalendarModal({ projectId, isSignedIn, closePopov
     }
 
     return (
-        <View style={[localStyles.container, { width: containerWidth, maxHeight: scrollMaxHeight }]}>
+        <View style={[localStyles.container, { width: containerWidth, maxHeight: containerMaxHeight }]}>
             {showCloseConfirmation ? (
-                <>
+                <ScrollView
+                    style={[localStyles.scroll, { maxHeight: scrollMaxHeight }]}
+                    contentContainerStyle={localStyles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
                     <ModalHeader
                         closeModal={onRequestClose}
                         title={translate('Google calendar account')}
@@ -88,10 +101,10 @@ export default function ConnectCalendarModal({ projectId, isSignedIn, closePopov
                             />
                         </View>
                     </View>
-                </>
+                </ScrollView>
             ) : (
                 <ScrollView
-                    style={localStyles.scroll}
+                    style={[localStyles.scroll, { maxHeight: scrollMaxHeight }]}
                     contentContainerStyle={localStyles.scrollContent}
                     showsVerticalScrollIndicator={false}
                 >
@@ -156,6 +169,7 @@ const localStyles = StyleSheet.create({
     },
     confirmationButtonRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
     },
 })

@@ -563,7 +563,7 @@ export default function GmailLabelingSettings({
         <View style={localStyles.container}>
             <View style={localStyles.section}>
                 <View style={localStyles.headerRow}>
-                    <Text style={localStyles.sectionTitle}>{translate('Gmail labeling')}</Text>
+                    <Text style={[localStyles.sectionTitle, localStyles.rowText]}>{translate('Gmail labeling')}</Text>
                     <View style={localStyles.headerSwitchRow}>
                         <Switch
                             active={config.enabled}
@@ -597,7 +597,9 @@ export default function GmailLabelingSettings({
                         <>
                             <View style={localStyles.section}>
                                 <View style={localStyles.switchRow}>
-                                    <Text style={localStyles.inputLabel}>{translate('Process unread only')}</Text>
+                                    <Text style={[localStyles.inputLabel, localStyles.rowText]}>
+                                        {translate('Process unread only')}
+                                    </Text>
                                     <Switch
                                         active={config.processUnreadOnly}
                                         activeSwitch={() => updateConfig({ processUnreadOnly: true })}
@@ -607,7 +609,9 @@ export default function GmailLabelingSettings({
                                 </View>
 
                                 <View style={localStyles.switchRow}>
-                                    <Text style={localStyles.inputLabel}>{translate('Only inbox messages')}</Text>
+                                    <Text style={[localStyles.inputLabel, localStyles.rowText]}>
+                                        {translate('Only inbox messages')}
+                                    </Text>
                                     <Switch
                                         active={config.onlyInbox}
                                         activeSwitch={() => updateConfig({ onlyInbox: true })}
@@ -653,7 +657,9 @@ export default function GmailLabelingSettings({
                                 <>
                                     <View style={localStyles.section}>
                                         <View style={localStyles.sectionHeaderRow}>
-                                            <Text style={localStyles.inputLabel}>User prompt</Text>
+                                            <Text style={[localStyles.inputLabel, localStyles.rowText]}>
+                                                User prompt
+                                            </Text>
                                             <Button
                                                 title="Reset to defaults"
                                                 type="ghost"
@@ -761,7 +767,7 @@ export default function GmailLabelingSettings({
                                                     key={`gmail-rule-${label.id || index}`}
                                                 />
                                                 <View style={localStyles.switchRow}>
-                                                    <Text style={localStyles.inputLabel}>
+                                                    <Text style={[localStyles.inputLabel, localStyles.rowText]}>
                                                         {translate('Auto-archive when matched')}
                                                     </Text>
                                                     <Switch
@@ -1020,6 +1026,10 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 12,
     },
+    rowText: {
+        flex: 1,
+        marginRight: 12,
+    },
     labelCard: {
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -1030,6 +1040,7 @@ const localStyles = StyleSheet.create({
     },
     directionRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         marginBottom: 10,
     },
     directionButton: {
@@ -1097,6 +1108,7 @@ const localStyles = StyleSheet.create({
     },
     buttonRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
         marginTop: 4,
     },
