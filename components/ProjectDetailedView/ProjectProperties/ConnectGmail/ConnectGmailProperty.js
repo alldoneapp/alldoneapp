@@ -6,13 +6,11 @@ import ConnectGmailModal from './ConnectGmailModal/ConnectGmailModal'
 import GoogleApi from '../../../../apis/google/GoogleApi'
 import ConnectGmailButton from './ConnectGmailButton'
 import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../../apis/google/GoogleOAuthServerSide'
-import { popoverToSafePosition } from '../../../../utils/HelperFunctions'
 
 export default function ConnectGmailProperty({ projectId, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     const [authStatus, setAuthStatus] = useState({ hasCredentials: false, email: null, hasModifyScope: true })
     const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isSignedIn = authStatus.hasCredentials
 
     // Check for server-side auth on mount and when connection status changes
@@ -70,7 +68,6 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
             padding={4}
             windowBorderPadding={16}
             align={'end'}
-            contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
             containerStyle={{
                 maxWidth: 'calc(100vw - 32px)',
                 maxHeight: 'calc(100vh - 32px)',
