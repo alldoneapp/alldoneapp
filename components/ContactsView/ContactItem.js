@@ -3,6 +3,7 @@ import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react
 import styles, { colors } from '../styles/global'
 import store from '../../redux/store'
 import MemberTag from '../Tags/MemberTag'
+import TaskSummarizeTags from '../Tags/TaskSummarizeTags'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import Spinner from '../UIComponents/Spinner'
@@ -35,6 +36,7 @@ export default class ContactItem extends Component {
             loading: false,
             loggedUserProjects: storeState.loggedUserProjects,
             smallScreenNavigation: storeState.smallScreenNavigation,
+            isMiddleScreen: storeState.isMiddleScreen,
             loggedUserId: storeState.loggedUser.uid,
             backlinksTasksCount: 0,
             backlinkTaskObject: null,
@@ -44,6 +46,7 @@ export default class ContactItem extends Component {
             showNewTaskPopup: false,
             panColor: new Animated.Value(0),
             unsubscribe: store.subscribe(this.updateState),
+            showTagsSummarizeArea: false,
         }
 
         this.itemSwipe = React.createRef()
@@ -83,7 +86,16 @@ export default class ContactItem extends Component {
         this.setState({
             loggedUserProjects: storeState.loggedUserProjects,
             smallScreenNavigation: storeState.smallScreenNavigation,
+            isMiddleScreen: storeState.isMiddleScreen,
         })
+    }
+
+    toggleShowTagsSummarizeArea = e => {
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+        this.setState(state => ({ showTagsSummarizeArea: !state.showTagsSummarizeArea }))
     }
 
     renderLeftSwipe = (progress, dragX) => {
@@ -208,6 +220,18 @@ export default class ContactItem extends Component {
 
         const commentsData = isMember ? contact.commentsData[projectId] : contact.commentsData
 
+        const amountTags =
+            (isMember || (!isMember && contact.contactStatusId) ? 1 : 0) +
+            (contact.noteId || (contact.noteIdsByProject && contact.noteIdsByProject[projectId]) ? 1 : 0) +
+            (backlinksCount > 0 ? 1 : 0) +
+            (contact.isPrivate ? 1 : 0) +
+            (commentsData ? 1 : 0)
+
+        const showSummarizeTag =
+            (this.state.smallScreenNavigation && amountTags > 2) ||
+            (this.state.isMiddleScreen && amountTags > 3) ||
+            amountTags > 4
+
         return showContact ? (
             <View>
                 <View style={localStyles.swipeContainer}>
@@ -258,102 +282,176 @@ export default class ContactItem extends Component {
                         disabled={blockOpen}
                         activeOpacity={blockOpen ? 1 : 0.5}
                     >
-                        <Animated.View style={[localStyles.container, { backgroundColor: highlightColor }]}>
-                            <View style={localStyles.avatarContainer}>
-                                {contact.photoURL != null && contact.photoURL !== '' ? (
-                                    <>
-                                        <Image
-                                            onLoadStart={() => this.setState({ loading: true })}
-                                            onLoadEnd={() => this.setState({ loading: false })}
-                                            source={{ uri: contactPhotoURL50 }}
-                                            style={[localStyles.image, { display: loading ? 'none' : 'flex' }]}
+                        <Animated.View
+                            style={[
+                                localStyles.container,
+                                {
+                                    backgroundColor: highlightColor,
+                                    height: this.state.showTagsSummarizeArea ? 122 : 90,
+                                },
+                            ]}
+                        >
+                            <View style={localStyles.mainRow}>
+                                <View style={localStyles.avatarContainer}>
+                                    {contact.photoURL != null && contact.photoURL !== '' ? (
+                                        <>
+                                            <Image
+                                                onLoadStart={() => this.setState({ loading: true })}
+                                                onLoadEnd={() => this.setState({ loading: false })}
+                                                source={{ uri: contactPhotoURL50 }}
+                                                style={[localStyles.image, { display: loading ? 'none' : 'flex' }]}
+                                            />
+
+                                            {loading && <Spinner containerSize={48} spinnerSize={24} />}
+                                        </>
+                                    ) : (
+                                        <SVGGenericUser
+                                            width={48}
+                                            height={48}
+                                            svgid={`ci_p_${contact.uid}_${projectIndex}`}
                                         />
+                                    )}
+                                </View>
 
-                                        {loading && <Spinner containerSize={48} spinnerSize={24} />}
-                                    </>
-                                ) : (
-                                    <SVGGenericUser
-                                        width={48}
-                                        height={48}
-                                        svgid={`ci_p_${contact.uid}_${projectIndex}`}
-                                    />
-                                )}
-                            </View>
+                                <View style={localStyles.userData}>
+                                    <SocialText
+                                        showEllipsis
+                                        style={localStyles.name}
+                                        numberOfLines={1}
+                                        bgColor={
+                                            contactHighlightColor.toLowerCase() !== '#ffffff'
+                                                ? backColorHighlight
+                                                : backColor
+                                        }
+                                        projectId={projectId}
+                                    >
+                                        {contact.displayName}
+                                    </SocialText>
 
-                            <View style={localStyles.userData}>
-                                <SocialText
-                                    showEllipsis
-                                    style={localStyles.name}
-                                    numberOfLines={1}
-                                    bgColor={
-                                        contactHighlightColor.toLowerCase() !== '#ffffff'
-                                            ? backColorHighlight
-                                            : backColor
-                                    }
-                                    projectId={projectId}
-                                >
-                                    {contact.displayName}
-                                </SocialText>
+                                    {!!userInfo && (
+                                        <Text style={localStyles.description} numberOfLines={1}>
+                                            {userInfo}
+                                        </Text>
+                                    )}
 
-                                {!!userInfo && (
-                                    <Text style={localStyles.description} numberOfLines={1}>
-                                        {userInfo}
+                                    <Text style={[styles.caption2, localStyles.updatedInfo]} numberOfLines={1}>
+                                        {parseDate(contact.lastEditionDate)}
                                     </Text>
-                                )}
+                                </View>
 
-                                <Text style={[styles.caption2, localStyles.updatedInfo]} numberOfLines={1}>
-                                    {parseDate(contact.lastEditionDate)}
-                                </Text>
+                                <View style={localStyles.buttonSection}>
+                                    {showSummarizeTag ? (
+                                        <TaskSummarizeTags
+                                            amountTags={amountTags}
+                                            onPress={this.toggleShowTagsSummarizeArea}
+                                        />
+                                    ) : (
+                                        <>
+                                            {!isMember && contact.contactStatusId && (
+                                                <ContactStatusTag
+                                                    projectId={projectId}
+                                                    contactStatusId={contact.contactStatusId}
+                                                    contact={contact}
+                                                />
+                                            )}
+                                            {isMember && <MemberTag />}
+                                            {(contact.noteId ||
+                                                (contact.noteIdsByProject && contact.noteIdsByProject[projectId])) && (
+                                                <ObjectNoteTag
+                                                    objectId={contact.uid}
+                                                    objectType="contacts"
+                                                    projectId={projectId}
+                                                    style={{ marginLeft: 8 }}
+                                                />
+                                            )}
+                                            {backlinksCount > 0 && (
+                                                <BacklinksTag
+                                                    object={contact}
+                                                    objectType={LINKED_OBJECT_TYPE_CONTACT}
+                                                    projectId={projectId}
+                                                    style={{ marginLeft: 8 }}
+                                                    backlinksCount={backlinksCount}
+                                                    backlinkObject={backlinkObject}
+                                                />
+                                            )}
+
+                                            {contact.isPrivate && (
+                                                <PrivacyTag
+                                                    projectId={projectId}
+                                                    object={contact}
+                                                    objectType={
+                                                        isMember ? FEED_USER_OBJECT_TYPE : FEED_CONTACT_OBJECT_TYPE
+                                                    }
+                                                    style={{ marginLeft: 8 }}
+                                                    disabled={!loggedUserCanUpdateObject}
+                                                />
+                                            )}
+
+                                            {!!commentsData && (
+                                                <ContactCommentsWrapper
+                                                    commentsData={commentsData}
+                                                    projectId={projectId}
+                                                    contact={contact}
+                                                    isMember={isMember}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                </View>
                             </View>
 
-                            <View style={localStyles.buttonSection}>
-                                {!isMember && contact.contactStatusId && (
-                                    <ContactStatusTag
-                                        projectId={projectId}
-                                        contactStatusId={contact.contactStatusId}
-                                        contact={contact}
-                                    />
-                                )}
-                                {isMember && <MemberTag />}
-                                {(contact.noteId ||
-                                    (contact.noteIdsByProject && contact.noteIdsByProject[projectId])) && (
-                                    <ObjectNoteTag
-                                        objectId={contact.uid}
-                                        objectType="contacts"
-                                        projectId={projectId}
-                                        style={{ marginLeft: 8 }}
-                                    />
-                                )}
-                                {backlinksCount > 0 && (
-                                    <BacklinksTag
-                                        object={contact}
-                                        objectType={LINKED_OBJECT_TYPE_CONTACT}
-                                        projectId={projectId}
-                                        style={{ marginLeft: 8 }}
-                                        backlinksCount={backlinksCount}
-                                        backlinkObject={backlinkObject}
-                                    />
-                                )}
+                            {showSummarizeTag && this.state.showTagsSummarizeArea && (
+                                <View style={localStyles.expandedTagsContainer}>
+                                    {!isMember && contact.contactStatusId && (
+                                        <ContactStatusTag
+                                            projectId={projectId}
+                                            contactStatusId={contact.contactStatusId}
+                                            contact={contact}
+                                            style={{ marginLeft: 8 }}
+                                        />
+                                    )}
+                                    {isMember && <MemberTag style={{ marginLeft: 8 }} />}
+                                    {(contact.noteId ||
+                                        (contact.noteIdsByProject && contact.noteIdsByProject[projectId])) && (
+                                        <ObjectNoteTag
+                                            objectId={contact.uid}
+                                            objectType="contacts"
+                                            projectId={projectId}
+                                            style={{ marginLeft: 8 }}
+                                        />
+                                    )}
+                                    {backlinksCount > 0 && (
+                                        <BacklinksTag
+                                            object={contact}
+                                            objectType={LINKED_OBJECT_TYPE_CONTACT}
+                                            projectId={projectId}
+                                            style={{ marginLeft: 8 }}
+                                            backlinksCount={backlinksCount}
+                                            backlinkObject={backlinkObject}
+                                        />
+                                    )}
 
-                                {contact.isPrivate && (
-                                    <PrivacyTag
-                                        projectId={projectId}
-                                        object={contact}
-                                        objectType={isMember ? FEED_USER_OBJECT_TYPE : FEED_CONTACT_OBJECT_TYPE}
-                                        style={{ marginLeft: 8 }}
-                                        disabled={!loggedUserCanUpdateObject}
-                                    />
-                                )}
+                                    {contact.isPrivate && (
+                                        <PrivacyTag
+                                            projectId={projectId}
+                                            object={contact}
+                                            objectType={isMember ? FEED_USER_OBJECT_TYPE : FEED_CONTACT_OBJECT_TYPE}
+                                            style={{ marginLeft: 8 }}
+                                            disabled={!loggedUserCanUpdateObject}
+                                        />
+                                    )}
 
-                                {!!commentsData && (
-                                    <ContactCommentsWrapper
-                                        commentsData={commentsData}
-                                        projectId={projectId}
-                                        contact={contact}
-                                        isMember={isMember}
-                                    />
-                                )}
-                            </View>
+                                    {!!commentsData && (
+                                        <ContactCommentsWrapper
+                                            commentsData={commentsData}
+                                            projectId={projectId}
+                                            contact={contact}
+                                            isMember={isMember}
+                                            style={{ marginLeft: 8 }}
+                                        />
+                                    )}
+                                </View>
+                            )}
                         </Animated.View>
                     </TouchableOpacity>
                 </Swipeable>
@@ -372,7 +470,6 @@ export default class ContactItem extends Component {
 
 const localStyles = StyleSheet.create({
     container: {
-        height: 90,
         paddingTop: 8,
         paddingBottom: 10,
         marginLeft: -8,
@@ -380,8 +477,21 @@ const localStyles = StyleSheet.create({
         paddingLeft: 8,
         paddingRight: 8,
         borderRadius: 4,
-        flexDirection: 'row',
+        flexDirection: 'column',
         overflow: 'hidden',
+    },
+    mainRow: {
+        flexDirection: 'row',
+        width: '100%',
+        height: 90,
+    },
+    expandedTagsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        paddingRight: 8,
+        paddingBottom: 8,
+        marginTop: 4,
     },
     avatarContainer: {
         justifyContent: 'flex-start',
