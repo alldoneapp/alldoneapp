@@ -227,10 +227,7 @@ export default class ContactItem extends Component {
             (contact.isPrivate ? 1 : 0) +
             (commentsData ? 1 : 0)
 
-        const showSummarizeTag =
-            (this.state.smallScreenNavigation && amountTags > 2) ||
-            (this.state.isMiddleScreen && amountTags > 3) ||
-            amountTags > 4
+        const showSummarizeTag = (this.state.smallScreenNavigation && amountTags > 1) || amountTags > 2
 
         return showContact ? (
             <View>
