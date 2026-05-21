@@ -24,8 +24,9 @@ export default function UserProfileSettings() {
         <View style={localStyles.container}>
             <ProfileHeader />
             <UserData user={loggedUser} />
-            <ProfileProperties user={loggedUser} />
-            <SkillsArea userId={loggedUser.uid} />
+            <ProfileProperties user={loggedUser}>
+                <SkillsArea userId={loggedUser.uid} />
+            </ProfileProperties>
             <LogoutAndRemoveSection />
         </View>
     )

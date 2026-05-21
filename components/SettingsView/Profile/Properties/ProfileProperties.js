@@ -15,7 +15,7 @@ import GoldTransactionsModal from './GoldTransactionsModal'
 import ProjectHelper from '../../ProjectsSettings/ProjectHelper'
 import { setUserDescription, setUserDescriptionInProject } from '../../../../utils/backends/Users/usersFirestore'
 
-export default function ProfileProperties({ user, projectId, projectIndex }) {
+export default function ProfileProperties({ user, projectId, projectIndex, children }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -84,6 +84,7 @@ export default function ProfileProperties({ user, projectId, projectIndex }) {
                     {inSettings && <GlobalUserPhone userId={loggedUserId} phone={phone} />}
                 </View>
             </View>
+            {children}
             {(inSettings || accessGranted) && (
                 <UserDescriptionField
                     description={projectDescription}

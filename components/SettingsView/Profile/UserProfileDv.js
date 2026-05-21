@@ -30,8 +30,9 @@ export default function UserProfileDv({ projectIndex, projectId, user }) {
         <View style={localStyles.container}>
             <ProfileHeader />
             <UserData user={user} projectRole={projectRole} />
-            <ProfileProperties user={user} projectIndex={projectIndex} projectId={projectId} />
-            <SkillsArea projectId={projectId} userId={user.uid} />
+            <ProfileProperties user={user} projectIndex={projectIndex} projectId={projectId}>
+                <SkillsArea projectId={projectId} userId={user.uid} />
+            </ProfileProperties>
             <ChatWith user={user} projectId={projectId} />
             <View style={{ marginBottom: 70 }} />
         </View>

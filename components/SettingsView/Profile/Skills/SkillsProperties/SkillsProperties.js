@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 
 import SkillsDefaultPrivacy from './SkillsDefaultPrivacy'
 import SkillPoints from './SkillPoints'
+import AutomaticSkillPointDistribution from './AutomaticSkillPointDistribution'
 import useInProfileSettings from '../../useInProfileSettings'
 
 export default function SkillsProperties({ projectId }) {
@@ -11,7 +12,14 @@ export default function SkillsProperties({ projectId }) {
     const inSettings = useInProfileSettings()
 
     return inSettings ? (
-        <SkillPoints />
+        <View style={[localStyles.userSettings, smallScreen && localStyles.userSettingsMobile]}>
+            <View style={{ flex: 1, width: smallScreen ? '100%' : '50%', marginRight: smallScreen ? 0 : 36 }}>
+                <AutomaticSkillPointDistribution />
+            </View>
+            <View style={{ flex: 1, width: smallScreen ? '100%' : '50%', marginLeft: smallScreen ? 0 : 36 }}>
+                <SkillPoints />
+            </View>
+        </View>
     ) : (
         <View style={[localStyles.userSettings, smallScreen && localStyles.userSettingsMobile]}>
             <View style={{ flex: 1, width: smallScreen ? '100%' : '50%', marginRight: smallScreen ? 0 : 36 }}>

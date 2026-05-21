@@ -102,8 +102,7 @@ const localStyles = StyleSheet.create({
         marginTop: 24,
     },
     header: {
-        ...styles.subtitle2,
-        color: colors.Text02,
+        ...styles.title6,
         marginBottom: 4,
     },
     inputContainer: {

@@ -1429,6 +1429,28 @@ exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
     }
 )
 
+exports.distributeManualSkillPointsSecondGen = onCall(
+    {
+        timeoutSeconds: 540,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+
+        const { processManualSkillPointDistribution } = require('./Skills/automaticSkillPointDistribution')
+        const result = await processManualSkillPointDistribution(auth.uid)
+        if (result?.status === 'failed') {
+            throw new HttpsError('failed-precondition', result.error || 'Manual skill point distribution failed')
+        }
+        return result
+    }
+)
+
 //AI ASSISTANTS
 
 // Pre-load module at top level to avoid repeated require overhead

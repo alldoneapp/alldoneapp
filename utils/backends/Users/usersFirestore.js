@@ -835,6 +835,14 @@ export async function resetUserNewEarnedSkillPoints(userId) {
     getDb().doc(`users/${userId}`).update({ newEarnedSkillPoints: 0 })
 }
 
+export async function setUserAutomaticSkillPointDistributionEnabled(userId, automaticSkillPointDistributionEnabled) {
+    getDb().doc(`users/${userId}`).update({ automaticSkillPointDistributionEnabled })
+}
+
+export async function distributeManualSkillPoints() {
+    return await runHttpsCallableFunction('distributeManualSkillPointsSecondGen', {}, { timeout: 540000 })
+}
+
 export function addProjectInvitationToUser(projectId, userId) {
     const batch = new BatchWrapper(getDb())
     batch.update(getDb().doc(`users/${userId}`), {

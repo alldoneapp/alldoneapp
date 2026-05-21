@@ -3588,6 +3588,8 @@ export function mapUserData(userId, user) {
         monthlyXp: user.monthlyXp ? user.monthlyXp : 0,
         monthlyTraffic: user.monthlyTraffic ? user.monthlyTraffic : 0,
         skillPoints: user.skillPoints ? user.skillPoints : 0,
+        automaticSkillPointDistributionEnabled: user.automaticSkillPointDistributionEnabled !== false,
+        lastSkillPointLevelUpAt: user.lastSkillPointLevelUpAt ? user.lastSkillPointLevelUpAt : 0,
         showSkillPointsNotification: user.showSkillPointsNotification ? user.showSkillPointsNotification : false,
         newEarnedSkillPoints: user.newEarnedSkillPoints ? user.newEarnedSkillPoints : 0,
         statisticsSelectedUsersIds: user.statisticsSelectedUsersIds ? user.statisticsSelectedUsersIds : {},

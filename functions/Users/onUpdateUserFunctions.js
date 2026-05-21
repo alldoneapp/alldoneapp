@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 
 const { updateUserRecord } = require('../AlgoliaGlobalSearchHelper')
 const { generateUserWarnings } = require('../Payment/QuotaWarnings')
+const { processAutomaticSkillPointDistribution } = require('../Skills/automaticSkillPointDistribution')
 
 const proccessAlgoliaRecord = async (userId, change) => {
     await updateUserRecord(userId, change, admin)
@@ -14,6 +15,10 @@ const onUpdateUser = async (userId, change) => {
     const promises = []
     promises.push(generateUserWarnings(userId, oldUser, newUser, admin))
     promises.push(proccessAlgoliaRecord(userId, change))
+
+    if (Number(newUser.level || 1) > Number(oldUser.level || 1)) {
+        promises.push(processAutomaticSkillPointDistribution(userId, oldUser, newUser))
+    }
 
     // Check for WhatsApp phone number update
     if (newUser.phone && newUser.phone !== oldUser.phone) {

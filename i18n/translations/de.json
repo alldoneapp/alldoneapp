@@ -1422,5 +1422,8 @@
     "OKR cadence quarterly": "Quartalsweise",
     "OKR days left": "{{days}} Tage übrig",
     "OKR hours left": "{{hours}} Stunden übrig",
-    "OKR period ended": "Zeitraum beendet"
+    "OKR period ended": "Zeitraum beendet",
+    "Automatic skill point distribution": "Automatische Verteilung von Skillpunkten",
+    "Distribute 5 skill points": "5 Skillpunkte verteilen",
+    "Distributing": "Wird verteilt"
 }

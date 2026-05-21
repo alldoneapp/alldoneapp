@@ -741,6 +741,8 @@ export const getNewDefaultUser = (customData = {}) => {
         monthlyXp: 0,
         monthlyTraffic: 0,
         skillPoints: 0,
+        automaticSkillPointDistributionEnabled: true,
+        lastSkillPointLevelUpAt: 0,
         showSkillPointsNotification: true,
         newEarnedSkillPoints: 0,
         statisticsSelectedUsersIds: {},

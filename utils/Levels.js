@@ -7,6 +7,7 @@ import { BatchWrapper } from '../functions/BatchWrapper/batchWrapper'
 import { getUserData } from './backends/Users/usersFirestore'
 
 const XP_NEEDED_FOR_LEVEL_UP = 42000
+export const SKILL_POINTS_PER_LEVEL = 5
 
 export function getXpNeededToReachLevel(level) {
     return level <= 1 ? 0 : XP_NEEDED_FOR_LEVEL_UP
@@ -71,13 +72,21 @@ export async function updateXpByCommentInChat(userId, firebase, db, projectId) {
     updateXp(userId, firebase, db, xpEarned, projectId, true)
 }
 
-const getEarnedSkillPoints = (level, newLevel) => {
+export const getEarnedSkillPoints = (level, newLevel) => {
     const earnedLevels = newLevel - level
-    let earnedSkillPoints = 0
-    for (let i = 0; i < earnedLevels; i++) {
-        earnedSkillPoints += Math.floor(Math.random() * 2) + 2
+    return earnedLevels * SKILL_POINTS_PER_LEVEL
+}
+
+export const getLevelUpUserUpdateData = (level, newLevel, totalXp, firebase, now = Date.now()) => {
+    const earnedSkillPoints = getEarnedSkillPoints(level, newLevel)
+    return {
+        xp: totalXp,
+        level: newLevel,
+        skillPoints: firebase.firestore.FieldValue.increment(earnedSkillPoints),
+        showSkillPointsNotification: true,
+        newEarnedSkillPoints: firebase.firestore.FieldValue.increment(earnedSkillPoints),
+        lastSkillPointLevelUpAt: now,
     }
-    return earnedSkillPoints
 }
 
 async function updateXp(userId, firebase, db, xpEarned, projectId, increaseProjectQuota) {
@@ -90,14 +99,7 @@ async function updateXp(userId, firebase, db, xpEarned, projectId, increaseProje
 
     let data
     if (newLevel !== level) {
-        const earnedSkillPoints = getEarnedSkillPoints(level, newLevel)
-        data = {
-            xp: totalXp,
-            level: newLevel,
-            skillPoints: firebase.firestore.FieldValue.increment(earnedSkillPoints),
-            showSkillPointsNotification: true,
-            newEarnedSkillPoints: firebase.firestore.FieldValue.increment(earnedSkillPoints),
-        }
+        data = getLevelUpUserUpdateData(level, newLevel, totalXp, firebase)
     } else {
         data = { xp: totalXp }
     }
