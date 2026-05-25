@@ -961,6 +961,17 @@ export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, ok
     )
 }
 
+export async function clearUserOKRsHiddenInAllProjectsToday(userId, projectId, okrIds) {
+    if (!userId || !projectId || !okrIds?.length) return
+    const updates = okrIds.reduce((updates, okrId) => {
+        updates[
+            `okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`
+        ] = firebase.firestore.FieldValue.delete()
+        return updates
+    }, {})
+    updateUserData(userId, updates, null)
+}
+
 export async function updateUserDefaultCurrency(userId, defaultCurrency) {
     getDb().doc(`users/${userId}`).update({ defaultCurrency })
 }

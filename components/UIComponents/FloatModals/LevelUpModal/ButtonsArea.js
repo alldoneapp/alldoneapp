@@ -1,6 +1,6 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
 import { navigateToSettings } from '../../../../redux/actions'
@@ -10,6 +10,9 @@ import { DV_TAB_SETTINGS_PROFILE } from '../../../../utils/TabNavigationConstant
 
 export default function ButtonsArea({ closeModal }) {
     const dispatch = useDispatch()
+    const automaticSkillPointDistributionEnabled = useSelector(
+        state => state.loggedUser.automaticSkillPointDistributionEnabled !== false
+    )
 
     const navigateToProfile = () => {
         NavigationService.navigate('SettingsView')
@@ -17,16 +20,21 @@ export default function ButtonsArea({ closeModal }) {
         closeModal()
     }
 
+    const secondaryTitle = automaticSkillPointDistributionEnabled ? 'Manually check skills' : 'No thanks'
+    const primaryTitle = automaticSkillPointDistributionEnabled ? 'Auto-level up skills' : 'Level up skills'
+    const secondaryAction = automaticSkillPointDistributionEnabled ? navigateToProfile : closeModal
+    const primaryAction = automaticSkillPointDistributionEnabled ? closeModal : navigateToProfile
+
     return (
         <View style={localStyles.buttonsContainer}>
             <Button
-                title={translate('No thanks')}
+                title={translate(secondaryTitle)}
                 iconSize={22}
                 buttonStyle={localStyles.button}
-                onPress={closeModal}
+                onPress={secondaryAction}
                 type={'secondary'}
             />
-            <Button title={translate('Level up skills')} iconSize={22} onPress={navigateToProfile} />
+            <Button title={translate(primaryTitle)} iconSize={22} onPress={primaryAction} />
         </View>
     )
 }

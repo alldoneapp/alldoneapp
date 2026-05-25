@@ -1393,6 +1393,7 @@
     "Show OKR in All Projects for today": "OKR heute in Alle Projekte anzeigen",
     "Done for today": "heute erledigt",
     "Show again in All Projects": "wieder in Alle Projekte anzeigen",
+    "Undo all OKRs for today": "alle OKRs für heute rückgängig machen",
     "OKR pace completed": "Abgeschlossen",
     "OKR pace ahead": "Voraus",
     "OKR pace on track": "Im Plan",
@@ -1425,5 +1426,7 @@
     "OKR period ended": "Zeitraum beendet",
     "Automatic skill point distribution": "Automatische Verteilung von Skillpunkten",
     "Distribute 5 skill points": "5 Skillpunkte verteilen",
-    "Distributing": "Wird verteilt"
+    "Distributing": "Wird verteilt",
+    "Auto-level up skills": "Skills automatisch leveln",
+    "Manually check skills": "Skills manuell prüfen"
 }

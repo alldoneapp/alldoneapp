@@ -7,7 +7,10 @@ import Icon from '../../Icon'
 import SharedHelper from '../../../utils/SharedHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../../../i18n/TranslationService'
-import { setUserOKRPrivacyMode } from '../../../utils/backends/Users/usersFirestore'
+import {
+    clearUserOKRsHiddenInAllProjectsToday,
+    setUserOKRPrivacyMode,
+} from '../../../utils/backends/Users/usersFirestore'
 import OKRItem, { OKREmptyItem } from './OKRItem'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from './okrHelper'
 
@@ -19,7 +22,9 @@ export default function OKRSection({ projectId, inAllProjects }) {
     const okrPrivacyMode = !!loggedUser.okrPrivacyMode
     const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
     const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
-    const okrsToShow = inAllProjects ? okrs.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey) : okrs
+    const okrsHiddenToday = okrs.filter(okr => okrsHiddenTodayById[okr.id] === todayKey)
+    const okrsToShow = okrs.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey)
+    const showUndoAllToday = !inAllProjects && okrsHiddenToday.length > 0
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const loggedUserIsBoardOwner = loggedUser.uid === currentUserId
@@ -30,7 +35,15 @@ export default function OKRSection({ projectId, inAllProjects }) {
         setUserOKRPrivacyMode(loggedUser.uid, !okrPrivacyMode)
     }
 
-    if (okrsToShow.length === 0) return null
+    const undoAllOKRsForToday = () => {
+        clearUserOKRsHiddenInAllProjectsToday(
+            loggedUser.uid,
+            projectId,
+            okrsHiddenToday.map(okr => okr.id)
+        )
+    }
+
+    if (okrs.length === 0 || (inAllProjects && okrsToShow.length === 0)) return null
 
     return (
         <View style={localStyles.container}>
@@ -60,6 +73,21 @@ export default function OKRSection({ projectId, inAllProjects }) {
                             </Text>
                         )}
                     </TouchableOpacity>
+                    {showUndoAllToday && (
+                        <TouchableOpacity
+                            style={localStyles.undoAllTodayButton}
+                            onPress={undoAllOKRsForToday}
+                            disabled={!loggedUser.uid}
+                            accessibilityLabel={translate('Undo all OKRs for today')}
+                        >
+                            <Icon name="rotate-ccw" size={14} color={colors.Text03} />
+                            {!smallScreenNavigation && (
+                                <Text style={[styles.caption1, localStyles.undoAllTodayText]}>
+                                    {translate('Undo all OKRs for today')}
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+                    )}
                 </View>
                 <View style={localStyles.headerRight}>
                     <OKREmptyItem projectId={projectId} canUpdate={canUpdate} compact />
@@ -116,5 +144,16 @@ const localStyles = StyleSheet.create({
     },
     privacyTextActive: {
         color: colors.Primary100,
+    },
+    undoAllTodayButton: {
+        height: 22,
+        paddingHorizontal: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 8,
+    },
+    undoAllTodayText: {
+        color: colors.Text03,
+        marginLeft: 4,
     },
 })
