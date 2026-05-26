@@ -115,7 +115,7 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
         clearUserOKRHiddenInAllProjectsToday(loggedUserId, projectId, okr.id)
     }
 
-    const showAllProjectsVisibilityAction = inAllProjects || hiddenInAllProjectsToday
+    const showAllProjectsVisibilityAction = inAllProjects || !hiddenInAllProjectsToday
 
     const trigger = (
         <TouchableOpacity
