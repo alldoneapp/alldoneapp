@@ -26,6 +26,7 @@ import {
     FEED_PROJECT_FOLLOWED,
     FEED_PROJECT_GUIDE_CHANGED,
     FEED_PROJECT_KICKED_MEMBER,
+    FEED_PROJECT_HAPPINESS,
     FEED_PROJECT_PRIVACY_CHANGED,
     FEED_PROJECT_SENT_INVITATION,
     FEED_PROJECT_TITLE_CHANGED,
@@ -41,6 +42,7 @@ import {
     PROJECT_TYPE_ACTIVE,
     PROJECT_TYPE_ARCHIVED,
 } from '../../../components/SettingsView/ProjectsSettings/ProjectsSettings'
+import { getHappinessRatingText } from '../../ProjectHappinessHelper'
 
 //COMMON
 
@@ -98,7 +100,7 @@ export async function createProjectCreatedFeed(
     })
 
     const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
-    globalInnerFeedsGenerator(projectId, 'projects', projectId, feed, feedId, feedCreator.uid, batch)
+    batch.set(getDb().doc(`projectsInnerFeeds/${projectId}/projects/${projectId}/feeds/${feedId}`), feed)
 
     const projectFeedObject = generateProjectObjectModel(currentMilliseconds, project)
     batch.feedObjects = { [projectId]: projectFeedObject }
@@ -108,6 +110,53 @@ export async function createProjectCreatedFeed(
     await increaseFeedCount(
         currentDateFormated,
         projectUsersIdsForSpecialFeeds ? projectUsersIdsForSpecialFeeds : [feedCreator.uid],
+        projectId,
+        'projects',
+        projectId,
+        batch,
+        feedId,
+        feed,
+        projectFeedObject,
+        {
+            creatorName: HelperFunctions.getFirstName(feedCreator.displayName),
+            creatorPhotoURL: feedCreator.photoURL,
+        }
+    )
+
+    if (!externalBatch) {
+        batch.commit()
+    }
+}
+
+export async function createProjectHappinessFeed(projectId, project, happiness, externalBatch, creator) {
+    const feedCreator = creator ? creator : store.getState().loggedUser
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const { rating, comment, cleared } = happiness
+    const ratingText = getHappinessRatingText(rating)
+    const entryText = cleared
+        ? 'cleared project happiness'
+        : `tracked project happiness: ${ratingText}${comment ? `\n${comment}` : ''}`
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_PROJECT_HAPPINESS,
+        lastChangeDate: currentMilliseconds,
+        entryText,
+        feedCreator,
+        objectId: projectId,
+        isPublicFor: [feedCreator.uid],
+    })
+
+    const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+    globalInnerFeedsGenerator(projectId, 'projects', projectId, feed, feedId, feedCreator.uid, batch)
+
+    const projectFeedObject = generateProjectObjectModel(currentMilliseconds, project)
+    batch.feedObjects = { [projectId]: projectFeedObject }
+
+    updateProjectFeedObject(projectId, currentDateFormated, projectFeedObject, feed, feedId, null, batch)
+
+    await increaseFeedCount(
+        currentDateFormated,
+        [feedCreator.uid],
         projectId,
         'projects',
         projectId,

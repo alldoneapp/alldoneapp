@@ -153,6 +153,7 @@ import {
 } from '../EstimationHelper'
 import Backend from '../BackendBridge'
 import { getTaskTypeIndex, MAIN_TASK_INDEX } from './openTasks'
+import { getHappinessDateKey, getHappinessDay, getHappinessTimestamp } from '../ProjectHappinessHelper'
 
 import {
     createBacklinkProjectFeed,
@@ -162,6 +163,7 @@ import {
     createProjectDescriptionChangedFeed,
     createProjectFollowedFeed,
     createProjectGuideIdChangedFeed,
+    createProjectHappinessFeed,
     createProjectInvitationSentFeed,
     createProjectUnfollowedFeed,
     generateProjectObjectModel,
@@ -3176,6 +3178,69 @@ export function watchAllUserStatisticsByRange(
             const finalAllStatistics = { allDoneTasks, allDonePoints, allDoneTime, allXp, allGold }
 
             callback(projectId, finalStatistics, finalAllStatistics, userId)
+        })
+}
+
+const getProjectHappinessCollection = (projectId, userId) =>
+    db.collection(`projectHappiness/${projectId}/users/${userId}/days`)
+
+export async function setProjectHappiness(projectId, userId, date, rating, comment = '', project = null) {
+    const timestamp = getHappinessTimestamp(date)
+    const dateKey = getHappinessDateKey(timestamp)
+    const day = getHappinessDay(timestamp)
+    const docRef = db.doc(`projectHappiness/${projectId}/users/${userId}/days/${dateKey}`)
+    const batch = new BatchWrapper(db)
+    const cleanedComment = comment ? comment.trim() : ''
+    const feedProject = project || ProjectHelper.getProjectById(projectId) || (await getProjectData(projectId))
+
+    if (rating) {
+        const currentDoc = await docRef.get()
+        const data = {
+            projectId,
+            userId,
+            dateKey,
+            day,
+            timestamp,
+            rating,
+            comment: cleanedComment,
+            updated: moment().valueOf(),
+        }
+        if (!currentDoc.exists) data.created = data.updated
+        batch.set(docRef, data, { merge: true })
+        await createProjectHappinessFeed(projectId, feedProject, data, batch)
+    } else {
+        batch.delete(docRef)
+        await createProjectHappinessFeed(projectId, feedProject, { cleared: true }, batch)
+    }
+
+    batch.commit()
+}
+
+export function watchProjectHappiness(projectId, userId, watcherKey, callback) {
+    globalWatcherUnsub[watcherKey] = getProjectHappinessCollection(projectId, userId)
+        .orderBy('day', 'desc')
+        .onSnapshot(snapshot => {
+            const entries = []
+            snapshot.forEach(doc => {
+                entries.push({ ...doc.data(), id: doc.id })
+            })
+            callback(projectId, entries)
+        })
+}
+
+export function watchProjectHappinessByRange(projectId, userId, timestamp1, timestamp2, watcherKey, callback) {
+    const dayDate1 = getHappinessDay(timestamp1)
+    const dayDate2 = getHappinessDay(timestamp2)
+
+    globalWatcherUnsub[watcherKey] = getProjectHappinessCollection(projectId, userId)
+        .where('day', '>=', dayDate1)
+        .where('day', '<=', dayDate2)
+        .onSnapshot(snapshot => {
+            const entries = []
+            snapshot.forEach(doc => {
+                entries.push({ ...doc.data(), id: doc.id })
+            })
+            callback(projectId, entries)
         })
 }
 

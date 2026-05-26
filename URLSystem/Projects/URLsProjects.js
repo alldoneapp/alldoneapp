@@ -48,6 +48,11 @@ export const URL_PROJECT_DETAILS_FEED = 'PROJECT_DETAILS_FEED'
 export const URL_PROJECT_DETAILS_STATISTICS = 'PROJECT_DETAILS_STATISTICS'
 
 /**
+ * /project/{projectId}/happiness
+ */
+export const URL_PROJECT_DETAILS_HAPPINESS = 'PROJECT_DETAILS_HAPPINESS'
+
+/**
  * /project/{projectId}/contact-statuses
  */
 export const URL_PROJECT_DETAILS_CONTACT_STATUSES = 'PROJECT_DETAILS_CONTACT_STATUSES'
@@ -116,6 +121,8 @@ class URLsProjects {
                 return `project/${params[0]}/updates`
             case URL_PROJECT_DETAILS_STATISTICS:
                 return `project/${params[0]}/statistics`
+            case URL_PROJECT_DETAILS_HAPPINESS:
+                return `project/${params[0]}/happiness`
             case URL_PROJECT_DETAILS_ASSISTANTS:
                 return `project/${params[0]}/assistants`
             case URL_PROJECT_DETAILS_CONTACT_STATUSES:
@@ -167,6 +174,10 @@ class URLsProjects {
             }
             case URL_PROJECT_DETAILS_STATISTICS: {
                 projectDetails(' - Statistics')
+                break
+            }
+            case URL_PROJECT_DETAILS_HAPPINESS: {
+                projectDetails(' - Happiness')
                 break
             }
             case URL_PROJECT_DETAILS_CONTACT_STATUSES: {

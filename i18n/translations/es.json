@@ -1865,5 +1865,21 @@
     "OKR cadence quarterly": "Trimestral",
     "OKR days left": "Quedan {{days}} días",
     "OKR hours left": "Quedan {{hours}} horas",
-    "OKR period ended": "Periodo finalizado"
+    "OKR period ended": "Periodo finalizado",
+    "Happiness": "Felicidad",
+    "Project happiness": "Felicidad del proyecto",
+    "Only you can see these ratings and notes.": "Solo tú puedes ver estas valoraciones y notas.",
+    "Add past date": "Agregar fecha pasada",
+    "Add happiness": "Agregar felicidad",
+    "Save comment": "Guardar comentario",
+    "No happiness data yet": "Aún no hay datos de felicidad",
+    "Average": "Promedio",
+    "Latest": "Más reciente",
+    "Tracked days": "Días registrados",
+    "Latest rating": "Última valoración",
+    "Happiness distribution": "Distribución de felicidad",
+    "Happiness trend": "Tendencia de felicidad",
+    "Recent happiness notes": "Notas recientes de felicidad",
+    "History": "Historial",
+    "but since we are offline right now we don’t know": "pero como estamos sin conexión ahora mismo, no lo sabemos"
 }

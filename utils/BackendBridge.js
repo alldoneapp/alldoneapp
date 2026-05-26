@@ -299,6 +299,18 @@ export default class Backend {
         )
     }
 
+    static setProjectHappiness(projectId, userId, date, rating, comment, project) {
+        return bridge.setProjectHappiness(projectId, userId, date, rating, comment, project)
+    }
+
+    static watchProjectHappiness(projectId, userId, watcherKey, callback) {
+        return bridge.watchProjectHappiness(projectId, userId, watcherKey, callback)
+    }
+
+    static watchProjectHappinessByRange(projectId, userId, timestamp1, timestamp2, watcherKey, callback) {
+        return bridge.watchProjectHappinessByRange(projectId, userId, timestamp1, timestamp2, watcherKey, callback)
+    }
+
     static async storeAttachment(projectId, attachment, inNotes) {
         return await bridge.storeAttachment(projectId, attachment, inNotes)
     }

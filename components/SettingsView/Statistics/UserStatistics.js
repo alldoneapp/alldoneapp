@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import v4 from 'uuid/v4'
 
 import StatisticsHeader from './StatisticsHeader'
 import URLsSettings, { URL_SETTINGS_STATISTICS } from '../../../URLSystem/Settings/URLsSettings'
@@ -29,6 +30,8 @@ import StatisticItemWrapper from '../../StatisticsView/StatisticsSection/Statist
 import SelectProjectModalInInvoceGenerationWrapper from './SelectProjectModalInInvoceGenerationWrapper'
 import DefaultCurrency from './DefaultCurrency'
 import { convertCurrency, formatCurrency } from '../../../utils/CurrencyConverter'
+import Backend from '../../../utils/BackendBridge'
+import HappinessStatsPanel from '../../ProjectHappiness/HappinessStatsPanel'
 
 export default function UserStatistics() {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -47,6 +50,7 @@ export default function UserStatistics() {
     const [allDoneTimeByProject, setAllDoneTimeByProject] = useState({ total: null })
     const [allXpByProject, setAllXpByProject] = useState({ total: null })
     const [allGoldByProject, setAllGoldByProject] = useState({ total: null })
+    const [happinessByProject, setHappinessByProject] = useState({})
 
     const [selectedChart, setSelectedChart] = useState(STATISTIC_CHART_DONE_TASKS)
     const estimationTypeToUse = getEstimationTypeToUse()
@@ -143,6 +147,25 @@ export default function UserStatistics() {
     useEffect(() => {
         writeBrowserURL()
     }, [])
+
+    useEffect(() => {
+        const watcherKey = v4()
+        const watcherKeys = loggedUserProjects.map(project => `settings_happiness_${project.id}_${watcherKey}`)
+        loggedUserProjects.forEach(project => {
+            Backend.watchProjectHappinessByRange(
+                project.id,
+                loggedUser.uid,
+                timestamp1,
+                timestamp2,
+                `settings_happiness_${project.id}_${watcherKey}`,
+                (projectId, entries) => {
+                    setHappinessByProject(state => ({ ...state, [projectId]: entries }))
+                }
+            )
+        })
+
+        return () => watcherKeys.forEach(key => Backend.unwatch(key))
+    }, [JSON.stringify(filterData), JSON.stringify(loggedUserProjects.map(project => project.id)), loggedUser.uid])
 
     return (
         <View style={localStyles.container}>
@@ -338,6 +361,8 @@ export default function UserStatistics() {
                     })()}
                 </View>
             </View>
+
+            <HappinessStatsPanel happinessByProject={happinessByProject} />
         </View>
     )
 }

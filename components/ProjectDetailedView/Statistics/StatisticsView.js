@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { View } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 import { DV_TAB_PROJECT_STATISTICS, DV_TAB_USER_STATISTICS } from '../../../utils/TabNavigationConstants'
@@ -15,6 +16,7 @@ import Backend from '../../../utils/BackendBridge'
 import StatisticsSection from '../../StatisticsView/StatisticsSection/StatisticsSection'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../redux/store'
+import HappinessStatsPanel from '../../ProjectHappiness/HappinessStatsPanel'
 
 export default function StatisticsView({ projectId, userId, initialFilterData }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -27,6 +29,7 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
     const allStatisticsDataRef = useRef({})
     const [statisticsData, setStatisticsData] = useState({})
     const [allStatisticsData, setAllStatisticsData] = useState({})
+    const [happinessEntries, setHappinessEntries] = useState([])
 
     const usersToShow = statisticsSelectedUsersIds ? statisticsSelectedUsersIds : [loggedUserId]
     const project = ProjectHelper.getProjectById(projectId)
@@ -96,6 +99,23 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
             })
         }
     }, [JSON.stringify(filterData), JSON.stringify(usersToShow)])
+
+    useEffect(() => {
+        const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData)
+        const watcherKey = `project_happiness_stats_${projectId}_${v4()}`
+        Backend.watchProjectHappinessByRange(
+            projectId,
+            loggedUserId,
+            timestamp1,
+            timestamp2,
+            watcherKey,
+            (id, entries) => {
+                setHappinessEntries(entries)
+            }
+        )
+
+        return () => Backend.unwatch(watcherKey)
+    }, [JSON.stringify(filterData), projectId, loggedUserId])
 
     const filter = getFilterOption(filterData)
 
@@ -174,14 +194,17 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
     const allMoneyEarned = calculateAllMoneyEarned()
 
     return (
-        <StatisticsSection
-            projectId={projectId}
-            updateFilterData={updateStatisticsFilter}
-            statisticsData={statisticsDataReduced}
-            allStatisticsData={{ ...allStatisticsDataReduced, allMoneyEarned }}
-            statisticsFilter={filter}
-            filterData={filterData}
-            moneyEarned={moneyEarned}
-        />
+        <View>
+            <StatisticsSection
+                projectId={projectId}
+                updateFilterData={updateStatisticsFilter}
+                statisticsData={statisticsDataReduced}
+                allStatisticsData={{ ...allStatisticsDataReduced, allMoneyEarned }}
+                statisticsFilter={filter}
+                filterData={filterData}
+                moneyEarned={moneyEarned}
+            />
+            <HappinessStatsPanel entries={happinessEntries} />
+        </View>
     )
 }

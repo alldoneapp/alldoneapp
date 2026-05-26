@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Lottie from 'lottie-react'
 import moment from 'moment'
@@ -27,6 +27,8 @@ import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
 } from '../../../utils/DayRateTimeLogHelper'
+import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
+import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 
 export default function EndDayStatisticsModal() {
     const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
@@ -39,6 +41,8 @@ export default function EndDayStatisticsModal() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showNewVersionMandtoryNotifcation = useSelector(state => state.showNewVersionMandtoryNotifcation)
     const templateProjectIdsAmount = useSelector(state => state.loggedUser.templateProjectIds.length)
+    const loggedUserProjects = useSelector(state => state.loggedUserProjects)
+    const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
 
     const [doneTasks, setDoneTasks] = useState(0)
     const [xp, setXp] = useState(0)
@@ -48,9 +52,13 @@ export default function EndDayStatisticsModal() {
     const [showEmptyInbox, setShowEmptyInbox] = useState(true)
     const [dataLoaded, setDataLoaded] = useState(null)
     const [statsDate, setStatsDate] = useState(statisticsModalDate)
+    const [happinessRatings, setHappinessRatings] = useState({})
+    const [happinessComments, setHappinessComments] = useState({})
+    const [visibleComments, setVisibleComments] = useState({})
 
     const isOfflineRef = useRef(false)
     const isLoading = useRef(false)
+    const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
 
     const needToShowYesterdayStats = () => {
         const today = moment()
@@ -68,6 +76,9 @@ export default function EndDayStatisticsModal() {
         setShowEmptyInbox(true)
         setDataLoaded(null)
         setStatsDate(statisticsModalDate)
+        setHappinessRatings({})
+        setHappinessComments({})
+        setVisibleComments({})
         isOfflineRef.current = false
         isLoading.current = false
     }
@@ -154,6 +165,65 @@ export default function EndDayStatisticsModal() {
         isAnonymous,
     ])
 
+    useEffect(() => {
+        if (!checkIfDataIsLoaded() || isOfflineRef.current || isAnonymous) return
+
+        const { loggedUserProjects, loggedUser } = store.getState()
+        const activeProjects = loggedUserProjects.filter(project => !loggedUser.templateProjectIds.includes(project.id))
+        const watcherKeys = activeProjects.map(project => `${happinessWatcherKeyRef.current}_${project.id}`)
+        activeProjects.forEach(project => {
+            Backend.watchProjectHappinessByRange(
+                project.id,
+                loggedUserId,
+                statsDate,
+                statsDate,
+                `${happinessWatcherKeyRef.current}_${project.id}`,
+                (projectId, entries) => {
+                    const entry = entries[0]
+                    if (entry) {
+                        setHappinessRatings(state => ({ ...state, [projectId]: entry.rating }))
+                        setHappinessComments(state => ({ ...state, [projectId]: entry.comment || '' }))
+                    }
+                }
+            )
+        })
+
+        return () => {
+            watcherKeys.forEach(key => Backend.unwatch(key))
+        }
+    }, [JSON.stringify(dataLoaded), statsDate, loggedUserId, isAnonymous])
+
+    const getHappinessProjects = () => loggedUserProjects.filter(project => !templateProjectIds.includes(project.id))
+
+    const updateHappinessRating = (project, rating) => {
+        setHappinessRatings(state => ({ ...state, [project.id]: rating }))
+        Backend.setProjectHappiness(
+            project.id,
+            loggedUserId,
+            statsDate,
+            rating,
+            happinessComments[project.id] || '',
+            project
+        )
+    }
+
+    const updateHappinessComment = (project, comment) => {
+        setHappinessComments(state => ({ ...state, [project.id]: comment }))
+    }
+
+    const saveHappinessComment = project => {
+        const rating = happinessRatings[project.id]
+        if (rating)
+            Backend.setProjectHappiness(
+                project.id,
+                loggedUserId,
+                statsDate,
+                rating,
+                happinessComments[project.id] || '',
+                project
+            )
+    }
+
     const getAnimationSegment = () => {
         if (showEmptyInbox) return [0, 180]
         if (doneTasks > 3) return [0, 120]
@@ -227,71 +297,121 @@ export default function EndDayStatisticsModal() {
                 <View
                     style={[localStyles.container, !smallScreenNavigation && { marginLeft: 263 }, applyPopoverWidth()]}
                 >
-                    <Text style={localStyles.title}>{translate('A new day has begun')}</Text>
-                    <Text style={localStyles.description}>
-                        {translate('Here a quick summary of how you have been doing')}
-                    </Text>
-                    <View style={localStyles.animationContainer}>
-                        <Lottie
-                            animationData={isOfflineRef.current ? cloudAnimation : starsAnimation}
-                            autoplay={true}
-                            initialSegment={isOfflineRef.current ? [0, 144] : getAnimationSegment()}
-                            style={{ width: 156, height: 101 }}
-                        />
-                    </View>
-
-                    <View style={[localStyles.emptyInboxContainer, isOfflineRef.current && { marginBottom: 16 }]}>
-                        <Text style={localStyles.emptyInboxTitle}>{rewardTitle}</Text>
-                        <Text style={localStyles.emptyInboxDescription}>{rewardDescription}</Text>
-                        <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
-                    </View>
-
-                    {!isOfflineRef.current && (
-                        <View style={{ flexDirection: smallScreenNavigation ? 'column' : 'row' }}>
-                            <View style={{ flex: 1, marginRight: 8 }}>
-                                <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-                                    <Icon name="check-square" size={24} color="#ffffff" />
-                                    <Text style={localStyles.text}>{translate('Tasks done:')}</Text>
-                                    <Text style={[localStyles.text, localStyles.value]}>{doneTasks}</Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-                                    <Icon name="story-point" size={24} color="#ffffff" />
-                                    <Text style={localStyles.text}>{translate('Points earned:')}</Text>
-                                    <Text style={[localStyles.text, localStyles.value]}>{donePoints}</Text>
-                                </View>
-                                <View style={[{ flexDirection: 'row' }, smallScreenNavigation && { marginBottom: 16 }]}>
-                                    <Icon name="clock" size={24} color="#ffffff" />
-                                    <Text style={localStyles.text}>{`${translate('Time logged')}:`}</Text>
-                                    <Text style={[localStyles.text, localStyles.value]}>
-                                        {getDoneTimeValue(doneTime)}
-                                    </Text>
-                                </View>
-                            </View>
-                            <View style={{ flex: 1, marginLeft: smallScreenNavigation ? 0 : 8 }}>
-                                <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-                                    <Icon name="trending-up" size={24} color="#ffffff" />
-                                    <Text style={localStyles.text}>{translate('XP earned:')}</Text>
-                                    <Text style={[localStyles.text, localStyles.value]}>{xp}</Text>
-                                </View>
-                                <View style={{ flexDirection: 'row' }}>
-                                    <Lottie
-                                        animationData={goldAnimation}
-                                        autoplay={false}
-                                        style={{ width: 24, height: 24 }}
-                                    />
-                                    <Text style={localStyles.text}>{translate('Gold earned:')}</Text>
-                                    <Text style={[localStyles.text, localStyles.value]}>{Math.floor(gold)}</Text>
-                                </View>
-                            </View>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                        <Text style={localStyles.title}>{translate('A new day has begun')}</Text>
+                        <Text style={localStyles.description}>
+                            {translate('Here a quick summary of how you have been doing')}
+                        </Text>
+                        <View style={localStyles.animationContainer}>
+                            <Lottie
+                                animationData={isOfflineRef.current ? cloudAnimation : starsAnimation}
+                                autoplay={true}
+                                initialSegment={isOfflineRef.current ? [0, 144] : getAnimationSegment()}
+                                style={{ width: 156, height: 101 }}
+                            />
                         </View>
-                    )}
-                    <View style={localStyles.line} />
-                    <TouchableOpacity
-                        style={localStyles.refresh}
-                        onPress={showNewDayNotification ? deleteCacheAndRefresh : close}
-                    >
-                        <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
-                    </TouchableOpacity>
+
+                        <View style={[localStyles.emptyInboxContainer, isOfflineRef.current && { marginBottom: 16 }]}>
+                            <Text style={localStyles.emptyInboxTitle}>{rewardTitle}</Text>
+                            <Text style={localStyles.emptyInboxDescription}>{rewardDescription}</Text>
+                            <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
+                        </View>
+
+                        {!isOfflineRef.current && (
+                            <View style={{ flexDirection: smallScreenNavigation ? 'column' : 'row' }}>
+                                <View style={{ flex: 1, marginRight: 8 }}>
+                                    <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                                        <Icon name="check-square" size={24} color="#ffffff" />
+                                        <Text style={localStyles.text}>{translate('Tasks done:')}</Text>
+                                        <Text style={[localStyles.text, localStyles.value]}>{doneTasks}</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                                        <Icon name="story-point" size={24} color="#ffffff" />
+                                        <Text style={localStyles.text}>{translate('Points earned:')}</Text>
+                                        <Text style={[localStyles.text, localStyles.value]}>{donePoints}</Text>
+                                    </View>
+                                    <View
+                                        style={[
+                                            { flexDirection: 'row' },
+                                            smallScreenNavigation && { marginBottom: 16 },
+                                        ]}
+                                    >
+                                        <Icon name="clock" size={24} color="#ffffff" />
+                                        <Text style={localStyles.text}>{`${translate('Time logged')}:`}</Text>
+                                        <Text style={[localStyles.text, localStyles.value]}>
+                                            {getDoneTimeValue(doneTime)}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <View style={{ flex: 1, marginLeft: smallScreenNavigation ? 0 : 8 }}>
+                                    <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                                        <Icon name="trending-up" size={24} color="#ffffff" />
+                                        <Text style={localStyles.text}>{translate('XP earned:')}</Text>
+                                        <Text style={[localStyles.text, localStyles.value]}>{xp}</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row' }}>
+                                        <Lottie
+                                            animationData={goldAnimation}
+                                            autoplay={false}
+                                            style={{ width: 24, height: 24 }}
+                                        />
+                                        <Text style={localStyles.text}>{translate('Gold earned:')}</Text>
+                                        <Text style={[localStyles.text, localStyles.value]}>{Math.floor(gold)}</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+                        {!isOfflineRef.current && getHappinessProjects().length > 0 && (
+                            <View style={localStyles.happinessSection}>
+                                <Text style={localStyles.happinessTitle}>{translate('Project happiness')}</Text>
+                                <Text style={localStyles.happinessPrivacy}>{translate(HAPPINESS_PRIVACY_TEXT)}</Text>
+                                {getHappinessProjects().map(project => (
+                                    <View key={project.id} style={localStyles.happinessProject}>
+                                        <View style={localStyles.happinessProjectHeader}>
+                                            <Text style={localStyles.happinessProjectName}>{project.name}</Text>
+                                            <View style={localStyles.happinessActions}>
+                                                <TouchableOpacity
+                                                    style={localStyles.commentButton}
+                                                    onPress={() =>
+                                                        setVisibleComments(state => ({
+                                                            ...state,
+                                                            [project.id]: !state[project.id],
+                                                        }))
+                                                    }
+                                                >
+                                                    <Icon name="message-circle" size={20} color="#ffffff" />
+                                                </TouchableOpacity>
+                                                <HappinessRatingPicker
+                                                    value={happinessRatings[project.id]}
+                                                    onChange={rating => updateHappinessRating(project, rating)}
+                                                    compact
+                                                    light
+                                                />
+                                            </View>
+                                        </View>
+                                        {visibleComments[project.id] && (
+                                            <TextInput
+                                                style={localStyles.happinessComment}
+                                                multiline
+                                                value={happinessComments[project.id] || ''}
+                                                placeholder={translate('Add comment')}
+                                                placeholderTextColor={colors.Text03}
+                                                onChangeText={comment => updateHappinessComment(project, comment)}
+                                                onBlur={() => saveHappinessComment(project)}
+                                            />
+                                        )}
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+                        <View style={localStyles.line} />
+                        <TouchableOpacity
+                            style={localStyles.refresh}
+                            onPress={showNewDayNotification ? deleteCacheAndRefresh : close}
+                        >
+                            <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
                 </View>
             </View>
         )
@@ -314,6 +434,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
+        maxHeight: '90%',
         ...Platform.select({
             web: {
                 boxShadow: `${0}px ${16}px ${32}px rgba(0,0,0,0.04), ${0}px ${16}px ${24}px rgba(0, 0, 0, 0.04)`,
@@ -379,5 +500,57 @@ const localStyles = StyleSheet.create({
     },
     value: {
         marginLeft: 4,
+    },
+    happinessSection: {
+        marginTop: 24,
+    },
+    happinessTitle: {
+        ...styles.subtitle1,
+        color: '#ffffff',
+        marginBottom: 4,
+    },
+    happinessPrivacy: {
+        ...styles.body2,
+        color: colors.Text04,
+        marginBottom: 8,
+    },
+    happinessProject: {
+        borderTopWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        paddingVertical: 8,
+    },
+    happinessProjectHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    happinessProjectName: {
+        ...styles.subtitle2,
+        color: '#ffffff',
+        flex: 1,
+        marginRight: 8,
+    },
+    happinessActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    commentButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 4,
+    },
+    happinessComment: {
+        ...styles.body2,
+        color: '#ffffff',
+        minHeight: 72,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 4,
+        padding: 8,
+        marginTop: 8,
+        textAlignVertical: 'top',
     },
 })
