@@ -24,6 +24,10 @@ import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 
+const ASSISTANT_INPUT_MIN_HEIGHT = 40
+const ASSISTANT_INPUT_MAX_HEIGHT = 120
+const ASSISTANT_INPUT_SCROLL_BUFFER = 1
+
 export default function AssistantOptions({
     amountOfButtonOptions,
     onCollapse,
@@ -43,7 +47,8 @@ export default function AssistantOptions({
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
-    const [inputHeight, setInputHeight] = useState(40)
+    const [inputHeight, setInputHeight] = useState(ASSISTANT_INPUT_MIN_HEIGHT)
+    const [inputScrollEnabled, setInputScrollEnabled] = useState(false)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
@@ -100,7 +105,8 @@ export default function AssistantOptions({
             }
 
             setMessage('')
-            setInputHeight(40)
+            setInputHeight(ASSISTANT_INPUT_MIN_HEIGHT)
+            setInputScrollEnabled(false)
             inputRef.current?.clear()
 
             // Unblock the input now that the thread has been created
@@ -126,12 +132,48 @@ export default function AssistantOptions({
         }
     }, [assistant, assistantProject, assistantProjectId, message, gold])
 
-    const updateMessage = useCallback(text => {
-        setMessage(text)
+    const updateInputHeight = useCallback(contentHeight => {
+        const roundedContentHeight = Math.ceil(contentHeight)
+        const nextInputHeight = Math.min(
+            Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight),
+            ASSISTANT_INPUT_MAX_HEIGHT
+        )
 
-        const lineCount = text.split('\n').length
-        setInputHeight(Math.min(Math.max(40, lineCount * 34 + 6), 120))
+        setInputHeight(nextInputHeight)
+        setInputScrollEnabled(roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT + ASSISTANT_INPUT_SCROLL_BUFFER)
     }, [])
+
+    const measureInputHeight = useCallback(() => {
+        const editorRoot = inputRef.current?.getEditor?.()?.root
+        if (editorRoot?.scrollHeight) {
+            updateInputHeight(editorRoot.scrollHeight)
+        }
+    }, [updateInputHeight])
+
+    const requestInputHeightMeasure = useCallback(() => {
+        if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+            window.requestAnimationFrame(measureInputHeight)
+        } else {
+            setTimeout(measureInputHeight)
+        }
+    }, [measureInputHeight])
+
+    const updateMessage = useCallback(
+        text => {
+            setMessage(text)
+
+            if (!text) {
+                setInputHeight(ASSISTANT_INPUT_MIN_HEIGHT)
+                setInputScrollEnabled(false)
+                return
+            }
+
+            const lineCount = text.split('\n').length
+            updateInputHeight(lineCount * 34 + 6)
+            requestInputHeightMeasure()
+        },
+        [requestInputHeightMeasure, updateInputHeight]
+    )
 
     const handleKeyDown = useCallback(
         event => {
@@ -204,14 +246,18 @@ export default function AssistantOptions({
                     ref={inputRef}
                     containerStyle={localStyles.messageInput}
                     fixedHeight={inputHeight}
-                    maxHeight={120}
+                    maxHeight={ASSISTANT_INPUT_MAX_HEIGHT}
                     onChangeText={updateMessage}
+                    onContentSizeChange={(width, height) => updateInputHeight(height)}
                     placeholder={translate('Start a new chat')}
                     projectId={assistantProject.id}
                     styleTheme={TASK_THEME}
                     disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
                     keepBreakLines={true}
+                    scrollEnabled={inputScrollEnabled}
+                    showScrollIndicator={inputScrollEnabled}
+                    setEditor={requestInputHeightMeasure}
                 />
                 <Popover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}

@@ -85,7 +85,7 @@ const CustomScrollView = (
                 {children}
             </ScrollView>
 
-            {indicatorSize < visibleHeight && (
+            {showIndicator && indicatorSize < visibleHeight && (
                 <Animated.View
                     style={[
                         styles.indicator,

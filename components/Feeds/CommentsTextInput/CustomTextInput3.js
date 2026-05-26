@@ -128,6 +128,9 @@ function CustomTextInput3(
         setAssistantId,
         autoFocus,
         onMentionSelected,
+        onContentSizeChange,
+        scrollEnabled = true,
+        showScrollIndicator = true,
     },
     ref
 ) {
@@ -964,6 +967,12 @@ function CustomTextInput3(
     }, [isMobileView])
 
     useEffect(() => {
+        if (editorElement) {
+            editorElement.style.overflowY = scrollEnabled ? 'auto' : 'hidden'
+        }
+    }, [editorElement, scrollEnabled])
+
+    useEffect(() => {
         document.addEventListener('keydown', onKeyDown)
         return () => {
             document.removeEventListener('keydown', onKeyDown)
@@ -1155,6 +1164,9 @@ function CustomTextInput3(
                     overflow: 'hidden',
                 },
             ]}
+            onContentSizeChange={onContentSizeChange}
+            scrollEnabled={scrollEnabled}
+            showIndicator={showScrollIndicator}
         >
             <ReactQuill
                 ref={el => {

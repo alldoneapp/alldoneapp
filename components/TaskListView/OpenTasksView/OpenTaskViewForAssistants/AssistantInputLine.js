@@ -9,12 +9,28 @@ import Button from '../../../UIControls/Button'
 import Spinner from '../../../UIComponents/Spinner'
 import AssistantAvatarButton from '../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton'
 
+const ASSISTANT_INPUT_MIN_HEIGHT = 40
+const ASSISTANT_INPUT_MAX_HEIGHT = 120
+const ASSISTANT_INPUT_SCROLL_BUFFER = 1
+
 export default function AssistantInputLine({ assistant, projectId, noBottomMargin }) {
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
-    const [inputHeight, setInputHeight] = useState(40)
+    const [inputHeight, setInputHeight] = useState(ASSISTANT_INPUT_MIN_HEIGHT)
+    const [inputScrollEnabled, setInputScrollEnabled] = useState(false)
     const isSendingRef = useRef(false)
+
+    const updateInputHeight = useCallback(contentHeight => {
+        const roundedContentHeight = Math.ceil(contentHeight)
+        const nextInputHeight = Math.min(
+            Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight),
+            ASSISTANT_INPUT_MAX_HEIGHT
+        )
+
+        setInputHeight(nextInputHeight)
+        setInputScrollEnabled(roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT + ASSISTANT_INPUT_SCROLL_BUFFER)
+    }, [])
 
     const handleSendMessage = useCallback(async () => {
         const trimmedMessage = message.trim()
@@ -36,7 +52,8 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
             }
 
             setMessage('')
-            setInputHeight(40)
+            setInputHeight(ASSISTANT_INPUT_MIN_HEIGHT)
+            setInputScrollEnabled(false)
             isSendingRef.current = false
             setIsSending(false)
         } catch (error) {
@@ -71,7 +88,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     style={[
                         localStyles.messageInput,
                         { height: inputHeight },
-                        inputHeight < 120 && { overflowY: 'hidden' },
+                        !inputScrollEnabled && localStyles.messageInputExpanding,
                     ]}
                     value={message}
                     onChangeText={setMessage}
@@ -80,11 +97,10 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     editable={!isSending}
                     autoCorrect={true}
                     multiline={true}
-                    scrollEnabled={inputHeight >= 120}
+                    scrollEnabled={inputScrollEnabled}
                     onKeyPress={handleKeyPress}
                     onContentSizeChange={e => {
-                        const h = e.nativeEvent.contentSize.height
-                        setInputHeight(Math.min(Math.max(h, 40), 120))
+                        updateInputHeight(e.nativeEvent.contentSize.height)
                     }}
                 />
                 <View style={localStyles.sendButtonWrapper}>
@@ -138,6 +154,10 @@ const localStyles = StyleSheet.create({
         lineHeight: 22,
         color: colors.Text01,
         textAlignVertical: 'top',
+    },
+    messageInputExpanding: {
+        overflow: 'hidden',
+        overflowY: 'hidden',
     },
     sendButtonWrapper: {
         justifyContent: 'center',
