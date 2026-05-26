@@ -42,6 +42,8 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
     return acc
 }, {})
 
+export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key)
+
 // Map renamed tool keys so Firestore data with old names resolves correctly
 const TOOL_KEY_RENAMES = { get_note: 'get_notes' }
 

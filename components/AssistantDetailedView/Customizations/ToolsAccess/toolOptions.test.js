@@ -1,4 +1,4 @@
-import { TOOL_OPTIONS, TOOL_LABEL_BY_KEY, normalizeAllowedTools } from './toolOptions'
+import { DEFAULT_ALLOWED_TOOLS, TOOL_OPTIONS, TOOL_LABEL_BY_KEY, normalizeAllowedTools } from './toolOptions'
 
 describe('assistant tool options', () => {
     test('includes get_updates in the selectable assistant permissions', () => {
@@ -15,5 +15,9 @@ describe('assistant tool options', () => {
 
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
+    })
+
+    test('defaults to every selectable tool', () => {
+        expect(DEFAULT_ALLOWED_TOOLS).toEqual(TOOL_OPTIONS.map(option => option.key))
     })
 })

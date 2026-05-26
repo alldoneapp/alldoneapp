@@ -3,6 +3,7 @@ import store from '../../../redux/store'
 import NavigationService from '../../../utils/NavigationService'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { DEFAULT_ALLOWED_TOOLS } from '../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 
 export const TYPE_PROMPT_BASED = 'TYPE_PROMPT_BASED'
 export const TYPE_3RD_PARTY = 'TYPE_3RD_PARTY'
@@ -45,6 +46,7 @@ export function getNewDefaultAssistant() {
         instructions: '',
         model: MODEL_GPT5_5,
         temperature: TEMPERATURE_NORMAL,
+        allowedTools: [...DEFAULT_ALLOWED_TOOLS],
         delegationToolDescriptionManual: '',
         delegationToolDescriptionGenerated: '',
         delegationToolDescriptionGeneratedAt: null,
