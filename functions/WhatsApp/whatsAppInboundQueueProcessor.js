@@ -9,9 +9,11 @@ const QUEUE_STATUS_PENDING = 'pending'
 const QUEUE_STATUS_PROCESSING = 'processing'
 const QUEUE_STATUS_FAILED = 'failed'
 const LOCK_TTL_MS = 2 * 60 * 1000
+const LOCK_HEARTBEAT_INTERVAL_MS = 30 * 1000
 const MERGE_WINDOW_MS = 3000
 const MAX_MERGED_MESSAGES = 5
 const MAX_LOOP_ITERATIONS = 20
+const ASSISTANT_TRANSIENT_RETRY_DELAYS_MS = [1000, 5000]
 
 async function processWhatsAppInboundQueueItem(event) {
     const processorStart = Date.now()
@@ -46,7 +48,7 @@ async function processWhatsAppInboundQueueItem(event) {
             if (batch.length === 0) break
 
             const processBatchStart = Date.now()
-            await processBatchForUser(userId, batch)
+            await runWithUserQueueLockHeartbeat(userId, ownerId, markStage, () => processBatchForUser(userId, batch))
             markStage('processBatchForUser', processBatchStart, {
                 iteration: i + 1,
                 batchSize: batch.length,
@@ -111,14 +113,20 @@ async function processBatchForUser(userId, batch) {
             .join('\n\n')
 
         const aiStart = Date.now()
-        const aiResponse = await processWhatsAppAssistantMessage(
+        const aiResponse = await processWhatsAppAssistantMessageWithRetry(
             userId,
             projectId,
             chatId,
             mergedMessageText,
             assistantId,
-            null,
-            { skipCurrentMessageAppend: true, messageId: triggeringMessageId }
+            triggeringMessageId,
+            {
+                userId,
+                projectId,
+                assistantId,
+                chatId,
+                messageSids,
+            }
         )
         markBatchStage('processWhatsAppAssistantMessage', aiStart, {
             aiResponseLength: (aiResponse || '').length,
@@ -170,6 +178,106 @@ async function processBatchForUser(userId, batch) {
             }
         }
     }
+}
+
+async function runWithUserQueueLockHeartbeat(userId, ownerId, markStage, operation) {
+    let stopped = false
+    let refreshInFlight = false
+    let lastHeartbeatError = null
+
+    const heartbeat = async () => {
+        if (stopped || refreshInFlight) return
+        refreshInFlight = true
+        const refreshStart = Date.now()
+        try {
+            await refreshUserQueueLock(userId, ownerId)
+            markStage('refreshUserQueueLockHeartbeat', refreshStart)
+        } catch (error) {
+            lastHeartbeatError = error
+            console.error('WhatsApp Queue: Failed to refresh queue lock heartbeat', {
+                userId,
+                ownerId,
+                error: error.message,
+            })
+        } finally {
+            refreshInFlight = false
+        }
+    }
+
+    const interval = setInterval(heartbeat, LOCK_HEARTBEAT_INTERVAL_MS)
+    if (typeof interval.unref === 'function') interval.unref()
+
+    try {
+        const result = await operation()
+        if (lastHeartbeatError) {
+            console.warn('WhatsApp Queue: Batch completed after queue lock heartbeat error', {
+                userId,
+                ownerId,
+                error: lastHeartbeatError.message,
+            })
+        }
+        return result
+    } finally {
+        stopped = true
+        clearInterval(interval)
+    }
+}
+
+async function processWhatsAppAssistantMessageWithRetry(
+    userId,
+    projectId,
+    chatId,
+    mergedMessageText,
+    assistantId,
+    triggeringMessageId,
+    logContext = {}
+) {
+    let attempt = 0
+
+    while (true) {
+        try {
+            return await processWhatsAppAssistantMessage(
+                userId,
+                projectId,
+                chatId,
+                mergedMessageText,
+                assistantId,
+                null,
+                {
+                    skipCurrentMessageAppend: true,
+                    messageId: triggeringMessageId,
+                }
+            )
+        } catch (error) {
+            const retryDelayMs = ASSISTANT_TRANSIENT_RETRY_DELAYS_MS[attempt]
+            if (!isTransientAssistantError(error) || retryDelayMs === undefined) {
+                throw error
+            }
+
+            attempt += 1
+            console.warn('WhatsApp Queue: Retrying transient assistant error', {
+                ...logContext,
+                attempt,
+                nextAttempt: attempt + 1,
+                retryDelayMs,
+                error: error.message,
+            })
+            await delay(retryDelayMs)
+        }
+    }
+}
+
+function isTransientAssistantError(error) {
+    const message = String(error?.message || '')
+    const code = String(error?.code || error?.errno || '').toLowerCase()
+    const status = Number(error?.status || error?.statusCode || error?.response?.status || 0)
+
+    if (status >= 500 && status < 600) return true
+    if (['econnreset', 'etimedout', 'enotfound', 'eai_again', 'econnrefused'].includes(code)) return true
+
+    return /(?:^|\s)(?:502|503|504)(?:\s|$)|upstream connect error|disconnect\/reset|connection termination|socket hang up|network timeout|fetch failed/i.test(
+        message
+    )
 }
 
 async function claimNextBatchForUser(userId, ownerId) {
@@ -407,6 +515,8 @@ function createStageTimer(prefix, baseMeta = {}) {
 module.exports = {
     processWhatsAppInboundQueueItem,
     processBatchForUser,
+    isTransientAssistantError,
+    processWhatsAppAssistantMessageWithRetry,
     buildFileUnderstandingSummary,
     buildMediaOutcomeNotice,
 }
