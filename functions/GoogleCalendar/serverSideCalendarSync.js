@@ -159,7 +159,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         }
 
         const filteredEvents = filterEvents(events, userEmail)
-        const targetProjectIdsByEventId = await routeCalendarEventsToProjects({
+        const routingDecisionsByEventId = await routeCalendarEventsToProjects({
             userId,
             syncProjectId: projectId,
             userData,
@@ -168,7 +168,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         })
 
         // Process events - add/update calendar tasks
-        await addCalendarEvents(events, projectId, userId, userEmail, timezoneOffset, targetProjectIdsByEventId)
+        await addCalendarEvents(events, projectId, userId, userEmail, timezoneOffset, routingDecisionsByEventId)
 
         // Remove old/declined calendar tasks
         const simplifiedEvents = events.map(event => {
@@ -195,7 +195,7 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             userEmail,
             projectId,
             duration: totalDuration,
-            routedEvents: Object.keys(targetProjectIdsByEventId).length,
+            routedEvents: Object.values(routingDecisionsByEventId).filter(decision => decision?.matched).length,
         }
     } catch (error) {
         console.error('[serverSideCalendarSync] ❌ Sync failed:', error.message)

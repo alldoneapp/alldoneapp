@@ -1927,6 +1927,7 @@ async function collectAssistantTextWithToolCalls({
     let currentToolCalls = null
     let toolCallIteration = 0
     const executedToolNames = []
+    const createdTaskResults = []
     let pendingAttachmentPayload = null
 
     const collectStreamContent = async activeStream => {
@@ -1979,6 +1980,19 @@ async function collectAssistantTextWithToolCalls({
             toolRuntimeContext
         )
         executedToolNames.push(toolName)
+        if (
+            toolName === 'create_task' &&
+            toolResult?.success !== false &&
+            toolResult?.taskId &&
+            toolResult?.projectId
+        ) {
+            createdTaskResults.push({
+                taskId: toolResult.taskId,
+                projectId: toolResult.projectId,
+                projectName: toolResult.projectName || '',
+                task: toolResult.task || null,
+            })
+        }
         const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
         pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
 
@@ -2010,6 +2024,7 @@ async function collectAssistantTextWithToolCalls({
         assistantResponse: responseText.trim(),
         executedToolCallsCount: toolCallIteration,
         executedToolNames,
+        createdTaskResults,
         reachedMaxToolIterations: toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS,
         finalConversation: currentConversation,
     }

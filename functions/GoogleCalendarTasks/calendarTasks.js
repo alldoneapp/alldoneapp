@@ -7,6 +7,7 @@ const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 const { mapTaskData } = require('../Utils/MapDataFuncions')
 const { isEqual } = require('lodash')
 const { getUserData } = require('../Users/usersFirestore')
+const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 
 const generateTask = (customData, uid) => {
     return {
@@ -136,6 +137,70 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
     return dataToUpdate
 }
 
+const normalizeRoutingDecision = decision => {
+    if (!decision) return null
+
+    if (typeof decision === 'string') {
+        return {
+            matched: true,
+            targetProjectId: decision,
+            reasoning: '',
+            confidence: null,
+            projectName: '',
+        }
+    }
+
+    if (typeof decision !== 'object') return null
+
+    return {
+        matched: !!decision.matched && !!decision.targetProjectId,
+        targetProjectId: decision.targetProjectId || null,
+        reasoning: typeof decision.reasoning === 'string' ? decision.reasoning.trim() : '',
+        confidence: Number.isFinite(decision.confidence) ? Number(decision.confidence) : null,
+        projectName: typeof decision.projectName === 'string' ? decision.projectName.trim() : '',
+        goldSpent: Number.isFinite(decision.goldSpent) ? Number(decision.goldSpent) : 0,
+        tokenUsage: decision.tokenUsage || null,
+    }
+}
+
+const shouldAddRoutingComment = (task, targetProjectId, routingDecision) => {
+    if (!routingDecision?.matched || !targetProjectId) return false
+
+    const previousRouting = task?.calendarData?.projectRouting || null
+    return !previousRouting?.commentId || previousRouting.chosenProjectId !== targetProjectId
+}
+
+const addCalendarRoutingCommentIfNeeded = async ({
+    userData,
+    projectId,
+    taskId,
+    task,
+    routingDecision,
+    syncProjectId,
+}) => {
+    if (!shouldAddRoutingComment(task, projectId, routingDecision)) return null
+
+    return await addProjectRoutingReasonComment({
+        userData,
+        projectId,
+        taskId,
+        task,
+        projectName: routingDecision.projectName,
+        reasoning: routingDecision.reasoning,
+        confidence: routingDecision.confidence,
+        source: 'calendar_project_routing',
+        routingKey: taskId,
+        sourceDataField: 'calendarData',
+        routingData: {
+            eventId: taskId,
+            syncProjectId,
+            matched: true,
+            goldSpent: routingDecision.goldSpent || 0,
+            tokenUsage: routingDecision.tokenUsage || null,
+        },
+    })
+}
+
 const addOrUpdateCalendarTask = async (
     syncProjectId,
     targetProjectId,
@@ -143,9 +208,12 @@ const addOrUpdateCalendarTask = async (
     event,
     userId,
     email,
-    timezoneOffset = 0
+    timezoneOffset = 0,
+    routingDecision = null,
+    userData = null
 ) => {
     const { start, id: taskId } = event
+    const normalizedRoutingDecision = normalizeRoutingDecision(routingDecision)
 
     // Pass the calendar-connected project for new tasks, even when the task is routed elsewhere.
     const isNewTask = !task
@@ -158,6 +226,9 @@ const addOrUpdateCalendarTask = async (
         }
         if (task.calendarData.originalProjectId) {
             dataToUpdate.calendarData.originalProjectId = task.calendarData.originalProjectId
+        }
+        if (task.calendarData.projectRouting) {
+            dataToUpdate.calendarData.projectRouting = task.calendarData.projectRouting
         }
     }
 
@@ -183,6 +254,14 @@ const addOrUpdateCalendarTask = async (
             // Create in new project, delete from old
             await newRef.set(newTaskData, { merge: true })
             await oldRef.delete()
+            await addCalendarRoutingCommentIfNeeded({
+                userData,
+                projectId: targetProjectId,
+                taskId,
+                task: newTaskData,
+                routingDecision: normalizedRoutingDecision,
+                syncProjectId,
+            })
             return
         }
 
@@ -190,9 +269,26 @@ const addOrUpdateCalendarTask = async (
         if (checkIfNeedToUpdateTask(task, dataToUpdate)) {
             await admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`).update(dataToUpdate)
         }
+        await addCalendarRoutingCommentIfNeeded({
+            userData,
+            projectId: task.projectId,
+            taskId,
+            task,
+            routingDecision: normalizedRoutingDecision,
+            syncProjectId,
+        })
     } else {
         dataToUpdate.sortIndex = computeSortIndex(start, timezoneOffset)
-        await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(generateTask(dataToUpdate, userId))
+        const newTask = generateTask(dataToUpdate, userId)
+        await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(newTask)
+        await addCalendarRoutingCommentIfNeeded({
+            userData,
+            projectId: targetProjectId,
+            taskId,
+            task: newTask,
+            routingDecision: normalizedRoutingDecision,
+            syncProjectId,
+        })
     }
 }
 
@@ -210,7 +306,7 @@ const addCalendarEvents = async (
     userId,
     email,
     timezoneOffset = 0,
-    targetProjectIdsByEventId = {}
+    routingDecisionsByEventId = {}
 ) => {
     const user = await getUserData(userId)
     if (!user) {
@@ -232,9 +328,20 @@ const addCalendarEvents = async (
     const promises = []
     filteredEvents.forEach(event => {
         const existingTask = tasksMap[event.id]
-        const targetProjectId = targetProjectIdsByEventId[event.id] || syncProjectId
+        const routingDecision = normalizeRoutingDecision(routingDecisionsByEventId[event.id])
+        const targetProjectId = routingDecision?.matched ? routingDecision.targetProjectId : syncProjectId
         promises.push(
-            addOrUpdateCalendarTask(syncProjectId, targetProjectId, existingTask, event, userId, email, timezoneOffset)
+            addOrUpdateCalendarTask(
+                syncProjectId,
+                targetProjectId,
+                existingTask,
+                event,
+                userId,
+                email,
+                timezoneOffset,
+                routingDecision,
+                user
+            )
         )
     })
 

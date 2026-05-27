@@ -41,7 +41,8 @@ async function routeCalendarEventsToProjects({
         return {}
     }
 
-    const targetProjectIdsByEventId = {}
+    const routingDecisionsByEventId = {}
+    const projectDefinitionById = new Map(projectDefinitions.map(project => [project.projectId, project]))
 
     for (const event of events) {
         if (!event?.id) continue
@@ -102,8 +103,16 @@ async function routeCalendarEventsToProjects({
                 goldSpent: goldToCharge,
             })
 
-            if (classifierResult.matched && classifierResult.projectId) {
-                targetProjectIdsByEventId[event.id] = classifierResult.projectId
+            routingDecisionsByEventId[event.id] = {
+                matched: !!classifierResult.matched && !!classifierResult.projectId,
+                targetProjectId: classifierResult.matched ? classifierResult.projectId : null,
+                confidence: classifierResult.confidence,
+                reasoning: classifierResult.reasoning,
+                projectName: classifierResult.projectId
+                    ? projectDefinitionById.get(classifierResult.projectId)?.name || ''
+                    : '',
+                goldSpent: goldToCharge,
+                tokenUsage,
             }
         } catch (error) {
             logRouting('Failed routing calendar event; falling back to connected project', {
@@ -115,7 +124,7 @@ async function routeCalendarEventsToProjects({
         }
     }
 
-    return targetProjectIdsByEventId
+    return routingDecisionsByEventId
 }
 
 module.exports = {

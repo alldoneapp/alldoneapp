@@ -94,11 +94,16 @@ jest.mock('./gmailPromptClassifier', () => ({
     classifyGmailMessage: jest.fn(),
 }))
 
+jest.mock('../shared/projectRoutingCommentHelper', () => ({
+    addProjectRoutingReasonComment: jest.fn(() => Promise.resolve({ commentId: 'routing-comment-1' })),
+}))
+
 const admin = require('firebase-admin')
 const assistantHelper = require('../Assistant/assistantHelper')
 const assistantsFirestore = require('../Firestore/assistantsFirestore')
 const { deductGold } = require('../Gold/goldHelper')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
+const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const {
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultProjectFollowUpPrompt,
@@ -396,6 +401,14 @@ describe('serverSideGmailLabelingSync helpers', () => {
             assistantResponse: 'Created a task with the email link.',
             executedToolCallsCount: 1,
             executedToolNames: ['create_task'],
+            createdTaskResults: [
+                {
+                    taskId: 'task-1',
+                    projectId: 'project-1',
+                    projectName: 'Client Project',
+                    task: { id: 'task-1', name: 'Urgent request', userId: 'user-1' },
+                },
+            ],
             finalConversation: [{ role: 'user', content: 'context' }],
         })
         assistantHelper.calculateTokens.mockReturnValue(420)
@@ -421,10 +434,20 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 bodyText: 'Please respond today',
             },
             gmailEmail: 'person@example.com',
+            reasoning: 'The sender and subject match the client project.',
+            confidence: 0.94,
+            selectedProjectId: 'project-1',
         })
 
         expect(result.status).toBe('completed')
         expect(result.executedToolNames).toEqual(['create_task'])
+        expect(result.routingCommentResults).toEqual([
+            {
+                taskId: 'task-1',
+                projectId: 'project-1',
+                commentId: 'routing-comment-1',
+            },
+        ])
         expect(result.assistantResponse).toBe('Created a task with the email link.')
         expect(result.goldSpent).toBe(2)
         expect(result.estimatedNormalGoldCost).toBe(2)
@@ -468,6 +491,24 @@ describe('serverSideGmailLabelingSync helpers', () => {
             expect.anything(),
             expect.anything(),
             expect.anything()
+        )
+        expect(addProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userData: { defaultProjectId: 'default-project' },
+                projectId: 'project-1',
+                taskId: 'task-1',
+                projectName: 'Client Project',
+                reasoning: 'The sender and subject match the client project.',
+                confidence: 0.94,
+                source: 'gmail_labeling',
+                sourceDataField: 'gmailData',
+                routingData: expect.objectContaining({
+                    messageId: 'message-1',
+                    selectedLabelKey: 'urgent',
+                    selectedGmailLabelName: 'Alldone/Urgent',
+                    selectedProjectId: 'project-1',
+                }),
+            })
         )
     })
 
@@ -516,6 +557,120 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(result.status).toBe('blocked')
         expect(result.error).toContain('Tool not permitted')
         expect(result.goldSpent).toBe(0)
+    })
+
+    test('keeps label-only emails audit-only with selected project reasoning', async () => {
+        const auditSet = jest.fn().mockResolvedValue(undefined)
+        admin.firestore.mockImplementation(() => ({
+            getAll: admin.__mock.getAll,
+            doc: admin.__mock.doc,
+            collection: jest.fn(path => {
+                if (path === 'users') {
+                    return {
+                        doc: jest.fn(() => ({
+                            get: jest.fn().mockResolvedValue({ data: () => ({ gold: 99 }) }),
+                            collection: jest.fn(collectionName => {
+                                if (collectionName !== 'private') return { doc: jest.fn() }
+
+                                return {
+                                    doc: jest.fn(() => ({
+                                        collection: jest.fn(nestedCollectionName => {
+                                            if (nestedCollectionName !== 'messages') return { doc: jest.fn() }
+
+                                            return {
+                                                doc: jest.fn(() => ({
+                                                    get: jest.fn().mockResolvedValue({ exists: false }),
+                                                    set: auditSet,
+                                                })),
+                                            }
+                                        }),
+                                    })),
+                                }
+                            }),
+                        })),
+                    }
+                }
+
+                return {
+                    limit: () => ({
+                        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+                    }),
+                }
+            }),
+        }))
+        classifyGmailMessage.mockResolvedValue({
+            matched: true,
+            labelKey: 'client',
+            confidence: 0.91,
+            reasoning: 'The sender and subject match Client Project.',
+            usage: { totalTokens: 100 },
+        })
+
+        const gmail = {
+            users: {
+                messages: {
+                    modify: jest.fn().mockResolvedValue({}),
+                },
+                labels: {
+                    create: jest.fn().mockResolvedValue({ data: { id: 'label-1' } }),
+                },
+            },
+        }
+
+        const result = await processSingleMessage({
+            gmail,
+            labelMap: new Map(),
+            config: {
+                model: 'MODEL_GPT5_5',
+                labelDefinitions: [
+                    {
+                        key: 'client',
+                        gmailLabelName: 'Client Project',
+                        autoArchive: false,
+                        directionScope: 'incoming',
+                        postLabelPrompt: '',
+                        sourceProjectId: 'project-client',
+                    },
+                ],
+                updatedAt: 'prompt-version',
+            },
+            userId: 'user-1',
+            userData: { defaultProjectId: 'default-project' },
+            projectId: 'connected-project',
+            gmailEmail: 'me@example.com',
+            rawMessage: {
+                id: 'message-1',
+                threadId: 'thread-1',
+                internalDate: '1710000000000',
+                labelIds: ['INBOX'],
+                payload: {
+                    headers: [
+                        { name: 'From', value: 'Client <client@example.com>' },
+                        { name: 'To', value: 'Me <me@example.com>' },
+                        { name: 'Subject', value: 'Client project update' },
+                        { name: 'Date', value: 'Tue, 11 Mar 2026 10:00:00 +0100' },
+                    ],
+                    mimeType: 'text/plain',
+                    body: { data: Buffer.from('Project update').toString('base64url') },
+                },
+                snippet: 'Project update',
+            },
+            syncRunId: 'sync-1',
+        })
+
+        expect(result.labeled).toBe(1)
+        expect(assistantHelper.collectAssistantTextWithToolCalls).not.toHaveBeenCalled()
+        expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
+        expect(auditSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                selectedProjectId: 'project-client',
+                selectedProjectSource: 'default_project_label',
+                reasoning: 'The sender and subject match Client Project.',
+                confidence: 0.91,
+                postLabelAction: expect.objectContaining({ status: 'skipped' }),
+            }),
+            { merge: true }
+        )
     })
 
     test('outgoing processing runs follow-up only for external To recipients and stores them in audit', async () => {
@@ -620,6 +775,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         autoArchive: true,
                         directionScope: 'outgoing',
                         postLabelPrompt: 'Create a task for this email',
+                        sourceProjectId: 'source-project',
                     },
                 ],
                 updatedAt: 'prompt-version',
@@ -682,6 +838,10 @@ describe('serverSideGmailLabelingSync helpers', () => {
         )
         expect(auditSet).toHaveBeenCalledWith(
             expect.objectContaining({
+                selectedProjectId: 'source-project',
+                selectedProjectSource: 'default_project_label',
+                reasoning: 'Matched outgoing follow-up',
+                confidence: 0.95,
                 recipientEmails: ['alice@example.com', 'bob@example.com'],
                 postLabelActions: expect.arrayContaining([
                     expect.objectContaining({ status: 'completed' }),
@@ -690,5 +850,6 @@ describe('serverSideGmailLabelingSync helpers', () => {
             }),
             { merge: true }
         )
+        expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
     })
 })

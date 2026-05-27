@@ -62,7 +62,7 @@ describe('calendarProjectRouting', () => {
         admin.__mock.get.mockResolvedValue({ data: () => ({ gold: 10 }) })
     })
 
-    test('returns a target project map for confident matches and charges gold', async () => {
+    test('returns routing decisions for confident matches and charges gold', async () => {
         classifyCalendarEventProject.mockResolvedValue({
             matched: true,
             projectId: 'project-a',
@@ -79,7 +79,17 @@ describe('calendarProjectRouting', () => {
             calendarEmail: 'me@example.com',
         })
 
-        expect(result).toEqual({ 'event-1': 'project-a' })
+        expect(result).toEqual({
+            'event-1': {
+                matched: true,
+                targetProjectId: 'project-a',
+                confidence: 0.9,
+                reasoning: 'Clear project match.',
+                projectName: 'Project A',
+                goldSpent: 2,
+                tokenUsage: { totalTokens: 100 },
+            },
+        })
         expect(deductGold).toHaveBeenCalledWith(
             'user-1',
             2,
@@ -109,7 +119,17 @@ describe('calendarProjectRouting', () => {
             calendarEmail: 'me@example.com',
         })
 
-        expect(result).toEqual({})
+        expect(result).toEqual({
+            'event-1': {
+                matched: false,
+                targetProjectId: null,
+                confidence: 0.2,
+                reasoning: 'No clear project.',
+                projectName: '',
+                goldSpent: 2,
+                tokenUsage: { totalTokens: 100 },
+            },
+        })
         expect(deductGold).toHaveBeenCalled()
     })
 

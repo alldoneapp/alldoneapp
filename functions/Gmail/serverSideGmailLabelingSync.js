@@ -39,6 +39,7 @@ const {
     parseEmailHeaderAddresses,
 } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
+const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
@@ -868,6 +869,63 @@ function buildPostLabelGmailContext({
     }
 }
 
+async function addRoutingCommentsToCreatedGmailTasks({
+    userData = {},
+    createdTaskResults = [],
+    normalizedMessage = {},
+    selectedDefinition = {},
+    reasoning = '',
+    confidence = null,
+    selectedProjectId = null,
+}) {
+    if (!Array.isArray(createdTaskResults) || createdTaskResults.length === 0) return []
+
+    const commentResults = []
+    for (const createdTask of createdTaskResults) {
+        if (!createdTask?.projectId || !createdTask?.taskId) continue
+
+        try {
+            const commentResult = await addProjectRoutingReasonComment({
+                userData,
+                projectId: createdTask.projectId,
+                taskId: createdTask.taskId,
+                task: createdTask.task,
+                projectName: createdTask.projectName || '',
+                reasoning,
+                confidence,
+                source: 'gmail_labeling',
+                routingKey: normalizedMessage.messageId || '',
+                sourceDataField: 'gmailData',
+                routingData: {
+                    messageId: normalizedMessage.messageId || '',
+                    threadId: normalizedMessage.threadId || '',
+                    selectedLabelKey: selectedDefinition.key || '',
+                    selectedGmailLabelName: selectedDefinition.gmailLabelName || '',
+                    selectedProjectId: selectedProjectId || null,
+                    matched: true,
+                },
+            })
+
+            if (commentResult) {
+                commentResults.push({
+                    taskId: createdTask.taskId,
+                    projectId: createdTask.projectId,
+                    commentId: commentResult.commentId,
+                })
+            }
+        } catch (error) {
+            console.warn('[gmailLabeling] Failed adding routing comment to created Gmail task', {
+                taskId: createdTask.taskId,
+                projectId: createdTask.projectId,
+                messageId: normalizedMessage.messageId || '',
+                error: error.message,
+            })
+        }
+    }
+
+    return commentResults
+}
+
 async function executePostLabelPrompt({
     userId,
     userData,
@@ -878,6 +936,9 @@ async function executePostLabelPrompt({
     targetContactEmail = '',
     forceExecute = false,
     existingAuditEntry = null,
+    reasoning = '',
+    confidence = null,
+    selectedProjectId = null,
 }) {
     const prompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
@@ -984,6 +1045,15 @@ async function executePostLabelPrompt({
             Array.isArray(result?.finalConversation) ? result.finalConversation : messages,
             assistant.model
         )
+        const routingCommentResults = await addRoutingCommentsToCreatedGmailTasks({
+            userData,
+            createdTaskResults: result?.createdTaskResults || [],
+            normalizedMessage,
+            selectedDefinition,
+            reasoning,
+            confidence,
+            selectedProjectId,
+        })
         const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, assistant.model)
         let goldSpent = 0
         if (estimatedNormalGoldCost > 0) {
@@ -1014,6 +1084,8 @@ async function executePostLabelPrompt({
             assistantId,
             executedToolNames: Array.isArray(result?.executedToolNames) ? result.executedToolNames : [],
             executedToolCallsCount: Number(result?.executedToolCallsCount) || 0,
+            createdTaskResults: Array.isArray(result?.createdTaskResults) ? result.createdTaskResults : [],
+            routingCommentResults,
             assistantResponse: result?.assistantResponse || '',
             status: 'completed',
             error: '',
@@ -1257,6 +1329,10 @@ async function processSingleMessage({
             insufficientGold: insufficientGoldForClassification,
         }
     }
+    const selectedProjectId =
+        typeof selectedDefinition.sourceProjectId === 'string' && selectedDefinition.sourceProjectId.trim()
+            ? selectedDefinition.sourceProjectId.trim()
+            : null
 
     let labelId
     let modifyResult
@@ -1321,6 +1397,9 @@ async function processSingleMessage({
             targetContactEmail,
             forceExecute: forceFollowUp,
             existingAuditEntry,
+            reasoning: classifierResult.reasoning,
+            confidence: classifierResult.confidence,
+            selectedProjectId,
         })
         postLabelActions.push(action)
         followUpGoldSpent += Number(action?.goldSpent) || 0
@@ -1334,6 +1413,8 @@ async function processSingleMessage({
         direction,
         selectedLabelKey: selectedDefinition.key,
         selectedGmailLabelName: selectedDefinition.gmailLabelName,
+        selectedProjectId,
+        selectedProjectSource: selectedProjectId ? 'default_project_label' : 'gmail_label',
         autoArchive: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : !!selectedDefinition.autoArchive,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
