@@ -213,6 +213,26 @@ describe('OKR assistant tool schemas', () => {
     })
 })
 
+describe('Project happiness assistant tool schema', () => {
+    test('exposes project happiness read tool when allowed', () => {
+        expect(getToolSchemas(['get_project_happiness']).map(schema => schema.function.name)).toEqual([
+            'get_project_happiness',
+        ])
+    })
+
+    test('documents project happiness read filters', () => {
+        const properties = toolSchemas.get_project_happiness.function.parameters.properties
+
+        expect(toolSchemas.get_project_happiness.function.description).toContain('ratings and comments')
+        expect(properties.allProjects.type).toBe('boolean')
+        expect(properties.projectId.type).toBe('string')
+        expect(properties.projectName.type).toBe('string')
+        expect(properties.date.type).toBe('string')
+        expect(properties.limit.type).toBe('number')
+        expect(toolSchemas.get_project_happiness.function.parameters.required).toEqual([])
+    })
+})
+
 describe('Get tasks assistant tool schema', () => {
     test('documents hour-based recency filters for done tasks', () => {
         expect(toolSchemas.get_tasks.function.parameters.properties.recentHours).toEqual({

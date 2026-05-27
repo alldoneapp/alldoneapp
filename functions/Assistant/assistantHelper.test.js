@@ -1630,6 +1630,108 @@ describe('assistant get contacts tool', () => {
     })
 })
 
+describe('assistant get project happiness tool', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockClear()
+    })
+
+    test('returns private happiness entries and stats across projects', async () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Privat' }]),
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                timezone: 'UTC+02:00',
+            }),
+        })
+        mockCollectionGet.mockResolvedValueOnce({
+            docs: [
+                {
+                    id: '20260401',
+                    data: () => ({
+                        projectId: 'project-1',
+                        userId: 'user-1',
+                        dateKey: '20260401',
+                        day: 20260401,
+                        timestamp: 1775001600000,
+                        rating: 5,
+                        comment: 'Deep work on the launch felt energizing.',
+                        updated: 1775088000000,
+                    }),
+                },
+                {
+                    id: '20260331',
+                    data: () => ({
+                        projectId: 'project-1',
+                        userId: 'user-1',
+                        dateKey: '20260331',
+                        day: 20260331,
+                        timestamp: 1774915200000,
+                        rating: 2,
+                        comment: 'Too many interruptions.',
+                    }),
+                },
+            ],
+        })
+
+        const result = await executeToolNatively(
+            'get_project_happiness',
+            {
+                allProjects: true,
+                limit: 20,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(ProjectService).toHaveBeenCalled()
+        expect(result).toMatchObject({
+            count: 2,
+            entries: [
+                {
+                    projectId: 'project-1',
+                    projectName: 'Privat',
+                    rating: 5,
+                    ratingText: '5/5 very happy',
+                    comment: 'Deep work on the launch felt energizing.',
+                },
+                {
+                    projectId: 'project-1',
+                    projectName: 'Privat',
+                    rating: 2,
+                    ratingText: '2/5 unhappy',
+                    comment: 'Too many interruptions.',
+                },
+            ],
+            stats: {
+                count: 2,
+                averageRating: 3.5,
+                distribution: {
+                    1: 0,
+                    2: 1,
+                    3: 0,
+                    4: 0,
+                    5: 1,
+                },
+            },
+            appliedFilters: {
+                allProjects: true,
+                limit: 20,
+                timezoneOffset: 120,
+            },
+            privacy: 'Project happiness entries are private to the requesting user.',
+        })
+        expect(result.stats.happiestEntries).toHaveLength(1)
+        expect(result.stats.unhappiestEntries).toHaveLength(1)
+    })
+})
+
 describe('assistant get goals tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()

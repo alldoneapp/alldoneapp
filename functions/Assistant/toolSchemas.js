@@ -237,6 +237,46 @@ const toolSchemas = {
         },
     },
 
+    get_project_happiness: {
+        type: 'function',
+        function: {
+            name: 'get_project_happiness',
+            description:
+                "Retrieves the current user's private project happiness ratings and comments so you can understand what work makes them happier or less happy and give better coaching advice. Use this when the user asks what makes them happy, how work is affecting them, happiness trends, motivation patterns, or project satisfaction. Defaults to the current project unless allProjects is true or a project is specified.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    allProjects: {
+                        type: 'boolean',
+                        description:
+                            'If true, retrieves happiness entries from all accessible active projects instead of only the current project. Use this for broad coaching questions.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit happiness entries to a specific accessible project ID. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit happiness entries to a specific accessible project by exact or partial project name.',
+                    },
+                    date: {
+                        type: 'string',
+                        description:
+                            'Optional: filter entries by timeframe. Supports "today", "yesterday", "this week", "last month", "last 90 days", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
+                    },
+                    limit: {
+                        type: 'number',
+                        description:
+                            'Optional: maximum number of happiness entries to return after merging projects. Default is 50, maximum is 500.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+
     get_chats: {
         type: 'function',
         function: {

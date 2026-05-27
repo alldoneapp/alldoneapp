@@ -13,6 +13,13 @@ describe('assistant tool options', () => {
         expect(TOOL_LABEL_BY_KEY.get_project_okrs).toBe('Get project OKRs')
     })
 
+    test('includes project happiness in the selectable assistant permissions', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'get_project_happiness', labelKey: 'Get project happiness' }])
+        )
+        expect(TOOL_LABEL_BY_KEY.get_project_happiness).toBe('Get project happiness')
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })

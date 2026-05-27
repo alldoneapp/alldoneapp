@@ -3036,6 +3036,111 @@ async function resolveProjectTargetForDescriptionUpdate(
     }
 }
 
+const getHappinessRatingTextForTool = rating => {
+    const labels = {
+        1: '1/5 very unhappy',
+        2: '2/5 unhappy',
+        3: '3/5 neutral',
+        4: '4/5 happy',
+        5: '5/5 very happy',
+    }
+    return labels[rating] || ''
+}
+
+function getHappinessDayFromTimestamp(timestamp, timezoneOffset = null) {
+    const numericTimestamp = Number(timestamp)
+    const momentValue =
+        typeof timezoneOffset === 'number'
+            ? moment(numericTimestamp).utcOffset(timezoneOffset)
+            : moment(numericTimestamp)
+    return parseInt(momentValue.format('YYYYMMDD'), 10)
+}
+
+function buildProjectHappinessDateRange(date, timezoneOffset = null) {
+    if (!date || typeof date !== 'string' || !date.trim()) return null
+
+    const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+    const retrievalService = new TaskRetrievalService({
+        database: admin.firestore(),
+        moment: require('moment-timezone'),
+        isCloudFunction: true,
+    })
+    const parsed = retrievalService.buildDateFilters(date, 'done', timezoneOffset)
+    if (parsed?.operator !== 'range' || !parsed.value) return null
+
+    return {
+        start: parsed.value.start,
+        end: parsed.value.end,
+        startDay: getHappinessDayFromTimestamp(parsed.value.start, timezoneOffset),
+        endDay: getHappinessDayFromTimestamp(parsed.value.end, timezoneOffset),
+    }
+}
+
+function mapProjectHappinessEntry(docData, docId, project, timezoneOffset = null) {
+    const rating = Number(docData?.rating)
+    const timestamp = Number(docData?.timestamp)
+    const day =
+        Number(docData?.day) ||
+        (Number.isFinite(timestamp) ? getHappinessDayFromTimestamp(timestamp, timezoneOffset) : null)
+
+    return {
+        id: docId || docData?.dateKey || null,
+        projectId: project.id,
+        projectName: project.name || project.id,
+        dateKey: docData?.dateKey || (day ? String(day) : null),
+        day,
+        timestamp: Number.isFinite(timestamp) ? timestamp : null,
+        rating,
+        ratingText: getHappinessRatingTextForTool(rating),
+        comment: typeof docData?.comment === 'string' ? docData.comment.trim() : '',
+        updated: Number.isFinite(Number(docData?.updated)) ? Number(docData.updated) : null,
+        created: Number.isFinite(Number(docData?.created)) ? Number(docData.created) : null,
+    }
+}
+
+async function getProjectHappinessEntriesForTool(db, project, userId, dateRange, limit, timezoneOffset = null) {
+    const collectionPath = `projectHappiness/${project.id}/users/${userId}/days`
+    let query = db.collection(collectionPath)
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 500))
+
+    if (dateRange) {
+        const startDay = Math.min(dateRange.startDay, dateRange.endDay)
+        const endDay = Math.max(dateRange.startDay, dateRange.endDay)
+        query = query.where('day', '>=', startDay).where('day', '<=', endDay)
+    } else {
+        query = query.orderBy('day', 'desc').limit(safeLimit)
+    }
+
+    const snapshot = await query.get()
+    const docs = []
+    if (typeof snapshot?.forEach === 'function') {
+        snapshot.forEach(doc => docs.push(doc))
+    } else if (Array.isArray(snapshot?.docs)) {
+        docs.push(...snapshot.docs)
+    }
+
+    return docs
+        .map(doc => mapProjectHappinessEntry(doc.data ? doc.data() || {} : {}, doc.id, project, timezoneOffset))
+        .filter(entry => Number.isInteger(entry.rating) && entry.rating >= 1 && entry.rating <= 5)
+}
+
+function buildProjectHappinessStats(entries) {
+    const distribution = [1, 2, 3, 4, 5].reduce((acc, rating) => ({ ...acc, [rating]: 0 }), {})
+    const total = entries.reduce((sum, entry) => {
+        distribution[entry.rating] = (distribution[entry.rating] || 0) + 1
+        return sum + entry.rating
+    }, 0)
+    const count = entries.length
+
+    return {
+        count,
+        averageRating: count ? total / count : 0,
+        distribution,
+        happiestEntries: entries.filter(entry => entry.rating >= 4 && entry.comment).slice(0, 10),
+        unhappiestEntries: entries.filter(entry => entry.rating <= 2 && entry.comment).slice(0, 10),
+    }
+}
+
 async function resolveTargetAssistantForSettingsUpdate({
     contextProjectId,
     contextAssistantId,
@@ -4451,6 +4556,94 @@ async function executeToolNatively(
                 okrs: (result.okrs || []).map(mapAssistantOKRForToolResponse),
                 count: result.count || 0,
                 appliedFilters: result.appliedFilters || null,
+            }
+        }
+
+        case 'get_project_happiness': {
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const { ProjectService } = require('../shared/ProjectService')
+
+            const db = admin.firestore()
+            const userDoc = await db.collection('users').doc(creatorId).get()
+            if (!userDoc.exists) {
+                throw new Error('User not found')
+            }
+            const userData = userDoc.data() || {}
+            const rawTz =
+                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+            const limit = Math.max(1, Math.min(Number(toolArgs.limit) || 50, 500))
+            const dateRange = buildProjectHappinessDateRange(toolArgs.date || null, timezoneOffset)
+            const hasProjectTarget = !!(toolArgs.projectId || toolArgs.projectName)
+            const resolvedAllProjects = toolArgs.allProjects === true && !hasProjectTarget
+            const projectService = new ProjectService({ database: db })
+            await projectService.initialize()
+
+            let projects = []
+            if (resolvedAllProjects) {
+                projects = await projectService.getUserProjects(creatorId, {
+                    includeArchived: false,
+                    includeCommunity: false,
+                })
+            } else {
+                const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                    db,
+                    creatorId,
+                    projectId,
+                    toolArgs.projectId,
+                    toolArgs.projectName
+                )
+                projects = [{ id: targetProject.id, name: targetProject.name }]
+            }
+
+            const perProjectLimit = resolvedAllProjects ? Math.max(limit, 10) : limit
+            const nestedEntries = await Promise.all(
+                projects.map(project =>
+                    getProjectHappinessEntriesForTool(
+                        db,
+                        project,
+                        creatorId,
+                        dateRange,
+                        perProjectLimit,
+                        timezoneOffset
+                    )
+                )
+            )
+            const entries = nestedEntries
+                .flat()
+                .sort((a, b) => (b.timestamp || b.day || 0) - (a.timestamp || a.day || 0))
+                .slice(0, limit)
+            const stats = buildProjectHappinessStats(entries)
+
+            console.log('🙂 GET_PROJECT_HAPPINESS TOOL: Results', {
+                userId: creatorId,
+                currentProjectId: projectId || null,
+                allProjects: resolvedAllProjects,
+                projectCount: projects.length,
+                entriesReturned: entries.length,
+                date: toolArgs.date || null,
+                limit,
+            })
+
+            return {
+                entries,
+                count: entries.length,
+                stats,
+                appliedFilters: {
+                    allProjects: resolvedAllProjects,
+                    projectId: resolvedAllProjects ? null : projects[0]?.id || null,
+                    projectName: resolvedAllProjects ? null : projects[0]?.name || null,
+                    date: toolArgs.date || null,
+                    dateRange,
+                    limit,
+                    timezoneOffset,
+                },
+                privacy: 'Project happiness entries are private to the requesting user.',
+                coachingHint:
+                    'Use rating patterns and the user comments to identify energizing work, draining work, and concrete coaching suggestions.',
             }
         }
 
@@ -8342,6 +8535,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks about OKRs, objectives, key results, targets, or OKR progress, use get_project_okrs instead of guessing from chat history.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_project_happiness')) {
+        messages.push([
+            'system',
+            'When the user asks what makes them happy, what work motivates or drains them, or asks for coaching based on project satisfaction, use get_project_happiness. Prefer allProjects=true for broad coaching questions and use the returned ratings/comments as private user context.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_contacts')) {
