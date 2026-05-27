@@ -6,7 +6,14 @@ import { colors } from '../../styles/global'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 Chart.register(ChartDataLabels)
 
-export default function StackedBarChart({ title, statisticData, project }) {
+export default function StackedBarChart({
+    title,
+    statisticData,
+    project,
+    stacked = true,
+    showDataLabels = true,
+    maxY,
+}) {
     const { data, unit } = statisticData
     const [dataset, setDataset] = useState([
         {
@@ -30,8 +37,9 @@ export default function StackedBarChart({ title, statisticData, project }) {
             }
         }
 
-        const sug = Math.max(...Object.values(maxValues)) * 1.15
-        setSuggestedMax(sug)
+        const values = Object.values(maxValues)
+        const sug = values.length > 0 ? Math.max(...values) * 1.15 : 100
+        setSuggestedMax(maxY || sug)
     }
 
     useEffect(() => {
@@ -94,7 +102,7 @@ export default function StackedBarChart({ title, statisticData, project }) {
                         align: 'end',
                         anchor: 'end',
                         display: function (context) {
-                            return context.datasetIndex === dataset.length - 1
+                            return showDataLabels && context.datasetIndex === dataset.length - 1
                         },
                     },
                 },
@@ -105,12 +113,13 @@ export default function StackedBarChart({ title, statisticData, project }) {
                         type: 'time',
                         time: { unit: unit },
                         display: dataset?.[0]?.data.length <= 14,
-                        stacked: true,
+                        stacked: stacked,
                         ticks: { source: 'data', autoSkip: false, maxRotation: 0, major: { enabled: true } },
                     },
                     y: {
-                        stacked: true,
+                        stacked: stacked,
                         suggestedMax: suggestedMax,
+                        max: maxY,
                     },
                 },
             }}

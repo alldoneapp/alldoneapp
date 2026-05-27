@@ -45,7 +45,33 @@ function Distribution({ distribution, total }) {
     )
 }
 
-function Trend({ entries }) {
+const getGlobalTrendEntries = happinessByProject => {
+    const entriesByDate = {}
+
+    Object.values(happinessByProject).forEach(entries => {
+        entries.forEach(entry => {
+            if (!entry.rating) return
+
+            const dateKey = entry.dateKey || `${entry.timestamp}`
+            if (!entriesByDate[dateKey]) {
+                entriesByDate[dateKey] = { timestamp: entry.timestamp, ratings: [] }
+            }
+            entriesByDate[dateKey].ratings.push(entry.rating)
+        })
+    })
+
+    return Object.entries(entriesByDate).map(([dateKey, data]) => {
+        const rating = data.ratings.reduce((sum, value) => sum + value, 0) / data.ratings.length
+
+        return {
+            dateKey,
+            timestamp: data.timestamp,
+            rating,
+        }
+    })
+}
+
+function Trend({ entries, showAverageLabel }) {
     const trendEntries = entries
         .filter(entry => entry.rating)
         .sort((a, b) => a.timestamp - b.timestamp)
@@ -61,7 +87,9 @@ function Trend({ entries }) {
                             <View style={localStyles.trendBarTrack}>
                                 <View style={[localStyles.trendBar, { height: `${(entry.rating / 5) * 100}%` }]} />
                             </View>
-                            <Text style={localStyles.trendEmoji}>{HAPPINESS_EMOJIS[entry.rating]}</Text>
+                            <Text style={localStyles.trendEmoji}>
+                                {showAverageLabel ? entry.rating.toFixed(1) : HAPPINESS_EMOJIS[entry.rating]}
+                            </Text>
                         </View>
                     ))}
                 </View>
@@ -109,9 +137,10 @@ export default function HappinessStatsPanel({
     const isGlobal = !!happinessByProject
     const globalStats = isGlobal ? getGlobalHappinessStats(happinessByProject) : null
     const stats = isGlobal ? globalStats : getHappinessStats(entries)
-    const trendEntries = isGlobal ? Object.values(happinessByProject).flat() : entries
+    const trendEntries = isGlobal ? getGlobalTrendEntries(happinessByProject) : entries
+    const commentEntries = isGlobal ? Object.values(happinessByProject).flat() : entries
     const latest = isGlobal
-        ? trendEntries.filter(entry => entry.rating).sort((a, b) => b.timestamp - a.timestamp)[0]
+        ? commentEntries.filter(entry => entry.rating).sort((a, b) => b.timestamp - a.timestamp)[0]
         : stats.latest
 
     return (
@@ -129,8 +158,8 @@ export default function HappinessStatsPanel({
                 </Text>
             )}
             <Distribution distribution={stats.distribution} total={stats.trackedDays} />
-            <Trend entries={trendEntries} />
-            {showRecentComments && <RecentComments entries={trendEntries} isGlobal={isGlobal} />}
+            <Trend entries={trendEntries} showAverageLabel={isGlobal} />
+            {showRecentComments && <RecentComments entries={commentEntries} isGlobal={isGlobal} />}
         </View>
     )
 }

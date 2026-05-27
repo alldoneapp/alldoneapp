@@ -16,12 +16,14 @@ import {
 import StackedBarChart from './StackedBarChart'
 import {
     getDataForAllProjectsCharts,
+    getDataForAllProjectsHappinessCharts,
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
     STATISTIC_CHART_MONEY_EARNED,
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
+    STATISTIC_CHART_HAPPINESS,
 } from '../../../utils/StatisticChartsHelper'
 import { translate } from '../../../i18n/TranslationService'
 import ChartsOptionsButton from './ChartsOptionsButton'
@@ -29,6 +31,8 @@ import StatisticItemWrapper from '../../StatisticsView/StatisticsSection/Statist
 import SelectProjectModalInInvoceGenerationWrapper from './SelectProjectModalInInvoceGenerationWrapper'
 import DefaultCurrency from './DefaultCurrency'
 import { convertCurrency, formatCurrency } from '../../../utils/CurrencyConverter'
+import Backend from '../../../utils/BackendBridge'
+import v4 from 'uuid/v4'
 
 export default function UserStatistics() {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -47,6 +51,7 @@ export default function UserStatistics() {
     const [allDoneTimeByProject, setAllDoneTimeByProject] = useState({ total: null })
     const [allXpByProject, setAllXpByProject] = useState({ total: null })
     const [allGoldByProject, setAllGoldByProject] = useState({ total: null })
+    const [happinessByProject, setHappinessByProject] = useState({})
 
     const [selectedChart, setSelectedChart] = useState(STATISTIC_CHART_DONE_TASKS)
     const estimationTypeToUse = getEstimationTypeToUse()
@@ -143,6 +148,28 @@ export default function UserStatistics() {
     useEffect(() => {
         writeBrowserURL()
     }, [])
+
+    useEffect(() => {
+        const watcherKey = v4()
+        const watcherKeys = loggedUserProjects.map(project => `settings_happiness_chart_${project.id}_${watcherKey}`)
+
+        setHappinessByProject({})
+
+        loggedUserProjects.forEach(project => {
+            Backend.watchProjectHappinessByRange(
+                project.id,
+                loggedUser.uid,
+                timestamp1,
+                timestamp2,
+                `settings_happiness_chart_${project.id}_${watcherKey}`,
+                (projectId, entries) => {
+                    setHappinessByProject(state => ({ ...state, [projectId]: entries }))
+                }
+            )
+        })
+
+        return () => watcherKeys.forEach(key => Backend.unwatch(key))
+    }, [JSON.stringify(filterData), JSON.stringify(loggedUserProjects.map(project => project.id)), loggedUser.uid])
 
     return (
         <View style={localStyles.container}>
@@ -332,6 +359,20 @@ export default function UserStatistics() {
                                             timestamp1,
                                             timestamp2
                                         )}
+                                    />
+                                )
+                            case STATISTIC_CHART_HAPPINESS:
+                                return (
+                                    <StackedBarChart
+                                        title={translate('Happiness')}
+                                        statisticData={getDataForAllProjectsHappinessCharts(
+                                            happinessByProject,
+                                            timestamp1,
+                                            timestamp2
+                                        )}
+                                        stacked={false}
+                                        showDataLabels={false}
+                                        maxY={5}
                                     />
                                 )
                         }

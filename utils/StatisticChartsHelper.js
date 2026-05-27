@@ -22,6 +22,7 @@ export const STATISTIC_CHART_DONE_TIME = 'CHART_DONE_TIME'
 export const STATISTIC_CHART_MONEY_EARNED = 'CHART_MONEY_EARNED'
 export const STATISTIC_CHART_GOLD = 'CHART_GOLD'
 export const STATISTIC_CHART_XP = 'CHART_XP'
+export const STATISTIC_CHART_HAPPINESS = 'CHART_HAPPINESS'
 
 export const getDataForCharts = (data, format, unit, dateList) => {
     const dataArray = transformObjectToArray(data)
@@ -102,6 +103,100 @@ export const getDataForAllProjectsCharts = (data, momentDate1, momentDate2) => {
     return { data: finalData, unit }
 }
 
+export const getDataForAllProjectsHappinessCharts = (happinessByProject, momentDate1, momentDate2) => {
+    let { format, unit } = getTimeScaleFromDateRange(momentDate1, momentDate2)
+    let chartDateLabels = getAllProjectsHappinessChartDateLabels(happinessByProject, format)
+
+    const loggedUserProjects = store.getState().loggedUserProjects
+
+    const amountProjectsByColors = {
+        [PROJECT_COLOR_DEFAULT]: 0,
+        [PROJECT_COLOR_BLUE]: 0,
+        [PROJECT_COLOR_RED]: 0,
+        [PROJECT_COLOR_PURPLE]: 0,
+        [PROJECT_COLOR_GREEN]: 0,
+        [PROJECT_COLOR_PINK]: 0,
+        [PROJECT_COLOR_ORANGE]: 0,
+        [PROJECT_COLOR_YELLOW]: 0,
+        [PROJECT_COLOR_PELOROUS]: 0,
+        [PROJECT_COLOR_LIME]: 0,
+        [PROJECT_COLOR_VIOLET]: 0,
+    }
+
+    const finalData = loggedUserProjects.map(project => {
+        let color = project.color
+        let amountByColor = amountProjectsByColors[project.color]
+        let addition = 0
+
+        if (amountByColor > 0) {
+            if (amountByColor > 8) {
+                amountByColor = amountByColor % 8
+                addition = 5
+            }
+
+            if (amountByColor % 2 === 0) {
+                color = tinycolor(color)
+                    .lighten(amountByColor * 10 + addition)
+                    .toString()
+            } else {
+                color = tinycolor(color)
+                    .darken(amountByColor * 10 + addition)
+                    .toString()
+            }
+        }
+        amountProjectsByColors[project.color]++
+
+        return {
+            name: project.name,
+            color: color,
+            data: getDataForHappinessCharts(happinessByProject[project.id], format, chartDateLabels),
+        }
+    })
+
+    return { data: finalData, unit }
+}
+
+export const getDataForHappinessCharts = (entries = [], format, dateList = []) => {
+    const groupedEntries = {}
+
+    entries.forEach(entry => {
+        if (!entry.rating) return
+
+        const formattedDate = moment(entry.timestamp).format(format)
+        if (!groupedEntries[formattedDate]) groupedEntries[formattedDate] = []
+        groupedEntries[formattedDate].push(entry.rating)
+    })
+
+    return dateList.map(date => {
+        const ratings = groupedEntries[date] || []
+        const average = ratings.length ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0
+
+        return { x: date, y: Number(average.toFixed(2)) }
+    })
+}
+
+export const getAllProjectsHappinessChartDateLabels = (happinessByProject, format) => {
+    let tempDateList = []
+
+    const loggedUserProjects = store.getState().loggedUserProjects
+
+    for (let project of loggedUserProjects) {
+        const entries = happinessByProject[project.id] || []
+
+        entries.forEach(entry => {
+            if (!entry.rating) return
+
+            const formattedDate = moment(entry.timestamp).format(format)
+
+            if (!tempDateList.includes(formattedDate)) {
+                tempDateList.push(formattedDate)
+            }
+        })
+    }
+
+    return tempDateList.sort((dateA, dateB) => moment(dateA, format).valueOf() - moment(dateB, format).valueOf())
+}
+
 export const getAllProjectsChartDateLabels = (data, format, unit) => {
     let tempDateList = []
 
@@ -175,5 +270,7 @@ export const getChartName = selectedChart => {
             return 'Gold points'
         case STATISTIC_CHART_XP:
             return 'XP'
+        case STATISTIC_CHART_HAPPINESS:
+            return 'Happiness'
     }
 }
