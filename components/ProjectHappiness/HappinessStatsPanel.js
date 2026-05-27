@@ -100,7 +100,12 @@ function RecentComments({ entries, isGlobal }) {
     )
 }
 
-export default function HappinessStatsPanel({ entries = [], happinessByProject = null, showRecentComments = true }) {
+export default function HappinessStatsPanel({
+    entries = [],
+    happinessByProject = null,
+    showRecentComments = true,
+    showTitle = true,
+}) {
     const isGlobal = !!happinessByProject
     const globalStats = isGlobal ? getGlobalHappinessStats(happinessByProject) : null
     const stats = isGlobal ? globalStats : getHappinessStats(entries)
@@ -111,7 +116,7 @@ export default function HappinessStatsPanel({ entries = [], happinessByProject =
 
     return (
         <View style={localStyles.container}>
-            <Text style={localStyles.title}>{translate('Happiness')}</Text>
+            {showTitle && <Text style={localStyles.title}>{translate('Happiness')}</Text>}
             <View style={localStyles.summary}>
                 <SummaryItem label="Average" value={`${formatAverage(stats.average)}/5`} />
                 <SummaryItem label="Latest" value={latest ? getHappinessRatingText(latest.rating) : '-'} />

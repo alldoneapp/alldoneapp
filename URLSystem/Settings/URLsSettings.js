@@ -41,6 +41,11 @@ export const URL_SETTINGS_INVITATIONS = 'SETTINGS_INVITATIONS'
 export const URL_SETTINGS_STATISTICS = 'SETTINGS_STATISTICS'
 
 /**
+ * /settings/happiness
+ */
+export const URL_SETTINGS_HAPPINESS = 'SETTINGS_HAPPINESS'
+
+/**
  * /settings/shortcuts
  */
 export const URL_SETTINGS_SHORTCUTS = 'SETTINGS_SHORTCUTS'
@@ -109,6 +114,8 @@ class URLsSettings {
                 return `settings/invitations`
             case URL_SETTINGS_STATISTICS:
                 return `settings/statistics`
+            case URL_SETTINGS_HAPPINESS:
+                return `settings/happiness`
             case URL_SETTINGS_SHORTCUTS:
                 return `settings/shortcuts`
             case URL_SETTINGS_PREMIUM:
@@ -143,6 +150,9 @@ class URLsSettings {
                 break
             case URL_SETTINGS_STATISTICS:
                 document.title = `Alldone.app - Settings - Statistics`
+                break
+            case URL_SETTINGS_HAPPINESS:
+                document.title = `Alldone.app - Settings - Happiness`
                 break
             case URL_SETTINGS_SHORTCUTS:
                 document.title = `Alldone.app - Settings - Shortcuts`

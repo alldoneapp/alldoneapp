@@ -1867,6 +1867,7 @@
     "OKR hours left": "Quedan {{hours}} horas",
     "OKR period ended": "Periodo finalizado",
     "Happiness": "Felicidad",
+    "happiness filter description": "Filtra los datos de felicidad por periodo.",
     "Project happiness": "Felicidad del proyecto",
     "Only you can see these ratings and notes.": "Solo tú puedes ver estas valoraciones y notas.",
     "Add past date": "Agregar fecha pasada",

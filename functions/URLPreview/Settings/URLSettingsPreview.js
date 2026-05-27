@@ -39,6 +39,11 @@ const URL_SETTINGS_INVITATIONS = 'SETTINGS_INVITATIONS'
 const URL_SETTINGS_STATISTICS = 'SETTINGS_STATISTICS'
 
 /**
+ * /settings/happiness
+ */
+const URL_SETTINGS_HAPPINESS = 'SETTINGS_HAPPINESS'
+
+/**
  * /settings/shortcuts
  */
 const URL_SETTINGS_SHORTCUTS = 'SETTINGS_SHORTCUTS'
@@ -59,6 +64,7 @@ const regexList = {
     [URL_SETTINGS_PROJECTS_FOLLOWING]: new RegExp('^/settings/projects/following$'),
     [URL_SETTINGS_INVITATIONS]: new RegExp('^/settings/invitations$'),
     [URL_SETTINGS_STATISTICS]: new RegExp('^/settings/statistics$'),
+    [URL_SETTINGS_HAPPINESS]: new RegExp('^/settings/happiness$'),
     [URL_SETTINGS_SHORTCUTS]: new RegExp('^/settings/shortcuts$'),
     [URL_SETTINGS_PREMIUM]: new RegExp('^/settings/premium$'),
 }
@@ -101,6 +107,10 @@ const getMetadata = async (admin, urlConstant, params) => {
             data.title = `Alldone.app - Settings - Statistics`
             data.description = 'Alldone.app. User statistics of Alldone usage.'
             break
+        case URL_SETTINGS_HAPPINESS:
+            data.title = `Alldone.app - Settings - Happiness`
+            data.description = 'Alldone.app. User happiness data across all projects.'
+            break
         case URL_SETTINGS_SHORTCUTS:
             data.title = `Alldone.app - Settings - Shortcuts`
             data.description = 'Alldone.app. List of Shortcuts in the Alldone app.'
@@ -124,6 +134,7 @@ module.exports = {
     URL_SETTINGS_PROJECTS_FOLLOWING,
     URL_SETTINGS_INVITATIONS,
     URL_SETTINGS_STATISTICS,
+    URL_SETTINGS_HAPPINESS,
     URL_SETTINGS_SHORTCUTS,
     URL_SETTINGS_PREMIUM,
     regexList,

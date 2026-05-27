@@ -8,6 +8,7 @@ import URLsSettings, {
     URL_SETTINGS_PROJECTS,
     URL_SETTINGS_SHORTCUTS,
     URL_SETTINGS_STATISTICS,
+    URL_SETTINGS_HAPPINESS,
     URL_SETTINGS_PROFILE,
     URL_SETTINGS_EXPORT,
 } from '../../URLSystem/Settings/URLsSettings'
@@ -51,6 +52,9 @@ class SettingsHelper {
                 break
             case URL_SETTINGS_STATISTICS:
                 URLsSettings.replace(URL_SETTINGS_STATISTICS)
+                break
+            case URL_SETTINGS_HAPPINESS:
+                URLsSettings.replace(URL_SETTINGS_HAPPINESS)
                 break
             case URL_SETTINGS_SHORTCUTS:
                 URLsSettings.replace(URL_SETTINGS_SHORTCUTS)

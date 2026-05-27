@@ -1880,6 +1880,7 @@
     "OKR hours left": "{{hours}} hours left",
     "OKR period ended": "Period ended",
     "Happiness": "Happiness",
+    "happiness filter description": "Filter happiness data by time period.",
     "Project happiness": "Project happiness",
     "Only you can see these ratings and notes.": "Only you can see these ratings and notes.",
     "Add past date": "Add past date",
