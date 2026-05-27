@@ -48,6 +48,18 @@ export default function MessageItemContent({
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
+    // Helper to check if a comment contains block/special elements that cannot be rendered inline
+    const containsBlockOrSpecialElements = text => {
+        if (!text) return false
+        return (
+            text.includes('EbDsQTD14ahtSR5') || // Attachment
+            text.includes('O2TI5plHBf1QfdY') || // Image
+            text.includes('ptPQsef7OeB5eWd') || // Video
+            text.includes('pMP4SB2IsTQr8LN') || // Karma
+            text.includes('qM54HU5TsTOe3Yw') // Milestone
+        )
+    }
+
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
 
@@ -286,11 +298,9 @@ export default function MessageItemContent({
                             </View>
                         )
                     } else {
-                        // For regular text, check if it has inline formatting
-                        const segments = parseInlineFormatting(line.text)
-                        const hasFormatting = segments.some(s => s.bold || s.italic || s.strikethrough)
-
-                        if (hasFormatting) {
+                        // Check if the line has block or special elements that cannot be rendered inline
+                        if (!containsBlockOrSpecialElements(line.text)) {
+                            const segments = parseInlineFormatting(line.text)
                             return (
                                 <Text key={`text-${lineIndex}`} style={[localStyles.text, marginStyle]}>
                                     {renderFormattedText(segments, localStyles.text)}
@@ -321,13 +331,17 @@ export default function MessageItemContent({
                 <TouchableOpacity style={{ marginLeft: 36 }} onPress={enableEditMode} disabled={userIsAnonymous}>
                     {isLoadingState ? (
                         <View style={localStyles.loadingContainer}>
-                            <CommentElementsParser
-                                comment={commentText}
-                                containerStyle={{ marginBottom: 8 }}
-                                entryStyle={localStyles.loadingText}
-                                projectId={projectId}
-                                inChat={true}
-                            />
+                            {!containsBlockOrSpecialElements(commentText) ? (
+                                <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{commentText}</Text>
+                            ) : (
+                                <CommentElementsParser
+                                    comment={commentText}
+                                    containerStyle={{ marginBottom: 8 }}
+                                    entryStyle={localStyles.loadingText}
+                                    projectId={projectId}
+                                    inChat={true}
+                                />
+                            )}
                             <View style={localStyles.loadingIndicator}>
                                 <ActivityIndicator size="small" color={colors.PrimaryBlue} />
                             </View>
