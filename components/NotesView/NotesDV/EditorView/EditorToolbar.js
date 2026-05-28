@@ -726,6 +726,8 @@ const generateLinkToChat = (objectType, objectId, projectId) => {
     return getDvChatTabLink(projectId, objectId, objectType === 'topics' ? 'chats' : objectType)
 }
 
+let openSideChatFromToolbar = null
+
 export const modules = {
     toolbar: {
         container: '#toolbar',
@@ -770,6 +772,9 @@ export const modules = {
                 const objectId = loadedNote.parentObject ? loadedNote.parentObject.id : editorId
 
                 const chatLink = generateLinkToChat(objectType, objectId, projectId)
+                if (openSideChatFromToolbar?.({ objectType, objectId, projectId, chatLink })) {
+                    return
+                }
                 URLTrigger.processUrl(NavigationService, chatLink)
             },
             list: type => {
@@ -989,6 +994,7 @@ export const EditorToolbar = ({
     scrollRef,
     getEditor,
     autoStartTranscription,
+    onOpenSideChat,
 }) => {
     const usersInProject = useSelector(state => state.projectUsers[project.id])
     const loggedUser = useSelector(state => state.loggedUser)
@@ -1003,6 +1009,13 @@ export const EditorToolbar = ({
         shortcutNotePreviewMount()
         return () => shortcutNotePreviewUnmount()
     }, [])
+
+    useEffect(() => {
+        openSideChatFromToolbar = onOpenSideChat || null
+        return () => {
+            if (openSideChatFromToolbar === onOpenSideChat) openSideChatFromToolbar = null
+        }
+    }, [onOpenSideChat])
 
     const keepScroll = () => {
         const scrollY = scrollYPos.current

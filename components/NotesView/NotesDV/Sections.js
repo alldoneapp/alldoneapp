@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Header from './Header'
@@ -21,6 +21,10 @@ import RootViewFeedsNote from '../../Feeds/RootViewFeedsNote'
 import { FOLLOWER_NOTES_TYPE } from '../../Followers/FollowerConstants'
 import ChatBoard from '../../ChatsView/ChatDV/ChatBoard'
 import useFollowingDataListener from '../../UIComponents/FloatModals/MorePopupsOfEditModals/Common/useFollowingDataListener'
+import Icon from '../../Icon'
+import styles, { colors } from '../../styles/global'
+import { translate } from '../../../i18n/TranslationService'
+import { canOpenNoteSideChat, canShowNoteSideChat, getNoteSideChatWidth } from './sideChatHelper'
 
 export default function Sections({ projectId, note, project, navigation, updateObjectState }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -30,6 +34,8 @@ export default function Sections({ projectId, note, project, navigation, updateO
     const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [isFullscreen, setFullscreen] = useState(false)
     const [assistantId, setAssistantId] = useState(note?.assistantId || '')
+    const [sideChatOpen, setSideChatOpen] = useState(false)
+    const [contentWidth, setContentWidth] = useState(0)
 
     const [followState, updateFollowState] = useFollowingDataListener(projectId, FOLLOWER_NOTES_TYPE, note.id)
 
@@ -56,6 +62,42 @@ export default function Sections({ projectId, note, project, navigation, updateO
         setAssistantId(note?.assistantId || '')
     }, [note?.assistantId])
 
+    useEffect(() => {
+        if (selectedTab !== DV_TAB_NOTE_EDITOR) setSideChatOpen(false)
+    }, [selectedTab])
+
+    const sideChatAvailable = canShowNoteSideChat({ mobile, contentWidth })
+    const sideChatWidth = getNoteSideChatWidth(contentWidth)
+    const showSideChat = selectedTab === DV_TAB_NOTE_EDITOR && sideChatOpen && sideChatAvailable
+
+    useEffect(() => {
+        if (sideChatOpen && !sideChatAvailable) setSideChatOpen(false)
+    }, [sideChatAvailable, sideChatOpen])
+
+    const openSideChat = ({ objectType, objectId, projectId: toolbarProjectId }) => {
+        if (
+            !canOpenNoteSideChat({
+                mobile,
+                contentWidth,
+                objectType,
+                objectId,
+                noteId: note.id,
+                toolbarProjectId,
+                projectId,
+            })
+        ) {
+            return false
+        }
+
+        setSideChatOpen(true)
+        return true
+    }
+
+    const onContentLayout = event => {
+        const { width } = event.nativeEvent.layout
+        if (width !== contentWidth) setContentWidth(width)
+    }
+
     return (
         <View style={{ flexDirection: 'column', backgroundColor: 'white', flex: 1 }}>
             <Header
@@ -74,7 +116,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
             />
 
             {Object.keys(note) !== 0 && (
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1 }} onLayout={onContentLayout}>
                     {!isFullscreen && (
                         <View
                             style={
@@ -97,17 +139,46 @@ export default function Sections({ projectId, note, project, navigation, updateO
                         switch (selectedTab) {
                             case DV_TAB_NOTE_EDITOR:
                                 return (
-                                    <NoteEditorContainer
-                                        project={project}
-                                        note={note}
-                                        isFullscreen={isFullscreen}
-                                        setFullscreen={setFullscreen}
-                                        followState={followState}
-                                        objectType={FOLLOWER_NOTES_TYPE}
-                                        object={note}
-                                        objectId={note.id}
-                                        navigation={navigation}
-                                    />
+                                    <View style={localStyles.editorWithSideChat}>
+                                        <View style={localStyles.editorPane}>
+                                            <NoteEditorContainer
+                                                project={project}
+                                                note={note}
+                                                isFullscreen={isFullscreen}
+                                                setFullscreen={setFullscreen}
+                                                followState={followState}
+                                                objectType={FOLLOWER_NOTES_TYPE}
+                                                object={note}
+                                                objectId={note.id}
+                                                navigation={navigation}
+                                                onOpenSideChat={openSideChat}
+                                            />
+                                        </View>
+                                        {showSideChat && (
+                                            <View style={[localStyles.sideChat, { width: sideChatWidth }]}>
+                                                <View style={localStyles.sideChatHeader}>
+                                                    <Text style={[styles.subtitle2, localStyles.sideChatTitle]}>
+                                                        {translate('Chat')}
+                                                    </Text>
+                                                    <TouchableOpacity
+                                                        style={localStyles.sideChatCloseButton}
+                                                        onPress={() => setSideChatOpen(false)}
+                                                    >
+                                                        <Icon name="x" size={20} color={colors.Text03} />
+                                                    </TouchableOpacity>
+                                                </View>
+                                                <ChatBoard
+                                                    chat={{ id: note.id, type: 'notes' }}
+                                                    projectId={projectId}
+                                                    parentObject={note}
+                                                    chatTitle={note.title}
+                                                    assistantId={assistantId}
+                                                    setAssistantId={setAssistantId}
+                                                    objectType={'notes'}
+                                                />
+                                            </View>
+                                        )}
+                                    </View>
                                 )
                             case DV_TAB_NOTE_BACKLINKS:
                                 return (
@@ -153,5 +224,38 @@ const localStyles = StyleSheet.create({
     },
     navigationBar: {
         marginHorizontal: 104,
+    },
+    editorWithSideChat: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    editorPane: {
+        flex: 1,
+        minWidth: 0,
+    },
+    sideChat: {
+        flexDirection: 'column',
+        borderLeftWidth: 1,
+        borderLeftColor: colors.Gray300,
+        backgroundColor: 'white',
+    },
+    sideChatHeader: {
+        height: 48,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: 16,
+        paddingRight: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.Gray300,
+    },
+    sideChatTitle: {
+        color: colors.Text01,
+    },
+    sideChatCloseButton: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 })

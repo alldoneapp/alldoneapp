@@ -25,6 +25,7 @@ export default function NoteEditorContainer({
     object,
     navigation,
     autoStartTranscription: autoStartTranscriptionProp,
+    onOpenSideChat,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [editorKey, setEditorKey] = useState(v4())
@@ -91,6 +92,7 @@ export default function NoteEditorContainer({
                     objectId={objectId}
                     object={object}
                     autoStartTranscription={autoStartTranscription}
+                    onOpenSideChat={onOpenSideChat}
                 />
             )}
             {(connectionState === 'online' || connectionState === 'offline') && (

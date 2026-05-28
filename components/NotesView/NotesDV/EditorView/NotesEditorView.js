@@ -121,6 +121,7 @@ const NotesEditorView = ({
     objectId,
     object,
     autoStartTranscription,
+    onOpenSideChat,
 }) => {
     const projectId = project ? project.id : undefined
     let quillRef = useRef(null)
@@ -1175,6 +1176,7 @@ const NotesEditorView = ({
                 scrollYPos={scrollYPos}
                 scrollRef={scrollRef}
                 autoStartTranscription={autoStartTranscription}
+                onOpenSideChat={onOpenSideChat}
             />
 
             <CustomScrollView
