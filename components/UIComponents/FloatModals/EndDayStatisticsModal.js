@@ -29,6 +29,19 @@ import {
 } from '../../../utils/DayRateTimeLogHelper'
 import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
 import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
+import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+
+const getActiveProjectsInSidebarOrder = (projects, user) =>
+    ProjectHelper.sortProjects(
+        ProjectHelper.getActiveProjectsInList(
+            projects,
+            user.projectIds,
+            user.archivedProjectIds,
+            user.templateProjectIds,
+            user.guideProjectIds
+        ),
+        user.uid
+    )
 
 export default function EndDayStatisticsModal() {
     const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
@@ -42,7 +55,7 @@ export default function EndDayStatisticsModal() {
     const showNewVersionMandtoryNotifcation = useSelector(state => state.showNewVersionMandtoryNotifcation)
     const templateProjectIdsAmount = useSelector(state => state.loggedUser.templateProjectIds.length)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
-    const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
+    const loggedUser = useSelector(state => state.loggedUser)
 
     const [doneTasks, setDoneTasks] = useState(0)
     const [xp, setXp] = useState(0)
@@ -169,7 +182,7 @@ export default function EndDayStatisticsModal() {
         if (!checkIfDataIsLoaded() || isOfflineRef.current || isAnonymous) return
 
         const { loggedUserProjects, loggedUser } = store.getState()
-        const activeProjects = loggedUserProjects.filter(project => !loggedUser.templateProjectIds.includes(project.id))
+        const activeProjects = getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
         const watcherKeys = activeProjects.map(project => `${happinessWatcherKeyRef.current}_${project.id}`)
         activeProjects.forEach(project => {
             Backend.watchProjectHappinessByRange(
@@ -193,7 +206,7 @@ export default function EndDayStatisticsModal() {
         }
     }, [JSON.stringify(dataLoaded), statsDate, loggedUserId, isAnonymous])
 
-    const getHappinessProjects = () => loggedUserProjects.filter(project => !templateProjectIds.includes(project.id))
+    const getHappinessProjects = () => getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
 
     const updateHappinessRating = (project, rating) => {
         setHappinessRatings(state => ({ ...state, [project.id]: rating }))
@@ -289,6 +302,7 @@ export default function EndDayStatisticsModal() {
 
     const { dayName, dateFormated } = getDate()
     const { rewardTitle, rewardDescription } = getRewardTexts()
+    const happinessProjects = getHappinessProjects()
 
     return (
         !showNewVersionMandtoryNotifcation &&
@@ -361,11 +375,11 @@ export default function EndDayStatisticsModal() {
                                 </View>
                             </View>
                         )}
-                        {!isOfflineRef.current && getHappinessProjects().length > 0 && (
+                        {!isOfflineRef.current && happinessProjects.length > 0 && (
                             <View style={localStyles.happinessSection}>
                                 <Text style={localStyles.happinessTitle}>{translate('Project happiness')}</Text>
                                 <Text style={localStyles.happinessPrivacy}>{translate(HAPPINESS_PRIVACY_TEXT)}</Text>
-                                {getHappinessProjects().map(project => (
+                                {happinessProjects.map(project => (
                                     <View key={project.id} style={localStyles.happinessProject}>
                                         <View style={localStyles.happinessProjectHeader}>
                                             <Text style={localStyles.happinessProjectName}>{project.name}</Text>
