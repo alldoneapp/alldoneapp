@@ -178,6 +178,7 @@ const addCalendarRoutingCommentIfNeeded = async ({
     routingDecision,
     syncProjectId,
 }) => {
+    if (routingDecision?.targetProjectId && routingDecision.targetProjectId !== projectId) return null
     if (!shouldAddRoutingComment(task, projectId, routingDecision)) return null
 
     return await addProjectRoutingReasonComment({

@@ -254,4 +254,40 @@ describe('calendarTasks routing', () => {
         expect(admin.__mock.refs.get('items/old-project/tasks/event-1').delete).not.toHaveBeenCalled()
         expect(admin.__mock.refs.get('items/old-project/tasks/event-1').update).toHaveBeenCalled()
     })
+
+    test('does not add classifier routing comments to pinned tasks kept in another project', async () => {
+        const existingTask = {
+            id: 'event-1',
+            projectId: 'family-project',
+            calendarData: {
+                email: 'me@example.com',
+                originalProjectId: 'connected-project',
+                pinnedToProjectId: 'family-project',
+            },
+            name: 'Partner conference',
+            extendedName: 'Partner conference',
+            description: '',
+            estimations: { open: 30 },
+        }
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'juno-project',
+            existingTask,
+            event,
+            'user-1',
+            'me@example.com',
+            0,
+            {
+                matched: true,
+                targetProjectId: 'juno-project',
+                reasoning: 'The event matches Juno.',
+                confidence: 0.86,
+                projectName: 'JTL Software - Project Juno',
+            },
+            { defaultProjectId: 'default-project' }
+        )
+
+        expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
+    })
 })

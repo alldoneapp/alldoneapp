@@ -108,7 +108,9 @@ async function routeCalendarEventsToProjects({
                 targetProjectId: classifierResult.matched ? classifierResult.projectId : null,
                 confidence: classifierResult.confidence,
                 reasoning: classifierResult.reasoning,
-                projectName: classifierResult.projectId
+                projectName: classifierResult.projectName
+                    ? classifierResult.projectName
+                    : classifierResult.projectId
                     ? projectDefinitionById.get(classifierResult.projectId)?.name || ''
                     : '',
                 goldSpent: goldToCharge,

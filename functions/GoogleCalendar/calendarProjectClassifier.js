@@ -4,7 +4,8 @@ const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('
 const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
-    'You route Google Calendar events to exactly one configured Alldone project or no match. Return strict JSON only with keys matched, projectId, confidence, reasoning. Never invent project IDs. Confidence must be a number between 0 and 1.'
+    'You route Google Calendar events to exactly one configured Alldone project or no match. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1.'
+const INCONSISTENT_ROUTING_REASON = 'Classifier returned inconsistent project routing details.'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT5_1',
@@ -75,19 +76,71 @@ function normalizeCalendarEventForClassifier(event = {}, calendarEmail = '') {
     }
 }
 
-function coerceCalendarProjectResult(result, validProjectIds = [], confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD) {
+function normalizeForProjectComparison(value = '') {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
+function normalizeProjectDefinitions(projectDefinitionsOrIds = []) {
+    return (Array.isArray(projectDefinitionsOrIds) ? projectDefinitionsOrIds : [])
+        .map(project => {
+            if (typeof project === 'string') {
+                return { projectId: project, name: '' }
+            }
+
+            return {
+                projectId: typeof project?.projectId === 'string' ? project.projectId.trim() : '',
+                name: typeof project?.name === 'string' ? project.name.trim() : '',
+            }
+        })
+        .filter(project => project.projectId)
+}
+
+function reasoningMentionsDifferentProject(reasoning = '', selectedProjectId = '', projectDefinitions = []) {
+    const normalizedReasoning = normalizeForProjectComparison(reasoning)
+    if (!normalizedReasoning) return false
+
+    return projectDefinitions.some(project => {
+        if (project.projectId === selectedProjectId) return false
+
+        const normalizedProjectName = normalizeForProjectComparison(project.name)
+        return normalizedProjectName.length >= 4 && normalizedReasoning.includes(normalizedProjectName)
+    })
+}
+
+function coerceCalendarProjectResult(
+    result,
+    projectDefinitionsOrIds = [],
+    confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
+) {
+    const projectDefinitions = normalizeProjectDefinitions(projectDefinitionsOrIds)
+    const projectDefinitionById = new Map(projectDefinitions.map(project => [project.projectId, project]))
     const projectId = typeof result?.projectId === 'string' ? result.projectId.trim() : null
+    const projectName = typeof result?.projectName === 'string' ? result.projectName.trim() : ''
     const confidence = Number.isFinite(result?.confidence) ? Number(result.confidence) : 0
     const reasoning = typeof result?.reasoning === 'string' ? result.reasoning.trim() : ''
-    const matched = !!result?.matched && !!projectId && validProjectIds.includes(projectId)
+    const matched = !!result?.matched && !!projectId && projectDefinitionById.has(projectId)
     const usage = result?.usage || null
+    const expectedProjectName = projectDefinitionById.get(projectId)?.name || ''
+    const projectNameMismatch =
+        matched &&
+        projectName &&
+        expectedProjectName &&
+        normalizeForProjectComparison(projectName) !== normalizeForProjectComparison(expectedProjectName)
+    const reasoningMismatch = matched && reasoningMentionsDifferentProject(reasoning, projectId, projectDefinitions)
 
-    if (!matched || confidence < confidenceThreshold) {
+    if (!matched || confidence < confidenceThreshold || projectNameMismatch || reasoningMismatch) {
         return {
             matched: false,
             projectId: null,
             confidence,
-            reasoning: reasoning || 'No active project clearly matched.',
+            reasoning:
+                projectNameMismatch || reasoningMismatch
+                    ? INCONSISTENT_ROUTING_REASON
+                    : reasoning || 'No active project clearly matched.',
             usage,
         }
     }
@@ -95,17 +148,101 @@ function coerceCalendarProjectResult(result, validProjectIds = [], confidenceThr
     return {
         matched: true,
         projectId,
+        projectName: expectedProjectName || projectName,
         confidence,
         reasoning,
         usage,
     }
 }
 
+function buildCalendarClassifierRequestParams({
+    selectedModel,
+    isReasoningModel,
+    config,
+    definitions,
+    normalizedEvent,
+}) {
+    const requestParams = {
+        model: selectedModel,
+        messages: [
+            {
+                role: 'system',
+                content: CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT,
+            },
+            {
+                role: 'user',
+                content:
+                    `Prompt:\n${config.prompt}\n\n` +
+                    `Active projects:\n${JSON.stringify(definitions, null, 2)}\n\n` +
+                    `Calendar event:\n${JSON.stringify(normalizedEvent, null, 2)}\n\n` +
+                    'Return JSON exactly like {"matched":true,"projectId":"project-123","projectName":"Project name exactly as provided","confidence":0.92,"reasoning":"..."}. If no project matches clearly, return {"matched":false,"projectId":null,"projectName":null,"confidence":0.2,"reasoning":"..."}',
+            },
+        ],
+    }
+
+    if (!isReasoningModel) {
+        requestParams.temperature = 0.1
+    }
+
+    return requestParams
+}
+
+function buildCalendarClassifierRepairRequestParams({
+    selectedModel,
+    isReasoningModel,
+    config,
+    definitions,
+    normalizedEvent,
+    previousResult,
+}) {
+    const requestParams = buildCalendarClassifierRequestParams({
+        selectedModel,
+        isReasoningModel,
+        config,
+        definitions,
+        normalizedEvent,
+    })
+
+    requestParams.messages.push({
+        role: 'user',
+        content:
+            'The previous JSON was inconsistent: the selected project ID/name did not match the reasoning, or the reasoning named a different configured project. Re-evaluate once and return corrected strict JSON only. If you cannot make the selected project and reasoning consistent, return no match.\n\n' +
+            `Previous JSON:\n${JSON.stringify(previousResult || {}, null, 2)}`,
+    })
+
+    return requestParams
+}
+
+function buildUsage(completion) {
+    return completion?.usage
+        ? {
+              totalTokens: Number.isFinite(completion.usage.total_tokens) ? completion.usage.total_tokens : 0,
+              promptTokens: Number.isFinite(completion.usage.prompt_tokens) ? completion.usage.prompt_tokens : 0,
+              completionTokens: Number.isFinite(completion.usage.completion_tokens)
+                  ? completion.usage.completion_tokens
+                  : 0,
+          }
+        : null
+}
+
+async function runCalendarClassifierCompletion(openai, requestParams) {
+    const completion = await openai.chat.completions.create(requestParams)
+    const content = completion?.choices?.[0]?.message?.content || ''
+    const parsed = extractJsonFromText(content)
+    return {
+        parsed,
+        usage: buildUsage(completion),
+    }
+}
+
+function shouldRetryCalendarClassification(result) {
+    return !result?.matched && result?.reasoning === INCONSISTENT_ROUTING_REASON
+}
+
 async function classifyCalendarEventProject({ config, event, projectDefinitions, calendarEmail = '' }) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     const definitions = Array.isArray(projectDefinitions) ? projectDefinitions : []
-    const validProjectIds = definitions.map(project => project.projectId)
     const confidenceThreshold = Number.isFinite(config?.confidenceThreshold)
         ? Number(config.confidenceThreshold)
         : DEFAULT_CONFIDENCE_THRESHOLD
@@ -128,57 +265,65 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     const isReasoningModel = isGpt5ReasoningModel(config?.model)
     const normalizedEvent = normalizeCalendarEventForClassifier(event, calendarEmail)
 
-    const requestParams = {
-        model: selectedModel,
-        messages: [
-            {
-                role: 'system',
-                content: CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT,
-            },
-            {
-                role: 'user',
-                content:
-                    `Prompt:\n${config.prompt}\n\n` +
-                    `Active projects:\n${JSON.stringify(definitions, null, 2)}\n\n` +
-                    `Calendar event:\n${JSON.stringify(normalizedEvent, null, 2)}\n\n` +
-                    'Return JSON exactly like {"matched":true,"projectId":"project-123","confidence":0.92,"reasoning":"..."}. If no project matches clearly, return {"matched":false,"projectId":null,"confidence":0.2,"reasoning":"..."}',
-            },
-        ],
+    const firstCompletion = await runCalendarClassifierCompletion(
+        openai,
+        buildCalendarClassifierRequestParams({
+            selectedModel,
+            isReasoningModel,
+            config,
+            definitions,
+            normalizedEvent,
+        })
+    )
+    const firstResult = coerceCalendarProjectResult(
+        {
+            ...firstCompletion.parsed,
+            usage: firstCompletion.usage,
+        },
+        definitions,
+        confidenceThreshold
+    )
+
+    if (!shouldRetryCalendarClassification(firstResult)) {
+        return firstResult
     }
 
-    if (!isReasoningModel) {
-        requestParams.temperature = 0.1
-    }
-
-    const completion = await openai.chat.completions.create(requestParams)
-    const content = completion?.choices?.[0]?.message?.content || ''
-    const parsed = extractJsonFromText(content)
+    const repairCompletion = await runCalendarClassifierCompletion(
+        openai,
+        buildCalendarClassifierRepairRequestParams({
+            selectedModel,
+            isReasoningModel,
+            config,
+            definitions,
+            normalizedEvent,
+            previousResult: firstCompletion.parsed,
+        })
+    )
 
     return coerceCalendarProjectResult(
         {
-            ...parsed,
-            usage: completion?.usage
-                ? {
-                      totalTokens: Number.isFinite(completion.usage.total_tokens) ? completion.usage.total_tokens : 0,
-                      promptTokens: Number.isFinite(completion.usage.prompt_tokens)
-                          ? completion.usage.prompt_tokens
-                          : 0,
-                      completionTokens: Number.isFinite(completion.usage.completion_tokens)
-                          ? completion.usage.completion_tokens
-                          : 0,
-                  }
-                : null,
+            ...repairCompletion.parsed,
+            usage: {
+                totalTokens: (firstCompletion.usage?.totalTokens || 0) + (repairCompletion.usage?.totalTokens || 0),
+                promptTokens: (firstCompletion.usage?.promptTokens || 0) + (repairCompletion.usage?.promptTokens || 0),
+                completionTokens:
+                    (firstCompletion.usage?.completionTokens || 0) + (repairCompletion.usage?.completionTokens || 0),
+                retriedAfterInconsistentResult: true,
+            },
         },
-        validProjectIds,
+        definitions,
         confidenceThreshold
     )
 }
 
 module.exports = {
     CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT,
+    INCONSISTENT_ROUTING_REASON,
     classifyCalendarEventProject,
     coerceCalendarProjectResult,
     extractJsonFromText,
     mapAssistantModelToOpenAIModel,
     normalizeCalendarEventForClassifier,
+    normalizeForProjectComparison,
+    reasoningMentionsDifferentProject,
 }
