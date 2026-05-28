@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+
+import { setAssistantEnabled } from '../../../redux/actions'
 
 import Header from './Header'
 import NavigationBar from '../../NavigationBar/NavigationBar'
@@ -27,6 +29,7 @@ import { translate } from '../../../i18n/TranslationService'
 import { canOpenNoteSideChat, canShowNoteSideChat, getNoteSideChatWidth } from './sideChatHelper'
 
 export default function Sections({ projectId, note, project, navigation, updateObjectState }) {
+    const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -90,6 +93,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
         }
 
         setSideChatOpen(true)
+        dispatch(setAssistantEnabled(true))
         return true
     }
 

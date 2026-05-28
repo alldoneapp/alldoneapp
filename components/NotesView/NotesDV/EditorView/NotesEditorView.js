@@ -164,6 +164,7 @@ const NotesEditorView = ({
     const timeoutModalIsOpen = useRef(false)
     const maxLengthWarningDisplayed = useRef(false)
     const innerTasksIdsRef = useRef([])
+    const lastSeenEditionDateRef = useRef(null)
 
     const lastFullscreenChangeTime = useRef(0)
     const isFullscreenRef = useRef(isFullscreen)
@@ -783,6 +784,35 @@ const NotesEditorView = ({
             comment.setAttribute('contenteditable', readOnly ? 'false' : 'true')
         }
     }, [readOnly])
+
+    useEffect(() => {
+        if (!dataLoaded) return
+        if (lastSeenEditionDateRef.current === null) {
+            lastSeenEditionDateRef.current = note?.lastEditionDate ?? 0
+            return
+        }
+
+        const remoteEditionDate = note?.lastEditionDate ?? 0
+        if (remoteEditionDate <= lastSeenEditionDateRef.current) return
+
+        lastSeenEditionDateRef.current = remoteEditionDate
+
+        // Local user's own edits already live in the Yjs doc via the WebSocket provider.
+        // Only pull from storage for out-of-band writes (e.g. the assistant editing via a Cloud Function).
+        if (note?.lastEditorId === loggedUser.uid) return
+
+        Backend.getNoteData(projectId, note.id)
+            .then(data => {
+                if (noteUnmountedRef.current || !ydoc.current) return
+                const update = new Uint8Array(data)
+                if (update.length > 0) {
+                    Y.applyUpdate(ydoc.current, update, 'remote-storage-refresh')
+                }
+            })
+            .catch(error => {
+                console.warn('Failed to refresh note from storage after remote edit', error)
+            })
+    }, [dataLoaded, note?.lastEditionDate, note?.lastEditorId])
 
     useEffect(() => {
         const editorElement = document.getElementsByClassName(`ql-editor-${note.id}`)[0]
