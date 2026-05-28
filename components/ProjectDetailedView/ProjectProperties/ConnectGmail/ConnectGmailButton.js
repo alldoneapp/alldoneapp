@@ -6,16 +6,18 @@ import { Image, StyleSheet, Text, View } from 'react-native'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
+import { resolveEmailConnection } from '../../../../utils/IntegrationProviders'
 
 export default function ConnectGmailButton({ projectId, disabled, isSignedIn, needsReconnect, onPress }) {
     const photoURL = useSelector(state => state.loggedUser.photoURL)
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
+    const connection = useSelector(state => state.loggedUser.apisConnected?.[projectId])
+    const { connected: isConnected } = resolveEmailConnection(connection)
 
     return (
         <View style={localStyles.propertyRow}>
             <View style={{ justifyContent: 'flex-start', flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                <Icon name={'gmail'} size={24} color={colors.Text03} style={{ marginHorizontal: 8 }} />
-                <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Connect Gmail')}</Text>
+                <Icon name={'mail'} size={24} color={colors.Text03} style={{ marginHorizontal: 8 }} />
+                <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Connect Email')}</Text>
             </View>
             <View style={{ justifyContent: 'flex-end' }}>
                 <Button

@@ -2,6 +2,12 @@
 
 const { searchGmailForAssistantRequest, getConnectedGmailAccounts, getGmailClient } = require('./assistantGmailSearch')
 const { normalizeGmailMessage } = require('./gmailMessageParser')
+const {
+    createMicrosoftDraftForAssistantRequest,
+    createMicrosoftReplyDraftForAssistantRequest,
+    getConnectedMicrosoftEmailAccounts,
+    updateMicrosoftDraftForAssistantRequest,
+} = require('../Email/providers/microsoftEmailProvider')
 
 const MAX_DRAFT_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -405,6 +411,13 @@ async function resolveReplyTarget({ userId, query, messageId, threadId }) {
         }
     }
 
+    if (latestMatch.provider === 'microsoft') {
+        return {
+            microsoft: true,
+            searchMatch: latestMatch,
+        }
+    }
+
     const gmail = await getGmailClient(userId, latestMatch.projectId)
     const rawMessage = await fetchMessageById(gmail, latestMatch.messageId)
 
@@ -490,7 +503,14 @@ async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, 
         return { success: false, message: 'Gmail draft creation requires a project context.' }
     }
 
-    const accounts = await getConnectedGmailAccounts(userId)
+    const [accounts, microsoftAccounts] = await Promise.all([
+        getConnectedGmailAccounts(userId),
+        getConnectedMicrosoftEmailAccounts(userId).catch(() => []),
+    ])
+    const microsoftDefault = microsoftAccounts.find(item => item.emailDefault || item.gmailDefault)
+    if (microsoftDefault || accounts.length === 0) {
+        return createMicrosoftDraftForAssistantRequest({ userId, projectId, to, cc, bcc, subject, body, attachments })
+    }
     const account = selectDefaultAccount(accounts) || selectProjectAccount(accounts, normalizedProjectId)
     if (!account) {
         return {
@@ -570,11 +590,25 @@ async function createGmailReplyDraftForAssistantRequest({
     }
 
     const target = await resolveReplyTarget({ userId, query, messageId, threadId })
+    if (target?.microsoft) {
+        return createMicrosoftReplyDraftForAssistantRequest({
+            userId,
+            query,
+            messageId: target.searchMatch?.messageId || messageId,
+            body,
+            instructions,
+            attachments,
+        })
+    }
     if (target?.error) {
-        return {
-            success: false,
-            message: target.error,
-        }
+        return createMicrosoftReplyDraftForAssistantRequest({
+            userId,
+            query,
+            messageId,
+            body,
+            instructions,
+            attachments,
+        })
     }
 
     const replyTo = getReplyToRecipient(target.normalizedMessage)
@@ -642,10 +676,16 @@ async function updateGmailDraftForAssistantRequest({
 
     const target = await resolveDraftTarget({ userId, draftId })
     if (target?.error) {
-        return {
-            success: false,
-            message: target.error,
-        }
+        return updateMicrosoftDraftForAssistantRequest({
+            userId,
+            draftId,
+            to,
+            cc,
+            bcc,
+            subject,
+            body,
+            attachments,
+        })
     }
 
     const nextTo = to === undefined ? target.normalizedDraft.to : normalizeRecipientList(to)

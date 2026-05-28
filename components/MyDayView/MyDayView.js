@@ -28,7 +28,7 @@ export default function MyDayView() {
                     console.log('[MyDayView] 📅 Checking calendar sync for project:', pid)
                     checkIfCalendarConnected(pid)
                 }
-                if (flags?.gmail) {
+                if (flags?.email || flags?.gmail) {
                     console.log('[MyDayView] 📧 Checking gmail sync for project:', pid)
                     checkIfGmailIsConnected(pid)
                 }

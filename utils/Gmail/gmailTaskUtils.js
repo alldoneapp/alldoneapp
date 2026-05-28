@@ -16,6 +16,9 @@ export function isInboxSummaryGmailTask(taskOrGmailData) {
 
 export function getGmailTaskWebUrl(taskOrGmailData) {
     const gmailData = getGmailTaskData(taskOrGmailData)
+    if (gmailData?.provider === 'microsoft') {
+        return gmailData.webUrl || 'https://outlook.office.com/mail/'
+    }
     const gmailEmail = gmailData?.gmailEmail || gmailData?.email
     const messageId = gmailData?.messageId
     let continueUrl = null

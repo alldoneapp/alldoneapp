@@ -5,10 +5,11 @@ import styles, { colors } from '../../styles/global'
 import GoogleGmail from '../../../assets/svg/GoogleGmail'
 import GoalTasksList from './GoalTasksList'
 import { EMAIL_TASK_INDEX } from '../../../utils/backends/Tasks/openGoalTasks'
+import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
 
 export default function GoalOpenTasksEmailSection({ emailTasks, dateIndex, projectId, isActiveOrganizeMode }) {
     const openLink = () => {
-        return window.open('https://mail.google.com/mail/u/?' + `authuser=${emailTasks[0].gmailData.email}`, '_blank')
+        return window.open(getGmailTaskWebUrl(emailTasks[0]) || 'https://outlook.office.com/mail/', '_blank')
     }
 
     return (
@@ -17,7 +18,7 @@ export default function GoalOpenTasksEmailSection({ emailTasks, dateIndex, proje
                 <View style={localStyles.centeredRow}>
                     <TouchableOpacity onPress={openLink} style={{ flexDirection: 'row' }}>
                         <GoogleGmail />
-                        <Text style={localStyles.title}>Google Gmail</Text>
+                        <Text style={localStyles.title}>Email</Text>
                     </TouchableOpacity>
                 </View>
             </View>

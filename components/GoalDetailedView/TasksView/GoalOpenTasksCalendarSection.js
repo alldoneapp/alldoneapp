@@ -13,8 +13,11 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
 
     const openLink = () => {
+        const calendarData = calendarTasks[0].calendarData
         return window.open(
-            'https://calendar.google.com/calendar/u/?' + `authuser=${calendarTasks[0].calendarData.email}`,
+            calendarData.provider === 'microsoft'
+                ? calendarData.link || 'https://outlook.office.com/calendar/'
+                : 'https://calendar.google.com/calendar/u/?' + `authuser=${calendarData.email}`,
             '_blank'
         )
     }

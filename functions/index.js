@@ -2542,11 +2542,53 @@ exports.createApiEmailTasksSecondGen = onCall(
         )
         if (auth) {
             const { addUnreadMailsTask } = require('./apis/EmailIntegration')
-            const { projectId, date, uid, unreadMails, email, timezone } = data
+            const { projectId, date, uid, unreadMails, email, timezone, provider } = data
             console.log('[createApiEmailTasksSecondGen] Calling addUnreadMailsTask with timezone:', timezone)
-            await addUnreadMailsTask(projectId, uid, date, unreadMails, email, timezone)
+            await addUnreadMailsTask(projectId, uid, date, unreadMails, email, timezone, provider || 'google')
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
+exports.syncMicrosoftUnreadEmailSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const { projectId, date, timezone } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const connection = userData.apisConnected?.[projectId] || {}
+            if (connection.emailProvider !== 'microsoft') {
+                throw new HttpsError('failed-precondition', 'Microsoft email is not connected for this project')
+            }
+
+            const { getUnreadMicrosoftInboxCount } = require('./Email/providers/microsoftEmailProvider')
+            const { addUnreadMailsTask } = require('./apis/EmailIntegration')
+            const result = await getUnreadMicrosoftInboxCount(auth.uid, projectId)
+            await addUnreadMailsTask(
+                projectId,
+                auth.uid,
+                date || Date.now(),
+                result.unreadCount,
+                result.emailAddress || connection.emailAddress || userData.email,
+                timezone,
+                'microsoft'
+            )
+            return { success: true, unreadMails: result.unreadCount, email: result.emailAddress }
+        } catch (error) {
+            console.error('Error syncing Microsoft unread email:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to sync Microsoft unread email')
         }
     }
 )
@@ -3052,6 +3094,167 @@ exports.googleOAuthCheckCredentials = onCall(
     }
 )
 
+// MICROSOFT OAUTH - Server-side OAuth for Outlook Email and Microsoft Calendar
+
+exports.microsoftOAuthInitiate = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { initiateOAuth } = require('./MicrosoftOAuth/microsoftOAuthHandler')
+        const { projectId, service, returnUrl } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            await assertProjectAccess(auth.uid, projectId)
+            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl)
+            return { authUrl }
+        } catch (error) {
+            console.error('Error initiating Microsoft OAuth:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', `Failed to initiate Microsoft OAuth: ${error.message}`)
+        }
+    }
+)
+
+exports.microsoftOAuthCallback = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: {
+            origin: true,
+            methods: ['GET', 'POST', 'OPTIONS'],
+            allowedHeaders: ['*'],
+            credentials: true,
+        },
+    },
+    async (req, res) => {
+        const { handleOAuthCallback } = require('./MicrosoftOAuth/microsoftOAuthHandler')
+        const { code, state, error, error_description } = req.query
+
+        if (error) {
+            const message = String(error_description || error)
+            console.error('OAuth error from Microsoft:', message)
+            res.send(`
+                <script>
+                    window.opener.postMessage({ type: 'oauth_error', error: ${JSON.stringify(message)} }, '*');
+                    window.close();
+                </script>
+            `)
+            return
+        }
+
+        try {
+            const result = await handleOAuthCallback(code, state)
+            if (result.returnUrl) {
+                res.redirect(result.returnUrl)
+                return
+            }
+
+            res.send(`
+                <script>
+                    window.opener.postMessage({ type: 'oauth_success', result: ${JSON.stringify(result)} }, '*');
+                    window.close();
+                </script>
+            `)
+        } catch (err) {
+            console.error('Error in Microsoft OAuth callback:', err)
+            res.send(`
+                <script>
+                    window.opener.postMessage({ type: 'oauth_error', error: ${JSON.stringify(err.message)} }, '*');
+                    window.close();
+                </script>
+            `)
+        }
+    }
+)
+
+exports.microsoftOAuthGetToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { getAccessToken } = require('./MicrosoftOAuth/microsoftOAuthHandler')
+        const { projectId, service } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            await assertProjectAccess(auth.uid, projectId)
+            const accessToken = await getAccessToken(auth.uid, projectId, service)
+            return { accessToken }
+        } catch (error) {
+            console.error('Error getting Microsoft access token:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', `Failed to get Microsoft access token: ${error.message}`)
+        }
+    }
+)
+
+exports.microsoftOAuthRevoke = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { revokeAccess } = require('./MicrosoftOAuth/microsoftOAuthHandler')
+        const { projectId, service } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            await assertProjectAccess(auth.uid, projectId)
+            return await revokeAccess(auth.uid, projectId, service)
+        } catch (error) {
+            console.error('Error revoking Microsoft access:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', `Failed to revoke Microsoft access: ${error.message}`)
+        }
+    }
+)
+
+exports.microsoftOAuthCheckCredentials = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { getCredentialStatus } = require('./MicrosoftOAuth/microsoftOAuthHandler')
+        const { projectId, service } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            await assertProjectAccess(auth.uid, projectId)
+            return await getCredentialStatus(auth.uid, projectId, service)
+        } catch (error) {
+            console.error('Error checking Microsoft credentials:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', `Failed to check Microsoft credentials: ${error.message}`)
+        }
+    }
+)
+
 exports.upsertGmailLabelingConfigSecondGen = onCall(
     {
         timeoutSeconds: 120,
@@ -3195,23 +3398,29 @@ exports.setDefaultGmailConnectionSecondGen = onCall(
 
         try {
             const userData = await assertProjectAccess(auth.uid, projectId)
+            const { resolveEmailConnection } = require('./Integrations/providerConnections')
             const apisConnected = userData.apisConnected || {}
             const currentConnection = apisConnected[projectId] || {}
+            const resolvedConnection = resolveEmailConnection(currentConnection)
 
-            if (!currentConnection.gmail) {
-                throw new HttpsError('failed-precondition', 'Gmail is not connected for this project')
+            if (!resolvedConnection.connected) {
+                throw new HttpsError('failed-precondition', 'Email is not connected for this project')
             }
 
             const updateData = {}
             const shouldSetDefault = !!isDefault
 
             Object.keys(apisConnected).forEach(connectedProjectId => {
-                if (!apisConnected[connectedProjectId]?.gmail) return
-                updateData[`apisConnected.${connectedProjectId}.gmailDefault`] =
+                const resolved = resolveEmailConnection(apisConnected[connectedProjectId])
+                if (!resolved.connected) return
+                updateData[`apisConnected.${connectedProjectId}.emailDefault`] =
                     shouldSetDefault && connectedProjectId === projectId
+                updateData[`apisConnected.${connectedProjectId}.gmailDefault`] =
+                    resolved.provider === 'google' && shouldSetDefault && connectedProjectId === projectId
             })
 
             if (!shouldSetDefault) {
+                updateData[`apisConnected.${projectId}.emailDefault`] = false
                 updateData[`apisConnected.${projectId}.gmailDefault`] = false
             }
 
@@ -3223,9 +3432,9 @@ exports.setDefaultGmailConnectionSecondGen = onCall(
                 isDefault: shouldSetDefault,
             }
         } catch (error) {
-            console.error('Error setting default Gmail connection:', error)
+            console.error('Error setting default Email connection:', error)
             if (error instanceof HttpsError) throw error
-            throw new HttpsError('internal', error.message || 'Failed to update default Gmail connection')
+            throw new HttpsError('internal', error.message || 'Failed to update default Email connection')
         }
     }
 )

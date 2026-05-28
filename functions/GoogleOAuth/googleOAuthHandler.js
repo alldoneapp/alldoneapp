@@ -1,6 +1,14 @@
 const { google } = require('googleapis')
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper.js')
+const {
+    EMAIL_PROVIDER_GOOGLE,
+    buildCalendarConnectionUpdate,
+    buildEmailConnectionUpdate,
+    hasExistingDefaultConnection: hasExistingResolvedDefaultConnection,
+    resolveCalendarConnection,
+    resolveEmailConnection,
+} = require('../Integrations/providerConnections')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -72,10 +80,6 @@ const GMAIL_SCOPES = [
     'https://www.googleapis.com/auth/gmail.labels',
     'https://www.googleapis.com/auth/userinfo.email',
 ]
-
-function hasExistingDefaultConnection(apisConnected = {}, defaultField) {
-    return Object.values(apisConnected).some(connection => connection?.[defaultField] === true)
-}
 
 /**
  * Initiate OAuth flow
@@ -218,17 +222,36 @@ async function handleOAuthCallback(code, state) {
 
     const updateData = {}
     if (service === 'calendar') {
-        const hasExistingDefaultCalendar = hasExistingDefaultConnection(existingApisConnected, 'calendarDefault')
-        updateData[`apisConnected.${projectId}.calendar`] = true
-        updateData[`apisConnected.${projectId}.calendarEmail`] = userInfo.email
-        updateData[`apisConnected.${projectId}.calendarDefault`] = !hasExistingDefaultCalendar
+        const hasExistingDefaultCalendar = hasExistingDefaultConnection(
+            existingApisConnected,
+            resolveCalendarConnection
+        )
+        Object.assign(
+            updateData,
+            buildCalendarConnectionUpdate(projectId, EMAIL_PROVIDER_GOOGLE, userInfo.email, !hasExistingDefaultCalendar)
+        )
+        await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`microsoftAuth_${projectId}_calendar`)
+            .delete()
+            .catch(() => null)
     } else if (service === 'gmail') {
-        const hasExistingDefaultGmail = hasExistingDefaultConnection(existingApisConnected, 'gmailDefault')
-        updateData[`apisConnected.${projectId}.gmail`] = true
-        updateData[`apisConnected.${projectId}.gmailEmail`] = userInfo.email
-        if (!hasExistingDefaultGmail) {
-            updateData[`apisConnected.${projectId}.gmailDefault`] = true
-        }
+        const hasExistingDefaultEmail = hasExistingDefaultConnection(existingApisConnected, resolveEmailConnection)
+        Object.assign(
+            updateData,
+            buildEmailConnectionUpdate(projectId, EMAIL_PROVIDER_GOOGLE, userInfo.email, !hasExistingDefaultEmail)
+        )
+        await admin
+            .firestore()
+            .collection('users')
+            .doc(userId)
+            .collection('private')
+            .doc(`microsoftAuth_${projectId}_email`)
+            .delete()
+            .catch(() => null)
     }
 
     await userRef.update(updateData)
@@ -331,9 +354,14 @@ async function getAccessToken(userId, projectId, service) {
             if (service === 'calendar') {
                 updateData[`apisConnected.${projectId}.calendar`] = false
                 updateData[`apisConnected.${projectId}.calendarDefault`] = false
+                updateData[`apisConnected.${projectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
             } else if (service === 'gmail') {
                 updateData[`apisConnected.${projectId}.gmail`] = false
                 updateData[`apisConnected.${projectId}.gmailDefault`] = false
+                updateData[`apisConnected.${projectId}.email`] = false
+                updateData[`apisConnected.${projectId}.emailDefault`] = false
+                updateData[`apisConnected.${projectId}.emailProvider`] = admin.firestore.FieldValue.delete()
+                updateData[`apisConnected.${projectId}.emailAddress`] = admin.firestore.FieldValue.delete()
             } else if (projectId) {
                 // Legacy fallback
                 updateData[`apisConnected.${projectId}.calendar`] = false
@@ -417,11 +445,16 @@ async function revokeAccess(userId, projectId, service) {
         if (service === 'calendar') {
             updateData[`apisConnected.${projectId}.calendar`] = false
             updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${projectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
             updateData[`apisConnected.${projectId}.calendarDefault`] = false
         } else if (service === 'gmail') {
             updateData[`apisConnected.${projectId}.gmail`] = false
             updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
             updateData[`apisConnected.${projectId}.gmailDefault`] = false
+            updateData[`apisConnected.${projectId}.email`] = false
+            updateData[`apisConnected.${projectId}.emailProvider`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${projectId}.emailAddress`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${projectId}.emailDefault`] = false
         }
         if (Object.keys(updateData).length > 0) {
             await userRef.update(updateData)
@@ -459,19 +492,29 @@ async function revokeAccess(userId, projectId, service) {
         updateData[`apisConnected.${projectId}.calendar`] = false
         updateData[`apisConnected.${projectId}.gmail`] = false
         updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
         updateData[`apisConnected.${projectId}.calendarDefault`] = false
         updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
         updateData[`apisConnected.${projectId}.gmailDefault`] = false
+        updateData[`apisConnected.${projectId}.email`] = false
+        updateData[`apisConnected.${projectId}.emailProvider`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.emailAddress`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.emailDefault`] = false
     } else {
         // Service specific
         if (service === 'calendar') {
             updateData[`apisConnected.${projectId}.calendar`] = false
             updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${projectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
             updateData[`apisConnected.${projectId}.calendarDefault`] = false
         } else if (service === 'gmail') {
             updateData[`apisConnected.${projectId}.gmail`] = false
             updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
             updateData[`apisConnected.${projectId}.gmailDefault`] = false
+            updateData[`apisConnected.${projectId}.email`] = false
+            updateData[`apisConnected.${projectId}.emailProvider`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${projectId}.emailAddress`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${projectId}.emailDefault`] = false
         }
     }
 
@@ -580,4 +623,10 @@ module.exports = {
     __private__: {
         hasExistingDefaultConnection,
     },
+}
+function hasExistingDefaultConnection(apisConnected = {}, defaultFieldOrResolver) {
+    if (typeof defaultFieldOrResolver === 'function') {
+        return hasExistingResolvedDefaultConnection(apisConnected, defaultFieldOrResolver)
+    }
+    return Object.values(apisConnected).some(connection => connection?.[defaultFieldOrResolver] === true)
 }

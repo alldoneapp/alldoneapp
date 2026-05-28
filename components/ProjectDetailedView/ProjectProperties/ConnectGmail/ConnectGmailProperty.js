@@ -6,15 +6,19 @@ import ConnectGmailModal from './ConnectGmailModal/ConnectGmailModal'
 import GoogleApi from '../../../../apis/google/GoogleApi'
 import ConnectGmailButton from './ConnectGmailButton'
 import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../../apis/google/GoogleOAuthServerSide'
+import { hasMicrosoftServerSideAuth } from '../../../../apis/microsoft/MicrosoftOAuthServerSide'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import { popoverToSafePosition } from '../../../../utils/HelperFunctions'
+import { PROVIDER_GOOGLE, resolveEmailConnection } from '../../../../utils/IntegrationProviders'
 
 export default function ConnectGmailProperty({ projectId, disabled }) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
     const [authStatus, setAuthStatus] = useState({ hasCredentials: false, email: null, hasModifyScope: true })
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
+    const connection = useSelector(state => state.loggedUser.apisConnected?.[projectId])
+    const resolvedConnection = resolveEmailConnection(connection)
+    const isConnected = resolvedConnection.connected
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isSignedIn = authStatus.hasCredentials
 
@@ -22,10 +26,14 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
     useEffect(() => {
         const checkServerAuth = async () => {
             try {
-                const nextAuthStatus = await hasServerSideAuth(projectId, 'gmail')
+                const provider = resolvedConnection.provider || PROVIDER_GOOGLE
+                const nextAuthStatus =
+                    provider === PROVIDER_GOOGLE
+                        ? await hasServerSideAuth(projectId, 'gmail')
+                        : await hasMicrosoftServerSideAuth(projectId, 'email')
                 if (nextAuthStatus.hasCredentials && isConnected) {
                     // Load the server-side token into GoogleApi
-                    await setServerTokenInGoogleApi(GoogleApi, projectId, 'gmail')
+                    if (provider === PROVIDER_GOOGLE) await setServerTokenInGoogleApi(GoogleApi, projectId, 'gmail')
                     setAuthStatus(nextAuthStatus)
                 } else {
                     setAuthStatus({
@@ -47,7 +55,7 @@ export default function ConnectGmailProperty({ projectId, disabled }) {
         }
 
         checkServerAuth()
-    }, [isConnected])
+    }, [isConnected, resolvedConnection.provider])
 
     const openModal = () => {
         if (isOpenRef.current) return

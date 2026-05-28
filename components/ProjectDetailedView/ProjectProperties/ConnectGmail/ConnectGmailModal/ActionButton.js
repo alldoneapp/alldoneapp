@@ -15,8 +15,14 @@ import {
     revokeServerSideAuth,
     setServerTokenInGoogleApi,
 } from '../../../../../apis/google/GoogleOAuthServerSide'
+import {
+    hasMicrosoftServerSideAuth,
+    revokeMicrosoftServerSideAuth,
+    startMicrosoftServerSideAuth,
+} from '../../../../../apis/microsoft/MicrosoftOAuthServerSide'
+import { PROVIDER_MICROSOFT } from '../../../../../utils/IntegrationProviders'
 
-export default function ActionButton({ projectId, isConnected, authStatus, closePopover, setAuthStatus }) {
+export default function ActionButton({ projectId, isConnected, authStatus, provider, closePopover, setAuthStatus }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const userEmail = useSelector(state => state.loggedUser.email)
     const storedTimezone = useSelector(state => state.loggedUser.timezone)
@@ -29,6 +35,8 @@ export default function ActionButton({ projectId, isConnected, authStatus, close
 
     const loadGmailData = async () => {
         try {
+            if (provider === PROVIDER_MICROSOFT) return
+
             // Set server-side token in GoogleApi for immediate use
             await setServerTokenInGoogleApi(GoogleApi, projectId, 'gmail')
 
@@ -73,6 +81,14 @@ export default function ActionButton({ projectId, isConnected, authStatus, close
     const connectServerSide = async () => {
         try {
             // Start server-side OAuth flow (includes Gmail scopes)
+            if (provider === PROVIDER_MICROSOFT) {
+                await startMicrosoftServerSideAuth(projectId, 'email')
+                const nextAuthStatus = await hasMicrosoftServerSideAuth(projectId, 'email')
+                closePopover()
+                setAuthStatus(nextAuthStatus)
+                return
+            }
+
             await startServerSideAuth(projectId, 'gmail')
 
             // OAuth callback will have updated apisConnected in Firestore
@@ -90,7 +106,7 @@ export default function ActionButton({ projectId, isConnected, authStatus, close
                     object: {
                         headerText: 'Connection failed',
                         headerTextParams: {},
-                        headerQuestion: 'Failed to connect Gmail. Please try again.',
+                        headerQuestion: 'Failed to connect email. Please try again.',
                         headerQuestionParams: {},
                     },
                 })
@@ -101,12 +117,16 @@ export default function ActionButton({ projectId, isConnected, authStatus, close
     const disconnect = async () => {
         try {
             // Revoke server-side OAuth credentials
-            await revokeServerSideAuth(projectId, 'gmail')
+            if (provider === PROVIDER_MICROSOFT) {
+                await revokeMicrosoftServerSideAuth(projectId, 'email')
+            } else {
+                await revokeServerSideAuth(projectId, 'gmail')
+            }
 
             closePopover()
             setAuthStatus({ hasCredentials: false, email: null, scopes: [], hasModifyScope: false })
         } catch (error) {
-            console.error('[ConnectGmail] Error disconnecting Gmail:', error)
+            console.error('[ConnectEmail] Error disconnecting email:', error)
         }
     }
 

@@ -11,6 +11,12 @@ import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
 import ActionButton from './ActionButton'
 import ConnectedUserData from './ConnectedUserData'
 import GmailLabelingSettings from './GmailLabelingSettings'
+import {
+    PROVIDER_GOOGLE,
+    PROVIDER_MICROSOFT,
+    getProviderLabel,
+    resolveEmailConnection,
+} from '../../../../../utils/IntegrationProviders'
 
 const MODAL_HORIZONTAL_MARGIN = 32
 const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
@@ -19,8 +25,11 @@ const MODAL_PADDING = 16
 const MAX_MODAL_WIDTH = 760
 
 export default function ConnectGmailModal({ projectId, authStatus, closePopover, setAuthStatus }) {
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
+    const connection = useSelector(state => state.loggedUser.apisConnected?.[projectId])
+    const resolvedConnection = resolveEmailConnection(connection)
+    const isConnected = resolvedConnection.connected
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const [selectedProvider, setSelectedProvider] = useState(resolvedConnection.provider || PROVIDER_GOOGLE)
     const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'))
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
@@ -87,8 +96,8 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
                 >
                     <ModalHeader
                         closeModal={onRequestClose}
-                        title={'Google Gmail'}
-                        description={translate('Google gmail description')}
+                        title={translate('Email account')}
+                        description={translate('Email account description')}
                         hideCloseButton={showCloseConfirmation}
                     />
                     <View style={localStyles.confirmationCard}>
@@ -121,29 +130,50 @@ export default function ConnectGmailModal({ projectId, authStatus, closePopover,
                 >
                     <ModalHeader
                         closeModal={onRequestClose}
-                        title={'Google Gmail'}
-                        description={translate('Google gmail description')}
+                        title={translate('Email account')}
+                        description={translate('Email account description')}
                         hideCloseButton={showCloseConfirmation}
                     />
+                    {!isConnectedAndSignedIn && (
+                        <View style={localStyles.providerRow}>
+                            {[PROVIDER_GOOGLE, PROVIDER_MICROSOFT].map(provider => (
+                                <Button
+                                    key={provider}
+                                    title={getProviderLabel(provider)}
+                                    type={selectedProvider === provider ? undefined : 'ghost'}
+                                    onPress={() => setSelectedProvider(provider)}
+                                    buttonStyle={{ marginRight: 8, marginBottom: 8 }}
+                                />
+                            ))}
+                        </View>
+                    )}
                     {isConnectedAndSignedIn && (
-                        <ConnectedUserData projectId={projectId} isConnected={isConnected} email={authStatus?.email} />
+                        <ConnectedUserData
+                            projectId={projectId}
+                            isConnected={isConnected}
+                            email={authStatus?.email}
+                            provider={resolvedConnection.provider || selectedProvider}
+                        />
                     )}
                     <ActionButton
                         projectId={projectId}
                         isConnected={isConnected}
                         authStatus={authStatus}
+                        provider={isConnected ? resolvedConnection.provider || selectedProvider : selectedProvider}
                         closePopover={closePopover}
                         setAuthStatus={setAuthStatus}
                     />
-                    <GmailLabelingSettings
-                        projectId={projectId}
-                        isConnected={isConnected}
-                        authStatus={authStatus}
-                        onUnsavedChangesChange={setHasUnsavedChanges}
-                        onRegisterCloseHandlers={handlers => {
-                            closeHandlersRef.current = handlers || {}
-                        }}
-                    />
+                    {(resolvedConnection.provider || selectedProvider) === PROVIDER_GOOGLE && (
+                        <GmailLabelingSettings
+                            projectId={projectId}
+                            isConnected={isConnected}
+                            authStatus={authStatus}
+                            onUnsavedChangesChange={setHasUnsavedChanges}
+                            onRegisterCloseHandlers={handlers => {
+                                closeHandlersRef.current = handlers || {}
+                            }}
+                        />
+                    )}
                 </ScrollView>
             )}
         </View>
@@ -184,5 +214,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
+    },
+    providerRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 16,
     },
 })

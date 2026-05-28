@@ -1,6 +1,10 @@
 'use strict'
 
 const { getConnectedGmailAccounts, getGmailClient } = require('./assistantGmailSearch')
+const {
+    getConnectedMicrosoftEmailAccounts,
+    updateMicrosoftEmailForAssistantRequest,
+} = require('../Email/providers/microsoftEmailProvider')
 
 const SYSTEM_LABELS = new Set(['INBOX', 'UNREAD', 'STARRED', 'IMPORTANT'])
 
@@ -142,10 +146,22 @@ async function updateGmailEmailForAssistantRequest({
 
     const accounts = await getConnectedGmailAccounts(normalizedUserId)
     if (accounts.length === 0) {
-        return {
-            success: false,
-            message: 'No connected Gmail accounts were found for this user. Please connect Gmail first.',
+        const microsoftAccounts = await getConnectedMicrosoftEmailAccounts(normalizedUserId).catch(() => [])
+        if (microsoftAccounts.length === 0) {
+            return {
+                success: false,
+                message: 'No connected email accounts were found for this user. Please connect Email first.',
+            }
         }
+        return updateMicrosoftEmailForAssistantRequest({
+            userId,
+            messageId,
+            projectId,
+            addLabelIds: normalizedChanges.addLabelIds,
+            removeLabelIds: normalizedChanges.removeLabelIds,
+            markUnread,
+            important,
+        })
     }
 
     const candidateAccounts = normalizedProjectId
@@ -177,9 +193,20 @@ async function updateGmailEmailForAssistantRequest({
         }
     }
 
+    const microsoftResult = await updateMicrosoftEmailForAssistantRequest({
+        userId,
+        messageId,
+        projectId,
+        addLabelIds: normalizedChanges.addLabelIds,
+        removeLabelIds: normalizedChanges.removeLabelIds,
+        markUnread,
+        important,
+    }).catch(() => null)
+    if (microsoftResult?.success) return microsoftResult
+
     return {
         success: false,
-        message: 'No matching Gmail message was found for that messageId in the connected accounts.',
+        message: 'No matching email message was found for that messageId in the connected accounts.',
     }
 }
 

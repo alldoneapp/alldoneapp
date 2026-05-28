@@ -11,9 +11,12 @@ import { checkIfGmailIsConnected } from '../../../utils/backends/firestore'
 import { useSelector } from 'react-redux'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
+import { getGmailTaskWebUrl } from '../../../utils/Gmail/gmailTaskUtils'
+import { resolveEmailConnection } from '../../../utils/IntegrationProviders'
 
 export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMode, instanceKey }) {
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmail)
+    const connection = useSelector(state => state.loggedUser.apisConnected?.[projectId])
+    const isConnected = resolveEmailConnection(connection).connected
     const emailTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMAIL_TASK_INDEX])
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
@@ -21,10 +24,7 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
     const currentUserId = useSelector(state => state.currentUser.uid)
 
     const openLink = () => {
-        return window.open(
-            'https://mail.google.com/mail/u/?' + `authuser=${emailTasks[0][1][0].gmailData.email}`,
-            '_blank'
-        )
+        return window.open(getGmailTaskWebUrl(emailTasks[0][1][0]) || 'https://outlook.office.com/mail/', '_blank')
     }
 
     const goalsPositionId = sortGoalTasksGorups(
@@ -49,7 +49,7 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
                 <View style={localStyles.centeredRow}>
                     <TouchableOpacity onPress={openLink} style={{ flexDirection: 'row' }}>
                         <GoogleGmail />
-                        <Text style={localStyles.title}>Google Gmail</Text>
+                        <Text style={localStyles.title}>Email</Text>
                     </TouchableOpacity>
                     {isConnected && <ReloadCalendar projectId={projectId} Promise={checkIfGmailIsConnected} />}
                 </View>

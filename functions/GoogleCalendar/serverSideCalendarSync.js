@@ -2,9 +2,47 @@
 const { google } = require('googleapis')
 const admin = require('firebase-admin')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getMicrosoftGraphClient } = require('../MicrosoftGraph/graphClient')
 const { addCalendarEvents, filterEvents, removeCalendarTasks } = require('../GoogleCalendarTasks/calendarTasks')
 const { routeCalendarEventsToProjects } = require('./calendarProjectRouting')
 const moment = require('moment-timezone')
+
+function graphEventToGoogleEvent(event = {}) {
+    return {
+        id: event.id || '',
+        summary: event.subject || '',
+        description: event.bodyPreview || event.body?.content || '',
+        htmlLink: event.webLink || '',
+        status: event.isCancelled ? 'cancelled' : 'confirmed',
+        start: event.start?.dateTime
+            ? {
+                  dateTime: event.start.dateTime,
+                  timeZone: event.start.timeZone || 'UTC',
+              }
+            : {},
+        end: event.end?.dateTime
+            ? {
+                  dateTime: event.end.dateTime,
+                  timeZone: event.end.timeZone || 'UTC',
+              }
+            : {},
+        attendees: Array.isArray(event.attendees)
+            ? event.attendees.map(attendee => ({
+                  email: attendee?.emailAddress?.address || '',
+                  displayName: attendee?.emailAddress?.name || '',
+                  responseStatus: attendee?.status?.response || '',
+                  optional: attendee?.type === 'optional',
+              }))
+            : [],
+        organizer: event.organizer?.emailAddress
+            ? {
+                  email: event.organizer.emailAddress.address || '',
+                  displayName: event.organizer.emailAddress.name || '',
+              }
+            : null,
+        provider: 'microsoft',
+    }
+}
 
 /**
  * Server-side calendar sync function
@@ -26,7 +64,9 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         }
 
         const userData = userDoc.data()
-        const isCalendarConnected = userData.apisConnected?.[projectId]?.calendar
+        const connection = userData.apisConnected?.[projectId] || {}
+        const isCalendarConnected = connection.calendar
+        const calendarProvider = connection.calendarProvider || 'google'
 
         if (!isCalendarConnected) {
             throw new Error('Calendar not connected for this project')
@@ -58,18 +98,6 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             `[serverSideCalendarSync] Timezone: ${timezone}, Offset: ${timezoneOffset}, User: ${userId}, Project: ${projectId}`
         )
 
-        // Get fresh access token (automatically refreshes if needed)
-        const accessToken = await getAccessToken(userId, projectId, 'calendar')
-
-        // Create authenticated OAuth2 client
-        const oauth2Client = getOAuth2Client()
-        oauth2Client.setCredentials({
-            access_token: accessToken,
-        })
-
-        // Create calendar API instance
-        const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
-
         // Calculate time range for events using user's timezone
         // Calculate time range for events using user's timezone
         let startOfTodayUserTz
@@ -95,19 +123,49 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
 
         const fetchStartTime = Date.now()
 
-        // Fetch calendar events
-        const response = await calendar.events.list({
-            calendarId: 'primary',
-            timeMin: timeMin.toISOString(),
-            timeMax: timeMax.toISOString(),
-            showDeleted: false,
-            singleEvents: true,
-            maxResults: 100, // Reasonable limit for today's events (was 2500 for 30 days)
-            orderBy: 'startTime',
-        })
+        let events = []
+        let userEmail = connection.calendarEmail || null
+
+        if (calendarProvider === 'microsoft') {
+            const graph = await getMicrosoftGraphClient(userId, projectId, 'calendar')
+            const query = new URLSearchParams({
+                startDateTime: timeMin.toISOString(),
+                endDateTime: timeMax.toISOString(),
+                $top: '100',
+                $orderby: 'start/dateTime',
+                $select:
+                    'id,subject,bodyPreview,body,location,isCancelled,webLink,start,end,attendees,organizer,onlineMeeting,seriesMasterId',
+            })
+            const response = await graph.request(`/me/calendarView?${query.toString()}`, {
+                headers: { Prefer: 'outlook.body-content-type="text",outlook.timezone="UTC"' },
+            })
+            events = (response?.value || []).map(graphEventToGoogleEvent)
+        } else {
+            // Get fresh access token (automatically refreshes if needed)
+            const accessToken = await getAccessToken(userId, projectId, 'calendar')
+
+            // Create authenticated OAuth2 client
+            const oauth2Client = getOAuth2Client()
+            oauth2Client.setCredentials({
+                access_token: accessToken,
+            })
+
+            // Create calendar API instance
+            const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
+
+            const response = await calendar.events.list({
+                calendarId: 'primary',
+                timeMin: timeMin.toISOString(),
+                timeMax: timeMax.toISOString(),
+                showDeleted: false,
+                singleEvents: true,
+                maxResults: 100, // Reasonable limit for today's events (was 2500 for 30 days)
+                orderBy: 'startTime',
+            })
+            events = response.data.items || []
+        }
 
         const fetchDuration = Date.now() - fetchStartTime
-        const events = response.data.items || []
         console.log(`[serverSideCalendarSync] Fetched ${events.length} events in ${fetchDuration}ms`)
         events.forEach(e => {
             console.log(
@@ -117,43 +175,39 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             )
         })
 
-        // Get user email from stored token data
-        // 1. Try service-specific token (new format)
-        let tokenDoc = await admin
-            .firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('private')
-            .doc(`googleAuth_${projectId}_calendar`)
-            .get()
-
-        // 2. Fallback to legacy project token
-        if (!tokenDoc.exists) {
-            tokenDoc = await admin
+        if (!userEmail && calendarProvider === 'google') {
+            // Get user email from stored token data
+            let tokenDoc = await admin
                 .firestore()
                 .collection('users')
                 .doc(userId)
                 .collection('private')
-                .doc(`googleAuth_${projectId}`)
+                .doc(`googleAuth_${projectId}_calendar`)
                 .get()
-        }
 
-        // 3. Fallback to global token
-        if (!tokenDoc.exists) {
-            tokenDoc = await admin
-                .firestore()
-                .collection('users')
-                .doc(userId)
-                .collection('private')
-                .doc('googleAuth')
-                .get()
-        }
+            if (!tokenDoc.exists) {
+                tokenDoc = await admin
+                    .firestore()
+                    .collection('users')
+                    .doc(userId)
+                    .collection('private')
+                    .doc(`googleAuth_${projectId}`)
+                    .get()
+            }
 
-        if (!tokenDoc.exists) {
-            throw new Error('No Google OAuth token found for user')
-        }
+            if (!tokenDoc.exists) {
+                tokenDoc = await admin
+                    .firestore()
+                    .collection('users')
+                    .doc(userId)
+                    .collection('private')
+                    .doc('googleAuth')
+                    .get()
+            }
 
-        const userEmail = tokenDoc.exists ? tokenDoc.data().email : null
+            if (!tokenDoc.exists) throw new Error('No Google OAuth token found for user')
+            userEmail = tokenDoc.data().email
+        }
         if (!userEmail) {
             throw new Error('User email not found in stored auth data')
         }

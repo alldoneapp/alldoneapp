@@ -6,25 +6,33 @@ import ConnectCalendarModal from './ConnectCalendarModal/ConnectCalendarModal'
 import GoogleApi from '../../../../apis/google/GoogleApi'
 import ConnectCalendarButton from './ConnectCalendarButton'
 import { hasServerSideAuth, setServerTokenInGoogleApi } from '../../../../apis/google/GoogleOAuthServerSide'
+import { hasMicrosoftServerSideAuth } from '../../../../apis/microsoft/MicrosoftOAuthServerSide'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import { popoverToSafePosition } from '../../../../utils/HelperFunctions'
+import { PROVIDER_GOOGLE, resolveCalendarConnection } from '../../../../utils/IntegrationProviders'
 
 export default function ConnectCalendarProperty({ projectId, disabled }) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
     const [isSignedIn, setIsSignedIn] = useState(false)
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
+    const connection = useSelector(state => state.loggedUser.apisConnected?.[projectId])
+    const resolvedConnection = resolveCalendarConnection(connection)
+    const isConnected = resolvedConnection.connected
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     // Check for server-side auth on mount and when connection status changes
     useEffect(() => {
         const checkServerAuth = async () => {
             try {
-                const authStatus = await hasServerSideAuth(projectId, 'calendar')
+                const provider = resolvedConnection.provider || PROVIDER_GOOGLE
+                const authStatus =
+                    provider === PROVIDER_GOOGLE
+                        ? await hasServerSideAuth(projectId, 'calendar')
+                        : await hasMicrosoftServerSideAuth(projectId, 'calendar')
                 if (authStatus.hasCredentials && isConnected) {
                     // Load the server-side token into GoogleApi
-                    await setServerTokenInGoogleApi(GoogleApi, projectId, 'calendar')
+                    if (provider === PROVIDER_GOOGLE) await setServerTokenInGoogleApi(GoogleApi, projectId, 'calendar')
                     setIsSignedIn(true)
                 } else {
                     setIsSignedIn(false)
@@ -36,7 +44,7 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
         }
 
         checkServerAuth()
-    }, [isConnected])
+    }, [isConnected, resolvedConnection.provider])
 
     const openModal = () => {
         if (isOpenRef.current) return
@@ -67,6 +75,7 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
                 <ConnectCalendarModal
                     projectId={projectId}
                     isSignedIn={isSignedIn}
+                    provider={resolvedConnection.provider}
                     closePopover={closeModal}
                     setIsSignedIn={setIsSignedIn}
                 />

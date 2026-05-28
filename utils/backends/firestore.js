@@ -7202,11 +7202,25 @@ export async function checkIfGmailIsConnected(projectId) {
         return
     }
 
-    if (!apisConnected[projectId]?.gmail) {
+    const emailProvider = apisConnected[projectId]?.emailProvider || (apisConnected[projectId]?.gmail ? 'google' : '')
+    const isEmailConnected = apisConnected[projectId]?.email || apisConnected[projectId]?.gmail
+
+    if (!isEmailConnected) {
         if (__DEV__) {
-            console.log('[Gmail Sync] FAILED: Gmail not connected for project', projectId)
+            console.log('[Gmail Sync] FAILED: Email not connected for project', projectId)
             console.log('[Gmail Sync] Project config:', apisConnected[projectId])
         }
+        return
+    }
+
+    if (emailProvider === 'microsoft') {
+        if (__DEV__) console.log('[Email Sync] Syncing Microsoft unread email count')
+        gmailSyncCache.set(projectId, Date.now())
+        await runHttpsCallableFunction('syncMicrosoftUnreadEmailSecondGen', {
+            projectId,
+            date: Date.now(),
+            timezone,
+        })
         return
     }
 

@@ -43,7 +43,12 @@ export default function CalendarTag({ calendarData, containerStyle }) {
 
     const openLink = () => {
         dispatch(showFloatPopup())
-        window.open(calendarData.link + `&authuser=${calendarData.email}`, '_blank')
+        const separator = calendarData.link && calendarData.link.includes('?') ? '&' : '?'
+        const url =
+            calendarData.provider === 'microsoft'
+                ? calendarData.link
+                : calendarData.link + `${separator}authuser=${calendarData.email}`
+        window.open(url, '_blank')
         setTimeout(() => {
             dispatch(hideFloatPopup())
         })

@@ -6,12 +6,17 @@ import CheckBox from '../../../../CheckBox'
 import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 import { setDefaultGmailConnection } from '../../../../../utils/backends/firestore'
+import { getProviderLabel } from '../../../../../utils/IntegrationProviders'
 
-export default function ConnectedUserData({ projectId, isConnected, email: connectedEmail }) {
+export default function ConnectedUserData({ projectId, isConnected, email: connectedEmail, provider }) {
     const email = useSelector(state => state.loggedUser.email)
     const displayName = useSelector(state => state.loggedUser.displayName)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
-    const isDefaultFromStore = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.gmailDefault === true)
+    const isDefaultFromStore = useSelector(
+        state =>
+            state.loggedUser.apisConnected?.[projectId]?.emailDefault === true ||
+            state.loggedUser.apisConnected?.[projectId]?.gmailDefault === true
+    )
     const [isDefault, setIsDefault] = useState(isDefaultFromStore)
     const [savingDefault, setSavingDefault] = useState(false)
 
@@ -50,9 +55,11 @@ export default function ConnectedUserData({ projectId, isConnected, email: conne
                     <TouchableOpacity style={localStyles.defaultRow} onPress={onToggleDefault} disabled={savingDefault}>
                         <CheckBox checked={isDefault} externalContainerStyle={localStyles.defaultCheckbox} />
                         <View style={localStyles.defaultCopy}>
-                            <Text style={localStyles.defaultTitle}>{translate('Use as default Gmail account')}</Text>
+                            <Text style={localStyles.defaultTitle}>{translate('Use as default Email account')}</Text>
                             <Text style={localStyles.defaultDescription}>
-                                {translate('New assistant email drafts use this Gmail account by default.')}
+                                {translate('New assistant email drafts use this Email account by default.', {
+                                    provider: getProviderLabel(provider),
+                                })}
                             </Text>
                         </View>
                     </TouchableOpacity>

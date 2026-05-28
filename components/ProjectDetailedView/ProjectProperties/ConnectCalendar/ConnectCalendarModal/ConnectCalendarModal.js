@@ -11,6 +11,12 @@ import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
 import ActionButton from './ActionButton'
 import ConnectedUserData from './ConnectedUserData'
 import CalendarProjectRoutingSettings from './CalendarProjectRoutingSettings'
+import {
+    PROVIDER_GOOGLE,
+    PROVIDER_MICROSOFT,
+    getProviderLabel,
+    resolveCalendarConnection,
+} from '../../../../../utils/IntegrationProviders'
 
 const MODAL_HORIZONTAL_MARGIN = 32
 const MOBILE_MODAL_HORIZONTAL_MARGIN = 12
@@ -18,9 +24,12 @@ const MODAL_VERTICAL_MARGIN = 16
 const MODAL_PADDING = 16
 const MAX_MODAL_WIDTH = 760
 
-export default function ConnectCalendarModal({ projectId, isSignedIn, closePopover, setIsSignedIn }) {
-    const isConnected = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendar)
+export default function ConnectCalendarModal({ projectId, isSignedIn, provider, closePopover, setIsSignedIn }) {
+    const connection = useSelector(state => state.loggedUser.apisConnected?.[projectId])
+    const resolvedConnection = resolveCalendarConnection(connection)
+    const isConnected = resolvedConnection.connected
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const [selectedProvider, setSelectedProvider] = useState(provider || resolvedConnection.provider || PROVIDER_GOOGLE)
     const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'))
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
@@ -87,8 +96,8 @@ export default function ConnectCalendarModal({ projectId, isSignedIn, closePopov
                 >
                     <ModalHeader
                         closeModal={onRequestClose}
-                        title={translate('Google calendar account')}
-                        description={translate('Google calendar account description')}
+                        title={translate('Calendar account')}
+                        description={translate('Calendar account description')}
                         hideCloseButton={showCloseConfirmation}
                     />
                     <View style={localStyles.confirmationCard}>
@@ -123,15 +132,35 @@ export default function ConnectCalendarModal({ projectId, isSignedIn, closePopov
                 >
                     <ModalHeader
                         closeModal={onRequestClose}
-                        title={translate('Google calendar account')}
-                        description={translate('Google calendar account description')}
+                        title={translate('Calendar account')}
+                        description={translate('Calendar account description')}
                         hideCloseButton={showCloseConfirmation}
                     />
-                    {isConnectedAndSignedIn && <ConnectedUserData projectId={projectId} isConnected={isConnected} />}
+                    {!isConnectedAndSignedIn && (
+                        <View style={localStyles.providerRow}>
+                            {[PROVIDER_GOOGLE, PROVIDER_MICROSOFT].map(providerOption => (
+                                <Button
+                                    key={providerOption}
+                                    title={getProviderLabel(providerOption)}
+                                    type={selectedProvider === providerOption ? undefined : 'ghost'}
+                                    onPress={() => setSelectedProvider(providerOption)}
+                                    buttonStyle={{ marginRight: 8, marginBottom: 8 }}
+                                />
+                            ))}
+                        </View>
+                    )}
+                    {isConnectedAndSignedIn && (
+                        <ConnectedUserData
+                            projectId={projectId}
+                            isConnected={isConnected}
+                            provider={resolvedConnection.provider || selectedProvider}
+                        />
+                    )}
                     <ActionButton
                         projectId={projectId}
                         isConnected={isConnected}
                         isSignedIn={isSignedIn}
+                        provider={isConnected ? resolvedConnection.provider || selectedProvider : selectedProvider}
                         closePopover={closePopover}
                         setIsSignedIn={setIsSignedIn}
                     />
@@ -184,5 +213,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
+    },
+    providerRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 16,
     },
 })

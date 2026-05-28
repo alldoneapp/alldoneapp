@@ -2,7 +2,7 @@ const moment = require('moment-timezone')
 const admin = require('firebase-admin')
 const { generateTask } = require('../GoogleCalendarTasks/calendarTasks')
 
-const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, email, timezone) => {
+const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, email, timezone, provider = 'google') => {
     // Handle both string and numeric timezones (migrated from serverSideCalendarSync logic)
     let date
     if (typeof timezone === 'string') {
@@ -63,7 +63,7 @@ const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, emai
                 generateTask(
                     {
                         isForEmail: true,
-                        gmailData: { email, unreadMails },
+                        gmailData: { email, gmailEmail: email, unreadMails, provider },
                         name: 'Emails in inbox',
                         extendedName: 'Emails in inbox',
                         description: '',
@@ -78,10 +78,13 @@ const addUnreadMailsTask = async (projectId, uid, currentDate, unreadMails, emai
         console.log(`[addUnreadMailsTask] Updating ${tasksIds.length} existing tasks: ${tasksIds.join(', ')}`)
         await Promise.all(
             tasksIds.map(taskId =>
-                admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).update({
-                    gmailData: { email, unreadMails },
-                    dueDate: Date.now(),
-                })
+                admin
+                    .firestore()
+                    .doc(`items/${projectId}/tasks/${taskId}`)
+                    .update({
+                        gmailData: { email, gmailEmail: email, unreadMails, provider },
+                        dueDate: Date.now(),
+                    })
             )
         )
         console.log(`[addUnreadMailsTask] Tasks updated successfully`)

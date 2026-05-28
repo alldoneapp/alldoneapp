@@ -117,7 +117,7 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
 
     const MINUTES_IN_8_HOURS = 480
 
-    const calendarData = { link: htmlLink, start, end, email }
+    const calendarData = { link: htmlLink, start, end, email, provider: event.provider || 'google' }
 
     // Store the original project ID if this is a new task
     if (originalProjectId) {

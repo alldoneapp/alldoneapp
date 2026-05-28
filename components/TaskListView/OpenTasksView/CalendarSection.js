@@ -24,8 +24,11 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
 
     const openLink = () => {
+        const calendarData = calendarEvents[0][1][0].calendarData
         return window.open(
-            'https://calendar.google.com/calendar/u/?' + `authuser=${calendarEvents[0][1][0].calendarData.email}`,
+            calendarData.provider === 'microsoft'
+                ? calendarData.link || 'https://outlook.office.com/calendar/'
+                : 'https://calendar.google.com/calendar/u/?' + `authuser=${calendarData.email}`,
             '_blank'
         )
     }

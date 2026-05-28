@@ -85,7 +85,7 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
                 console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
                 checkIfCalendarConnected(projectId)
             }
-            if (projectApis?.gmail) {
+            if (projectApis?.email || projectApis?.gmail) {
                 console.log('[OpenTasksByProjectHandler] 📧 Checking gmail sync for project:', projectId)
                 checkIfGmailIsConnected(projectId)
             }

@@ -6,8 +6,9 @@ import CheckBox from '../../../../CheckBox'
 import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 import { setDefaultCalendarConnection } from '../../../../../utils/backends/firestore'
+import { getProviderLabel } from '../../../../../utils/IntegrationProviders'
 
-export default function ConnectedUserData({ projectId, isConnected }) {
+export default function ConnectedUserData({ projectId, isConnected, provider }) {
     const email = useSelector(state => state.loggedUser.email)
     const displayName = useSelector(state => state.loggedUser.displayName)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -54,7 +55,9 @@ export default function ConnectedUserData({ projectId, isConnected }) {
                         <View style={localStyles.defaultCopy}>
                             <Text style={localStyles.defaultTitle}>{translate('Use as default Calendar account')}</Text>
                             <Text style={localStyles.defaultDescription}>
-                                {translate('New assistant calendar events use this Calendar account by default.')}
+                                {translate('New assistant calendar events use this Calendar account by default.', {
+                                    provider: getProviderLabel(provider),
+                                })}
                             </Text>
                         </View>
                     </TouchableOpacity>

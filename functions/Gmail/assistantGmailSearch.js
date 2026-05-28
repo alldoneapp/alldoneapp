@@ -5,6 +5,11 @@ const { google } = require('googleapis')
 
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { normalizeGmailMessage } = require('./gmailMessageParser')
+const {
+    getConnectedMicrosoftEmailAccounts,
+    getMicrosoftEmailAttachmentForAssistantRequest,
+    searchMicrosoftEmailForAssistantRequest,
+} = require('../Email/providers/microsoftEmailProvider')
 
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
@@ -181,18 +186,24 @@ async function getConnectedGmailAccounts(userId) {
 
             const existingIndex = accountIndexByKey.get(dedupeKey)
             accounts[existingIndex] = {
+                provider: 'google',
                 projectId,
                 gmailEmail: gmailEmail || null,
+                emailAddress: gmailEmail || null,
                 gmailDefault,
+                emailDefault: gmailDefault,
             }
             return
         }
 
         accountIndexByKey.set(dedupeKey, accounts.length)
         accounts.push({
+            provider: 'google',
             projectId,
             gmailEmail: gmailEmail || null,
+            emailAddress: gmailEmail || null,
             gmailDefault,
+            emailDefault: gmailDefault,
         })
     })
 
@@ -237,8 +248,10 @@ async function searchConnectedAccount({ userId, account, query, limit, includeBo
             const labelIds = Array.isArray(normalizedMessage.labelIds) ? normalizedMessage.labelIds : []
             const labelNames = labelIds.map(labelId => labelNameMap.get(labelId) || labelId)
             return {
+                provider: 'google',
                 projectId: account.projectId,
                 gmailEmail: account.gmailEmail,
+                emailAddress: account.gmailEmail,
                 messageId: normalizedMessage.messageId,
                 threadId: normalizedMessage.threadId,
                 subject: normalizedMessage.subject || '',
@@ -277,8 +290,11 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
     }
 
     const normalizedLimit = normalizeLimit(limit)
-    const accounts = await getConnectedGmailAccounts(userId)
-    if (accounts.length === 0) {
+    const [accounts, microsoftAccounts] = await Promise.all([
+        getConnectedGmailAccounts(userId),
+        getConnectedMicrosoftEmailAccounts(userId).catch(() => []),
+    ])
+    if (accounts.length === 0 && microsoftAccounts.length === 0) {
         return {
             success: false,
             query: trimmedQuery,
@@ -286,7 +302,7 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
             accountsWithErrors: [],
             partialFailure: false,
             results: [],
-            message: 'No connected Gmail accounts were found for this user. Please connect Gmail first.',
+            message: 'No connected email accounts were found for this user. Please connect Email first.',
         }
     }
 
@@ -321,6 +337,18 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
         })
     })
 
+    if (microsoftAccounts.length > 0) {
+        const microsoftResult = await searchMicrosoftEmailForAssistantRequest({
+            userId,
+            query: trimmedQuery,
+            limit: normalizedLimit,
+            includeBodies: includeBodies !== false,
+        })
+        searchedAccounts.push(...(microsoftResult.searchedAccounts || []))
+        accountsWithErrors.push(...(microsoftResult.accountsWithErrors || []))
+        mergedResults.push(...(microsoftResult.results || []))
+    }
+
     const sortedResults = mergedResults
         .sort((a, b) => (b.internalDate || 0) - (a.internalDate || 0))
         .slice(0, normalizedLimit)
@@ -335,7 +363,7 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
             accountsWithErrors,
             partialFailure: false,
             results: [],
-            message: 'Gmail search failed for all connected accounts. Please reconnect Gmail and try again.',
+            message: 'Email search failed for all connected accounts. Please reconnect Email and try again.',
         }
     }
 
@@ -346,7 +374,7 @@ async function searchGmailForAssistantRequest({ userId, query, limit = DEFAULT_S
         accountsWithErrors,
         partialFailure,
         results: sortedResults,
-        message: sortedResults.length > 0 ? null : 'No matching emails were found in the connected Gmail accounts.',
+        message: sortedResults.length > 0 ? null : 'No matching emails were found in the connected email accounts.',
     }
 }
 
@@ -372,7 +400,18 @@ async function getGmailAttachmentForAssistantRequest({
 
     const { accounts, byProjectId } = await getConnectedGmailAccountMap(normalizedUserId)
     if (accounts.length === 0) {
-        throw new Error('No connected Gmail accounts were found for this user. Please connect Gmail first.')
+        const microsoftAccounts = await getConnectedMicrosoftEmailAccounts(normalizedUserId).catch(() => [])
+        if (microsoftAccounts.length === 0) {
+            throw new Error('No connected email accounts were found for this user. Please connect Email first.')
+        }
+        return getMicrosoftEmailAttachmentForAssistantRequest({
+            userId,
+            messageId,
+            fileName,
+            attachmentId,
+            projectId,
+            maxSizeBytes,
+        })
     }
 
     const candidateAccounts = normalizedProjectId
@@ -476,7 +515,18 @@ async function getGmailAttachmentForAssistantRequest({
         }
     }
 
-    throw new Error('The requested Gmail attachment could not be found in the connected accounts')
+    try {
+        return await getMicrosoftEmailAttachmentForAssistantRequest({
+            userId,
+            messageId,
+            fileName,
+            attachmentId,
+            projectId,
+            maxSizeBytes,
+        })
+    } catch (_) {}
+
+    throw new Error('The requested email attachment could not be found in the connected accounts')
 }
 
 module.exports = {

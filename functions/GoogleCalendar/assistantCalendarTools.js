@@ -5,6 +5,13 @@ const { google } = require('googleapis')
 const moment = require('moment-timezone')
 
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const {
+    createMicrosoftCalendarEventForAssistantRequest,
+    deleteMicrosoftCalendarEventForAssistantRequest,
+    getConnectedMicrosoftCalendarAccounts,
+    searchMicrosoftCalendarEventsForAssistantRequest,
+    updateMicrosoftCalendarEventForAssistantRequest,
+} = require('../Calendar/providers/microsoftCalendarProvider')
 
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
@@ -213,6 +220,7 @@ async function getConnectedCalendarAccounts(userId) {
     activeProjectIds.forEach(projectId => {
         const connection = apisConnected?.[projectId]
         if (!connection?.calendar) return
+        if (connection.calendarProvider === 'microsoft') return
 
         const calendarEmail =
             typeof connection.calendarEmail === 'string' ? connection.calendarEmail.trim().toLowerCase() : ''
@@ -305,8 +313,9 @@ async function probeCalendarAccess(account, userId, calendarId) {
 async function resolveCalendarAccountForWrite({ userId, calendarId }) {
     const resolvedCalendarId = normalizeCalendarId(calendarId)
     const accounts = await getConnectedCalendarAccounts(userId)
+    const microsoftAccounts = await getConnectedMicrosoftCalendarAccounts(userId).catch(() => [])
 
-    if (accounts.length === 0) {
+    if (accounts.length === 0 && microsoftAccounts.length === 0) {
         return {
             success: false,
             code: 'calendar_not_connected',
@@ -479,9 +488,12 @@ async function searchCalendarEventsForAssistantRequest({
     const trimmedQuery = safeTrim(query)
     const normalizedCalendarId = normalizeCalendarId(calendarId)
     const normalizedLimit = normalizeLimit(limit)
-    const accounts = await getConnectedCalendarAccounts(userId)
+    const [accounts, microsoftAccounts] = await Promise.all([
+        getConnectedCalendarAccounts(userId),
+        getConnectedMicrosoftCalendarAccounts(userId).catch(() => []),
+    ])
 
-    if (accounts.length === 0) {
+    if (accounts.length === 0 && microsoftAccounts.length === 0) {
         return {
             success: false,
             query: trimmedQuery,
@@ -489,7 +501,7 @@ async function searchCalendarEventsForAssistantRequest({
             accountsWithErrors: [],
             partialFailure: false,
             results: [],
-            message: 'No connected Google Calendar accounts were found for this user. Please connect Calendar first.',
+            message: 'No connected Calendar accounts were found for this user. Please connect Calendar first.',
         }
     }
 
@@ -538,6 +550,21 @@ async function searchCalendarEventsForAssistantRequest({
             error: entry.reason?.message || 'Unknown Calendar search error',
         })
     })
+
+    if (microsoftAccounts.length > 0) {
+        const microsoftResult = await searchMicrosoftCalendarEventsForAssistantRequest({
+            userId,
+            query: trimmedQuery,
+            timeMin,
+            timeMax,
+            calendarId,
+            limit: normalizedLimit,
+            includeDescription,
+        })
+        searchedAccounts.push(...(microsoftResult.searchedAccounts || []))
+        accountsWithErrors.push(...(microsoftResult.accountsWithErrors || []))
+        mergedResults.push(...(microsoftResult.results || []))
+    }
 
     const sortedResults = mergedResults
         .sort((a, b) => {
@@ -628,6 +655,21 @@ async function createCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
+    const microsoftAccounts = await getConnectedMicrosoftCalendarAccounts(userId).catch(() => [])
+    const googleAccounts = await getConnectedCalendarAccounts(userId).catch(() => [])
+    if (microsoftAccounts.find(account => account.calendarDefault) || googleAccounts.length === 0) {
+        return createMicrosoftCalendarEventForAssistantRequest({
+            userId,
+            summary,
+            description,
+            start,
+            end,
+            timeZone: resolvedTimeZone,
+            location,
+            attendees,
+            calendarId,
+        })
+    }
     const resolution = await resolveCalendarAccountForWrite({ userId, calendarId })
     if (!resolution.success) {
         return {
@@ -690,12 +732,18 @@ async function updateCalendarEventForAssistantRequest({
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
     if (!resolution.success) {
-        return {
-            success: false,
-            code: resolution.code,
-            accounts: resolution.accounts || [],
-            message: resolution.message,
-        }
+        return updateMicrosoftCalendarEventForAssistantRequest({
+            userId,
+            eventId,
+            calendarId,
+            summary,
+            description,
+            start,
+            end,
+            timeZone: resolvedTimeZone,
+            location,
+            attendees,
+        })
     }
 
     const payload = buildEventPayload(
@@ -746,12 +794,7 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
 
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
     if (!resolution.success) {
-        return {
-            success: false,
-            code: resolution.code,
-            accounts: resolution.accounts || [],
-            message: resolution.message,
-        }
+        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId })
     }
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)

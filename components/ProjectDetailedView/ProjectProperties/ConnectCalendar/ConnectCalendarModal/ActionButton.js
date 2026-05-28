@@ -11,8 +11,13 @@ import store from '../../../../../redux/store'
 import { showConfirmPopup } from '../../../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../../../UIComponents/ConfirmPopup'
 import { startServerSideAuth, revokeServerSideAuth } from '../../../../../apis/google/GoogleOAuthServerSide'
+import {
+    revokeMicrosoftServerSideAuth,
+    startMicrosoftServerSideAuth,
+} from '../../../../../apis/microsoft/MicrosoftOAuthServerSide'
+import { PROVIDER_MICROSOFT } from '../../../../../utils/IntegrationProviders'
 
-export default function ActionButton({ projectId, isConnected, isSignedIn, closePopover, setIsSignedIn }) {
+export default function ActionButton({ projectId, isConnected, isSignedIn, provider, closePopover, setIsSignedIn }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const [isLoading, setIsLoading] = useState(false)
@@ -59,8 +64,12 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
 
     const connectServerSide = async () => {
         try {
-            // Start server-side OAuth flow
-            await startServerSideAuth(projectId, 'calendar')
+            if (provider === PROVIDER_MICROSOFT) {
+                await startMicrosoftServerSideAuth(projectId, 'calendar')
+            } else {
+                // Start server-side OAuth flow
+                await startServerSideAuth(projectId, 'calendar')
+            }
 
             // OAuth callback will have updated apisConnected in Firestore
             // Load calendar events
@@ -87,7 +96,11 @@ export default function ActionButton({ projectId, isConnected, isSignedIn, close
     const disconnect = async () => {
         try {
             // Revoke server-side OAuth credentials
-            await revokeServerSideAuth(projectId, 'calendar')
+            if (provider === PROVIDER_MICROSOFT) {
+                await revokeMicrosoftServerSideAuth(projectId, 'calendar')
+            } else {
+                await revokeServerSideAuth(projectId, 'calendar')
+            }
 
             // Remove calendar tasks
             removeOpenEvents()
