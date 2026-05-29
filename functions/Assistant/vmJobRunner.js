@@ -26,7 +26,7 @@ const TASK_TYPE_PROFILES = {
  * Update the single live status comment in place (created when the job started).
  * Falls back to creating a new comment if no commentId was recorded.
  */
-async function writeStatusComment(pendingWebhook, text, { isFinal = false, output = null } = {}) {
+async function writeStatusComment(pendingWebhook, text, { isFinal = false, output = null, mediaContext = null } = {}) {
     const { projectId, objectType = 'tasks', objectId, assistantId, statusCommentId } = pendingWebhook
     const db = admin.firestore()
     const commentPathBase = `chatComments/${projectId}/${objectType}/${objectId}/comments`
@@ -39,6 +39,9 @@ async function writeStatusComment(pendingWebhook, text, { isFinal = false, outpu
         commentType: 'STAYWARD_COMMENT',
         lastChangeDate: admin.firestore.Timestamp.now(),
         fromAssistant: true,
+    }
+    if (Array.isArray(mediaContext) && mediaContext.length) {
+        commentPayload.mediaContext = mediaContext
     }
     if (isFinal && output != null) {
         commentPayload.webhookData = { output, correlationId: pendingWebhook.correlationId, kind: 'vm_job' }
@@ -104,9 +107,95 @@ function buildAgentPrompt(vmJob) {
     }
     parts.push(
         '',
-        'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.'
+        'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
+        'IMPORTANT: If you produce any deliverable files (documents, code, HTML, spreadsheets, images, datasets, etc.), SAVE them into the ./output/ directory (relative to your working directory, i.e. /home/user/output/). Every file in ./output/ is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in ./output/ instead.'
     )
     return parts.join('\n')
+}
+
+// --- Generated-file (artifact) return ---
+
+const ARTIFACT_DIR = '/home/user/output'
+const MAX_ARTIFACTS = 10
+const MAX_ARTIFACT_BYTES = 20 * 1024 * 1024 // 20 MB per file
+const MAX_ARTIFACTS_TOTAL_BYTES = 40 * 1024 * 1024 // 40 MB total
+
+const MIME_BY_EXT = {
+    html: 'text/html',
+    htm: 'text/html',
+    css: 'text/css',
+    js: 'text/javascript',
+    json: 'application/json',
+    txt: 'text/plain',
+    md: 'text/markdown',
+    csv: 'text/csv',
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    webp: 'image/webp',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    zip: 'application/zip',
+}
+
+function mimeForFile(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    return MIME_BY_EXT[ext] || 'application/octet-stream'
+}
+
+// Pull deliverable files the agent wrote to /home/user/output out of the sandbox.
+// Best-effort: returns [] on any failure so a file hiccup never fails the whole job.
+async function collectArtifacts(sandbox, correlationId) {
+    try {
+        let entries
+        try {
+            entries = await sandbox.files.list(ARTIFACT_DIR, { depth: 5 })
+        } catch (_) {
+            return [] // dir missing / empty
+        }
+        const files = (entries || []).filter(e => (e.type === 'file' || e.type === undefined) && e.size > 0)
+        const artifacts = []
+        let totalBytes = 0
+        for (const entry of files) {
+            if (artifacts.length >= MAX_ARTIFACTS) break
+            if (entry.size > MAX_ARTIFACT_BYTES) {
+                console.warn('🖥️ VM JOB: skipping oversized artifact', {
+                    correlationId,
+                    name: entry.name,
+                    size: entry.size,
+                })
+                continue
+            }
+            if (totalBytes + entry.size > MAX_ARTIFACTS_TOTAL_BYTES) break
+            try {
+                const data = await sandbox.files.read(entry.path, { format: 'bytes' })
+                const buffer = Buffer.from(data)
+                totalBytes += buffer.length
+                artifacts.push({ fileName: entry.name, mimeType: mimeForFile(entry.name), bytes: buffer })
+            } catch (error) {
+                console.warn('🖥️ VM JOB: failed reading artifact', {
+                    correlationId,
+                    name: entry.name,
+                    error: error.message,
+                })
+            }
+        }
+        if (artifacts.length) {
+            console.log('🖥️ VM JOB: collected artifacts', {
+                correlationId,
+                count: artifacts.length,
+                names: artifacts.map(a => a.fileName),
+            })
+        }
+        return artifacts
+    } catch (error) {
+        console.warn('🖥️ VM JOB: collectArtifacts failed', { correlationId, error: error.message })
+        return []
+    }
 }
 
 // --- Live activity feed from agent stream events ---
@@ -346,7 +435,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
         // Run the agent headless. The prompt is passed as a positional argument (NOT piped
         // via stdin — reading stdin can hang non-interactively), and stdin is from /dev/null
         // so any unexpected interactive read gets EOF instead of blocking until the timeout.
-        const command = `cd /home/user && ${config.installGuard} && ${config.runCommand}`
+        const command = `cd /home/user && mkdir -p output && ${config.installGuard} && ${config.runCommand}`
 
         console.log('🖥️ VM JOB: running agent command', { correlationId: vmJob.correlationId, agent: config.label })
         let result
@@ -388,7 +477,9 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
             const detail = ` exitCode=${result?.exitCode}${stderr ? `: ${stderr.substring(0, 500)}` : ''}`
             throw new Error(`Agent produced no output.${detail}`)
         }
-        return { output, usage: state.usage }
+        // Collect any deliverable files the agent wrote (while the sandbox is still alive).
+        const artifacts = await collectArtifacts(sandbox, vmJob.correlationId)
+        return { output, usage: state.usage, artifacts }
     } finally {
         try {
             await sandbox.kill()
@@ -420,6 +511,49 @@ async function refundVmJob(pendingWebhook, reason) {
             error: error.message,
         })
     }
+}
+
+/**
+ * Upload the agent's generated files to Firebase Storage and build the `mediaContext`
+ * array the chat uses for attachments (same shape as user-uploaded chat files).
+ */
+async function uploadArtifacts(pendingWebhook, artifacts) {
+    if (!Array.isArray(artifacts) || !artifacts.length) return []
+    const { v4: uuidv4 } = require('uuid')
+    const bucket = admin.storage().bucket()
+    const commentId = pendingWebhook.statusCommentId || pendingWebhook.correlationId
+    const mediaContext = []
+    for (const artifact of artifacts) {
+        try {
+            const token = uuidv4()
+            const storagePath = `attachments/${commentId}/${artifact.fileName}`
+            await bucket.file(storagePath).save(artifact.bytes, {
+                resumable: false,
+                contentType: artifact.mimeType,
+                metadata: { metadata: { firebaseStorageDownloadTokens: token } },
+            })
+            const storageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
+                storagePath
+            )}?alt=media&token=${token}`
+            const isImage = artifact.mimeType.startsWith('image/')
+            mediaContext.push({
+                kind: isImage ? 'image' : 'file',
+                fileName: artifact.fileName,
+                mimeType: artifact.mimeType,
+                storageUrl,
+                previewUrl: isImage ? storageUrl : '',
+                extractedText: '',
+                extractionStatus: '',
+            })
+        } catch (error) {
+            console.warn('🖥️ VM JOB: failed uploading artifact', {
+                correlationId: pendingWebhook.correlationId,
+                name: artifact.fileName,
+                error: error.message,
+            })
+        }
+    }
+    return mediaContext
 }
 
 /**
@@ -498,10 +632,18 @@ async function runVmJobByCorrelationId(correlationId) {
 
     try {
         await writeStatusComment(pendingWebhook, `🖥️ Working in a VM (${config.label})…`)
-        const { output, usage } = await runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity)
+        const { output, usage, artifacts } = await runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity)
 
-        // Auto-presentation: the agent's final message becomes the assistant comment.
-        await writeStatusComment(pendingWebhook, output, { isFinal: true, output })
+        // Upload any generated files and attach them to the result comment.
+        const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
+        let finalText = output
+        if (mediaContext.length) {
+            const names = mediaContext.map(m => m.fileName).join(', ')
+            finalText += `\n\n📎 Attached ${mediaContext.length} file${mediaContext.length > 1 ? 's' : ''}: ${names}`
+        }
+
+        // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
+        await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
 
         // Metered Gold top-up from actual usage: per-minute (VM compute) + per-token (LLM).
         const runtimeMs = Date.now() - (vmJob.createdAt || Date.now())
@@ -517,11 +659,13 @@ async function runVmJobByCorrelationId(correlationId) {
                 runtimeMs,
                 usage: usage || null,
                 goldTopup: topup,
+                artifactCount: mediaContext.length,
             })
             .catch(() => {})
         console.log('🖥️ VM JOB RUNNER: Completed', {
             correlationId,
             outputLength: output.length,
+            artifacts: mediaContext.length,
             minutes,
             totalTokens,
             topup,
