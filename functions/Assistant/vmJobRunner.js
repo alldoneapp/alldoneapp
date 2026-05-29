@@ -7,8 +7,8 @@ const { VM_JOB_GOLD_REFUND_SOURCE } = require('./vmJob')
 // under the function timeout so a hung agent surfaces as a failure in minutes
 // rather than dead-waiting the full window.
 const MAX_VM_RUNTIME_MS = 12 * 60 * 1000 // 12 minutes
-// Don't refresh the live status comment more often than this.
-const PROGRESS_UPDATE_INTERVAL_MS = 4000
+// Don't refresh the live status comment more often than this (Firestore write rate).
+const PROGRESS_UPDATE_INTERVAL_MS = 3000
 
 // Per-task-type guidance prepended to the agent's objective.
 const TASK_TYPE_PROFILES = {
@@ -109,11 +109,71 @@ function buildAgentPrompt(vmJob) {
     return parts.join('\n')
 }
 
+// --- Live activity feed from Claude Code's stream-json events ---
+
+const MAX_ACTIVITY_LINES = 15
+
+function truncate(value, n) {
+    const s = String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    return s.length > n ? s.substring(0, n) + '…' : s
+}
+
+// Map a Claude Code tool_use block to a friendly, human-readable activity line.
+function toolActivityLabel(name, input) {
+    const i = input || {}
+    switch (name) {
+        case 'WebSearch':
+            return `🔍 Searching the web${i.query ? `: "${truncate(i.query, 80)}"` : '…'}`
+        case 'WebFetch':
+            return `🌐 Reading ${truncate(i.url || '', 80)}`
+        case 'Bash':
+            return `💻 ${truncate(i.command || 'running a command', 100)}`
+        case 'Read':
+            return `📄 Reading ${truncate(i.file_path || i.path || '', 80)}`
+        case 'Write':
+            return `✍️ Writing ${truncate(i.file_path || i.path || '', 80)}`
+        case 'Edit':
+        case 'MultiEdit':
+            return `✏️ Editing ${truncate(i.file_path || i.path || '', 80)}`
+        case 'Glob':
+        case 'Grep':
+            return `🔎 Searching files${i.pattern ? `: ${truncate(i.pattern, 60)}` : '…'}`
+        case 'TodoWrite':
+            return '🗒️ Planning the work…'
+        default:
+            return `🔧 ${name || 'tool'}`
+    }
+}
+
+// Turn a single stream-json event into zero or more activity lines.
+function activityLinesForEvent(evt) {
+    if (!evt || typeof evt !== 'object') return []
+    if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
+        const out = []
+        for (const block of evt.message.content) {
+            if (block && block.type === 'text' && block.text && block.text.trim()) {
+                out.push(`💬 ${truncate(block.text, 200)}`)
+            } else if (block && block.type === 'tool_use') {
+                out.push(toolActivityLabel(block.name, block.input))
+            }
+        }
+        return out
+    }
+    return []
+}
+
+function renderActivityLog(lines) {
+    return `🖥️ Working in a VM…\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
+}
+
 /**
  * Run Claude Code headless inside a fresh E2B sandbox and return its final output.
- * onProgress(latestLine) is called (throttled by the caller) as stdout streams.
+ * Uses --output-format stream-json so we can surface live activity: onActivity(text)
+ * is called (throttled by the caller) with a rendered activity log as events arrive.
  */
-async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onProgress) {
+async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActivity) {
     const { Sandbox } = require('e2b')
     // Read from getEnvFunctions() (env_functions.json) first so it's configured the same
     // way as the other keys; fall back to process.env for local dev convenience.
@@ -136,46 +196,82 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onProgr
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         await sandbox.files.write('/home/user/context.md', vmJob.packagedContext || '')
 
-        let stdout = ''
+        const activityLines = []
+        let finalResult = ''
+        let assistantTextFallback = ''
+        let stdoutBuf = ''
         let stderr = ''
+
+        // stream-json emits one JSON event per line. Parse complete lines, surface
+        // activity, and capture the final answer from the terminal `result` event.
+        const handleLine = rawLine => {
+            const line = rawLine.trim()
+            if (!line) return
+            let evt
+            try {
+                evt = JSON.parse(line)
+            } catch (_) {
+                return // non-JSON noise (e.g. stray install output) — ignore
+            }
+            if (evt.type === 'result') {
+                if (typeof evt.result === 'string') finalResult = evt.result
+                return
+            }
+            if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
+                for (const b of evt.message.content) {
+                    if (b && b.type === 'text' && b.text) assistantTextFallback += b.text
+                }
+            }
+            const newLines = activityLinesForEvent(evt)
+            if (newLines.length) {
+                activityLines.push(...newLines)
+                if (typeof onActivity === 'function') onActivity(renderActivityLog(activityLines))
+            }
+        }
         const handleStdout = data => {
-            stdout += data
-            if (typeof onProgress === 'function') {
-                const trimmed = String(data).trim()
-                if (trimmed) onProgress(trimmed)
+            stdoutBuf += data
+            let idx
+            while ((idx = stdoutBuf.indexOf('\n')) >= 0) {
+                handleLine(stdoutBuf.slice(0, idx))
+                stdoutBuf = stdoutBuf.slice(idx + 1)
             }
         }
         const handleStderr = data => {
             stderr += data
         }
 
-        // Run Claude Code headless. The prompt is passed as a positional argument
-        // (NOT piped via stdin — `claude -p` reading stdin can hang non-interactively),
-        // and stdin is redirected from /dev/null so any unexpected interactive read
-        // gets EOF immediately instead of blocking until the timeout.
+        // Run Claude Code headless with stream-json so we get live tool/step events.
+        // The prompt is passed as a positional argument (NOT piped via stdin — `claude -p`
+        // reading stdin can hang non-interactively), and stdin is redirected from /dev/null
+        // so any unexpected interactive read gets EOF instead of blocking until the timeout.
+        // (stream-json in -p mode requires --verbose.)
         const command =
             'cd /home/user && ' +
             '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1) && ' +
-            'claude -p "$(cat /home/user/prompt.txt)" --output-format text --dangerously-skip-permissions </dev/null'
+            'claude -p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null'
 
-        console.log('🖥️ VM JOB: running agent command', { correlationId: vmJob.correlationId })
+        console.log('🖥️ VM JOB: running agent command (stream-json)', { correlationId: vmJob.correlationId })
         const result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
             envs: { ANTHROPIC_API_KEY: anthropicApiKey, CI: 'true' },
             timeoutMs: MAX_VM_RUNTIME_MS,
             onStdout: handleStdout,
             onStderr: handleStderr,
         })
+        if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
             exitCode: result?.exitCode,
-            stdoutLen: stdout.length,
+            events: activityLines.length,
+            finalResultLen: finalResult.length,
             stderrLen: stderr.length,
             stderrPreview: stderr ? stderr.substring(0, 300) : '',
         })
 
-        const output = (stdout || result?.stdout || '').trim()
+        const output = (finalResult || assistantTextFallback || '').trim()
         if (!output) {
-            const detail = stderr ? ` exitCode=${result?.exitCode}: ${stderr.substring(0, 500)}` : ''
+            const detail = stderr
+                ? ` exitCode=${result?.exitCode}: ${stderr.substring(0, 500)}`
+                : ` exitCode=${result?.exitCode}`
             throw new Error(`Agent produced no output.${detail}`)
         }
         return output
@@ -248,20 +344,19 @@ async function runVmJobByCorrelationId(correlationId) {
         return
     }
 
-    // Throttled progress updates to the live status comment.
+    // Throttled live-activity updates to the single status comment. The worker passes
+    // a fully-rendered activity log; we just rate-limit the Firestore writes.
     let lastProgressAt = 0
-    let latestLine = ''
-    const onProgress = line => {
-        latestLine = line.length > 280 ? line.substring(0, 280) + '…' : line
+    const onActivity = text => {
         const now = Date.now()
         if (now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
         lastProgressAt = now
-        writeStatusComment(pendingWebhook, `🖥️ Working in a VM…\n\n${latestLine}`).catch(() => {})
+        writeStatusComment(pendingWebhook, text).catch(() => {})
     }
 
     try {
         await writeStatusComment(pendingWebhook, '🖥️ Working in a VM…')
-        const output = await runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onProgress)
+        const output = await runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActivity)
 
         // Auto-presentation: the agent's final message becomes the assistant comment.
         await writeStatusComment(pendingWebhook, output, { isFinal: true, output })
