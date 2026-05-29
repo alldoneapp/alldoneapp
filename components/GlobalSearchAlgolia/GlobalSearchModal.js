@@ -65,13 +65,19 @@ const getProjectAccessIds = (loggedUser, projectId) => {
     return [...new Set([FEED_PUBLIC_FOR_ALL, loggedUser.uid, DEFAULT_WORKSTREAM_ID, ...projectWorkstreamIds])]
 }
 
+// Algolia's filter parser rejects unquoted facet values that contain special
+// characters (e.g. workstream ids like `ws@default`). Quote string values so
+// they parse correctly; leave numeric values (e.g. FEED_PUBLIC_FOR_ALL) as-is
+// so they still match the numeric facet.
+const formatFacetValue = value => (typeof value === 'number' ? value : `"${value}"`)
+
 const buildProjectsAccessFilter = (projects, loggedUser) => {
     return projects
         .map(project => {
             const accessFilter = getProjectAccessIds(loggedUser, project.id)
-                .map(userId => `isPublicFor:${userId}`)
+                .map(userId => `isPublicFor:${formatFacetValue(userId)}`)
                 .join(' OR ')
-            return `(projectId:${project.id} AND (${accessFilter}))`
+            return `(projectId:${formatFacetValue(project.id)} AND (${accessFilter}))`
         })
         .join(' OR ')
 }
