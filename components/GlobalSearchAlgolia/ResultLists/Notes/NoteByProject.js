@@ -37,6 +37,7 @@ export default function NoteByProject({ project, notes, activeTab, activeItemInd
                     activeTab={activeTab}
                     activeItemRef={activeItemRef}
                     externalContainerStyle={{ paddingHorizontal: 16 }}
+                    showPrivacyMarker={true}
                 />
             </View>
         </View>

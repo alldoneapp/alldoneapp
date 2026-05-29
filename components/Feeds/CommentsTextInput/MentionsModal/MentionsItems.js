@@ -18,6 +18,7 @@ import GoalProgress from './GoalProgress'
 import { isEmpty } from 'lodash'
 import { isWorkstream } from '../../../Workstreams/WorkstreamHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { FEED_PUBLIC_FOR_ALL } from '../../Utils/FeedsConstants'
 
 export default function MentionsItems({
     selectItemToMention,
@@ -29,6 +30,7 @@ export default function MentionsItems({
     activeItemRef,
     externalContainerStyle,
     currentlyAssignedGoal,
+    showPrivacyMarker,
 }) {
     const getItemData = item => {
         const { id, name, extendedName, extendedTitle, userId, assigneesIds, progress, dynamicProgress } = item
@@ -134,6 +136,10 @@ export default function MentionsItems({
         return itemId === getActiveItemId()
     }
 
+    const isPrivateItem = item => {
+        return item.isPrivate || (Array.isArray(item.isPublicFor) && !item.isPublicFor.includes(FEED_PUBLIC_FOR_ALL))
+    }
+
     useEffect(() => {
         if (activeItemRef) {
             const activeItemId = getActiveItemId()
@@ -194,6 +200,11 @@ export default function MentionsItems({
                             maxHeight={48}
                             shortTags={true}
                         />
+                        {showPrivacyMarker && isPrivateItem(item) && (
+                            <View style={localStyles.privacyMarker}>
+                                <Icon name="lock" size={16} color={colors.Text03} />
+                            </View>
+                        )}
                         {activeTab === MENTION_MODAL_GOALS_TAB ? (
                             assigneesIds.length > 0 ? (
                                 <AssigneesIcon
@@ -272,8 +283,17 @@ const localStyles = StyleSheet.create({
         color: '#FFFFFF',
     },
     textContainer: {
+        flex: 1,
+        minWidth: 0,
         maxHeight: 48,
         overflow: 'hidden',
         marginHorizontal: 8,
+    },
+    privacyMarker: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 4,
     },
 })

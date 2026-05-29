@@ -33,6 +33,7 @@ export default function GoalByProject({ project, goals, activeTab, activeItemInd
                     activeTab={activeTab}
                     activeItemRef={activeItemRef}
                     externalContainerStyle={{ paddingHorizontal: 16 }}
+                    showPrivacyMarker={true}
                 />
             </View>
         </View>

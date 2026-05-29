@@ -55,6 +55,26 @@ import {
 import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
+import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamHelper'
+
+const getProjectAccessIds = (loggedUser, projectId) => {
+    if (loggedUser.isAnonymous) return [FEED_PUBLIC_FOR_ALL]
+
+    const workstreamIds = loggedUser.workstreams?.[projectId]
+    const projectWorkstreamIds = Array.isArray(workstreamIds) ? workstreamIds : []
+    return [...new Set([FEED_PUBLIC_FOR_ALL, loggedUser.uid, DEFAULT_WORKSTREAM_ID, ...projectWorkstreamIds])]
+}
+
+const buildProjectsAccessFilter = (projects, loggedUser) => {
+    return projects
+        .map(project => {
+            const accessFilter = getProjectAccessIds(loggedUser, project.id)
+                .map(userId => `isPublicFor:${userId}`)
+                .join(' OR ')
+            return `(projectId:${project.id} AND (${accessFilter}))`
+        })
+        .join(' OR ')
+}
 
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
@@ -471,21 +491,16 @@ export default function GlobalSearchModal() {
 
         const algoliaIndex = client.initIndex(indexPrefix)
 
-        let projectsIdsFilter = ``
-        if (inSelectedProject) {
-            projectsIdsFilter = `projectId:${selectedProject.id}`
-        } else {
-            const projectIds = projects.map(p => p.id)
-            projectsIdsFilter = projectIds.map(id => `projectId:${id}`).join(' OR ')
-        }
+        const projectsToSearch = inSelectedProject ? [selectedProject] : projects
+        const projectsAccessFilter = buildProjectsAccessFilter(projectsToSearch, loggedUser)
 
         let filters = ''
         if (indexPrefix === GOALS_INDEX_NAME_PREFIX || indexPrefix === CHATS_INDEX_NAME_PREFIX) {
-            filters = `(${projectsIdsFilter}) AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+            filters = `(${projectsAccessFilter})`
         } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            filters = `(${projectsIdsFilter}) AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid}) AND isAssistant:false`
+            filters = `(${projectsAccessFilter}) AND isAssistant:false`
         } else {
-            filters = `(${projectsIdsFilter}) AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+            filters = `(${projectsAccessFilter})`
         }
 
         try {

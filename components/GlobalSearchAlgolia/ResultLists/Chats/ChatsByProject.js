@@ -32,6 +32,7 @@ export default function ChatsByProject({ project, chats, activeTab, activeItemIn
                     activeTab={activeTab}
                     activeItemRef={activeItemRef}
                     externalContainerStyle={{ paddingHorizontal: 16 }}
+                    showPrivacyMarker={true}
                 />
             </View>
         </View>

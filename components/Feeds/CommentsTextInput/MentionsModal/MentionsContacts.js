@@ -7,7 +7,8 @@ import SVGGenericUser from '../../../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_CONTACTS_TAB } from '../textInputHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import SocialText from '../../../UIControls/SocialText/SocialText'
-import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { FEED_PUBLIC_FOR_ALL } from '../../Utils/FeedsConstants'
+import Icon from '../../../Icon'
 
 export default function MentionsContacts({
     projectId,
@@ -17,6 +18,7 @@ export default function MentionsContacts({
     usersComponentsRefs,
     activeItemRef,
     externalContainerStyle,
+    showPrivacyMarker,
 }) {
     const getContactInfo = contact => {
         const role = ProjectHelper.getUserRoleInProject(projectId, contact.uid, contact.role)
@@ -44,6 +46,10 @@ export default function MentionsContacts({
             }
         }
     }, [activeUserIndex])
+
+    const isPrivateUser = user => {
+        return user.isPrivate || (Array.isArray(user.isPublicFor) && !user.isPublicFor.includes(FEED_PUBLIC_FOR_ALL))
+    }
 
     return (
         <View style={externalContainerStyle}>
@@ -98,6 +104,11 @@ export default function MentionsContacts({
                                 </Text>
                             )}
                         </View>
+                        {showPrivacyMarker && isPrivateUser(user) && (
+                            <View style={localStyles.privacyMarker}>
+                                <Icon name="lock" size={16} color={colors.Text03} />
+                            </View>
+                        )}
                     </TouchableOpacity>
                 )
             })}
@@ -154,5 +165,12 @@ const localStyles = StyleSheet.create({
         ...styles.caption2,
         color: colors.Text03,
         overflow: 'hidden',
+    },
+    privacyMarker: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 4,
     },
 })

@@ -33,6 +33,7 @@ export default function ContactByProject({ project, contacts, activeItemIndex, a
                     usersComponentsRefs={itemsComponentsRefs}
                     activeItemRef={activeItemRef}
                     externalContainerStyle={{ paddingHorizontal: 16 }}
+                    showPrivacyMarker={true}
                 />
             </View>
         </View>

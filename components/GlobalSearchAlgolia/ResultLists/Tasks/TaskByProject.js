@@ -33,6 +33,7 @@ export default function TaskByProject({ project, tasks, activeTab, activeItemInd
                     activeTab={activeTab}
                     activeItemRef={activeItemRef}
                     externalContainerStyle={{ paddingHorizontal: 16 }}
+                    showPrivacyMarker={true}
                 />
             </View>
         </View>
