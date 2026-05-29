@@ -9,6 +9,11 @@
 #   "lacks IAM permission cloudtasks.tasks.create for .../queues/runVmJob"
 # and the tool refunds the user's Gold and reports it couldn't start.
 #
+# IMPORTANT: grant at the PROJECT level, not the queue level. A queue-scoped binding
+# was observed NOT to be honored for firebase-admin's enqueue() path (it stayed denied
+# 30+ min after the queue-level grant). The project-level grant is what Firebase's docs
+# prescribe and what actually works.
+#
 # This binding lives outside the repo (it's project IAM), so run this script ONCE per
 # environment, AFTER `runVmJob` has been deployed there. It is idempotent.
 #
@@ -43,11 +48,11 @@ echo
 # but enable it explicitly so this script is safe to run standalone).
 gcloud services enable cloudtasks.googleapis.com --project="$PROJECT"
 
-# Grant enqueuer scoped to just the runVmJob queue (least privilege).
-gcloud tasks queues add-iam-policy-binding "$QUEUE" \
-    --location="$REGION" --project="$PROJECT" \
+# Grant enqueuer at the PROJECT level (queue-level was not honored — see header note).
+gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" \
-    --role="roles/cloudtasks.enqueuer"
+    --role="roles/cloudtasks.enqueuer" \
+    --condition=None
 
 echo
-echo "✅ Granted roles/cloudtasks.enqueuer on queue '$QUEUE' to $SA in $PROJECT"
+echo "✅ Granted roles/cloudtasks.enqueuer (project-level) to $SA in $PROJECT"

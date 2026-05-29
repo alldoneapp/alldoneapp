@@ -59,8 +59,13 @@ couldn't start). Grant the enqueuer role **once per project, after `runVmJob` is
 ```
 
 The script auto-detects the `asktobotsecondgen` runtime SA, enables the Cloud Tasks API, and
-grants `roles/cloudtasks.enqueuer` scoped to just the `runVmJob` queue. It's idempotent.
+grants `roles/cloudtasks.enqueuer` at the **project level**. It's idempotent.
 (Staging runtime SA for reference: `155167128714-compute@developer.gserviceaccount.com`.)
+
+> Grant at the **project level**, not the queue level. A queue-scoped binding was observed
+> _not_ to be honored for firebase-admin's `enqueue()` path — it stayed denied 30+ minutes
+> after the queue-level grant. The project-level grant (what Firebase's docs prescribe) is
+> what actually works.
 
 ## Verify
 
