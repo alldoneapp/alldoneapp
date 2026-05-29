@@ -1,58 +1,64 @@
 #!/usr/bin/env bash
 #
-# Grant the Cloud Functions runtime service account permission to enqueue Cloud Tasks
-# for the execute_task_in_vm tool's `runVmJob` worker.
+# Grant the IAM roles needed for the execute_task_in_vm tool's `runVmJob` Cloud Tasks worker.
 #
-# WHY THIS IS NEEDED: Firebase auto-creates the `runVmJob` Cloud Tasks queue when the
-# onTaskDispatched function is deployed, but it does NOT grant the enqueuer role to the
-# function's runtime service account. Without it, the very first enqueue fails with:
-#   "lacks IAM permission cloudtasks.tasks.create for .../queues/runVmJob"
-# and the tool refunds the user's Gold and reports it couldn't start.
+# WHICH SERVICE ACCOUNT — the Firebase Admin SDK SA, NOT the Cloud Run/compute SA.
+# The functions initialize firebase-admin with admin.credential.cert(serviceAccountKey.json)
+# (see functions/firebaseConfig.js), so EVERY firebase-admin call — including
+# getFunctions().taskQueue().enqueue() and the task's OIDC dispatch — authenticates as
+# firebase-adminsdk-*@<project>.iam.gserviceaccount.com. Granting the compute SA does nothing.
 #
-# IMPORTANT: grant at the PROJECT level, not the queue level. A queue-scoped binding
-# was observed NOT to be honored for firebase-admin's enqueue() path (it stayed denied
-# 30+ min after the queue-level grant). The project-level grant is what Firebase's docs
-# prescribe and what actually works.
+# TWO grants are required (Firebase does not set them up on deploy):
+#   1. roles/cloudtasks.enqueuer  (PROJECT level)        -> create the task (enqueue)
+#   2. roles/run.invoker on the `runvmjob` Cloud Run svc -> Cloud Tasks invokes the worker
 #
-# This binding lives outside the repo (it's project IAM), so run this script ONCE per
-# environment, AFTER `runVmJob` has been deployed there. It is idempotent.
+# NOTE: grant enqueuer at the PROJECT level, not the queue level — a queue-scoped binding
+# was observed NOT to be honored for firebase-admin's enqueue() path.
+#
+# Run this ONCE per environment, AFTER `runVmJob` has been deployed there. Idempotent.
 #
 # Usage:
 #   ./grant-enqueuer.sh <projectId> [serviceAccountEmail]
 # Examples:
-#   ./grant-enqueuer.sh alldonealeph      # prod  (auto-detects the runtime SA)
-#   ./grant-enqueuer.sh alldonestaging    # staging
+#   ./grant-enqueuer.sh alldonealeph
+#   ./grant-enqueuer.sh alldonestaging
 #
 set -euo pipefail
 
 PROJECT="${1:?Usage: grant-enqueuer.sh <projectId> [serviceAccountEmail]}"
 REGION="europe-west1"
-QUEUE="runVmJob"
+RUN_SERVICE="runvmjob" # gen2 Cloud Run service name (lowercased function name)
 
-# Auto-detect the asktobotsecondgen runtime service account (the function that enqueues)
-# unless one was passed explicitly.
+# Principal = the Firebase Admin SDK SA (the cert credential firebase-admin uses).
+# Auto-detect it unless one was passed explicitly.
 SA="${2:-}"
 if [ -z "$SA" ]; then
-    SA="$(gcloud run services describe asktobotsecondgen \
-        --region="$REGION" --project="$PROJECT" \
-        --format='value(spec.template.spec.serviceAccountName)')"
+    SA="$(gcloud iam service-accounts list --project="$PROJECT" \
+        --filter="email:firebase-adminsdk" --format='value(email)' | head -n1)"
+fi
+if [ -z "$SA" ]; then
+    echo "Could not find a firebase-adminsdk service account in $PROJECT. Pass it explicitly." >&2
+    exit 1
 fi
 
 echo "Project:         $PROJECT"
-echo "Region:          $REGION"
-echo "Queue:           $QUEUE"
+echo "Run service:     $RUN_SERVICE ($REGION)"
 echo "Service account: $SA"
 echo
 
-# The Cloud Tasks API must be enabled (it is implicitly enabled once runVmJob deploys,
-# but enable it explicitly so this script is safe to run standalone).
-gcloud services enable cloudtasks.googleapis.com --project="$PROJECT"
+gcloud services enable cloudtasks.googleapis.com run.googleapis.com --project="$PROJECT"
 
-# Grant enqueuer at the PROJECT level (queue-level was not honored — see header note).
+# 1. Enqueue: permission to create Cloud Tasks (project-level — queue-level not honored).
 gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" \
     --role="roles/cloudtasks.enqueuer" \
     --condition=None
 
+# 2. Dispatch: let Cloud Tasks invoke the private worker function.
+gcloud run services add-iam-policy-binding "$RUN_SERVICE" \
+    --region="$REGION" --project="$PROJECT" \
+    --member="serviceAccount:${SA}" \
+    --role="roles/run.invoker"
+
 echo
-echo "✅ Granted roles/cloudtasks.enqueuer (project-level) to $SA in $PROJECT"
+echo "✅ Granted cloudtasks.enqueuer (project) + run.invoker on $RUN_SERVICE to $SA in $PROJECT"

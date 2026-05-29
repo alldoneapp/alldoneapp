@@ -45,27 +45,31 @@ Set the template name so the worker uses it:
 Also set the real `E2B_API_KEY` in the functions env — the worker uses it at runtime to spawn
 sandboxes (the same key builds the template here).
 
-## Required IAM grant (once per environment, after deploy)
+## Required IAM grants (once per environment, after deploy)
 
-The `execute_task_in_vm` tool enqueues a Cloud Task to the `runVmJob` worker. Firebase
-auto-creates the `runVmJob` queue on deploy but does **not** grant the function's runtime
-service account permission to enqueue, so the first run fails with
-`cloudtasks.tasks.create … denied` (the tool then refunds the user's Gold and reports it
-couldn't start). Grant the enqueuer role **once per project, after `runVmJob` is deployed there**:
+The `execute_task_in_vm` tool enqueues a Cloud Task that invokes the `runVmJob` worker.
+Firebase does **not** set up the IAM for this on deploy, so two grants are needed or the
+tool fails (and refunds the user's Gold):
+
+1. `roles/cloudtasks.enqueuer` (**project level**) — create the task (enqueue).
+2. `roles/run.invoker` on the `runvmjob` Cloud Run service — let Cloud Tasks invoke the worker.
+
+Run once per project, **after `runVmJob` is deployed there**:
 
 ```bash
 ./grant-enqueuer.sh alldonealeph     # prod   (done 2026-05-29)
 ./grant-enqueuer.sh alldonestaging   # staging — run after it deploys from `develop`
 ```
 
-The script auto-detects the `asktobotsecondgen` runtime SA, enables the Cloud Tasks API, and
-grants `roles/cloudtasks.enqueuer` at the **project level**. It's idempotent.
-(Staging runtime SA for reference: `155167128714-compute@developer.gserviceaccount.com`.)
-
-> Grant at the **project level**, not the queue level. A queue-scoped binding was observed
-> _not_ to be honored for firebase-admin's `enqueue()` path — it stayed denied 30+ minutes
-> after the queue-level grant. The project-level grant (what Firebase's docs prescribe) is
-> what actually works.
+> **Grant the Firebase Admin SDK SA, not the compute SA.** `firebaseConfig.js` initializes
+> admin with `admin.credential.cert(serviceAccountKey.json)`, so every firebase-admin call —
+> including the enqueue and the task's OIDC dispatch — authenticates as
+> `firebase-adminsdk-*@<project>.iam.gserviceaccount.com`, **not** the Cloud Run/compute SA.
+> Granting the compute SA does nothing (we burned ~an hour learning this). The script
+> auto-detects the `firebase-adminsdk-*` SA and applies both grants. It's idempotent.
+>
+> Also grant enqueuer at the **project level**, not the queue level — a queue-scoped binding
+> was observed _not_ to be honored for firebase-admin's `enqueue()` path.
 
 ## Verify
 
