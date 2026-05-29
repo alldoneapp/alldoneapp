@@ -6933,6 +6933,7 @@ async function executeToolNatively(
                 return await startVmJob({
                     objective: toolArgs.objective,
                     taskType: toolArgs.task_type,
+                    agent: toolArgs.agent,
                     contextObjectIds: toolArgs.context_object_ids,
                     deliverable: toolArgs.deliverable,
                     projectId,

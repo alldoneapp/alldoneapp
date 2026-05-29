@@ -24,6 +24,10 @@ const RUN_VM_JOB_FUNCTION_NAME = 'runVmJob'
 
 const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
 
+// Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
+const VALID_AGENTS = ['claude', 'codex']
+const DEFAULT_AGENT = 'claude'
+
 /**
  * Build the fully-qualified Cloud Tasks queue resource for the worker function so
  * enqueue() targets the correct region instead of the default location.
@@ -114,6 +118,7 @@ async function countActiveVmJobsForUser(userId) {
 async function startVmJob({
     objective,
     taskType,
+    agent = DEFAULT_AGENT,
     contextObjectIds = [],
     deliverable = '',
     projectId,
@@ -131,6 +136,7 @@ async function startVmJob({
             message: `task_type must be one of: ${VALID_TASK_TYPES.join(', ')}.`,
         }
     }
+    const selectedAgent = VALID_AGENTS.includes(agent) ? agent : DEFAULT_AGENT
     if (!projectId || !objectId) {
         return {
             success: false,
@@ -158,7 +164,7 @@ async function startVmJob({
         projectId,
         objectId,
         objectType,
-        note: `VM task (${taskType})`,
+        note: `VM task (${selectedAgent}/${taskType})`,
     })
     if (!goldResult || !goldResult.success) {
         return {
@@ -227,6 +233,7 @@ async function startVmJob({
             correlationId,
             objective: objective.trim(),
             taskType,
+            agent: selectedAgent,
             deliverable: deliverable || '',
             packagedContext: packagedContext || '',
             projectId,
@@ -284,8 +291,8 @@ async function startVmJob({
         success: true,
         status: 'started',
         correlationId,
-        message:
-            'VM task started. It will work autonomously and post the finished result back into this conversation when ready.',
+        agent: selectedAgent,
+        message: `VM task started (${selectedAgent}). It will work autonomously and post the finished result back into this conversation when ready.`,
     }
 }
 

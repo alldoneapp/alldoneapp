@@ -109,7 +109,7 @@ function buildAgentPrompt(vmJob) {
     return parts.join('\n')
 }
 
-// --- Live activity feed from Claude Code's stream-json events ---
+// --- Live activity feed from agent stream events ---
 
 const MAX_ACTIVITY_LINES = 15
 
@@ -121,7 +121,7 @@ function truncate(value, n) {
 }
 
 // Map a Claude Code tool_use block to a friendly, human-readable activity line.
-function toolActivityLabel(name, input) {
+function claudeToolLabel(name, input) {
     const i = input || {}
     switch (name) {
         case 'WebSearch':
@@ -147,42 +147,128 @@ function toolActivityLabel(name, input) {
     }
 }
 
-// Turn a single stream-json event into zero or more activity lines.
-function activityLinesForEvent(evt) {
-    if (!evt || typeof evt !== 'object') return []
+// Claude Code stream-json event → mutate state { activity[], finalResult, assistantText }.
+// Final answer comes from the terminal `result` event.
+function appendClaudeActivity(evt, state) {
+    if (!evt || typeof evt !== 'object') return
+    if (evt.type === 'result') {
+        if (typeof evt.result === 'string') state.finalResult = evt.result
+        return
+    }
     if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
-        const out = []
-        for (const block of evt.message.content) {
-            if (block && block.type === 'text' && block.text && block.text.trim()) {
-                out.push(`💬 ${truncate(block.text, 200)}`)
-            } else if (block && block.type === 'tool_use') {
-                out.push(toolActivityLabel(block.name, block.input))
+        for (const b of evt.message.content) {
+            if (b && b.type === 'text' && b.text) {
+                state.assistantText += b.text
+                if (b.text.trim()) state.activity.push(`💬 ${truncate(b.text, 200)}`)
+            } else if (b && b.type === 'tool_use') {
+                state.activity.push(claudeToolLabel(b.name, b.input))
             }
         }
-        return out
     }
-    return []
+}
+
+// OpenAI Codex `exec --json` event → mutate state. There is no `result` event; the
+// final answer is the last `agent_message` item's text.
+function appendCodexActivity(evt, state) {
+    if (!evt || typeof evt !== 'object') return
+    if (evt.type === 'error') {
+        state.activity.push(`⚠️ ${truncate(evt.message || evt.error || 'error', 160)}`)
+        return
+    }
+    const item = evt.item
+    if (!item || typeof item !== 'object') return
+    const completed = evt.type === 'item.completed' || evt.type === 'item.done'
+    switch (item.type) {
+        case 'agent_message':
+            if (typeof item.text === 'string' && item.text) {
+                state.assistantText = item.text // last agent message is the final answer
+                if (completed && item.text.trim()) state.activity.push(`💬 ${truncate(item.text, 200)}`)
+            }
+            break
+        case 'reasoning':
+            if (completed && item.text) state.activity.push(`💭 ${truncate(item.text, 160)}`)
+            break
+        case 'command_execution':
+            if (completed) state.activity.push(`💻 ${truncate(item.command || 'command', 100)}`)
+            break
+        case 'web_search':
+            if (completed) state.activity.push(`🔍 Searching${item.query ? `: "${truncate(item.query, 80)}"` : '…'}`)
+            break
+        case 'file_change':
+            if (completed) state.activity.push('✏️ Editing files')
+            break
+        case 'mcp_tool_call':
+            if (completed) state.activity.push(`🔧 ${truncate(item.tool || item.name || 'tool', 60)}`)
+            break
+        case 'todo_list':
+        case 'plan_update':
+            if (completed) state.activity.push('🗒️ Planning the work…')
+            break
+        default:
+            break
+    }
 }
 
 function renderActivityLog(lines) {
     return `🖥️ Working in a VM…\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
 }
 
+// Per-agent configuration. The assistant picks the agent per task; we map it to the
+// matching E2B prebuilt template, API key, sandbox env, headless command, and parser.
+// E2B_*_TEMPLATE env vars are optional overrides — they default to E2B's prebuilt names.
+const AGENT_CONFIGS = {
+    claude: {
+        label: 'Claude Code',
+        defaultTemplate: 'claude',
+        templateEnvKey: 'E2B_CLAUDE_TEMPLATE',
+        apiKeyField: 'ANTHROPIC_API_KEY',
+        installGuard: '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1)',
+        runCommand:
+            'claude -p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null',
+        sandboxEnv: apiKey => ({
+            ANTHROPIC_API_KEY: apiKey,
+            CI: 'true',
+            DISABLE_AUTOUPDATER: '1',
+            DISABLE_TELEMETRY: '1',
+            DISABLE_ERROR_REPORTING: '1',
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        }),
+        handleEvent: appendClaudeActivity,
+    },
+    codex: {
+        label: 'Codex',
+        defaultTemplate: 'codex',
+        templateEnvKey: 'E2B_CODEX_TEMPLATE',
+        apiKeyField: 'OPEN_AI_KEY', // reuse the existing OpenAI key
+        installGuard: '(command -v codex >/dev/null 2>&1 || npm install -g @openai/codex >/dev/null 2>&1)',
+        runCommand: 'codex exec --full-auto --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null',
+        sandboxEnv: apiKey => ({
+            CODEX_API_KEY: apiKey,
+            OPENAI_API_KEY: apiKey,
+            CI: 'true',
+        }),
+        handleEvent: appendCodexActivity,
+    },
+}
+
+const DEFAULT_AGENT = 'claude'
+
 /**
- * Run Claude Code headless inside a fresh E2B sandbox and return its final output.
- * Uses --output-format stream-json so we can surface live activity: onActivity(text)
- * is called (throttled by the caller) with a rendered activity log as events arrive.
+ * Run the selected agent (Claude Code or Codex) headless in a fresh E2B sandbox and
+ * return its final output. Parses the agent's JSON event stream to surface live activity:
+ * onActivity(text) is called (throttled by the caller) as events arrive.
  */
-async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActivity) {
+async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
     const { Sandbox } = require('e2b')
-    // Read from getEnvFunctions() (env_functions.json) first so it's configured the same
-    // way as the other keys; fall back to process.env for local dev convenience.
-    const template = getEnvFunctions().E2B_CLAUDE_TEMPLATE || process.env.E2B_CLAUDE_TEMPLATE || undefined
+    const env = getEnvFunctions()
+    // Template defaults to E2B's prebuilt name for this agent; the env var is an optional override.
+    const template = env[config.templateEnvKey] || process.env[config.templateEnvKey] || config.defaultTemplate
     const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS }
 
     console.log('🖥️ VM JOB: creating sandbox', {
         correlationId: vmJob.correlationId,
-        template: template || '(base image — claude installed per-run)',
+        agent: config.label,
+        template,
         timeoutMs: MAX_VM_RUNTIME_MS,
     })
     const sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
@@ -196,14 +282,13 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActiv
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         await sandbox.files.write('/home/user/context.md', vmJob.packagedContext || '')
 
-        const activityLines = []
-        let finalResult = ''
-        let assistantTextFallback = ''
+        const state = { activity: [], finalResult: '', assistantText: '' }
         let stdoutBuf = ''
         let stderr = ''
 
-        // stream-json emits one JSON event per line. Parse complete lines, surface
-        // activity, and capture the final answer from the terminal `result` event.
+        // The agent emits one JSON event per line. Parse complete lines, let the
+        // agent-specific handler update activity + capture the final answer, and push
+        // a fresh activity log to the chat whenever a new line is added.
         const handleLine = rawLine => {
             const line = rawLine.trim()
             if (!line) return
@@ -213,19 +298,10 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActiv
             } catch (_) {
                 return // non-JSON noise (e.g. stray install output) — ignore
             }
-            if (evt.type === 'result') {
-                if (typeof evt.result === 'string') finalResult = evt.result
-                return
-            }
-            if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
-                for (const b of evt.message.content) {
-                    if (b && b.type === 'text' && b.text) assistantTextFallback += b.text
-                }
-            }
-            const newLines = activityLinesForEvent(evt)
-            if (newLines.length) {
-                activityLines.push(...newLines)
-                if (typeof onActivity === 'function') onActivity(renderActivityLog(activityLines))
+            const before = state.activity.length
+            config.handleEvent(evt, state)
+            if (state.activity.length > before && typeof onActivity === 'function') {
+                onActivity(renderActivityLog(state.activity))
             }
         }
         const handleStdout = data => {
@@ -240,30 +316,16 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActiv
             stderr += data
         }
 
-        // Run Claude Code headless with stream-json so we get live tool/step events.
-        // The prompt is passed as a positional argument (NOT piped via stdin — `claude -p`
-        // reading stdin can hang non-interactively), and stdin is redirected from /dev/null
+        // Run the agent headless. The prompt is passed as a positional argument (NOT piped
+        // via stdin — reading stdin can hang non-interactively), and stdin is from /dev/null
         // so any unexpected interactive read gets EOF instead of blocking until the timeout.
-        // (stream-json in -p mode requires --verbose.)
-        const command =
-            'cd /home/user && ' +
-            '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1) && ' +
-            'claude -p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null'
+        const command = `cd /home/user && ${config.installGuard} && ${config.runCommand}`
 
-        console.log('🖥️ VM JOB: running agent command (stream-json)', { correlationId: vmJob.correlationId })
+        console.log('🖥️ VM JOB: running agent command', { correlationId: vmJob.correlationId, agent: config.label })
         let result
         try {
             result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
-                // Disable Claude Code startup network calls (auto-update / telemetry) that can
-                // hang in a locked-down sandbox; CI=true forces fully non-interactive.
-                envs: {
-                    ANTHROPIC_API_KEY: anthropicApiKey,
-                    CI: 'true',
-                    DISABLE_AUTOUPDATER: '1',
-                    DISABLE_TELEMETRY: '1',
-                    DISABLE_ERROR_REPORTING: '1',
-                    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-                },
+                envs: config.sandboxEnv(apiKey),
                 timeoutMs: MAX_VM_RUNTIME_MS,
                 onStdout: handleStdout,
                 onStderr: handleStderr,
@@ -273,9 +335,10 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActiv
             // produced so we can see where the agent got stuck, then rethrow.
             console.error('🖥️ VM JOB: command errored/terminated', {
                 correlationId: vmJob.correlationId,
+                agent: config.label,
                 error: runError.message,
-                events: activityLines.length,
-                lastActivity: activityLines.slice(-3),
+                events: state.activity.length,
+                lastActivity: state.activity.slice(-3),
                 stdoutBufLen: stdoutBuf.length,
                 stderrLen: stderr.length,
                 stderrPreview: stderr ? stderr.substring(0, 800) : '',
@@ -285,18 +348,17 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActiv
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
+            agent: config.label,
             exitCode: result?.exitCode,
-            events: activityLines.length,
-            finalResultLen: finalResult.length,
+            events: state.activity.length,
+            finalResultLen: (state.finalResult || state.assistantText).length,
             stderrLen: stderr.length,
             stderrPreview: stderr ? stderr.substring(0, 300) : '',
         })
 
-        const output = (finalResult || assistantTextFallback || '').trim()
+        const output = (state.finalResult || state.assistantText || '').trim()
         if (!output) {
-            const detail = stderr
-                ? ` exitCode=${result?.exitCode}: ${stderr.substring(0, 500)}`
-                : ` exitCode=${result?.exitCode}`
+            const detail = ` exitCode=${result?.exitCode}${stderr ? `: ${stderr.substring(0, 500)}` : ''}`
             throw new Error(`Agent produced no output.${detail}`)
         }
         return output
@@ -359,10 +421,12 @@ async function runVmJobByCorrelationId(correlationId) {
     await pendingRef.update({ status: 'initiated', initiatedAt: Date.now() }).catch(() => {})
 
     const env = getEnvFunctions()
-    const anthropicApiKey = env.ANTHROPIC_API_KEY
     const e2bApiKey = env.E2B_API_KEY
-    if (!anthropicApiKey || !e2bApiKey) {
-        const message = 'VM task could not run: sandbox credentials are not configured.'
+    // Resolve the agent the assistant chose (defaults to Claude) and its config.
+    const config = AGENT_CONFIGS[vmJob.agent] || AGENT_CONFIGS[DEFAULT_AGENT]
+    const apiKey = env[config.apiKeyField]
+    if (!apiKey || !e2bApiKey) {
+        const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
         await writeStatusComment(pendingWebhook, `❌ ${message}`)
         await pendingRef.update({ status: 'failed', error: message, failedAt: Date.now() }).catch(() => {})
         await refundVmJob(pendingWebhook, 'Missing sandbox credentials')
@@ -380,8 +444,8 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     try {
-        await writeStatusComment(pendingWebhook, '🖥️ Working in a VM…')
-        const output = await runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActivity)
+        await writeStatusComment(pendingWebhook, `🖥️ Working in a VM (${config.label})…`)
+        const output = await runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity)
 
         // Auto-presentation: the agent's final message becomes the assistant comment.
         await writeStatusComment(pendingWebhook, output, { isFinal: true, output })

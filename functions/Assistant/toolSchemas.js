@@ -1765,6 +1765,14 @@ const toolSchemas = {
                             '"research" = web research and a written report; "document" = produce a formatted document/spreadsheet/slides; ' +
                             '"prototype" = write code or build a small app/prototype; "data" = pull/scrape, clean and analyze data.',
                     },
+                    agent: {
+                        type: 'string',
+                        enum: ['claude', 'codex'],
+                        description:
+                            'Optional. Which coding agent runs in the VM. Defaults to "claude". ' +
+                            'Use "claude" (Claude Code) for research, writing, analysis and general tasks; ' +
+                            'consider "codex" (OpenAI Codex) for heavy coding / repository work. If unsure, omit it.',
+                    },
                     context_object_ids: {
                         type: 'array',
                         items: { type: 'string' },
