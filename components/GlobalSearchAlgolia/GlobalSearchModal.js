@@ -71,15 +71,24 @@ const getProjectAccessIds = (loggedUser, projectId) => {
 // so they still match the numeric facet.
 const formatFacetValue = value => (typeof value === 'number' ? value : `"${value}"`)
 
+// Algolia only supports flat CNF filters: `(OR…) AND (OR…)`. It rejects ORing
+// AND-groups together (`(X AND Y) OR Z`) and nested AND-groups. We therefore
+// can't scope access per project inside the filter. Instead we union every
+// searched project's access ids into a single OR-group. This is equivalent to
+// per-project scoping because workstream ids are globally unique, so an item in
+// one project can't accidentally match another project's workstream id.
 const buildProjectsAccessFilter = (projects, loggedUser) => {
-    return projects
-        .map(project => {
-            const accessFilter = getProjectAccessIds(loggedUser, project.id)
-                .map(userId => `isPublicFor:${formatFacetValue(userId)}`)
-                .join(' OR ')
-            return `(projectId:${formatFacetValue(project.id)} AND (${accessFilter}))`
-        })
-        .join(' OR ')
+    if (!projects.length) return ''
+
+    const projectIdsFilter = projects.map(project => `projectId:${formatFacetValue(project.id)}`).join(' OR ')
+
+    const accessIds = new Set()
+    projects.forEach(project => {
+        getProjectAccessIds(loggedUser, project.id).forEach(id => accessIds.add(id))
+    })
+    const accessFilter = [...accessIds].map(id => `isPublicFor:${formatFacetValue(id)}`).join(' OR ')
+
+    return `(${projectIdsFilter}) AND (${accessFilter})`
 }
 
 export default function GlobalSearchModal() {
@@ -500,13 +509,21 @@ export default function GlobalSearchModal() {
         const projectsToSearch = inSelectedProject ? [selectedProject] : projects
         const projectsAccessFilter = buildProjectsAccessFilter(projectsToSearch, loggedUser)
 
-        let filters = ''
-        if (indexPrefix === GOALS_INDEX_NAME_PREFIX || indexPrefix === CHATS_INDEX_NAME_PREFIX) {
-            filters = `(${projectsAccessFilter})`
-        } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            filters = `(${projectsAccessFilter}) AND isAssistant:false`
-        } else {
-            filters = `(${projectsAccessFilter})`
+        // Nothing to search against (no accessible projects) — avoid an empty
+        // filter, which would either error or leak unscoped results.
+        if (!projectsAccessFilter) {
+            setProcessing(processing => {
+                return { ...processing, [tab]: false }
+            })
+            return
+        }
+
+        // Keep the filter flat (`(OR…) AND (OR…) AND …`). Do NOT wrap
+        // `projectsAccessFilter` in extra parens — it already contains an AND,
+        // and Algolia rejects nested AND-groups.
+        let filters = projectsAccessFilter
+        if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
+            filters = `${projectsAccessFilter} AND isAssistant:false`
         }
 
         try {
