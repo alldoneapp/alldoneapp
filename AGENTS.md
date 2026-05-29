@@ -25,3 +25,5 @@ Commit summaries follow the repository convention of short, sentence-case statem
 ## Environment & Secrets
 
 Respect the versions pinned in `README.md` (Node 14.21.3, npm 6.14.18, Expo CLI 6.1.0). Environment data resides in `.env`, `envs/`, and `env_functions*.json`; never commit real keys. Request Algolia, Firebase, and Sentry credentials from maintainers, store them using the existing naming scheme, and update GitLab CI variables in tandem for staging and production.
+
+When granting a GCP IAM role for something a Cloud Function does (Cloud Tasks, Pub/Sub, etc.), grant it to the **`firebase-adminsdk-*@<project>` service account**, not the compute/runtime SA — `functions/firebaseConfig.js` initializes admin with an explicit cert credential, so all firebase-admin GCP calls run as the Admin SDK SA. See the IAM and "Assistant VM Tool" sections in `CLAUDE.md` for the full story.
