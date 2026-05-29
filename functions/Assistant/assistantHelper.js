@@ -4259,6 +4259,7 @@ async function executeToolNatively(
                         perProjectLimit: taskLimit,
                         selectMinimalFields: true,
                         timezoneOffset,
+                        userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
                     },
                     projectIds,
                     projectsData.reduce((acc, p) => {
@@ -4277,6 +4278,7 @@ async function executeToolNatively(
                     limit: taskLimit,
                     selectMinimalFields: true,
                     timezoneOffset,
+                    userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
                 })
                 tasks = result.tasks || []
             }

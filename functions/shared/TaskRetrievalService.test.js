@@ -92,6 +92,26 @@ describe('TaskRetrievalService task comments support', () => {
         expect(query.where).toHaveBeenCalledWith('isPublicFor', 'array-contains-any', [0, 'user-1'])
     })
 
+    test('defaults authenticated task queries to public and user-visible tasks', () => {
+        const query = {
+            where: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+        }
+        const database = {
+            collection: jest.fn(() => query),
+        }
+        const service = new TaskRetrievalService({ database })
+
+        service.buildTaskQuery({
+            projectId: 'project-1',
+            userId: 'user-1',
+            status: 'open',
+        })
+
+        expect(query.where).toHaveBeenCalledWith('isPublicFor', 'array-contains-any', [0, 'user-1'])
+    })
+
     test('maps recent comments into minimal task results', async () => {
         const commentsSnapshot = {
             forEach: callback => {

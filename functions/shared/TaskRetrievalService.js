@@ -39,6 +39,14 @@ class TaskRetrievalService {
         this.initialized = false
     }
 
+    static normalizeUserPermissions(userId, userPermissions) {
+        const fallbackPermissions = userId ? [FEED_PUBLIC_FOR_ALL, userId] : [FEED_PUBLIC_FOR_ALL]
+        const permissions =
+            Array.isArray(userPermissions) && userPermissions.length > 0 ? userPermissions : fallbackPermissions
+
+        return permissions.slice(0, 10)
+    }
+
     static normalizeTimezoneOffset(value) {
         if (value === null || value === undefined) {
             return null
@@ -361,7 +369,7 @@ class TaskRetrievalService {
             parentId = null,
             limit = 20,
             perProjectLimit = undefined,
-            userPermissions = [FEED_PUBLIC_FOR_ALL],
+            userPermissions = null,
             restrictToCurrentReviewer = true,
             timezoneOffset = null,
         } = params
@@ -372,10 +380,7 @@ class TaskRetrievalService {
 
         let query = this.options.database.collection(`items/${projectId}/tasks`)
 
-        const visibilityPermissions =
-            Array.isArray(userPermissions) && userPermissions.length > 0
-                ? userPermissions.slice(0, 10)
-                : [FEED_PUBLIC_FOR_ALL]
+        const visibilityPermissions = TaskRetrievalService.normalizeUserPermissions(userId, userPermissions)
 
         if (visibilityPermissions.length > 1) {
             query = query.where('isPublicFor', 'array-contains-any', visibilityPermissions)
@@ -705,7 +710,7 @@ class TaskRetrievalService {
             parentId = null,
             limit = 20,
             perProjectLimit = 10,
-            userPermissions = [FEED_PUBLIC_FOR_ALL],
+            userPermissions = null,
             // Optional projection controls
             selectMinimalFields = false,
             projectName: providedProjectName = undefined,
@@ -1049,7 +1054,7 @@ class TaskRetrievalService {
             parentId = null,
             limit = 20,
             perProjectLimit = 10,
-            userPermissions = [FEED_PUBLIC_FOR_ALL],
+            userPermissions = null,
             // Optional projection controls
             selectMinimalFields = false,
         } = params

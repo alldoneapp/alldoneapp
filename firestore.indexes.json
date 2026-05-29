@@ -115,6 +115,68 @@
             ]
         },
         {
+            "__comment__": "Tasks - Assistant visible open tasks due today or overdue",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "currentReviewerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Tasks - Assistant visible completed tasks by completion date",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "Milestones - Undone milestones by date",
             "collectionGroup": "milestonesItems",
             "queryScope": "COLLECTION",
