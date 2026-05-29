@@ -1225,16 +1225,19 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     const { idsField, id: objectId } = linkedParentObject
     const { loggedUser } = store.getState()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
+    const hasAccess = data => {
+        const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
+        return allowUserIds.some(userId => isPublicFor.includes(userId))
+    }
 
     backlinksCounterUnsub[watcherKey || objectId] = { tasks: null, notes: null }
 
     backlinksCounterUnsub[watcherKey || objectId].tasks = db
         .collection(`items/${projectId}/tasks`)
         .where(idsField, 'array-contains', objectId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
         .where('parentId', '==', null)
         .onSnapshot(snapshots => {
-            const tasksDocs = snapshots.docs
+            const tasksDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
             const tasksAmount = tasksDocs.length
             const aloneTask = tasksAmount === 1 ? mapTaskData(tasksDocs[0].id, tasksDocs[0].data()) : null
             callback('tasks', tasksAmount, aloneTask)
@@ -1243,9 +1246,8 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     backlinksCounterUnsub[watcherKey || objectId].notes = db
         .collection(`noteItems/${projectId}/notes`)
         .where(idsField, 'array-contains', objectId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
         .onSnapshot(snapshots => {
-            const notesDocs = snapshots.docs
+            const notesDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
             const notesAmount = notesDocs.length
             const aloneNote = notesAmount === 1 ? mapNoteData(notesDocs[0].id, notesDocs[0].data()) : null
             callback('notes', notesAmount, aloneNote)
