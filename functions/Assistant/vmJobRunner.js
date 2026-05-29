@@ -121,6 +121,22 @@ const MAX_ARTIFACTS = 10
 const MAX_ARTIFACT_BYTES = 20 * 1024 * 1024 // 20 MB per file
 const MAX_ARTIFACTS_TOTAL_BYTES = 40 * 1024 * 1024 // 40 MB total
 
+// Chat attachment token — mirrors ATTACHMENT_TRIGGER in components/Feeds/Utils/HelperFunctions.js.
+// Embedding `${T}{url}${T}{name}${T}false` as a space-delimited word in the comment text makes the
+// chat render an inline, downloadable FileDownloadableTag. (The mediaContext array alone does NOT
+// produce the inline download; without a token a bare filename gets auto-linkified to a bogus URL.)
+const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+
+// Build the space-delimited attachment tokens for the comment text from uploaded files.
+function buildAttachmentTokens(mediaContext) {
+    return mediaContext
+        .map(m => {
+            const name = (m.fileName || 'file').replace(/\s+/g, '_') // tokens must be whitespace-free
+            return `${ATTACHMENT_TRIGGER}${m.storageUrl}${ATTACHMENT_TRIGGER}${name}${ATTACHMENT_TRIGGER}false`
+        })
+        .join(' ')
+}
+
 const MIME_BY_EXT = {
     html: 'text/html',
     htm: 'text/html',
@@ -635,12 +651,13 @@ async function runVmJobByCorrelationId(correlationId) {
         await writeStatusComment(pendingWebhook, `🖥️ Working in a VM (${config.label})…`)
         const { output, usage, artifacts } = await runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity)
 
-        // Upload any generated files and attach them to the result comment.
+        // Upload any generated files and attach them to the result comment as real chat
+        // attachment tokens (render as inline downloadable FileDownloadableTags). The leading
+        // " \n\n " keeps the tokens as their own space-delimited words so the parser matches them.
         const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
         let finalText = output
         if (mediaContext.length) {
-            const names = mediaContext.map(m => m.fileName).join(', ')
-            finalText += `\n\n📎 Attached ${mediaContext.length} file${mediaContext.length > 1 ? 's' : ''}: ${names}`
+            finalText = `${output} \n\n ${buildAttachmentTokens(mediaContext)}`
         }
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
