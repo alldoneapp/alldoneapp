@@ -16,13 +16,18 @@ function normalizeConfidence(confidence) {
     return numericConfidence
 }
 
-function buildProjectRoutingReasonComment({ projectName = '', reasoning = '', confidence = null }) {
+function buildProjectRoutingReasonComment({ projectName = '', reasoning = '', confidence = null, matched = true }) {
     const name = normalizeText(projectName) || 'this project'
-    const reason = normalizeText(reasoning) || 'it matched the routing criteria'
     const normalizedConfidence = normalizeConfidence(confidence)
     const confidenceText =
         normalizedConfidence === null ? '' : ` Confidence: ${Math.round(normalizedConfidence * 100)}%.`
 
+    if (!matched) {
+        const reason = normalizeText(reasoning) || 'it did not match any of your other projects'
+        return `I kept this in ${name} because ${reason}.${confidenceText}`
+    }
+
+    const reason = normalizeText(reasoning) || 'it matched the routing criteria'
     return `I chose ${name} because ${reason}.${confidenceText}`
 }
 
@@ -136,6 +141,7 @@ async function addProjectRoutingReasonComment({
     projectName = '',
     reasoning = '',
     confidence = null,
+    matched = true,
     source = '',
     routingKey = '',
     routingData = {},
@@ -157,6 +163,7 @@ async function addProjectRoutingReasonComment({
         projectName: resolvedProjectName,
         reasoning,
         confidence,
+        matched,
     })
 
     let taskData = task

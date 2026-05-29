@@ -164,7 +164,10 @@ const normalizeRoutingDecision = decision => {
 }
 
 const shouldAddRoutingComment = (task, targetProjectId, routingDecision) => {
-    if (!routingDecision?.matched || !targetProjectId) return false
+    // Comment whenever routing actually ran (matched or not). When the classifier
+    // leaves the task in the connected/default project (matched === false), we still
+    // want a comment explaining why it stayed there.
+    if (!routingDecision || !targetProjectId) return false
 
     const previousRouting = task?.calendarData?.projectRouting || null
     return !previousRouting?.commentId || previousRouting.chosenProjectId !== targetProjectId
@@ -189,13 +192,14 @@ const addCalendarRoutingCommentIfNeeded = async ({
         projectName: routingDecision.projectName,
         reasoning: routingDecision.reasoning,
         confidence: routingDecision.confidence,
+        matched: !!routingDecision.matched,
         source: 'calendar_project_routing',
         routingKey: taskId,
         sourceDataField: 'calendarData',
         routingData: {
             eventId: taskId,
             syncProjectId,
-            matched: true,
+            matched: !!routingDecision.matched,
             goldSpent: routingDecision.goldSpent || 0,
             tokenUsage: routingDecision.tokenUsage || null,
         },
