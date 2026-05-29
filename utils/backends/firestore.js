@@ -1223,12 +1223,15 @@ export async function getProjectData(projectId) {
 
 export function watchBacklinksCount(projectId, linkedParentObject, callback, watcherKey) {
     const { idsField, id: objectId } = linkedParentObject
+    const { loggedUser } = store.getState()
+    const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
 
     backlinksCounterUnsub[watcherKey || objectId] = { tasks: null, notes: null }
 
     backlinksCounterUnsub[watcherKey || objectId].tasks = db
         .collection(`items/${projectId}/tasks`)
         .where(idsField, 'array-contains', objectId)
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
         .where('parentId', '==', null)
         .onSnapshot(snapshots => {
             const tasksDocs = snapshots.docs
@@ -1240,6 +1243,7 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     backlinksCounterUnsub[watcherKey || objectId].notes = db
         .collection(`noteItems/${projectId}/notes`)
         .where(idsField, 'array-contains', objectId)
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
         .onSnapshot(snapshots => {
             const notesDocs = snapshots.docs
             const notesAmount = notesDocs.length

@@ -563,12 +563,10 @@ class TaskSearchService {
     canUserAccessTask(taskData, userId) {
         if (!taskData) return false
 
-        if (!taskData.isPrivate) return true
-
         if (!userId) return false
-        if (taskData.userId === userId) return true
 
-        return Array.isArray(taskData.isPublicFor) && taskData.isPublicFor.includes(userId)
+        const isPublicFor = Array.isArray(taskData.isPublicFor) ? taskData.isPublicFor : []
+        return isPublicFor.includes(0) || isPublicFor.includes(userId)
     }
 
     /**

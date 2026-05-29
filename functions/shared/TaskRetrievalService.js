@@ -372,7 +372,16 @@ class TaskRetrievalService {
 
         let query = this.options.database.collection(`items/${projectId}/tasks`)
 
-        // Visibility and deletion: do not filter here to match structured query across projects
+        const visibilityPermissions =
+            Array.isArray(userPermissions) && userPermissions.length > 0
+                ? userPermissions.slice(0, 10)
+                : [FEED_PUBLIC_FOR_ALL]
+
+        if (visibilityPermissions.length > 1) {
+            query = query.where('isPublicFor', 'array-contains-any', visibilityPermissions)
+        } else {
+            query = query.where('isPublicFor', 'array-contains', visibilityPermissions[0])
+        }
 
         // Filter by subtasks
         if (parentId) {
@@ -938,12 +947,23 @@ class TaskRetrievalService {
         try {
             const subtasksByParent = {}
 
+            const visibilityPermissions =
+                Array.isArray(userPermissions) && userPermissions.length > 0
+                    ? userPermissions.slice(0, 10)
+                    : [FEED_PUBLIC_FOR_ALL]
+
             // Query subtasks for all parents (batch query is more efficient than individual queries)
-            const subtasksQuery = this.options.database
+            let subtasksQuery = this.options.database
                 .collection(`items/${projectId}/tasks`)
                 .where('parentId', 'in', parentIds.slice(0, 10)) // Firestore 'in' limit is 10
                 .where('isSubtask', '==', true)
-                .orderBy('sortIndex', 'desc')
+
+            subtasksQuery =
+                visibilityPermissions.length > 1
+                    ? subtasksQuery.where('isPublicFor', 'array-contains-any', visibilityPermissions)
+                    : subtasksQuery.where('isPublicFor', 'array-contains', visibilityPermissions[0])
+
+            subtasksQuery = subtasksQuery.orderBy('sortIndex', 'desc')
 
             const subtasksSnapshot = await subtasksQuery.get()
 

@@ -7,6 +7,7 @@ const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require('fir
 const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
 const { PLAN_STATUS_PREMIUM } = require('./Payment/premiumHelper')
+const { assertObjectAccess } = require('./shared/privacyAccess')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -1503,6 +1504,22 @@ exports.askToBotSecondGen = onCall(
                     authUserId: userId,
                 })
             }
+            try {
+                if (projectId && objectType && objectId) {
+                    await assertObjectAccess(admin.firestore(), userId, projectId, objectType, objectId)
+                } else if (projectId) {
+                    await assertProjectAccess(userId, projectId)
+                }
+            } catch (error) {
+                console.warn('askToBotSecondGen: access denied', {
+                    userId,
+                    projectId,
+                    objectType,
+                    objectId,
+                    error: error.message,
+                })
+                throw new HttpsError('permission-denied', 'No access to requested chat context')
+            }
             console.log('📊 [TIMING] Function setup complete, calling askToOpenAIBot:', {
                 setupTime: `${Date.now() - functionEntryTime}ms`,
                 userId,
@@ -1655,6 +1672,21 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                     requestedUserId,
                     authUserId: userId,
                 })
+            }
+            try {
+                if (projectId && taskId) {
+                    await assertObjectAccess(admin.firestore(), userId, projectId, 'tasks', taskId)
+                } else if (projectId) {
+                    await assertProjectAccess(userId, projectId)
+                }
+            } catch (error) {
+                console.warn('generatePreConfigTaskResultSecondGen: access denied', {
+                    userId,
+                    projectId,
+                    taskId,
+                    error: error.message,
+                })
+                throw new HttpsError('permission-denied', 'No access to requested task context')
             }
             const result = await generatePreConfigTaskResult(
                 userId,

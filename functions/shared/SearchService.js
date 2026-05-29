@@ -66,6 +66,11 @@ const DEFAULT_SEARCH_LIMIT = 50
 const MAX_SEARCH_LIMIT = 1000
 const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
+function canAccessByIsPublicFor(data, userId) {
+    const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
+    return isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userId)
+}
+
 class SearchService {
     constructor(options = {}) {
         this.options = {
@@ -736,6 +741,9 @@ class SearchService {
         }
 
         const noteData = noteDoc.data()
+        if (!canAccessByIsPublicFor(noteData, userId)) {
+            throw new Error('User does not have access to this note')
+        }
 
         // Get full note content if available
         let content = ''
@@ -1557,6 +1565,7 @@ class SearchService {
                 const noteDoc = await this.options.database.doc(`noteItems/${project.id}/notes/${cleanNoteId}`).get()
                 if (noteDoc.exists) {
                     const noteData = noteDoc.data()
+                    if (!canAccessByIsPublicFor(noteData, userId)) continue
                     return {
                         note: { ...noteData, id: cleanNoteId }, // Ensure clean ID overrides any corrupted ID from document data
                         projectId: project.id,
