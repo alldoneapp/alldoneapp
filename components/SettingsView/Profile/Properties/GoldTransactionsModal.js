@@ -50,6 +50,8 @@ function getTransactionLabel(source) {
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
         meeting_transcription: 'Meeting transcription',
+        vm_execution: 'VM task',
+        vm_execution_refund: 'VM task refund',
         whatsapp_voice: 'WhatsApp voice message',
         iframe_deduction: 'Embedded app deduction',
         iframe_refund: 'Embedded app refund',

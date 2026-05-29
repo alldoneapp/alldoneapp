@@ -1,6 +1,7 @@
 'use strict'
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
+const { onTaskDispatched } = require('firebase-functions/v2/tasks')
 const { log } = require('firebase-functions/logger')
 const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require('firebase-functions/v2/firestore')
 
@@ -2942,6 +2943,27 @@ exports.executeWebhookForMessage = onCall(
     async request => {
         const { executeWebhookForUserMessage } = require('./Assistant/webhookForMessage')
         return await executeWebhookForUserMessage(request.data)
+    }
+)
+
+// RUN VM JOB - Long-running worker that runs Claude Code in an E2B sandbox for the
+// execute_task_in_vm assistant tool, then posts the result back into the conversation.
+exports.runVmJob = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 1800, // 30 min — Cloud Tasks dispatch ceiling
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 }, // never re-run an expensive VM job
+        rateLimits: { maxConcurrentDispatches: 5 },
+    },
+    async req => {
+        const correlationId = req.data && req.data.correlationId
+        if (!correlationId) {
+            console.error('🖥️ RUN VM JOB: Missing correlationId in task payload')
+            return
+        }
+        const { runVmJobByCorrelationId } = require('./Assistant/vmJobRunner')
+        await runVmJobByCorrelationId(correlationId)
     }
 )
 

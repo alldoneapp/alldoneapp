@@ -1734,6 +1734,55 @@ const toolSchemas = {
             },
         },
     },
+
+    execute_task_in_vm: {
+        type: 'function',
+        function: {
+            name: 'execute_task_in_vm',
+            description:
+                'Hand off an open-ended, longer-running piece of work to an autonomous agent running in a fresh sandbox VM. ' +
+                'Use this when the request cannot be answered directly in the chat and needs real work done over several minutes — ' +
+                'e.g. deep multi-source research and a written report, generating a document/spreadsheet/slide deck, building a small ' +
+                'code prototype, or pulling and analyzing data. This is asynchronous: the tool returns immediately with a "started" ' +
+                'status, the VM works on its own, and the finished result is posted back into this conversation when it is ready. ' +
+                'Do NOT use this for quick answers, simple lookups, or anything the other tools already cover — it is slower and costs Gold. ' +
+                'Give a clear, self-contained objective; the VM does not have access to the app, only to the context you pass and the public internet.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    objective: {
+                        type: 'string',
+                        description:
+                            'Required. A clear, self-contained description of what the VM agent should accomplish and what the ' +
+                            'finished deliverable should be. Write it as if briefing a capable assistant who cannot see this chat: ' +
+                            'include all relevant specifics, constraints, and the desired output format.',
+                    },
+                    task_type: {
+                        type: 'string',
+                        enum: ['research', 'document', 'prototype', 'data'],
+                        description:
+                            'Required. The kind of work, which selects the VM tooling profile and system prompt. ' +
+                            '"research" = web research and a written report; "document" = produce a formatted document/spreadsheet/slides; ' +
+                            '"prototype" = write code or build a small app/prototype; "data" = pull/scrape, clean and analyze data.',
+                    },
+                    context_object_ids: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description:
+                            'Optional. IDs of tasks, notes or goals in the current project whose content should be packaged and ' +
+                            'sent to the VM as background context. Use this to give the agent the source material it needs.',
+                    },
+                    deliverable: {
+                        type: 'string',
+                        description:
+                            'Optional. A short description of the expected output format (e.g. "a 1-page markdown summary", ' +
+                            '"an .xlsx with one row per competitor", "a working single-file HTML prototype").',
+                    },
+                },
+                required: ['objective', 'task_type'],
+            },
+        },
+    },
 }
 
 /**

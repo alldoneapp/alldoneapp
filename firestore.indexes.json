@@ -222,6 +222,25 @@
                     "order": "DESCENDING"
                 }
             ]
+        },
+        {
+            "__comment__": "VM jobs - per-user concurrency cap (execute_task_in_vm)",
+            "collectionGroup": "pendingWebhooks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "kind",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "status",
+                    "order": "ASCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": [

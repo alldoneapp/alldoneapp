@@ -123,7 +123,8 @@
     "functions": {
         "source": "functions",
         "runtime": "nodejs20",
-        "region": "europe-west1"
+        "region": "europe-west1",
+        "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "e2b-template/**"]
     },
     "firestore": {
         "rules": "firestore.rules",

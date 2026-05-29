@@ -34,6 +34,7 @@ export const TOOL_OPTIONS = [
     { key: 'delete_calendar_event', labelKey: 'Delete Calendar event' },
     { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
+    { key: 'execute_task_in_vm', labelKey: 'Run task in a VM' },
     { key: 'external_tools', labelKey: 'Use external app tools' },
     { key: 'talk_to_assistant', labelKey: 'Talk to assistants' },
 ]
@@ -43,7 +44,12 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
     return acc
 }, {})
 
-export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key)
+// Powerful / billable tools that must be explicitly enabled per assistant. They are
+// excluded from the default permission set so a brand-new assistant cannot spend Gold
+// on a VM run until the owner opts in via the Tools Access UI.
+export const OPT_IN_ONLY_TOOLS = new Set(['execute_task_in_vm'])
+
+export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key).filter(key => !OPT_IN_ONLY_TOOLS.has(key))
 
 // Map renamed tool keys so Firestore data with old names resolves correctly
 const TOOL_KEY_RENAMES = { get_note: 'get_notes' }

@@ -6917,6 +6917,40 @@ async function executeToolNatively(
             }
         }
 
+        case 'execute_task_in_vm': {
+            console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Starting VM job', {
+                taskType: toolArgs.task_type,
+                projectId,
+                objectType: toolRuntimeContext?.objectType,
+                objectId: toolRuntimeContext?.objectId,
+                requestUserId: requestUserId || null,
+            })
+
+            try {
+                const { startVmJob } = require('./vmJob')
+                return await startVmJob({
+                    objective: toolArgs.objective,
+                    taskType: toolArgs.task_type,
+                    contextObjectIds: toolArgs.context_object_ids,
+                    deliverable: toolArgs.deliverable,
+                    projectId,
+                    objectType: toolRuntimeContext?.objectType || 'tasks',
+                    objectId: toolRuntimeContext?.objectId,
+                    assistantId,
+                    requestUserId: requestUserId || creatorId,
+                })
+            } catch (error) {
+                console.error('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed to start VM job', {
+                    error: error.message,
+                    stack: error.stack,
+                })
+                return {
+                    success: false,
+                    message: `Could not start the VM task: ${error.message}`,
+                }
+            }
+        }
+
         default:
             throw new Error(`Unknown tool: ${toolName}`)
     }

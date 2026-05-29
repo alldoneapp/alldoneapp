@@ -1,0 +1,13 @@
+{
+    "name": "alldone-e2b-template",
+    "private": true,
+    "type": "module",
+    "description": "Docker-free E2B template builder for the execute_task_in_vm tool. Isolated from the functions runtime (which pins e2b@^1.x for CommonJS compatibility).",
+    "scripts": {
+        "build": "tsx build.ts"
+    },
+    "devDependencies": {
+        "e2b": "^2.27.0",
+        "tsx": "^4.19.2"
+    }
+}

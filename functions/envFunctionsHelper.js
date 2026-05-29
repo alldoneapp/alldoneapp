@@ -64,6 +64,9 @@ const getEnvFunctions = () => {
             DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
             APIFY_API_KEY: process.env.APIFY_API_KEY || '',
+            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+            E2B_API_KEY: process.env.E2B_API_KEY || '',
+            E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -105,6 +108,9 @@ const getEnvFunctions = () => {
                     DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
                     APIFY_API_KEY: envJson.APIFY_API_KEY || '',
+                    ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
+                    E2B_API_KEY: envJson.E2B_API_KEY || '',
+                    E2B_CLAUDE_TEMPLATE: envJson.E2B_CLAUDE_TEMPLATE || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -146,6 +152,9 @@ const getEnvFunctions = () => {
                         DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                         TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                         APIFY_API_KEY: process.env.APIFY_API_KEY || '',
+                        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+                        E2B_API_KEY: process.env.E2B_API_KEY || '',
+                        E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
                     }
                 }
             } catch (error) {
@@ -183,6 +192,9 @@ const getEnvFunctions = () => {
                     ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                     DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+                    E2B_API_KEY: process.env.E2B_API_KEY || '',
+                    E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
                 }
             }
         } else {
@@ -221,6 +233,9 @@ const getEnvFunctions = () => {
                 DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                 APIFY_API_KEY: process.env.APIFY_API_KEY || '',
+                ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+                E2B_API_KEY: process.env.E2B_API_KEY || '',
+                E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
             }
         }
     }
