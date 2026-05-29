@@ -24,16 +24,19 @@ if (!process.env.E2B_API_KEY) {
     process.exit(1)
 }
 
+// NOTE: Build System 2.0 runs runCmd as the non-root `user` by default, so any
+// step that touches the system (apt, global npm, system pip) must pass { user: 'root' }.
+const asRoot = { user: 'root' }
+
 const template = Template()
     .fromImage('e2bdev/code-interpreter:latest')
-    // Node 20 + Claude Code CLI
-    .runCmd('curl -fsSL https://deb.nodesource.com/setup_20.x | bash -')
-    .runCmd('apt-get install -y nodejs')
-    .runCmd('npm install -g @anthropic-ai/claude-code')
+    // Node 20 + Claude Code CLI (nodesource setup + install in one root shell)
+    .runCmd('curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs', asRoot)
+    .runCmd('npm install -g @anthropic-ai/claude-code', asRoot)
     // Common tooling for the document / data task types
-    .runCmd('apt-get update && apt-get install -y --no-install-recommends pandoc')
-    .runCmd('pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || true')
-    // Fail the build if the CLI didn't install
+    .runCmd('apt-get update && apt-get install -y --no-install-recommends pandoc', asRoot)
+    .runCmd('pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || true', asRoot)
+    // Fail the build if the CLI didn't install (runs as the default user, like the worker)
     .runCmd('claude --version')
 
 console.log(`🏗️  Building E2B template "${TEMPLATE_NAME}" (Docker-free, remote build)…`)
