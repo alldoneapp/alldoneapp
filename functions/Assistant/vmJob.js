@@ -257,6 +257,23 @@ async function startVmJob({
             .doc(`pendingWebhooks/${correlationId}`)
             .update({ status: 'failed', error: error.message, failedAt: Date.now() })
             .catch(() => {})
+        // Replace the "Spinning up a VM…" status comment so it doesn't linger and
+        // contradict the assistant's failure response.
+        if (statusCommentId) {
+            const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
+            await admin
+                .firestore()
+                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
+                .set(
+                    {
+                        commentText: failureText,
+                        originalContent: failureText,
+                        lastChangeDate: admin.firestore.Timestamp.now(),
+                    },
+                    { merge: true }
+                )
+                .catch(() => {})
+        }
         return {
             success: false,
             message: 'Could not start the VM task right now. Your Gold has been refunded.',
