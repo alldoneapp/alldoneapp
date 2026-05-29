@@ -2,11 +2,12 @@ const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { VM_JOB_GOLD_SOURCE, VM_JOB_GOLD_REFUND_SOURCE, VM_GOLD_PER_MINUTE, VM_TOKENS_PER_GOLD } = require('./vmJob')
 
-// Hard ceiling on a single VM run. Kept below the worker's onTaskDispatched
-// timeout (1800s) so we always tear down and finalize cleanly. Deliberately well
-// under the function timeout so a hung agent surfaces as a failure in minutes
-// rather than dead-waiting the full window.
-const MAX_VM_RUNTIME_MS = 12 * 60 * 1000 // 12 minutes
+// Hard ceiling on a single VM run. The worker is an onTaskDispatched function capped
+// at 30 min total (timeoutSeconds 1800 = the Cloud Tasks dispatch-deadline max). We cap
+// the agent runtime at 25 min so there's always ~5 min of headroom AFTER the run to
+// finalize within that window — upload artifacts, charge Gold, post the result — and so
+// a hung agent fails (and refunds) before the function itself is killed.
+const MAX_VM_RUNTIME_MS = 25 * 60 * 1000 // 25 minutes
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
 
