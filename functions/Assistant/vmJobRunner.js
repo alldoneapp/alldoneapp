@@ -251,12 +251,37 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onActiv
             'claude -p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null'
 
         console.log('🖥️ VM JOB: running agent command (stream-json)', { correlationId: vmJob.correlationId })
-        const result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
-            envs: { ANTHROPIC_API_KEY: anthropicApiKey, CI: 'true' },
-            timeoutMs: MAX_VM_RUNTIME_MS,
-            onStdout: handleStdout,
-            onStderr: handleStderr,
-        })
+        let result
+        try {
+            result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
+                // Disable Claude Code startup network calls (auto-update / telemetry) that can
+                // hang in a locked-down sandbox; CI=true forces fully non-interactive.
+                envs: {
+                    ANTHROPIC_API_KEY: anthropicApiKey,
+                    CI: 'true',
+                    DISABLE_AUTOUPDATER: '1',
+                    DISABLE_TELEMETRY: '1',
+                    DISABLE_ERROR_REPORTING: '1',
+                    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+                },
+                timeoutMs: MAX_VM_RUNTIME_MS,
+                onStdout: handleStdout,
+                onStderr: handleStderr,
+            })
+        } catch (runError) {
+            // The command was killed (e.g. timeout) before returning — log whatever it
+            // produced so we can see where the agent got stuck, then rethrow.
+            console.error('🖥️ VM JOB: command errored/terminated', {
+                correlationId: vmJob.correlationId,
+                error: runError.message,
+                events: activityLines.length,
+                lastActivity: activityLines.slice(-3),
+                stdoutBufLen: stdoutBuf.length,
+                stderrLen: stderr.length,
+                stderrPreview: stderr ? stderr.substring(0, 800) : '',
+            })
+            throw runError
+        }
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
