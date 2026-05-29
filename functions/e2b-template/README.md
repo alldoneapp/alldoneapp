@@ -45,6 +45,23 @@ Set the template name so the worker uses it:
 Also set the real `E2B_API_KEY` in the functions env — the worker uses it at runtime to spawn
 sandboxes (the same key builds the template here).
 
+## Required IAM grant (once per environment, after deploy)
+
+The `execute_task_in_vm` tool enqueues a Cloud Task to the `runVmJob` worker. Firebase
+auto-creates the `runVmJob` queue on deploy but does **not** grant the function's runtime
+service account permission to enqueue, so the first run fails with
+`cloudtasks.tasks.create … denied` (the tool then refunds the user's Gold and reports it
+couldn't start). Grant the enqueuer role **once per project, after `runVmJob` is deployed there**:
+
+```bash
+./grant-enqueuer.sh alldonealeph     # prod   (done 2026-05-29)
+./grant-enqueuer.sh alldonestaging   # staging — run after it deploys from `develop`
+```
+
+The script auto-detects the `asktobotsecondgen` runtime SA, enables the Cloud Tasks API, and
+grants `roles/cloudtasks.enqueuer` scoped to just the `runVmJob` queue. It's idempotent.
+(Staging runtime SA for reference: `155167128714-compute@developer.gserviceaccount.com`.)
+
 ## Verify
 
 ```bash
