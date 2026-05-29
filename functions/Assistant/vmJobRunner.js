@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { VM_JOB_GOLD_REFUND_SOURCE } = require('./vmJob')
+const { VM_JOB_GOLD_SOURCE, VM_JOB_GOLD_REFUND_SOURCE, VM_GOLD_PER_MINUTE, VM_TOKENS_PER_GOLD } = require('./vmJob')
 
 // Hard ceiling on a single VM run. Kept below the worker's onTaskDispatched
 // timeout (1800s) so we always tear down and finalize cleanly. Deliberately well
@@ -153,6 +153,19 @@ function appendClaudeActivity(evt, state) {
     if (!evt || typeof evt !== 'object') return
     if (evt.type === 'result') {
         if (typeof evt.result === 'string') state.finalResult = evt.result
+        if (evt.usage) {
+            const u = evt.usage
+            const cache = (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)
+            const input = u.input_tokens || 0
+            const output = u.output_tokens || 0
+            state.usage = {
+                inputTokens: input,
+                outputTokens: output,
+                cacheTokens: cache,
+                totalTokens: input + output + cache,
+                costUsd: typeof evt.total_cost_usd === 'number' ? evt.total_cost_usd : null,
+            }
+        }
         return
     }
     if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
@@ -173,6 +186,20 @@ function appendCodexActivity(evt, state) {
     if (!evt || typeof evt !== 'object') return
     if (evt.type === 'error') {
         state.activity.push(`⚠️ ${truncate(evt.message || evt.error || 'error', 160)}`)
+        return
+    }
+    if (evt.type === 'turn.completed') {
+        const u = evt.usage || {}
+        const input = u.input_tokens || 0
+        const output = u.output_tokens || 0
+        const cache = u.cached_input_tokens || 0
+        state.usage = {
+            inputTokens: input,
+            outputTokens: output,
+            cacheTokens: cache,
+            totalTokens: u.total_tokens || input + output + cache,
+            costUsd: null,
+        }
         return
     }
     const item = evt.item
@@ -282,7 +309,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         await sandbox.files.write('/home/user/context.md', vmJob.packagedContext || '')
 
-        const state = { activity: [], finalResult: '', assistantText: '' }
+        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
         let stdoutBuf = ''
         let stderr = ''
 
@@ -361,7 +388,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
             const detail = ` exitCode=${result?.exitCode}${stderr ? `: ${stderr.substring(0, 500)}` : ''}`
             throw new Error(`Agent produced no output.${detail}`)
         }
-        return output
+        return { output, usage: state.usage }
     } finally {
         try {
             await sandbox.kill()
@@ -392,6 +419,32 @@ async function refundVmJob(pendingWebhook, reason) {
             correlationId: pendingWebhook.correlationId,
             error: error.message,
         })
+    }
+}
+
+/**
+ * Charge the metered Gold top-up after a successful run: per-minute (E2B compute) +
+ * per-token (LLM usage). The base reserve was already charged up-front in startVmJob.
+ * If the user can't cover the full amount, charge whatever balance remains.
+ */
+async function chargeVmTopup(pendingWebhook, vmJob, { topup, minutes, totalTokens, costUsd }) {
+    if (!topup || topup <= 0) return
+    const { deductGold } = require('../Gold/goldHelper')
+    const note =
+        `VM ${vmJob.agent || 'claude'} metered: ${minutes} min + ${totalTokens} tokens` +
+        (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
+    const ctx = {
+        source: VM_JOB_GOLD_SOURCE,
+        channel: 'assistant',
+        projectId: pendingWebhook.projectId,
+        objectId: pendingWebhook.objectId,
+        objectType: pendingWebhook.objectType,
+        note,
+    }
+    const result = await deductGold(pendingWebhook.userId, topup, ctx).catch(() => null)
+    // Run already completed — if the user lacks enough Gold, take what's left.
+    if (result && result.success === false && typeof result.currentGold === 'number' && result.currentGold > 0) {
+        await deductGold(pendingWebhook.userId, result.currentGold, ctx).catch(() => {})
     }
 }
 
@@ -445,18 +498,35 @@ async function runVmJobByCorrelationId(correlationId) {
 
     try {
         await writeStatusComment(pendingWebhook, `🖥️ Working in a VM (${config.label})…`)
-        const output = await runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity)
+        const { output, usage } = await runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity)
 
         // Auto-presentation: the agent's final message becomes the assistant comment.
         await writeStatusComment(pendingWebhook, output, { isFinal: true, output })
+
+        // Metered Gold top-up from actual usage: per-minute (VM compute) + per-token (LLM).
+        const runtimeMs = Date.now() - (vmJob.createdAt || Date.now())
+        const minutes = Math.max(1, Math.ceil(runtimeMs / 60000))
+        const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
+        const topup = minutes * VM_GOLD_PER_MINUTE + Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+        await chargeVmTopup(pendingWebhook, vmJob, { topup, minutes, totalTokens, costUsd: usage?.costUsd })
+
         await pendingRef
             .update({
                 status: 'completed',
                 completedAt: Date.now(),
-                runtimeMs: Date.now() - (vmJob.createdAt || Date.now()),
+                runtimeMs,
+                usage: usage || null,
+                goldTopup: topup,
             })
             .catch(() => {})
-        console.log('🖥️ VM JOB RUNNER: Completed', { correlationId, outputLength: output.length })
+        console.log('🖥️ VM JOB RUNNER: Completed', {
+            correlationId,
+            outputLength: output.length,
+            minutes,
+            totalTokens,
+            topup,
+            costUsd: usage?.costUsd ?? null,
+        })
     } catch (error) {
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
         const message = `The VM task could not be completed: ${error.message}`

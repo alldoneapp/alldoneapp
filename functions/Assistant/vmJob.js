@@ -3,10 +3,15 @@ const crypto = require('crypto')
 const { getFunctions } = require('firebase-admin/functions')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 
-// Gold cost for a single VM run. Flat per-run charge for v1 (see TODO below for
-// metered per-minute billing). Charged up-front on enqueue and refunded if the
-// run fails before producing a result.
-const VM_JOB_GOLD_COST = 10
+// Hybrid Gold pricing for a VM run:
+//   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
+//                            + round(totalTokens / VM_TOKENS_PER_GOLD)
+// The base reserve is charged up-front (refunded if the run fails); the per-minute
+// (E2B compute) + per-token (LLM usage) top-up is charged by the worker on completion
+// from the agent's actual reported usage. Per-token rate matches in-app assistant usage.
+const VM_JOB_BASE_GOLD = 2
+const VM_GOLD_PER_MINUTE = 1
+const VM_TOKENS_PER_GOLD = 100
 
 // Gold transaction sources (labels live in GoldTransactionsModal.getTransactionLabel).
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
@@ -156,15 +161,16 @@ async function startVmJob({
         }
     }
 
-    // Charge Gold up-front. Refunded by the worker if the run fails.
+    // Charge the up-front base reserve. The metered per-minute + per-token top-up is
+    // charged by the worker on completion. The base is refunded if the run fails.
     const { deductGold } = require('../Gold/goldHelper')
-    const goldResult = await deductGold(requestUserId, VM_JOB_GOLD_COST, {
+    const goldResult = await deductGold(requestUserId, VM_JOB_BASE_GOLD, {
         source: VM_JOB_GOLD_SOURCE,
         channel: 'assistant',
         projectId,
         objectId,
         objectType,
-        note: `VM task (${selectedAgent}/${taskType})`,
+        note: `VM task base reserve (${selectedAgent}/${taskType})`,
     })
     if (!goldResult || !goldResult.success) {
         return {
@@ -219,7 +225,7 @@ async function startVmJob({
             userIdsToNotify,
             isPublicFor,
             statusCommentId,
-            goldCharged: VM_JOB_GOLD_COST,
+            goldCharged: VM_JOB_BASE_GOLD,
             status: 'pending',
             createdAt: Date.now(),
             expiresAt: Date.now() + VM_JOB_EXPIRY_MS,
@@ -251,7 +257,7 @@ async function startVmJob({
     } catch (error) {
         console.error('🖥️ VM JOB: Failed to enqueue worker — refunding', { correlationId, error: error.message })
         const { refundGold } = require('../Gold/goldHelper')
-        await refundGold(requestUserId, VM_JOB_GOLD_COST, {
+        await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
             source: VM_JOB_GOLD_REFUND_SOURCE,
             channel: 'assistant',
             projectId,
@@ -298,7 +304,9 @@ async function startVmJob({
 
 module.exports = {
     startVmJob,
-    VM_JOB_GOLD_COST,
+    VM_JOB_BASE_GOLD,
+    VM_GOLD_PER_MINUTE,
+    VM_TOKENS_PER_GOLD,
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_JOB_EXPIRY_MS,
