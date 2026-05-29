@@ -177,6 +177,55 @@
             ]
         },
         {
+            "__comment__": "Goals - visible goals by owner",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Goals - visible goals by owner and milestone date",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "ownerId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completionMilestoneDate",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Skills - visible skills by user",
+            "collectionGroup": "items",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "Milestones - Undone milestones by date",
             "collectionGroup": "milestonesItems",
             "queryScope": "COLLECTION",
