@@ -3,8 +3,10 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const { VM_JOB_GOLD_REFUND_SOURCE } = require('./vmJob')
 
 // Hard ceiling on a single VM run. Kept below the worker's onTaskDispatched
-// timeout (1800s) so we always tear down and finalize cleanly.
-const MAX_VM_RUNTIME_MS = 25 * 60 * 1000 // 25 minutes
+// timeout (1800s) so we always tear down and finalize cleanly. Deliberately well
+// under the function timeout so a hung agent surfaces as a failure in minutes
+// rather than dead-waiting the full window.
+const MAX_VM_RUNTIME_MS = 12 * 60 * 1000 // 12 minutes
 // Don't refresh the live status comment more often than this.
 const PROGRESS_UPDATE_INTERVAL_MS = 4000
 
@@ -118,7 +120,16 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onProgr
     const template = getEnvFunctions().E2B_CLAUDE_TEMPLATE || process.env.E2B_CLAUDE_TEMPLATE || undefined
     const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS }
 
+    console.log('🖥️ VM JOB: creating sandbox', {
+        correlationId: vmJob.correlationId,
+        template: template || '(base image — claude installed per-run)',
+        timeoutMs: MAX_VM_RUNTIME_MS,
+    })
     const sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
+    console.log('🖥️ VM JOB: sandbox created', {
+        correlationId: vmJob.correlationId,
+        sandboxId: sandbox.sandboxId || sandbox.id || null,
+    })
 
     try {
         const prompt = buildAgentPrompt(vmJob)
@@ -138,25 +149,34 @@ async function runClaudeCodeInSandbox(vmJob, anthropicApiKey, e2bApiKey, onProgr
             stderr += data
         }
 
-        // Ensure the CLI is available, then run it headless and non-interactive.
-        // --output-format text prints the final assistant message to stdout.
+        // Run Claude Code headless. The prompt is passed as a positional argument
+        // (NOT piped via stdin — `claude -p` reading stdin can hang non-interactively),
+        // and stdin is redirected from /dev/null so any unexpected interactive read
+        // gets EOF immediately instead of blocking until the timeout.
         const command =
             'cd /home/user && ' +
             '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1) && ' +
-            'cat prompt.txt | claude -p --output-format text --dangerously-skip-permissions'
+            'claude -p "$(cat /home/user/prompt.txt)" --output-format text --dangerously-skip-permissions </dev/null'
 
+        console.log('🖥️ VM JOB: running agent command', { correlationId: vmJob.correlationId })
         const result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
-            envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+            envs: { ANTHROPIC_API_KEY: anthropicApiKey, CI: 'true' },
             timeoutMs: MAX_VM_RUNTIME_MS,
             onStdout: handleStdout,
             onStderr: handleStderr,
         })
+        console.log('🖥️ VM JOB: command finished', {
+            correlationId: vmJob.correlationId,
+            exitCode: result?.exitCode,
+            stdoutLen: stdout.length,
+            stderrLen: stderr.length,
+            stderrPreview: stderr ? stderr.substring(0, 300) : '',
+        })
 
         const output = (stdout || result?.stdout || '').trim()
         if (!output) {
-            throw new Error(
-                stderr ? `Agent produced no output. ${stderr.substring(0, 500)}` : 'Agent produced no output.'
-            )
+            const detail = stderr ? ` exitCode=${result?.exitCode}: ${stderr.substring(0, 500)}` : ''
+            throw new Error(`Agent produced no output.${detail}`)
         }
         return output
     } finally {
