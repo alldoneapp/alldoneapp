@@ -48,11 +48,12 @@ sandboxes (the same key builds the template here).
 ## Required IAM grants (once per environment, after deploy)
 
 The `execute_task_in_vm` tool enqueues a Cloud Task that invokes the `runVmJob` worker.
-Firebase does **not** set up the IAM for this on deploy, so two grants are needed or the
+Firebase does **not** set up the IAM for this on deploy, so three grants are needed or the
 tool fails (and refunds the user's Gold):
 
 1. `roles/cloudtasks.enqueuer` (**project level**) — create the task (enqueue).
-2. `roles/run.invoker` on the `runvmjob` Cloud Run service — let Cloud Tasks invoke the worker.
+2. `roles/iam.serviceAccountUser` on the SA itself — `actAs`, to mint the task's OIDC token.
+3. `roles/run.invoker` on the `runvmjob` Cloud Run service — let Cloud Tasks invoke the worker.
 
 Run once per project, **after `runVmJob` is deployed there**:
 
@@ -66,8 +67,10 @@ Run once per project, **after `runVmJob` is deployed there**:
 > including the enqueue and the task's OIDC dispatch — authenticates as
 > `firebase-adminsdk-*@<project>.iam.gserviceaccount.com`, **not** the Cloud Run/compute SA.
 > Granting the compute SA does nothing (we burned ~an hour learning this). The script
-> auto-detects the `firebase-adminsdk-*` SA and applies both grants. It's idempotent.
+> auto-detects the `firebase-adminsdk-*` SA and applies all three grants. It's idempotent.
 >
+> The errors surface one at a time as you fix them: `cloudtasks.tasks.create` →
+> `iam.serviceAccounts.actAs` → (dispatch) `run.invoker`. The script does all three at once.
 > Also grant enqueuer at the **project level**, not the queue level — a queue-scoped binding
 > was observed _not_ to be honored for firebase-admin's `enqueue()` path.
 

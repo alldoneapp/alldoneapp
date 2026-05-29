@@ -8,9 +8,10 @@
 # getFunctions().taskQueue().enqueue() and the task's OIDC dispatch — authenticates as
 # firebase-adminsdk-*@<project>.iam.gserviceaccount.com. Granting the compute SA does nothing.
 #
-# TWO grants are required (Firebase does not set them up on deploy):
-#   1. roles/cloudtasks.enqueuer  (PROJECT level)        -> create the task (enqueue)
-#   2. roles/run.invoker on the `runvmjob` Cloud Run svc -> Cloud Tasks invokes the worker
+# THREE grants are required (Firebase does not set them up on deploy):
+#   1. roles/cloudtasks.enqueuer   (PROJECT level)        -> create the task (enqueue)
+#   2. roles/iam.serviceAccountUser on the SA itself      -> actAs, to mint the task's OIDC token
+#   3. roles/run.invoker on the `runvmjob` Cloud Run svc  -> Cloud Tasks invokes the worker
 #
 # NOTE: grant enqueuer at the PROJECT level, not the queue level — a queue-scoped binding
 # was observed NOT to be honored for firebase-admin's enqueue() path.
@@ -54,11 +55,18 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
     --role="roles/cloudtasks.enqueuer" \
     --condition=None
 
-# 2. Dispatch: let Cloud Tasks invoke the private worker function.
+# 2. actAs: the enqueuer must be able to act as the SA used in the task's OIDC token.
+#    Here that SA is itself, so grant serviceAccountUser on the SA to the SA.
+gcloud iam service-accounts add-iam-policy-binding "$SA" \
+    --project="$PROJECT" \
+    --member="serviceAccount:${SA}" \
+    --role="roles/iam.serviceAccountUser"
+
+# 3. Dispatch: let Cloud Tasks invoke the private worker function.
 gcloud run services add-iam-policy-binding "$RUN_SERVICE" \
     --region="$REGION" --project="$PROJECT" \
     --member="serviceAccount:${SA}" \
     --role="roles/run.invoker"
 
 echo
-echo "✅ Granted cloudtasks.enqueuer (project) + run.invoker on $RUN_SERVICE to $SA in $PROJECT"
+echo "✅ Granted cloudtasks.enqueuer (project) + serviceAccountUser (self) + run.invoker on $RUN_SERVICE to $SA in $PROJECT"
