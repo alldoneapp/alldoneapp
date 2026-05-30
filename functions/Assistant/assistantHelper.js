@@ -75,6 +75,7 @@ const {
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
+const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -96,6 +97,20 @@ const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
 const TEMPERATURE_NORMAL = 'TEMPERATURE_NORMAL'
 const TEMPERATURE_HIGH = 'TEMPERATURE_HIGH'
 const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
+
+function normalizeCreateTaskProjectRoutingReason(value) {
+    if (typeof value !== 'string') return ''
+    return value.trim().replace(/\s+/g, ' ').slice(0, 500)
+}
+
+function normalizeCreateTaskProjectRoutingConfidence(value) {
+    if (value === undefined || value === null || value === '') return null
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) return null
+    if (numericValue >= 0 && numericValue <= 1) return numericValue
+    if (numericValue > 1 && numericValue <= 100) return numericValue / 100
+    return null
+}
 
 const COMPLETION_MAX_TOKENS = 1000
 const COMPLETION_MAX_TOKENS_GPT5_1 = 2000 // GPT-5.1 needs more tokens due to stricter limits
@@ -3926,6 +3941,7 @@ async function executeToolNatively(
                 globalProjectId: GLOBAL_PROJECT_ID,
                 requestedProjectId: toolArgs.projectId,
                 requestedProjectName: toolArgs.projectName,
+                sourceHint: toolArgs.sourceHint === 'whatsappContextProject' ? 'whatsappContextProject' : '',
             })
             const targetProjectId = createTaskProjectSelection.targetProjectId
             let targetProjectName = createTaskProjectSelection.targetProjectName
@@ -3942,7 +3958,7 @@ async function executeToolNatively(
 
             // Get user's timezone for date parsing (normalize across possible fields)
             const userDoc = await db.collection('users').doc(creatorId).get()
-            const userData = userDoc.data()
+            const userData = userDoc.exists ? userDoc.data() || {} : {}
             let timezoneOffset = 0
             try {
                 const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
@@ -4088,6 +4104,44 @@ async function executeToolNatively(
                     }
                 }
 
+                const assistantProvidedProjectReasoning = normalizeCreateTaskProjectRoutingReason(
+                    toolArgs.projectRoutingReason
+                )
+                const projectRoutingReasoning =
+                    assistantProvidedProjectReasoning || createTaskProjectSelection.reasoning
+                const projectRoutingConfidence = normalizeCreateTaskProjectRoutingConfidence(
+                    toolArgs.projectRoutingConfidence
+                )
+
+                let projectSelectionComment = null
+                try {
+                    projectSelectionComment = await addProjectRoutingReasonComment({
+                        userData,
+                        projectId: resolvedProjectId,
+                        taskId: resolvedTaskId,
+                        task: result.task,
+                        projectName: targetProjectName || '',
+                        reasoning: projectRoutingReasoning,
+                        confidence: projectRoutingConfidence,
+                        source: 'assistant_create_task',
+                        routingKey: resolvedTaskId,
+                        routingData: {
+                            selectionSource: createTaskProjectSelection.source,
+                            assistantProvidedReasoning: !!assistantProvidedProjectReasoning,
+                            requestedProjectId: toolArgs.projectId || '',
+                            requestedProjectName: toolArgs.projectName || '',
+                            contextProjectId: projectId || '',
+                            assistantId: assistantId || '',
+                        },
+                    })
+                } catch (error) {
+                    console.warn('CREATE_TASK TOOL: Failed to add project selection comment', {
+                        taskId: resolvedTaskId,
+                        projectId: resolvedProjectId,
+                        error: error.message,
+                    })
+                }
+
                 return {
                     success: true,
                     taskId: resolvedTaskId,
@@ -4095,6 +4149,13 @@ async function executeToolNatively(
                     projectName: targetProjectName,
                     message: result.message,
                     task: result.task,
+                    projectSelection: {
+                        source: createTaskProjectSelection.source,
+                        reasoning: projectRoutingReasoning,
+                        assistantProvidedReasoning: !!assistantProvidedProjectReasoning,
+                        confidence: projectRoutingConfidence,
+                        commentId: projectSelectionComment?.commentId || null,
+                    },
                 }
             } catch (error) {
                 console.error('Error creating task:', error)
@@ -8756,6 +8817,10 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When you call create_task based on the current user message and that message includes images, include those exact image URLs in create_task.images. Use only URLs from the current triggering user message; do not invent, transform, or omit them.',
+        ])
+        messages.push([
+            'system',
+            'When you call create_task, decide which project should receive the task. If you target a project with projectId or projectName, or if you intentionally keep the task in the current/default project, include create_task.projectRoutingReason with a short reason for that project choice. The server will store that reason as an internal task comment. Do not repeat that routing explanation in your visible chat reply unless the user asks.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_goals')) {

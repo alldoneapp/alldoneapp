@@ -4,6 +4,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: jest.fn(async () => {}),
     reduceGoldWhenChatWithAI: jest.fn(),
     executeToolNatively: jest.fn(),
+    getToolResultFollowUpPrompt: jest.fn(() => 'Based on the tool results above, provide your response.'),
     getMessageTextForTokenCounting: jest.fn(content =>
         typeof content === 'string' ? content : JSON.stringify(content)
     ),
@@ -291,7 +292,9 @@ describe('WhatsApp assistant attachment handoff', () => {
                 entry =>
                     entry?.role === 'assistant' &&
                     Array.isArray(entry.tool_calls) &&
-                    entry.tool_calls.some(toolCall => toolCall?.function?.name === 'external_tool_bookkeeping_send_invoice')
+                    entry.tool_calls.some(
+                        toolCall => toolCall?.function?.name === 'external_tool_bookkeeping_send_invoice'
+                    )
             )
         )
 

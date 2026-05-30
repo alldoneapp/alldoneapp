@@ -14,10 +14,18 @@ const {
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
+const mockCreateAndPersistTask = jest.fn()
+
 jest.mock('../shared/ProjectService', () => ({
     ProjectService: jest.fn().mockImplementation(() => ({
         initialize: jest.fn().mockResolvedValue(undefined),
         getUserProjects: jest.fn().mockResolvedValue([]),
+    })),
+}))
+jest.mock('../shared/TaskService', () => ({
+    TaskService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        createAndPersistTask: mockCreateAndPersistTask,
     })),
 }))
 jest.mock('../shared/TaskRetrievalService', () => {
@@ -129,6 +137,11 @@ jest.mock('../shared/projectDescriptionUpdateHelper', () => ({
 }))
 jest.mock('../shared/userDescriptionUpdateHelper', () => ({
     updateUserDescription: jest.fn(),
+}))
+jest.mock('../shared/projectRoutingCommentHelper', () => ({
+    addProjectRoutingReasonComment: jest.fn().mockResolvedValue({
+        commentId: 'routing-comment-1',
+    }),
 }))
 jest.mock('./userMemoryHelper', () => {
     const actual = jest.requireActual('./userMemoryHelper')
@@ -244,6 +257,7 @@ const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
 const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
+const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { updateUserMemory } = require('./userMemoryHelper')
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
@@ -1239,11 +1253,146 @@ describe('resolveCreateTaskTargetProject', () => {
             targetProjectId: 'p-default',
             targetProjectName: 'Inbox',
             source: 'defaultProjectFallback',
+            reasoning: 'I could not find a project matching "Made Up Project", so I used your default project Inbox.',
         })
 
         expect(getUserProjects).toHaveBeenCalledWith('u-1', {
             includeArchived: false,
             includeCommunity: false,
+        })
+    })
+
+    test('explains exact project-name matches', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'p-client', name: 'Client Work' }])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+
+        const fakeDb = {
+            collection: jest.fn(collectionName => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue(
+                        collectionName === 'users'
+                            ? {
+                                  exists: true,
+                                  data: () => ({
+                                      defaultProjectId: 'p-default',
+                                      projectIds: ['p-default', 'p-client'],
+                                  }),
+                              }
+                            : { exists: false, data: () => ({}) }
+                    ),
+                })),
+            })),
+            doc: jest.fn(path => ({ path })),
+            getAll: jest.fn(async (...refs) => refs.map(() => ({ exists: false }))),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-context',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectName: 'Client Work',
+            })
+        ).resolves.toEqual({
+            targetProjectId: 'p-client',
+            targetProjectName: 'Client Work',
+            source: 'toolArgs.projectName_exact',
+            reasoning: 'The task creation request named "Client Work", which exactly matched Client Work.',
+        })
+    })
+})
+
+describe('assistant create_task project routing comments', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockCreateAndPersistTask.mockReset()
+        ProjectService.mockClear()
+    })
+
+    test('uses the assistant-provided project reason for the created task comment', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-default',
+                    projectIds: ['project-default', 'project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-default',
+                    projectIds: ['project-default', 'project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-1',
+            projectId: 'project-client',
+            message: 'Task created',
+            task: {
+                id: 'task-1',
+                name: 'Follow up with client',
+                userId: 'user-1',
+                commentsData: { amount: 0 },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Follow up with client',
+                projectName: 'Client Work',
+                projectRoutingReason: 'the task is about the client onboarding discussion',
+                projectRoutingConfidence: 0.84,
+            },
+            'project-default',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'Follow up with client',
+                projectId: 'project-client',
+            }),
+            expect.objectContaining({
+                userId: 'user-1',
+                projectId: 'project-client',
+            })
+        )
+        expect(addProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-client',
+                taskId: 'task-1',
+                projectName: 'Client Work',
+                reasoning: 'the task is about the client onboarding discussion',
+                confidence: 0.84,
+                source: 'assistant_create_task',
+                routingData: expect.objectContaining({
+                    assistantProvidedReasoning: true,
+                    requestedProjectName: 'Client Work',
+                }),
+            })
+        )
+        expect(result.projectSelection).toMatchObject({
+            reasoning: 'the task is about the client onboarding discussion',
+            assistantProvidedReasoning: true,
+            confidence: 0.84,
+            commentId: 'routing-comment-1',
         })
     })
 })
@@ -3257,5 +3406,6 @@ describe('assistant shared user context', () => {
         expect(systemMessages).toContain('In Operations, Anna is acting as sponsor and final approver.')
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Operations is focused on launch readiness and weekly execution.')
+        expect(systemMessages).toContain('include create_task.projectRoutingReason')
     })
 })

@@ -12,8 +12,17 @@ function normalizeText(value) {
 
 function normalizeConfidence(confidence) {
     const numericConfidence = Number(confidence)
-    if (!Number.isFinite(numericConfidence) || numericConfidence < 0 || numericConfidence > 1) return null
-    return numericConfidence
+    if (!Number.isFinite(numericConfidence) || numericConfidence < 0) return null
+    if (numericConfidence <= 1) return numericConfidence
+    if (numericConfidence <= 100) return numericConfidence / 100
+    return null
+}
+
+function normalizeReasonClause(reasoning, fallback) {
+    return (normalizeText(reasoning) || fallback)
+        .replace(/\s+/g, ' ')
+        .replace(/^because\s+/i, '')
+        .replace(/[.!?]+$/g, '')
 }
 
 function buildProjectRoutingReasonComment({ projectName = '', reasoning = '', confidence = null, matched = true }) {
@@ -23,11 +32,11 @@ function buildProjectRoutingReasonComment({ projectName = '', reasoning = '', co
         normalizedConfidence === null ? '' : ` Confidence: ${Math.round(normalizedConfidence * 100)}%.`
 
     if (!matched) {
-        const reason = normalizeText(reasoning) || 'it did not match any of your other projects'
+        const reason = normalizeReasonClause(reasoning, 'it did not match any of your other projects')
         return `I kept this in ${name} because ${reason}.${confidenceText}`
     }
 
-    const reason = normalizeText(reasoning) || 'it matched the routing criteria'
+    const reason = normalizeReasonClause(reasoning, 'it matched the routing criteria')
     return `I chose ${name} because ${reason}.${confidenceText}`
 }
 

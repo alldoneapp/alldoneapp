@@ -494,6 +494,7 @@ function normalizeWhatsAppToolArgs(toolName, toolArgs, fallbackProjectId) {
     return {
         ...toolArgs,
         projectId: fallbackProjectId,
+        sourceHint: 'whatsappContextProject',
     }
 }
 
