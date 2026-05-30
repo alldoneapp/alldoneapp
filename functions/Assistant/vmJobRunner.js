@@ -15,7 +15,8 @@ const PROGRESS_UPDATE_INTERVAL_MS = 3000
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
 // chat thread, so the next run in that thread resumes it and the agent continues. Paused
 // sandboxes are deleted after this idle window. (e2b@1.x has no pause() method, so we call
-// the pause REST endpoint directly; resume is Sandbox.connect(), cleanup is Sandbox.kill().)
+// the pause + resume REST endpoints directly (connect alone won't resume a paused sandbox),
+// then Sandbox.connect() to attach; cleanup is Sandbox.kill().)
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days idle before a paused session is deleted
 const E2B_API_BASE = 'https://api.e2b.dev'
 
@@ -575,6 +576,21 @@ async function pauseE2bSandbox(sandboxId, e2bApiKey) {
     }
 }
 
+// Resume a PAUSED sandbox back to running. e2b@1.x's Sandbox.connect only attaches to a
+// RUNNING sandbox — it does NOT auto-resume a paused one (operations 404 otherwise), so a
+// paused session must be resumed via this REST call first. `timeout` is the new TTL (seconds).
+async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
+    const resp = await fetch(`${E2B_API_BASE}/sandboxes/${sandboxId}/resume`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': e2bApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeout: timeoutSec, autoPause: false }),
+    })
+    if (!resp.ok) {
+        const body = await resp.text().catch(() => '')
+        throw new Error(`E2B resume ${resp.status}: ${body.substring(0, 200)}`)
+    }
+}
+
 // After a run, KEEP the sandbox running for the keep-alive grace window (so back-to-back
 // tasks hit a live VM) and record the session as 'running'. The scheduled pauser pauses it
 // once idle. If keep-alive can't be set, fall back to pausing now; if that also fails, kill.
@@ -681,12 +697,18 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
         const sess = sessSnap.exists ? sessSnap.data() : null
         if (sess && sess.sandboxId && sess.agent === (vmJob.agent || DEFAULT_AGENT)) {
             try {
+                // A paused sandbox must be explicitly resumed first (connect alone won't
+                // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
+                if (sess.status !== 'running') {
+                    await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(MAX_VM_RUNTIME_MS / 1000))
+                }
                 sandbox = await Sandbox.connect(sess.sandboxId, { apiKey: e2bApiKey })
                 await sandbox.setTimeout(MAX_VM_RUNTIME_MS).catch(() => {})
                 isResume = true
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
                     sandboxId: sess.sandboxId,
+                    wasPaused: sess.status !== 'running',
                 })
             } catch (error) {
                 console.warn('🖥️ VM JOB: resume failed, starting fresh', {
