@@ -156,6 +156,10 @@ async function askToOpenAIBotOptimized(
             objectType,
             objectId,
             messageId,
+            // Forwarded so tools (e.g. execute_task_in_vm) can reproduce the thread's
+            // date/time + language context without re-resolving it.
+            userTimezoneOffset,
+            language,
         }
         const stream = await interactWithChatStream(
             contextMessages,

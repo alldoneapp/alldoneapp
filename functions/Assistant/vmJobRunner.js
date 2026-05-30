@@ -229,8 +229,19 @@ function buildAgentPrompt(vmJob, gitContext = null) {
     if (vmJob.packagedContext) {
         parts.push(
             '',
-            `# Background context (provided from the app — the file /home/user/context.md has the same content)`,
+            `# Background context (provided from the app — also written to /home/user/context.md)`,
             vmJob.packagedContext
+        )
+    }
+    if (vmJob.threadContext) {
+        parts.push(
+            '',
+            '# Originating chat thread context (also written to /home/user/context.md)',
+            'Context from the Alldone chat thread this task was created in — who the user is, the project, ' +
+                'your assistant persona, the conversation so far, files shared in the thread, and the ' +
+                "user's date/time and language. Use it to ground your work and match the intent and language " +
+                'already established; do not ask for details already provided here.',
+            vmJob.threadContext
         )
     }
     if (gitContext && gitContext.enabled) {
@@ -708,7 +719,8 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
     try {
         const prompt = buildAgentPrompt(vmJob, gitContext)
         await sandbox.files.write('/home/user/prompt.txt', prompt)
-        await sandbox.files.write('/home/user/context.md', vmJob.packagedContext || '')
+        const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
+        await sandbox.files.write('/home/user/context.md', contextFileContent)
 
         // Clone/refresh the connected GitLab repo and configure auth before the agent runs.
         if (gitContext && gitContext.enabled) {

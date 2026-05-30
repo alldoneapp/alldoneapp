@@ -6929,6 +6929,24 @@ async function executeToolNatively(
             })
 
             try {
+                // Forward the same thread context the in-chat assistant has (user/project
+                // descriptions, persona, conversation so far, shared files, date/time, language)
+                // so the sandbox agent is grounded instead of starting cold. Best-effort.
+                const threadContext = await buildVmThreadContext({
+                    projectId,
+                    objectType: toolRuntimeContext?.objectType || 'tasks',
+                    objectId: toolRuntimeContext?.objectId,
+                    assistantId,
+                    requestUserId: requestUserId || creatorId,
+                    userTimezoneOffset: toolRuntimeContext?.userTimezoneOffset ?? null,
+                    language: toolRuntimeContext?.language || '',
+                }).catch(error => {
+                    console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: thread context build failed', {
+                        error: error.message,
+                    })
+                    return ''
+                })
+
                 const { startVmJob } = require('./vmJob')
                 return await startVmJob({
                     objective: toolArgs.objective,
@@ -6936,6 +6954,7 @@ async function executeToolNatively(
                     agent: toolArgs.agent,
                     contextObjectIds: toolArgs.context_object_ids,
                     deliverable: toolArgs.deliverable,
+                    threadContext,
                     projectId,
                     objectType: toolRuntimeContext?.objectType || 'tasks',
                     objectId: toolRuntimeContext?.objectId,
@@ -8387,6 +8406,183 @@ async function getUserDescriptionContextMessage(projectId, userId) {
     }
 
     return lines.join('\n')
+}
+
+// --- VM thread-context bundle (execute_task_in_vm) ---
+// Which slices of the in-chat assistant's thread context get forwarded to a VM job so the
+// sandbox agent works with the same grounding the in-chat assistant had. Flip any flag to
+// false to stop sending that slice. (Current defaults reflect the chosen selection.)
+const VM_THREAD_CONTEXT_OPTIONS = {
+    userDescription: true, // global + project-specific user description
+    projectDescription: true, // shared project description
+    userMemory: true, // per-project user memory note
+    assistantPersona: true, // this assistant's name/description/instructions
+    conversationHistory: true, // the chat thread transcript
+    chatAttachments: true, // files/images shared in the thread
+    dateTime: true, // current date/time in the user's timezone
+    language: true, // the user's language
+}
+
+// Guardrails so a long thread can't blow up the VM prompt (also stored in the paused-session
+// snapshot, so we keep it bounded).
+const VM_THREAD_HISTORY_MAX_MESSAGES = 40
+const VM_THREAD_HISTORY_MAX_CHARS = 12000
+const VM_THREAD_MAX_ATTACHMENTS = 20
+const VM_THREAD_ATTACHMENT_TEXT_MAX_CHARS = 500
+
+// Format the user's timezone offset (minutes) as a friendly "UTC±H[:MM]" label.
+function formatVmTimezoneLabel(offsetMinutes) {
+    if (typeof offsetMinutes !== 'number') return 'UTC'
+    const sign = offsetMinutes >= 0 ? '+' : '-'
+    const hours = Math.floor(Math.abs(offsetMinutes) / 60)
+    const minutes = Math.abs(offsetMinutes) % 60
+    return minutes > 0 ? `UTC${sign}${hours}:${minutes.toString().padStart(2, '0')}` : `UTC${sign}${hours}`
+}
+
+/**
+ * Assemble the same thread context the in-chat assistant sees into a single plain-text
+ * bundle for an execute_task_in_vm job. Built at request time (a faithful snapshot of the
+ * thread when the task was created). Every slice is best-effort — a failing read is skipped
+ * rather than failing the whole job. Returns '' when nothing could be assembled.
+ */
+async function buildVmThreadContext({
+    projectId,
+    objectType = 'tasks',
+    objectId,
+    assistantId,
+    requestUserId,
+    userTimezoneOffset = null,
+    language = '',
+    options = VM_THREAD_CONTEXT_OPTIONS,
+} = {}) {
+    if (!projectId || !objectId) return ''
+    const opts = { ...VM_THREAD_CONTEXT_OPTIONS, ...(options || {}) }
+    const sections = []
+
+    // #1 + #2 — global + project-specific user description.
+    if (opts.userDescription && requestUserId) {
+        try {
+            const msg = await getUserDescriptionContextMessage(projectId, requestUserId)
+            if (msg) sections.push(msg)
+        } catch (error) {
+            console.warn('🖥️ VM CONTEXT: user description failed', { projectId, error: error.message })
+        }
+    }
+
+    // #3 — shared project description.
+    if (opts.projectDescription) {
+        try {
+            const msg = await getProjectDescriptionContextMessage(projectId)
+            if (msg) sections.push(msg)
+        } catch (error) {
+            console.warn('🖥️ VM CONTEXT: project description failed', { projectId, error: error.message })
+        }
+    }
+
+    // #4 — per-project user memory note.
+    if (opts.userMemory && requestUserId) {
+        try {
+            const msg = await getUserMemoryContextMessage({ projectId, requestUserId })
+            if (msg) sections.push(msg)
+        } catch (error) {
+            console.warn('🖥️ VM CONTEXT: user memory failed', { projectId, error: error.message })
+        }
+    }
+
+    // #9 — assistant persona (name / description / instructions). Clean persona block rather
+    // than the settings-editing framing of getAssistantSettingsContextMessage.
+    if (opts.assistantPersona && assistantId) {
+        try {
+            const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const assistant = resolved?.assistant || {}
+            const personaLines = ['Assistant persona (act as this assistant):']
+            if (assistant.displayName) personaLines.push(`- Name: ${assistant.displayName}`)
+            if (assistant.description) personaLines.push(`- Description: ${assistant.description}`)
+            const instructions = typeof assistant.instructions === 'string' ? assistant.instructions.trim() : ''
+            if (instructions) personaLines.push('- Instructions:', instructions)
+            if (personaLines.length > 1) sections.push(personaLines.join('\n'))
+        } catch (error) {
+            console.warn('🖥️ VM CONTEXT: assistant persona failed', { projectId, assistantId, error: error.message })
+        }
+    }
+
+    // #10 — current date/time in the user's timezone.
+    if (opts.dateTime) {
+        const offset = typeof userTimezoneOffset === 'number' ? userTimezoneOffset : null
+        const now = offset !== null ? moment().utcOffset(offset) : moment().utc()
+        sections.push(
+            `Current date and time for the user: ${now.format('dddd, MMMM Do YYYY, h:mm a')} (${formatVmTimezoneLabel(
+                offset
+            )}).`
+        )
+    }
+
+    // #11 — language.
+    if (opts.language) {
+        const lang = String(language || '').trim()
+        sections.push(
+            lang
+                ? `Respond in the same language the user uses in this thread (the user's app language is "${lang}").`
+                : 'Respond in the same language the user uses in this thread.'
+        )
+    }
+
+    // #5 + #7 — conversation transcript and shared files (both derived from the thread comments).
+    if (opts.conversationHistory || opts.chatAttachments) {
+        try {
+            const snapshot = await admin
+                .firestore()
+                .collection(`chatComments/${projectId}/${objectType}/${objectId}/comments`)
+                .orderBy('lastChangeDate', 'desc')
+                .limit(THREAD_CONTEXT_MESSAGE_LIMIT)
+                .get()
+            const docs = snapshot.docs.slice().reverse() // oldest -> newest
+            const transcriptLines = []
+            const attachments = []
+            for (const doc of docs) {
+                const data = doc.data() || {}
+                const text = typeof data.commentText === 'string' ? data.commentText.trim() : ''
+                if (opts.conversationHistory && text) {
+                    const role = data.fromAssistant ? 'assistant' : 'user'
+                    transcriptLines.push(`[${role}]: ${parseTextForUseLiKePrompt(text)}`)
+                }
+                if (opts.chatAttachments && attachments.length < VM_THREAD_MAX_ATTACHMENTS) {
+                    for (const media of normalizeCommentMediaContext(data)) {
+                        if (attachments.length >= VM_THREAD_MAX_ATTACHMENTS) break
+                        attachments.push(media)
+                    }
+                }
+            }
+
+            if (opts.conversationHistory && transcriptLines.length) {
+                let joined = transcriptLines.slice(-VM_THREAD_HISTORY_MAX_MESSAGES).join('\n\n')
+                if (joined.length > VM_THREAD_HISTORY_MAX_CHARS) {
+                    joined = '…(earlier messages omitted)…\n\n' + joined.slice(-VM_THREAD_HISTORY_MAX_CHARS)
+                }
+                sections.push(`Conversation so far in this thread (oldest first):\n${joined}`)
+            }
+
+            if (opts.chatAttachments && attachments.length) {
+                const lines = attachments.map(media => {
+                    const extracted = media.extractedText
+                        ? ` — extracted text: ${media.extractedText.substring(0, VM_THREAD_ATTACHMENT_TEXT_MAX_CHARS)}`
+                        : ''
+                    return `- ${media.fileName || 'file'} (${media.mimeType || 'file'}): ${
+                        media.storageUrl
+                    }${extracted}`
+                })
+                sections.push(`Files shared in this thread (downloadable via the URLs):\n${lines.join('\n')}`)
+            }
+        } catch (error) {
+            console.warn('🖥️ VM CONTEXT: conversation/attachments failed', {
+                projectId,
+                objectId,
+                error: error.message,
+            })
+        }
+    }
+
+    return sections.join('\n\n')
 }
 
 async function addBaseInstructions(
