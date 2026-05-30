@@ -33,9 +33,15 @@ const template = Template()
     // Node 20 + Claude Code CLI (nodesource setup + install in one root shell)
     .runCmd('curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs', asRoot)
     .runCmd('npm install -g @anthropic-ai/claude-code', asRoot)
-    // Common tooling for the document / data task types, plus git for the GitLab
-    // coding flow (clone the connected repo + push a Merge Request).
+    // Common tooling for the document / data task types, plus git for the coding flow
+    // (clone the connected repo + push a Merge Request / Pull Request).
     .runCmd('apt-get update && apt-get install -y --no-install-recommends pandoc git', asRoot)
+    // GitHub CLI (gh) for opening Pull Requests on the GitHub coding flow. If this is ever
+    // unavailable, the agent falls back to the GitHub REST API via curl (see vmJobRunner).
+    .runCmd(
+        'curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && apt-get update && apt-get install -y gh',
+        asRoot
+    )
     .runCmd('pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || true', asRoot)
     // Fail the build if the CLI didn't install (runs as the default user, like the worker)
     .runCmd('claude --version')

@@ -6373,6 +6373,41 @@ export async function getGitlabUserConnection(projectId, userId) {
     }
 }
 
+// --- GitHub repo connection (per-project repo + per-user token, used by the VM coding flow) ---
+
+export async function connectGithubRepo(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGithubRepo')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function disconnectGithubRepo(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGithubRepo')
+    const result = await fn(data)
+    return result.data
+}
+
+// Read whether the given user has linked their GitHub token for this project. Reads the
+// user's own private doc (allowed by security rules); never exposes the raw token to UI.
+export async function getGithubUserConnection(projectId, userId) {
+    try {
+        const snap = await firebase.firestore().doc(`users/${userId}/private/githubAuth_${projectId}`).get()
+        if (!snap.exists) return null
+        const d = snap.data() || {}
+        if (!d.token) return null
+        return {
+            connected: true,
+            username: d.username || '',
+            tokenLast4: d.tokenLast4 || '',
+            canPush: d.canPush !== false,
+            host: d.host || '',
+            repoSlug: d.repoSlug || '',
+        }
+    } catch (_) {
+        return null
+    }
+}
+
 //MENTION ALL
 
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {

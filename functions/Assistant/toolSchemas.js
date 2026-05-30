@@ -1764,9 +1764,9 @@ const toolSchemas = {
                             'Required. The kind of work, which selects the VM tooling profile and system prompt. ' +
                             '"research" = web research and a written report; "document" = produce a formatted document/spreadsheet/slides; ' +
                             '"prototype" = write code or build a small app/prototype; "data" = pull/scrape, clean and analyze data. ' +
-                            'Use "prototype" for changes to the project\'s codebase: if a GitLab repository is connected to this project ' +
-                            'and the requesting user has linked their GitLab token, a "prototype" task runs inside a checkout of that repo ' +
-                            'and opens a Merge Request with its changes (the MR link is posted back into the chat).',
+                            'Use "prototype" for changes to the project\'s codebase: if a GitLab or GitHub repository is connected to this ' +
+                            'project and the requesting user has linked their token, a "prototype" task runs inside a checkout of that repo ' +
+                            'and opens a Merge Request (GitLab) / Pull Request (GitHub) with its changes (the link is posted back into the chat).',
                     },
                     agent: {
                         type: 'string',

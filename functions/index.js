@@ -800,6 +800,46 @@ exports.disconnectGitlabRepo = onCall(
     }
 )
 
+exports.connectGithubRepo = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { connectGithubRepo } = require('./Github/githubConnect')
+        return await connectGithubRepo({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            token: data && data.token,
+            repoUrl: data && data.repoUrl,
+            baseBranch: data && data.baseBranch,
+        })
+    }
+)
+
+exports.disconnectGithubRepo = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { disconnectGithubRepo } = require('./Github/githubConnect')
+        return await disconnectGithubRepo({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            clearProjectRepo: !!(data && data.clearProjectRepo),
+        })
+    }
+)
+
 exports.giphyRandomGif = onCall(
     {
         timeoutSeconds: 30,

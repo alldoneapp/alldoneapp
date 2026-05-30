@@ -40,23 +40,24 @@ const TASK_TYPE_PROFILES = {
         'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
 }
 
-// --- GitLab repository integration (optional, per-project) ---
-// When the project has a GitLab repo connected AND the requesting user has stored a token,
-// a coding ("prototype") task runs inside an authenticated checkout of that repo and can
-// open a Merge Request. SECURITY: the token is passed to the sandbox ONLY as a per-command
-// env var (the e2b `envs` option) — never written to disk, prompt.txt, or the paused-session
-// snapshot. The git credential helper we configure stores only a reference to $GITLAB_TOKEN,
-// not the token itself, so resuming a paused sandbox never leaks it.
+// --- Git repository integration (optional, per-project; GitLab or GitHub) ---
+// When the project has a repo connected AND the requesting user has stored a token, a coding
+// ("prototype") task runs inside an authenticated checkout of that repo and opens a Merge
+// Request (GitLab) / Pull Request (GitHub). SECURITY: the token is passed to the sandbox ONLY
+// as a per-command env var (the e2b `envs` option) — never written to disk, prompt.txt, or the
+// paused-session snapshot. The git credential helper we configure stores only a reference to
+// $GIT_TOKEN, not the token itself, so resuming a paused sandbox never leaks it.
 const REPO_DIR = '/home/user/repo'
 
 // Static setup script. ALL dynamic values arrive via env vars (so nothing untrusted is
 // interpolated into the script text — no shell injection). The credential helper is
-// single-quoted so $GITLAB_TOKEN is resolved by git at push time from the live env, not
-// baked into ~/.gitconfig. Fresh start: clone + checkout the base branch. On a resumed
-// thread the repo already exists, so we only fetch (and leave the agent's working state
-// intact) so a conversational follow-up continues on the same branch the agent left.
+// single-quoted so $GIT_TOKEN is resolved by git at push time from the live env, not baked
+// into ~/.gitconfig (GitLab auths as oauth2:<token>, GitHub as x-access-token:<token>). Fresh
+// start: clone + checkout the base branch. On a resumed thread the repo already exists, so we
+// only fetch (and leave the agent's working state intact) so a conversational follow-up
+// continues on the same branch the agent left.
 const GIT_SETUP_SCRIPT = `set -e
-git config --global credential.helper '!f() { echo username=oauth2; echo "password=$GITLAB_TOKEN"; }; f'
+git config --global credential.helper '!f() { echo "username=$GIT_CRED_USERNAME"; echo "password=$GIT_TOKEN"; }; f'
 git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
 git config --global advice.detachedHead false
@@ -72,38 +73,69 @@ fi
 echo "GIT_SETUP_OK $(git rev-parse --abbrev-ref HEAD)"
 `
 
-// Read the project's GitLab repo connection + the requesting user's token. Returns an
-// { enabled: true, ... } context only when both are present; otherwise null (the task runs
-// as a normal, non-repo VM job). Best-effort — never throws.
-async function loadGitlabContext(vmJob) {
+// Build the provider-specific context from a project's repo config + a user token doc.
+// GitLab auths git as oauth2:<token> and opens MRs; GitHub auths as x-access-token:<token>
+// and opens PRs (via the gh CLI / REST API).
+function buildProviderContext(provider, repoUrl, project, tokenData) {
+    if (provider === 'github') {
+        const login = tokenData.username || ''
+        return {
+            enabled: true,
+            provider: 'github',
+            repoUrl,
+            baseBranch: (project.githubBaseBranch || 'main').trim() || 'main',
+            token: tokenData.token,
+            credentialUsername: 'x-access-token',
+            identityName: login || 'Alldone Assistant',
+            identityEmail: tokenData.email || (login ? `${login}@users.noreply.github.com` : 'assistant@alldone.app'),
+            apiBase: project.githubApiBase || 'https://api.github.com',
+            repoSlug: tokenData.repoSlug || '',
+        }
+    }
+    return {
+        enabled: true,
+        provider: 'gitlab',
+        repoUrl,
+        baseBranch: (project.gitlabBaseBranch || 'main').trim() || 'main',
+        token: tokenData.token,
+        credentialUsername: 'oauth2',
+        identityName: tokenData.username || 'Alldone Assistant',
+        identityEmail: tokenData.email || 'assistant@alldone.app',
+    }
+}
+
+// Read the project's connected repo (GitHub or GitLab) + the requesting user's token. Returns
+// an { enabled: true, provider, ... } context only when a repo is connected AND the user has a
+// token for it; { enabled: false, repoConnectedButNoToken: true } when a repo is connected but
+// the user hasn't linked a token; otherwise null. Best-effort — never throws. GitHub is
+// preferred if both providers happen to be connected on the same project.
+async function loadRepoContext(vmJob) {
     try {
         const db = admin.firestore()
         const projectSnap = await db.doc(`projects/${vmJob.projectId}`).get()
         if (!projectSnap.exists) return null
         const project = projectSnap.data() || {}
-        const repoUrl = (project.gitlabRepoUrl || '').trim()
-        if (!repoUrl) return null
         const userId = vmJob.requestUserId
         if (!userId) return null
-        const tokenSnap = await db.doc(`users/${userId}/private/gitlabAuth_${vmJob.projectId}`).get()
-        const tokenData = tokenSnap.exists ? tokenSnap.data() || {} : {}
-        if (!tokenData.token) {
-            // Repo is connected for the project, but THIS user hasn't linked their own token.
-            return { enabled: false, repoConnectedButNoToken: true }
+
+        const providers = [
+            { name: 'github', url: (project.githubRepoUrl || '').trim() },
+            { name: 'gitlab', url: (project.gitlabRepoUrl || '').trim() },
+        ].filter(p => p.url)
+        if (!providers.length) return null
+
+        for (const p of providers) {
+            const tokenSnap = await db.doc(`users/${userId}/private/${p.name}Auth_${vmJob.projectId}`).get()
+            const tokenData = tokenSnap.exists ? tokenSnap.data() || {} : {}
+            if (tokenData.token) {
+                tokenSnap.ref.set({ lastUsed: Date.now() }, { merge: true }).catch(() => {})
+                return buildProviderContext(p.name, p.url, project, tokenData)
+            }
         }
-        const baseBranch = (project.gitlabBaseBranch || 'main').trim() || 'main'
-        // Best-effort "last used" stamp so users can see the token is in use.
-        tokenSnap.ref.set({ lastUsed: Date.now() }, { merge: true }).catch(() => {})
-        return {
-            enabled: true,
-            repoUrl,
-            baseBranch,
-            token: tokenData.token,
-            identityName: tokenData.username || 'Alldone Assistant',
-            identityEmail: tokenData.email || 'assistant@alldone.app',
-        }
+        // A repo is connected for the project, but THIS user hasn't linked their own token.
+        return { enabled: false, repoConnectedButNoToken: true }
     } catch (error) {
-        console.warn('🖥️ VM JOB: failed loading GitLab context', {
+        console.warn('🖥️ VM JOB: failed loading repo context', {
             correlationId: vmJob.correlationId,
             error: error.message,
         })
@@ -113,14 +145,26 @@ async function loadGitlabContext(vmJob) {
 
 // The per-command env carrying the git credentials + identity into the sandbox.
 function buildGitEnv(gitContext) {
-    return {
-        GITLAB_TOKEN: gitContext.token,
+    const env = {
+        GIT_TOKEN: gitContext.token,
+        GIT_CRED_USERNAME: gitContext.credentialUsername || 'oauth2',
         GIT_REPO_URL: gitContext.repoUrl,
         GIT_BASE_BRANCH: gitContext.baseBranch,
         GIT_USER_NAME: gitContext.identityName,
         GIT_USER_EMAIL: gitContext.identityEmail,
         GIT_TERMINAL_PROMPT: '0',
     }
+    if (gitContext.provider === 'github') {
+        // Let the gh CLI / curl calls authenticate without re-plumbing the token.
+        env.GH_TOKEN = gitContext.token
+        env.GITHUB_TOKEN = gitContext.token
+        env.GH_API = gitContext.apiBase || 'https://api.github.com'
+        env.GH_REPO = gitContext.repoSlug || ''
+        if (gitContext.apiBase && gitContext.apiBase !== 'https://api.github.com') {
+            env.GH_HOST = gitContext.apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v3$/, '')
+        }
+    }
+    return env
 }
 
 // Clone (or refresh, on resume) the repo and configure git auth before the agent runs.
@@ -247,20 +291,37 @@ function buildAgentPrompt(vmJob, gitContext = null) {
     }
     if (gitContext && gitContext.enabled) {
         const base = gitContext.baseBranch
+        const isGithub = gitContext.provider === 'github'
+        const providerName = isGithub ? 'GitHub' : 'GitLab'
+        const reqName = isGithub ? 'Pull Request' : 'Merge Request'
         parts.push(
             '',
             '# Connected Git repository',
-            `You are working inside a Git checkout of the project's connected GitLab repository at ${REPO_DIR} ` +
+            `You are working inside a Git checkout of the project's connected ${providerName} repository at ${REPO_DIR} ` +
                 `(already cloned and authenticated, with the base branch "${base}" checked out). This is your working directory — make your code changes there.`,
-            'When your work is ready, deliver it as a GitLab Merge Request. Do NOT push to the base branch directly:',
+            `When your work is ready, deliver it as a ${providerName} ${reqName}. Do NOT push to the base branch directly:`,
             `1. Create a new branch off "${base}": git checkout -b ai/<short-descriptive-slug>`,
-            '2. Make your edits and commit them with clear, conventional commit messages.',
-            '3. Push the branch AND open the Merge Request in a single command:',
-            `   git push -u origin HEAD -o merge_request.create -o merge_request.target=${base} -o merge_request.title="<concise title>" -o merge_request.remove_source_branch`,
-            '4. GitLab prints the Merge Request URL on stderr right after the push — copy that URL into your final message so the user can review it.',
+            '2. Make your edits and commit them with clear, conventional commit messages.'
+        )
+        if (isGithub) {
+            parts.push(
+                '3. Push the branch: git push -u origin HEAD',
+                `4. Open the Pull Request with the GitHub CLI (already authenticated via $GH_TOKEN): gh pr create --base ${base} --head <your-branch> --title "<concise title>" --body "<summary of the change>"`,
+                '   The gh command prints the Pull Request URL. If gh is not installed, instead POST to the GitHub REST API with curl: ' +
+                    `curl -sS -X POST "$GH_API/repos/$GH_REPO/pulls" -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -d '{"title":"<title>","head":"<your-branch>","base":"${base}","body":"<summary>"}'  (read the "html_url" field from the JSON response).`,
+                '5. Copy the Pull Request URL into your final message so the user can review it.'
+            )
+        } else {
+            parts.push(
+                '3. Push the branch AND open the Merge Request in a single command:',
+                `   git push -u origin HEAD -o merge_request.create -o merge_request.target=${base} -o merge_request.title="<concise title>" -o merge_request.remove_source_branch`,
+                '4. GitLab prints the Merge Request URL on stderr right after the push — copy that URL into your final message so the user can review it.'
+            )
+        }
+        parts.push(
             'Authentication is already configured via a git credential helper. Do NOT change git remotes, credentials, or config, and never print, echo, or commit any tokens. ' +
-                'If a direct push to the base branch is rejected because it is protected, that is expected — open a Merge Request instead.',
-            'Your final message MUST include the Merge Request URL (or, if you genuinely could not open one, a clear explanation of why).'
+                `If a direct push to the base branch is rejected because it is protected, that is expected — open a ${reqName} instead.`,
+            `Your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why).`
         )
     }
     parts.push(
@@ -999,18 +1060,19 @@ async function runVmJobByCorrelationId(correlationId) {
         writeStatusComment(pendingWebhook, text).catch(() => {})
     }
 
-    // For a coding ("prototype") task, surface the project's connected GitLab repo so the
-    // agent works inside it and opens a Merge Request. Other task types are unaffected.
+    // For a coding ("prototype") task, surface the project's connected repo (GitHub or GitLab)
+    // so the agent works inside it and opens a Pull/Merge Request. Other task types unaffected.
     let gitContext = null
     if (vmJob.taskType === 'prototype') {
-        gitContext = await loadGitlabContext(vmJob)
+        gitContext = await loadRepoContext(vmJob)
         if (gitContext && gitContext.enabled) {
-            console.log('🖥️ VM JOB RUNNER: GitLab repo connected for coding task', {
+            console.log('🖥️ VM JOB RUNNER: repo connected for coding task', {
                 correlationId,
+                provider: gitContext.provider,
                 baseBranch: gitContext.baseBranch,
             })
         } else if (gitContext && gitContext.repoConnectedButNoToken) {
-            console.log('🖥️ VM JOB RUNNER: repo connected but requesting user has no GitLab token', {
+            console.log('🖥️ VM JOB RUNNER: repo connected but requesting user has no token', {
                 correlationId,
             })
         }

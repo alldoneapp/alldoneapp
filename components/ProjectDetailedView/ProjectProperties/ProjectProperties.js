@@ -25,6 +25,7 @@ import SharedHelper from '../../../utils/SharedHelper'
 import ConnectCalendarProperty from './ConnectCalendar/ConnectCalendarProperty'
 import ConnectGmailProperty from './ConnectGmail/ConnectGmailProperty'
 import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
+import ConnectGitHubProperty from './ConnectGitHub/ConnectGitHubProperty'
 import ColorProperty from './ColorProperty/ColorProperty'
 import PrivacyProperty from './PrivacyProperty/PrivacyProperty'
 import GuidesProperty from './GuidesProperty/GuidesProperty'
@@ -110,6 +111,7 @@ const ProjectProperties = ({ project, type }) => {
                             <ConnectCalendarProperty projectId={project.id} disabled={!accessGranted} />
                             <ConnectGmailProperty projectId={project.id} disabled={!accessGranted} />
                             <ConnectGitLabProperty project={project} disabled={!accessGranted} />
+                            <ConnectGitHubProperty project={project} disabled={!accessGranted} />
                             <PrivacyProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                         </View>
 

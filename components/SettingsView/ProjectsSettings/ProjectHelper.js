@@ -645,11 +645,16 @@ class ProjectHelper {
             assistantId: '',
             autoEstimation: true,
             sortIndexByUser: { [loggedUser.uid]: generateSortIndex() },
-            // GitLab repo connection (used by the execute_task_in_vm coding flow). The token
-            // is stored per-user under users/{uid}/private/gitlabAuth_{projectId}, never here.
+            // GitLab/GitHub repo connection (used by the execute_task_in_vm coding flow). The
+            // token is stored per-user under users/{uid}/private/{provider}Auth_{projectId},
+            // never here.
             gitlabRepoUrl: '',
             gitlabBaseBranch: '',
             gitlabHost: '',
+            githubRepoUrl: '',
+            githubBaseBranch: '',
+            githubHost: '',
+            githubApiBase: '',
         }
         return project
     }
