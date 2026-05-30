@@ -56,7 +56,17 @@ const REPO_DIR = '/home/user/repo'
 // start: clone + checkout the base branch. On a resumed thread the repo already exists, so we
 // only fetch (and leave the agent's working state intact) so a conversational follow-up
 // continues on the same branch the agent left.
+//
+// git is ensured at RUNTIME (not via the E2B template): the worker runs on E2B's prebuilt
+// `claude`/`codex` templates by default — our custom template (functions/e2b-template) is only
+// used if E2B_*_TEMPLATE overrides point at it — so we can't assume git is baked in. This
+// mirrors the per-agent installGuard pattern. (gh is NOT ensured here: the GitHub PR step has a
+// REST-API-via-curl fallback in the prompt, so it works whether or not gh is present.)
 const GIT_SETUP_SCRIPT = `set -e
+if ! command -v git >/dev/null 2>&1; then
+  (sudo apt-get update && sudo apt-get install -y git) >/dev/null 2>&1 || (apt-get update && apt-get install -y git) >/dev/null 2>&1 || true
+fi
+command -v git >/dev/null 2>&1 || { echo "git is not available in this sandbox and could not be installed automatically" >&2; exit 3; }
 git config --global credential.helper '!f() { echo "username=$GIT_CRED_USERNAME"; echo "password=$GIT_TOKEN"; }; f'
 git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
