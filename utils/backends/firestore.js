@@ -6338,6 +6338,41 @@ export async function callSearchLinkedInProfile(data) {
     return await searchFn(data)
 }
 
+// --- GitLab repo connection (per-project repo + per-user token, used by the VM coding flow) ---
+
+export async function connectGitlabRepo(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGitlabRepo')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function disconnectGitlabRepo(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGitlabRepo')
+    const result = await fn(data)
+    return result.data
+}
+
+// Read whether the given user has linked their GitLab token for this project. Reads the
+// user's own private doc (allowed by security rules); never exposes the raw token to UI.
+export async function getGitlabUserConnection(projectId, userId) {
+    try {
+        const snap = await firebase.firestore().doc(`users/${userId}/private/gitlabAuth_${projectId}`).get()
+        if (!snap.exists) return null
+        const d = snap.data() || {}
+        if (!d.token) return null
+        return {
+            connected: true,
+            username: d.username || '',
+            tokenLast4: d.tokenLast4 || '',
+            canPush: d.canPush !== false,
+            host: d.host || '',
+            repoPath: d.repoPath || '',
+        }
+    } catch (_) {
+        return null
+    }
+}
+
 //MENTION ALL
 
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {

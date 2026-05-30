@@ -760,6 +760,46 @@ exports.ipRegistryLookup = onCall(
     }
 )
 
+exports.connectGitlabRepo = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { connectGitlabRepo } = require('./Gitlab/gitlabConnect')
+        return await connectGitlabRepo({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            token: data && data.token,
+            repoUrl: data && data.repoUrl,
+            baseBranch: data && data.baseBranch,
+        })
+    }
+)
+
+exports.disconnectGitlabRepo = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { disconnectGitlabRepo } = require('./Gitlab/gitlabConnect')
+        return await disconnectGitlabRepo({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            clearProjectRepo: !!(data && data.clearProjectRepo),
+        })
+    }
+)
+
 exports.giphyRandomGif = onCall(
     {
         timeoutSeconds: 30,

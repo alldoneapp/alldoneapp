@@ -24,6 +24,7 @@ import { FEED_PROJECT_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import SharedHelper from '../../../utils/SharedHelper'
 import ConnectCalendarProperty from './ConnectCalendar/ConnectCalendarProperty'
 import ConnectGmailProperty from './ConnectGmail/ConnectGmailProperty'
+import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
 import ColorProperty from './ColorProperty/ColorProperty'
 import PrivacyProperty from './PrivacyProperty/PrivacyProperty'
 import GuidesProperty from './GuidesProperty/GuidesProperty'
@@ -108,6 +109,7 @@ const ProjectProperties = ({ project, type }) => {
                             <ProjectStatus project={project} disabled={!accessGranted || hasGuideChildren} />
                             <ConnectCalendarProperty projectId={project.id} disabled={!accessGranted} />
                             <ConnectGmailProperty projectId={project.id} disabled={!accessGranted} />
+                            <ConnectGitLabProperty project={project} disabled={!accessGranted} />
                             <PrivacyProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                         </View>
 

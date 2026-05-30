@@ -33,8 +33,9 @@ const template = Template()
     // Node 20 + Claude Code CLI (nodesource setup + install in one root shell)
     .runCmd('curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs', asRoot)
     .runCmd('npm install -g @anthropic-ai/claude-code', asRoot)
-    // Common tooling for the document / data task types
-    .runCmd('apt-get update && apt-get install -y --no-install-recommends pandoc', asRoot)
+    // Common tooling for the document / data task types, plus git for the GitLab
+    // coding flow (clone the connected repo + push a Merge Request).
+    .runCmd('apt-get update && apt-get install -y --no-install-recommends pandoc git', asRoot)
     .runCmd('pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || true', asRoot)
     // Fail the build if the CLI didn't install (runs as the default user, like the worker)
     .runCmd('claude --version')
