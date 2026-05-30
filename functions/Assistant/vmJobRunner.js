@@ -11,6 +11,14 @@ const MAX_VM_RUNTIME_MS = 25 * 60 * 1000 // 25 minutes
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
 
+// Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
+// filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
+// chat thread, so the next run in that thread resumes it and the agent continues. Paused
+// sandboxes are deleted after this idle window. (e2b@1.x has no pause() method, so we call
+// the pause REST endpoint directly; resume is Sandbox.connect(), cleanup is Sandbox.kill().)
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days idle
+const E2B_API_BASE = 'https://api.e2b.dev'
+
 // Per-task-type guidance prepended to the agent's objective.
 const TASK_TYPE_PROFILES = {
     research:
@@ -166,7 +174,7 @@ function mimeForFile(name) {
 
 // Pull deliverable files the agent wrote to /home/user/output out of the sandbox.
 // Best-effort: returns [] on any failure so a file hiccup never fails the whole job.
-async function collectArtifacts(sandbox, correlationId) {
+async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
     try {
         let entries
         try {
@@ -174,7 +182,15 @@ async function collectArtifacts(sandbox, correlationId) {
         } catch (_) {
             return [] // dir missing / empty
         }
-        const files = (entries || []).filter(e => (e.type === 'file' || e.type === undefined) && e.size > 0)
+        // On a resumed session, only collect files written/modified during THIS run, so we
+        // don't re-attach deliverables from previous runs that are still in /home/user/output.
+        const skewMs = 5000
+        const files = (entries || []).filter(e => {
+            if (!((e.type === 'file' || e.type === undefined) && e.size > 0)) return false
+            if (!sinceMs) return true
+            const mt = e.modifiedTime ? new Date(e.modifiedTime).getTime() : 0
+            return mt === 0 || mt >= sinceMs - skewMs
+        })
         const artifacts = []
         let totalBytes = 0
         for (const entry of files) {
@@ -356,8 +372,11 @@ const AGENT_CONFIGS = {
         templateEnvKey: 'E2B_CLAUDE_TEMPLATE',
         apiKeyField: 'ANTHROPIC_API_KEY',
         installGuard: '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1)',
-        runCommand:
-            'claude -p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null',
+        // On resume, `--continue` continues the most recent session in the working dir.
+        buildRun: isResume =>
+            `claude -p ${
+                isResume ? '--continue ' : ''
+            }"$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`,
         sandboxEnv: apiKey => ({
             ANTHROPIC_API_KEY: apiKey,
             CI: 'true',
@@ -374,7 +393,11 @@ const AGENT_CONFIGS = {
         templateEnvKey: 'E2B_CODEX_TEMPLATE',
         apiKeyField: 'OPEN_AI_KEY', // reuse the existing OpenAI key
         installGuard: '(command -v codex >/dev/null 2>&1 || npm install -g @openai/codex >/dev/null 2>&1)',
-        runCommand: 'codex exec --full-auto --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null',
+        // On resume, `codex exec resume --last` continues the most recent thread.
+        buildRun: isResume =>
+            isResume
+                ? `codex exec resume --last --full-auto --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
+                : `codex exec --full-auto --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
         sandboxEnv: apiKey => ({
             CODEX_API_KEY: apiKey,
             OPENAI_API_KEY: apiKey,
@@ -386,28 +409,129 @@ const AGENT_CONFIGS = {
 
 const DEFAULT_AGENT = 'claude'
 
+// One persistent VM session per chat thread.
+function vmSessionDocId(vmJob) {
+    return `${vmJob.projectId}__${vmJob.objectId}`
+}
+
+// Pause an E2B sandbox via the REST API (e2b@1.x exposes no pause() method). The paused
+// sandbox keeps its full state and is resumable later via Sandbox.connect(sandboxId).
+async function pauseE2bSandbox(sandboxId, e2bApiKey) {
+    const resp = await fetch(`${E2B_API_BASE}/sandboxes/${sandboxId}/pause`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': e2bApiKey, 'Content-Type': 'application/json' },
+    })
+    if (!resp.ok) {
+        const body = await resp.text().catch(() => '')
+        throw new Error(`E2B pause ${resp.status}: ${body.substring(0, 200)}`)
+    }
+}
+
+// Pause the sandbox and record the session so the thread can resume it. If pausing fails,
+// fall back to killing it and clearing the session (next run starts fresh).
+async function persistVmSession(sessionRef, sandbox, vmJob, e2bApiKey) {
+    const sandboxId = sandbox.sandboxId || sandbox.id
+    try {
+        await pauseE2bSandbox(sandboxId, e2bApiKey)
+        await sessionRef.set(
+            {
+                sandboxId,
+                agent: vmJob.agent || DEFAULT_AGENT,
+                projectId: vmJob.projectId,
+                objectId: vmJob.objectId,
+                status: 'paused',
+                lastUsedAt: Date.now(),
+            },
+            { merge: true }
+        )
+        console.log('🖥️ VM JOB: session paused + saved', { correlationId: vmJob.correlationId, sandboxId })
+    } catch (error) {
+        console.warn('🖥️ VM JOB: pause failed — killing sandbox, session not saved', {
+            correlationId: vmJob.correlationId,
+            error: error.message,
+        })
+        try {
+            await sandbox.kill()
+        } catch (_) {}
+        await sessionRef.delete().catch(() => {})
+    }
+}
+
+// Scheduled cleanup: delete paused sandboxes (and their session docs) idle longer than the TTL.
+async function cleanupIdleVmSessions() {
+    const { Sandbox } = require('e2b')
+    const e2bApiKey = getEnvFunctions().E2B_API_KEY
+    const cutoff = Date.now() - SESSION_TTL_MS
+    const snap = await admin.firestore().collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
+    console.log('🧹 VM SESSIONS CLEANUP: idle sessions found', { count: snap.size })
+    for (const doc of snap.docs) {
+        const s = doc.data()
+        if (s.sandboxId && e2bApiKey) {
+            try {
+                await Sandbox.kill(s.sandboxId, { apiKey: e2bApiKey })
+            } catch (error) {
+                console.warn('🧹 VM SESSIONS CLEANUP: kill failed', { sandboxId: s.sandboxId, error: error.message })
+            }
+        }
+        await doc.ref.delete().catch(() => {})
+    }
+}
+
 /**
- * Run the selected agent (Claude Code or Codex) headless in a fresh E2B sandbox and
- * return its final output. Parses the agent's JSON event stream to surface live activity:
- * onActivity(text) is called (throttled by the caller) as events arrive.
+ * Run the selected agent (Claude Code or Codex) headless in an E2B sandbox and return its
+ * final output. Resumes the chat thread's paused sandbox if one exists (so the agent
+ * continues with prior files + conversation), else starts fresh. Parses the agent's JSON
+ * event stream to surface live activity via onActivity(text), and pauses the sandbox on
+ * completion so the session can be resumed later.
  */
 async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
     const { Sandbox } = require('e2b')
     const env = getEnvFunctions()
     // Template defaults to E2B's prebuilt name for this agent; the env var is an optional override.
     const template = env[config.templateEnvKey] || process.env[config.templateEnvKey] || config.defaultTemplate
-    const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS }
+    const sessionRef = admin.firestore().doc(`vmSessions/${vmSessionDocId(vmJob)}`)
 
-    console.log('🖥️ VM JOB: creating sandbox', {
-        correlationId: vmJob.correlationId,
-        agent: config.label,
-        template,
-        timeoutMs: MAX_VM_RUNTIME_MS,
-    })
-    const sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
-    console.log('🖥️ VM JOB: sandbox created', {
+    // Resume the thread's paused sandbox (same agent) if there is one; else create fresh.
+    let sandbox = null
+    let isResume = false
+    try {
+        const sessSnap = await sessionRef.get()
+        const sess = sessSnap.exists ? sessSnap.data() : null
+        if (sess && sess.sandboxId && sess.agent === (vmJob.agent || DEFAULT_AGENT)) {
+            try {
+                sandbox = await Sandbox.connect(sess.sandboxId, { apiKey: e2bApiKey })
+                await sandbox.setTimeout(MAX_VM_RUNTIME_MS).catch(() => {})
+                isResume = true
+                console.log('🖥️ VM JOB: resumed session', {
+                    correlationId: vmJob.correlationId,
+                    sandboxId: sess.sandboxId,
+                })
+            } catch (error) {
+                console.warn('🖥️ VM JOB: resume failed, starting fresh', {
+                    correlationId: vmJob.correlationId,
+                    error: error.message,
+                })
+                await sessionRef.delete().catch(() => {})
+            }
+        }
+    } catch (error) {
+        console.warn('🖥️ VM JOB: session lookup failed', { correlationId: vmJob.correlationId, error: error.message })
+    }
+
+    if (!sandbox) {
+        const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS }
+        console.log('🖥️ VM JOB: creating sandbox', {
+            correlationId: vmJob.correlationId,
+            agent: config.label,
+            template,
+            timeoutMs: MAX_VM_RUNTIME_MS,
+        })
+        sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
+    }
+    console.log('🖥️ VM JOB: sandbox ready', {
         correlationId: vmJob.correlationId,
         sandboxId: sandbox.sandboxId || sandbox.id || null,
+        resume: isResume,
     })
 
     try {
@@ -452,9 +576,14 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
         // Run the agent headless. The prompt is passed as a positional argument (NOT piped
         // via stdin — reading stdin can hang non-interactively), and stdin is from /dev/null
         // so any unexpected interactive read gets EOF instead of blocking until the timeout.
-        const command = `cd /home/user && mkdir -p output && ${config.installGuard} && ${config.runCommand}`
+        const command = `cd /home/user && mkdir -p output && ${config.installGuard} && ${config.buildRun(isResume)}`
 
-        console.log('🖥️ VM JOB: running agent command', { correlationId: vmJob.correlationId, agent: config.label })
+        const runStartMs = Date.now()
+        console.log('🖥️ VM JOB: running agent command', {
+            correlationId: vmJob.correlationId,
+            agent: config.label,
+            resume: isResume,
+        })
         let result
         try {
             result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
@@ -494,15 +623,15 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
             const detail = ` exitCode=${result?.exitCode}${stderr ? `: ${stderr.substring(0, 500)}` : ''}`
             throw new Error(`Agent produced no output.${detail}`)
         }
-        // Collect any deliverable files the agent wrote (while the sandbox is still alive).
-        const artifacts = await collectArtifacts(sandbox, vmJob.correlationId)
+        // Collect deliverable files written during THIS run (while the sandbox is still alive).
+        const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
+        // Pause the sandbox + record the session so the thread can resume it later.
+        await persistVmSession(sessionRef, sandbox, vmJob, e2bApiKey)
         return { output, usage: state.usage, artifacts }
-    } finally {
-        try {
-            await sandbox.kill()
-        } catch (error) {
-            console.warn('🖥️ VM JOB: Failed killing sandbox', { error: error.message })
-        }
+    } catch (err) {
+        // Preserve the session on failure too, so prior work in the thread isn't lost.
+        await persistVmSession(sessionRef, sandbox, vmJob, e2bApiKey).catch(() => {})
+        throw err
     }
 }
 
@@ -700,5 +829,6 @@ async function runVmJobByCorrelationId(correlationId) {
 
 module.exports = {
     runVmJobByCorrelationId,
+    cleanupIdleVmSessions,
     MAX_VM_RUNTIME_MS,
 }

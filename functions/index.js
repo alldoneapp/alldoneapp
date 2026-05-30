@@ -2967,6 +2967,20 @@ exports.runVmJob = onTaskDispatched(
     }
 )
 
+// CLEANUP IDLE VM SESSIONS - delete paused E2B sandboxes (and their session docs) idle > TTL
+exports.cleanupIdleVmSessions = onSchedule(
+    {
+        schedule: 'every 6 hours',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { cleanupIdleVmSessions } = require('./Assistant/vmJobRunner')
+        await cleanupIdleVmSessions()
+    }
+)
+
 // CLEANUP EXPIRED WEBHOOK TASKS - Run every 10 minutes
 exports.cleanupExpiredWebhookTasks = onSchedule(
     {
