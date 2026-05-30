@@ -2967,6 +2967,20 @@ exports.runVmJob = onTaskDispatched(
     }
 )
 
+// PAUSE IDLE VM SESSIONS - pause running E2B sandboxes idle past the keep-alive window
+exports.pauseIdleVmSessions = onSchedule(
+    {
+        schedule: 'every 2 minutes',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { pauseIdleVmSessions } = require('./Assistant/vmJobRunner')
+        await pauseIdleVmSessions()
+    }
+)
+
 // CLEANUP IDLE VM SESSIONS - delete paused E2B sandboxes (and their session docs) idle > TTL
 exports.cleanupIdleVmSessions = onSchedule(
     {

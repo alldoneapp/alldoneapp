@@ -16,8 +16,16 @@ const PROGRESS_UPDATE_INTERVAL_MS = 3000
 // chat thread, so the next run in that thread resumes it and the agent continues. Paused
 // sandboxes are deleted after this idle window. (e2b@1.x has no pause() method, so we call
 // the pause REST endpoint directly; resume is Sandbox.connect(), cleanup is Sandbox.kill().)
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days idle
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days idle before a paused session is deleted
 const E2B_API_BASE = 'https://api.e2b.dev'
+
+// Keep-alive: after a run we leave the sandbox RUNNING (not paused) for a grace window so
+// back-to-back tasks in a thread hit a live VM (instant, no resume). The `pauseIdleVmSessions`
+// scheduler pauses sessions idle longer than the grace window. The sandbox's own self-kill
+// timeout is set comfortably ABOVE the grace window + scheduler interval so the pauser always
+// pauses (preserving state) before E2B would kill the idle VM.
+const KEEP_ALIVE_GRACE_MS = 10 * 60 * 1000 // pause after 10 min idle
+const KEEP_ALIVE_KILL_MS = 15 * 60 * 1000 // sandbox self-kill timeout (> grace + 2-min pauser interval)
 
 // Per-task-type guidance prepended to the agent's objective.
 const TASK_TYPE_PROFILES = {
@@ -427,33 +435,67 @@ async function pauseE2bSandbox(sandboxId, e2bApiKey) {
     }
 }
 
-// Pause the sandbox and record the session so the thread can resume it. If pausing fails,
-// fall back to killing it and clearing the session (next run starts fresh).
-async function persistVmSession(sessionRef, sandbox, vmJob, e2bApiKey) {
+// After a run, KEEP the sandbox running for the keep-alive grace window (so back-to-back
+// tasks hit a live VM) and record the session as 'running'. The scheduled pauser pauses it
+// once idle. If keep-alive can't be set, fall back to pausing now; if that also fails, kill.
+async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey) {
     const sandboxId = sandbox.sandboxId || sandbox.id
+    const baseDoc = {
+        sandboxId,
+        agent: vmJob.agent || DEFAULT_AGENT,
+        projectId: vmJob.projectId,
+        objectId: vmJob.objectId,
+        lastUsedAt: Date.now(),
+    }
     try {
-        await pauseE2bSandbox(sandboxId, e2bApiKey)
-        await sessionRef.set(
-            {
-                sandboxId,
-                agent: vmJob.agent || DEFAULT_AGENT,
-                projectId: vmJob.projectId,
-                objectId: vmJob.objectId,
-                status: 'paused',
-                lastUsedAt: Date.now(),
-            },
-            { merge: true }
-        )
-        console.log('🖥️ VM JOB: session paused + saved', { correlationId: vmJob.correlationId, sandboxId })
+        await sandbox.setTimeout(KEEP_ALIVE_KILL_MS) // stays alive ~15 min unless reused/paused
+        await sessionRef.set({ ...baseDoc, status: 'running' }, { merge: true })
+        console.log('🖥️ VM JOB: session kept alive (running)', {
+            correlationId: vmJob.correlationId,
+            sandboxId,
+            graceMs: KEEP_ALIVE_GRACE_MS,
+        })
     } catch (error) {
-        console.warn('🖥️ VM JOB: pause failed — killing sandbox, session not saved', {
+        console.warn('🖥️ VM JOB: keep-alive failed — pausing instead', {
             correlationId: vmJob.correlationId,
             error: error.message,
         })
         try {
-            await sandbox.kill()
-        } catch (_) {}
-        await sessionRef.delete().catch(() => {})
+            await pauseE2bSandbox(sandboxId, e2bApiKey)
+            await sessionRef.set({ ...baseDoc, status: 'paused' }, { merge: true })
+        } catch (e2) {
+            try {
+                await sandbox.kill()
+            } catch (_) {}
+            await sessionRef.delete().catch(() => {})
+        }
+    }
+}
+
+// Scheduled pauser: pause running sandboxes that have been idle past the keep-alive window,
+// so we stop paying compute while preserving state for a later resume.
+async function pauseIdleVmSessions() {
+    const e2bApiKey = getEnvFunctions().E2B_API_KEY
+    if (!e2bApiKey) return
+    const cutoff = Date.now() - KEEP_ALIVE_GRACE_MS
+    // Single-field query (no composite index); filter to running in code.
+    const snap = await admin.firestore().collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
+    const running = snap.docs.filter(d => (d.data().status || 'paused') === 'running' && d.data().sandboxId)
+    console.log('💤 VM SESSIONS PAUSER: idle running sessions', { count: running.length })
+    for (const doc of running) {
+        const s = doc.data()
+        try {
+            await pauseE2bSandbox(s.sandboxId, e2bApiKey)
+            await doc.ref.set({ status: 'paused', pausedAt: Date.now() }, { merge: true })
+            console.log('💤 VM SESSIONS PAUSER: paused', { sandboxId: s.sandboxId })
+        } catch (error) {
+            // Likely already killed (kill timeout) — clear so the thread starts fresh next time.
+            console.warn('💤 VM SESSIONS PAUSER: pause failed, clearing session', {
+                sandboxId: s.sandboxId,
+                error: error.message,
+            })
+            await doc.ref.delete().catch(() => {})
+        }
     }
 }
 
@@ -625,12 +667,12 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity) {
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
-        // Pause the sandbox + record the session so the thread can resume it later.
-        await persistVmSession(sessionRef, sandbox, vmJob, e2bApiKey)
+        // Keep the sandbox alive (grace window) + record the session so the thread can resume it.
+        await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey)
         return { output, usage: state.usage, artifacts }
     } catch (err) {
         // Preserve the session on failure too, so prior work in the thread isn't lost.
-        await persistVmSession(sessionRef, sandbox, vmJob, e2bApiKey).catch(() => {})
+        await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey).catch(() => {})
         throw err
     }
 }
@@ -829,6 +871,7 @@ async function runVmJobByCorrelationId(correlationId) {
 
 module.exports = {
     runVmJobByCorrelationId,
+    pauseIdleVmSessions,
     cleanupIdleVmSessions,
     MAX_VM_RUNTIME_MS,
 }
