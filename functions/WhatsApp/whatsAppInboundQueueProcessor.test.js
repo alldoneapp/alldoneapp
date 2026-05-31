@@ -77,6 +77,7 @@ describe('WhatsApp inbound queue processor', () => {
             expect.objectContaining({
                 skipCurrentMessageAppend: true,
                 messageId: 'comment-2',
+                whatsappFromNumber: 'whatsapp:+123',
             })
         )
 

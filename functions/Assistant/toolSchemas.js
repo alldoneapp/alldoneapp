@@ -1758,7 +1758,8 @@ const toolSchemas = {
                 'code prototype, or pulling and analyzing data. This is asynchronous: the tool returns immediately with a "started" ' +
                 'status, the VM works on its own, and the finished result is posted back into this conversation when it is ready. ' +
                 'Do NOT use this for quick answers, simple lookups, or anything the other tools already cover — it is slower and costs Gold. ' +
-                'Give a clear, self-contained objective; the VM does not have access to the app, only to the context you pass and the public internet.',
+                'Give a clear, self-contained objective; the VM does not have access to the app, only to the context you pass and the public internet. ' +
+                'Do not ask the VM to create an output file for a normal text answer; files should only be created when the user requested an artifact or the work genuinely produces one.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1778,7 +1779,7 @@ const toolSchemas = {
                             '"prototype" = write code or build a small app/prototype; "data" = pull/scrape, clean and analyze data. ' +
                             'Use "prototype" for changes to the project\'s codebase: if a GitLab or GitHub repository is connected to this ' +
                             'project and the requesting user has linked their token, a "prototype" task runs inside a checkout of that repo ' +
-                            'and opens a Merge Request (GitLab) / Pull Request (GitHub) with its changes (the link is posted back into the chat).',
+                            'and opens a Merge Request (GitLab) / Pull Request (GitHub) only when it actually changes repository files.',
                     },
                     agent: {
                         type: 'string',
@@ -1799,7 +1800,8 @@ const toolSchemas = {
                         type: 'string',
                         description:
                             'Optional. A short description of the expected output format (e.g. "a 1-page markdown summary", ' +
-                            '"an .xlsx with one row per competitor", "a working single-file HTML prototype").',
+                            '"an .xlsx with one row per competitor", "a working single-file HTML prototype"). ' +
+                            'For a plain written answer, describe the chat response format instead of requesting a file.',
                     },
                 },
                 required: ['objective', 'task_type'],

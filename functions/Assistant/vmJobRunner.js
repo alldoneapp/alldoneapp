@@ -309,35 +309,38 @@ function buildAgentPrompt(vmJob, gitContext = null) {
             '# Connected Git repository',
             `You are working inside a Git checkout of the project's connected ${providerName} repository at ${REPO_DIR} ` +
                 `(already cloned and authenticated, with the base branch "${base}" checked out). This is your working directory — make your code changes there.`,
-            `When your work is ready, deliver it as a ${providerName} ${reqName}. Do NOT push to the base branch directly:`,
+            `Only deliver the work as a ${providerName} ${reqName} when you actually changed repository files. Do NOT push to the base branch directly:`,
             `1. Create a new branch off "${base}": git checkout -b ai/<short-descriptive-slug>`,
-            '2. Make your edits and commit them with clear, conventional commit messages.'
+            '2. Make your edits.',
+            '3. Before committing, run git status --short and/or git diff --quiet. If there is no repository diff, do NOT commit, push, or open a Pull/Merge Request; just explain the answer or why no code change was needed in your final message.',
+            '4. If there are actual repository changes, commit them with clear, conventional commit messages.'
         )
         if (isGithub) {
             parts.push(
-                '3. Push the branch: git push -u origin HEAD',
-                `4. Open the Pull Request with the GitHub CLI (already authenticated via $GH_TOKEN): gh pr create --base ${base} --head <your-branch> --title "<concise title>" --body "<summary of the change>"`,
+                '5. Push the branch: git push -u origin HEAD',
+                `6. Open the Pull Request with the GitHub CLI (already authenticated via $GH_TOKEN): gh pr create --base ${base} --head <your-branch> --title "<concise title>" --body "<summary of the change>"`,
                 '   The gh command prints the Pull Request URL. If gh is not installed, instead POST to the GitHub REST API with curl: ' +
                     `curl -sS -X POST "$GH_API/repos/$GH_REPO/pulls" -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -d '{"title":"<title>","head":"<your-branch>","base":"${base}","body":"<summary>"}'  (read the "html_url" field from the JSON response).`,
-                '5. Copy the Pull Request URL into your final message so the user can review it.'
+                '7. Copy the Pull Request URL into your final message so the user can review it.'
             )
         } else {
             parts.push(
-                '3. Push the branch AND open the Merge Request in a single command:',
+                '5. Push the branch AND open the Merge Request in a single command:',
                 `   git push -u origin HEAD -o merge_request.create -o merge_request.target=${base} -o merge_request.title="<concise title>" -o merge_request.remove_source_branch`,
-                '4. GitLab prints the Merge Request URL on stderr right after the push — copy that URL into your final message so the user can review it.'
+                '6. GitLab prints the Merge Request URL on stderr right after the push — copy that URL into your final message so the user can review it.'
             )
         }
         parts.push(
             'Authentication is already configured via a git credential helper. Do NOT change git remotes, credentials, or config, and never print, echo, or commit any tokens. ' +
                 `If a direct push to the base branch is rejected because it is protected, that is expected — open a ${reqName} instead.`,
-            `Your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why).`
+            `If you made repository changes, your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why). If you made no repository changes, your final message MUST say that no ${reqName} was opened because no code change was needed.`
         )
     }
     parts.push(
         '',
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
-        'IMPORTANT: If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.'
+        'IMPORTANT: Do not create an output file just to return a normal text/chat answer. Put the answer directly in your final message unless the user asked for a file or you genuinely produced an artifact.',
+        'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.'
     )
     return parts.join('\n')
 }
@@ -1022,6 +1025,99 @@ async function chargeVmTopup(pendingWebhook, vmJob, { topup, minutes, totalToken
     }
 }
 
+function isWhatsAppTriggeredVmJob(pendingWebhook) {
+    return (
+        pendingWebhook?.triggerChannel === 'whatsapp' &&
+        typeof pendingWebhook?.whatsappTo === 'string' &&
+        pendingWebhook.whatsappTo.trim().length > 0
+    )
+}
+
+function buildWhatsAppVmResultMessage(output, { artifactCount = 0 } = {}) {
+    const message = String(output || '').trim() || 'The VM task completed.'
+    if (!artifactCount) return message
+
+    const suffix =
+        artifactCount === 1
+            ? 'Generated file is attached in the Alldone thread.'
+            : 'Generated files are attached in the Alldone thread.'
+    return `${message}\n\n${suffix}`
+}
+
+async function sendWhatsAppVmResultNotification(
+    pendingWebhook,
+    output,
+    { artifactCount = 0, pendingRef = null, notificationType = 'completed' } = {}
+) {
+    if (!isWhatsAppTriggeredVmJob(pendingWebhook)) return null
+
+    const attemptedAt = Date.now()
+    const baseLog = {
+        correlationId: pendingWebhook.correlationId,
+        projectId: pendingWebhook.projectId,
+        objectId: pendingWebhook.objectId,
+        objectType: pendingWebhook.objectType || 'tasks',
+        notificationType,
+    }
+
+    try {
+        const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
+        const whatsappService = new TwilioWhatsAppService()
+        const message = buildWhatsAppVmResultMessage(output, { artifactCount })
+        const result = await whatsappService.sendWhatsAppMessageWithConversationLink(
+            pendingWebhook.whatsappTo,
+            message,
+            {
+                projectId: pendingWebhook.projectId,
+                objectId: pendingWebhook.objectId,
+                objectType: pendingWebhook.objectType || 'tasks',
+            }
+        )
+
+        const notificationData = {
+            type: notificationType,
+            attemptedAt,
+            success: result?.success === true,
+            sid: result?.sid || null,
+            status: result?.status || null,
+            error: result?.success === true ? null : result?.error || result?.message || 'WhatsApp send failed',
+        }
+        if (pendingRef) {
+            await pendingRef.update({ whatsappNotification: notificationData }).catch(() => {})
+        }
+
+        if (notificationData.success) {
+            console.log('🖥️ VM JOB: WhatsApp result notification sent', {
+                ...baseLog,
+                sid: notificationData.sid,
+            })
+        } else {
+            console.warn('🖥️ VM JOB: WhatsApp result notification failed', {
+                ...baseLog,
+                error: notificationData.error,
+            })
+        }
+        return notificationData
+    } catch (error) {
+        const notificationData = {
+            type: notificationType,
+            attemptedAt,
+            success: false,
+            sid: null,
+            status: null,
+            error: error.message,
+        }
+        if (pendingRef) {
+            await pendingRef.update({ whatsappNotification: notificationData }).catch(() => {})
+        }
+        console.warn('🖥️ VM JOB: WhatsApp result notification errored', {
+            ...baseLog,
+            error: error.message,
+        })
+        return notificationData
+    }
+}
+
 /**
  * Worker entry point: run a queued VM job to completion and post the result back
  * into the conversation. Invoked by the runVmJob onTaskDispatched function.
@@ -1054,7 +1150,12 @@ async function runVmJobByCorrelationId(correlationId) {
     const apiKey = env[config.apiKeyField]
     if (!apiKey || !e2bApiKey) {
         const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
-        await writeStatusComment(pendingWebhook, `❌ ${message}`)
+        const failureText = `❌ ${message}`
+        await writeStatusComment(pendingWebhook, failureText)
+        await sendWhatsAppVmResultNotification(pendingWebhook, failureText, {
+            pendingRef,
+            notificationType: 'failed',
+        })
         await pendingRef.update({ status: 'failed', error: message, failedAt: Date.now() }).catch(() => {})
         await refundVmJob(pendingWebhook, 'Missing sandbox credentials')
         return
@@ -1110,6 +1211,11 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
+        await sendWhatsAppVmResultNotification(pendingWebhook, output, {
+            artifactCount: mediaContext.length,
+            pendingRef,
+            notificationType: 'completed',
+        })
 
         // Metered Gold top-up from actual usage: per-minute (VM compute) + per-token (LLM).
         const runtimeMs = Date.now() - (vmJob.createdAt || Date.now())
@@ -1140,7 +1246,12 @@ async function runVmJobByCorrelationId(correlationId) {
     } catch (error) {
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
         const message = `The VM task could not be completed: ${error.message}`
-        await writeStatusComment(pendingWebhook, `❌ ${message}`)
+        const failureText = `❌ ${message}`
+        await writeStatusComment(pendingWebhook, failureText)
+        await sendWhatsAppVmResultNotification(pendingWebhook, failureText, {
+            pendingRef,
+            notificationType: 'failed',
+        })
         await pendingRef.update({ status: 'failed', error: error.message, failedAt: Date.now() }).catch(() => {})
         await refundVmJob(pendingWebhook, 'VM task failed during execution')
     }
@@ -1151,4 +1262,10 @@ module.exports = {
     pauseIdleVmSessions,
     cleanupIdleVmSessions,
     MAX_VM_RUNTIME_MS,
+    __private__: {
+        buildAgentPrompt,
+        buildWhatsAppVmResultMessage,
+        isWhatsAppTriggeredVmJob,
+        sendWhatsAppVmResultNotification,
+    },
 }

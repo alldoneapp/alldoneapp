@@ -132,6 +132,8 @@ async function startVmJob({
     objectId,
     assistantId,
     requestUserId,
+    triggerChannel = '',
+    whatsappTo = '',
 }) {
     if (!objective || typeof objective !== 'string' || !objective.trim()) {
         return { success: false, message: 'A non-empty objective is required to run a task in a VM.' }
@@ -212,25 +214,29 @@ async function startVmJob({
     const packagedContext = await packageContextObjects(projectId, contextIds)
 
     // Job status record (also reaped by cleanupExpiredWebhooks if it ever overruns).
-    await admin
-        .firestore()
-        .doc(`pendingWebhooks/${correlationId}`)
-        .set({
-            correlationId,
-            kind: 'vm_job',
-            userId: requestUserId,
-            projectId,
-            objectId,
-            objectType,
-            assistantId,
-            userIdsToNotify,
-            isPublicFor,
-            statusCommentId,
-            goldCharged: VM_JOB_BASE_GOLD,
-            status: 'pending',
-            createdAt: Date.now(),
-            expiresAt: Date.now() + VM_JOB_EXPIRY_MS,
-        })
+    const pendingWebhookPayload = {
+        correlationId,
+        kind: 'vm_job',
+        userId: requestUserId,
+        projectId,
+        objectId,
+        objectType,
+        assistantId,
+        userIdsToNotify,
+        isPublicFor,
+        statusCommentId,
+        goldCharged: VM_JOB_BASE_GOLD,
+        status: 'pending',
+        createdAt: Date.now(),
+        expiresAt: Date.now() + VM_JOB_EXPIRY_MS,
+    }
+    const normalizedWhatsappTo = typeof whatsappTo === 'string' ? whatsappTo.trim() : ''
+    if (triggerChannel === 'whatsapp' && normalizedWhatsappTo) {
+        pendingWebhookPayload.triggerChannel = 'whatsapp'
+        pendingWebhookPayload.whatsappTo = normalizedWhatsappTo
+    }
+
+    await admin.firestore().doc(`pendingWebhooks/${correlationId}`).set(pendingWebhookPayload)
 
     // Larger payload (objective + context) kept out of the status record.
     await admin

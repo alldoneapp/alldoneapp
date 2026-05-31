@@ -126,6 +126,7 @@ async function processBatchForUser(userId, batch) {
                 assistantId,
                 chatId,
                 messageSids,
+                whatsappFromNumber: fromNumber,
             }
         )
         markBatchStage('processWhatsAppAssistantMessage', aiStart, {
@@ -246,6 +247,7 @@ async function processWhatsAppAssistantMessageWithRetry(
                 {
                     skipCurrentMessageAppend: true,
                     messageId: triggeringMessageId,
+                    whatsappFromNumber: logContext.whatsappFromNumber || logContext.fromNumber || '',
                 }
             )
         } catch (error) {

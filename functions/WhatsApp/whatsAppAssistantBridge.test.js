@@ -134,7 +134,7 @@ describe('WhatsApp assistant attachment handoff', () => {
             'Please send this invoice',
             'assistant-1',
             null,
-            { skipCurrentMessageAppend: true, messageId: 'comment-123' }
+            { skipCurrentMessageAppend: true, messageId: 'comment-123', whatsappFromNumber: 'whatsapp:+123' }
         )
 
         expect(response).toBe('Done.')
@@ -150,6 +150,8 @@ describe('WhatsApp assistant attachment handoff', () => {
                 objectType: 'topics',
                 objectId: 'chat-1',
                 messageId: 'comment-123',
+                sourceChannel: 'whatsapp',
+                whatsappFromNumber: 'whatsapp:+123',
             })
         )
         expect(storeAssistantMessageInTopic).toHaveBeenCalled()

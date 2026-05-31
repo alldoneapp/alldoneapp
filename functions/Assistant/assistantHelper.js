@@ -7021,6 +7021,11 @@ async function executeToolNatively(
                     objectId: toolRuntimeContext?.objectId,
                     assistantId,
                     requestUserId: requestUserId || creatorId,
+                    triggerChannel: toolRuntimeContext?.sourceChannel === 'whatsapp' ? 'whatsapp' : '',
+                    whatsappTo:
+                        toolRuntimeContext?.sourceChannel === 'whatsapp'
+                            ? toolRuntimeContext?.whatsappFromNumber || ''
+                            : '',
                 })
             } catch (error) {
                 console.error('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed to start VM job', {

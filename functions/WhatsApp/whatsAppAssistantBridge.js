@@ -76,6 +76,7 @@ async function processWhatsAppAssistantMessage(
 
     const { model, temperature, instructions, displayName, allowedTools: rawTools } = assistant
     const allowedTools = Array.isArray(rawTools) ? rawTools : []
+    const whatsappFromNumber = typeof options?.whatsappFromNumber === 'string' ? options.whatsappFromNumber.trim() : ''
     console.log('WhatsApp Assistant: Runtime tools loaded', {
         projectId,
         requestedAssistantId: assistantId || null,
@@ -90,6 +91,8 @@ async function processWhatsAppAssistantMessage(
         objectType: 'topics',
         objectId: chatId,
         messageId: typeof options?.messageId === 'string' ? options.messageId.trim() : '',
+        sourceChannel: 'whatsapp',
+        whatsappFromNumber,
     }
 
     // Extract user timezone
