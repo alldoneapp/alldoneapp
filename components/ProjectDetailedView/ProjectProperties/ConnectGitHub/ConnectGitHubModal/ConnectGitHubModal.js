@@ -77,7 +77,7 @@ export default function ConnectGitHubModal({ project, closePopover, onConnection
             setConnection({ connected: true, username: result.username, canPush: result.canPush })
             setBaseBranch(result.defaultBranch || baseBranch)
             setSuccess(result.warning || translate('GitHub repository connected.'))
-            if (onConnectionChange) onConnectionChange()
+            if (onConnectionChange) onConnectionChange({ connected: true, repoUrl: repoUrl.trim() })
         } catch (e) {
             setError((e && e.message) || translate('Could not connect the GitHub repository.'))
         } finally {
@@ -94,7 +94,7 @@ export default function ConnectGitHubModal({ project, closePopover, onConnection
             setConnection(null)
             setToken('')
             setSuccess(translate('Your GitHub token was removed from this project.'))
-            if (onConnectionChange) onConnectionChange()
+            if (onConnectionChange) onConnectionChange({ connected: false })
         } catch (e) {
             setError((e && e.message) || translate('Could not disconnect GitHub.'))
         } finally {

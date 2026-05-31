@@ -3782,6 +3782,15 @@ export function mapProjectData(projectId, project, customData) {
         autoEstimation: project.autoEstimation === false ? false : true,
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         contactStatuses: project.contactStatuses ? project.contactStatuses : {},
+        gitlabRepoUrl: project.gitlabRepoUrl ? project.gitlabRepoUrl : '',
+        gitlabBaseBranch: project.gitlabBaseBranch ? project.gitlabBaseBranch : '',
+        gitlabHost: project.gitlabHost ? project.gitlabHost : '',
+        gitlabConnectedAt: project.gitlabConnectedAt ? project.gitlabConnectedAt : null,
+        githubRepoUrl: project.githubRepoUrl ? project.githubRepoUrl : '',
+        githubBaseBranch: project.githubBaseBranch ? project.githubBaseBranch : '',
+        githubHost: project.githubHost ? project.githubHost : '',
+        githubApiBase: project.githubApiBase ? project.githubApiBase : '',
+        githubConnectedAt: project.githubConnectedAt ? project.githubConnectedAt : null,
         ...customData,
     }
 }

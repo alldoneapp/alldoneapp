@@ -16,17 +16,26 @@ export default function ConnectGitLabProperty({ project, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
     const [hasToken, setHasToken] = useState(false)
+    const [repoUrl, setRepoUrl] = useState(project.gitlabRepoUrl || '')
 
-    const repoConnected = !!(project.gitlabRepoUrl && project.gitlabRepoUrl.trim())
+    const repoConnected = !!(repoUrl && repoUrl.trim())
     const connected = repoConnected && hasToken
 
-    const refreshConnection = () => {
+    const refreshConnection = connectionUpdate => {
+        if (connectionUpdate) {
+            if ('repoUrl' in connectionUpdate) setRepoUrl(connectionUpdate.repoUrl || '')
+            if ('connected' in connectionUpdate) setHasToken(!!connectionUpdate.connected)
+        }
         getGitlabUserConnection(projectId, userId).then(c => setHasToken(!!(c && c.connected)))
     }
 
     useEffect(() => {
         refreshConnection()
     }, [projectId, userId])
+
+    useEffect(() => {
+        setRepoUrl(project.gitlabRepoUrl || '')
+    }, [project.gitlabRepoUrl])
 
     const openModal = () => {
         if (isOpenRef.current) return

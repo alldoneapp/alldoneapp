@@ -16,17 +16,26 @@ export default function ConnectGitHubProperty({ project, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
     const [hasToken, setHasToken] = useState(false)
+    const [repoUrl, setRepoUrl] = useState(project.githubRepoUrl || '')
 
-    const repoConnected = !!(project.githubRepoUrl && project.githubRepoUrl.trim())
+    const repoConnected = !!(repoUrl && repoUrl.trim())
     const connected = repoConnected && hasToken
 
-    const refreshConnection = () => {
+    const refreshConnection = connectionUpdate => {
+        if (connectionUpdate) {
+            if ('repoUrl' in connectionUpdate) setRepoUrl(connectionUpdate.repoUrl || '')
+            if ('connected' in connectionUpdate) setHasToken(!!connectionUpdate.connected)
+        }
         getGithubUserConnection(projectId, userId).then(c => setHasToken(!!(c && c.connected)))
     }
 
     useEffect(() => {
         refreshConnection()
     }, [projectId, userId])
+
+    useEffect(() => {
+        setRepoUrl(project.githubRepoUrl || '')
+    }, [project.githubRepoUrl])
 
     const openModal = () => {
         if (isOpenRef.current) return
