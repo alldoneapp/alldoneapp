@@ -1,6 +1,12 @@
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { VM_JOB_GOLD_SOURCE, VM_JOB_GOLD_REFUND_SOURCE, VM_GOLD_PER_MINUTE, VM_TOKENS_PER_GOLD } = require('./vmJob')
+const {
+    VM_JOB_GOLD_SOURCE,
+    VM_JOB_GOLD_REFUND_SOURCE,
+    VM_GOLD_PER_MINUTE,
+    VM_TOKENS_PER_GOLD,
+    getAgentLabel,
+} = require('./vmJob')
 
 // Hard ceiling on a single VM run. The worker is an onTaskDispatched function capped
 // at 30 min total (timeoutSeconds 1800 = the Cloud Tasks dispatch-deadline max). We cap
@@ -291,6 +297,10 @@ async function writeStatusComment(pendingWebhook, text, { isFinal = false, outpu
     }
     if (isFinal && output != null) {
         commentPayload.webhookData = { output, correlationId: pendingWebhook.correlationId, kind: 'vm_job' }
+        // The live VM status comment is created before the assistant's "started" reply.
+        // When it becomes the final answer, move it to completion time so chronological
+        // chat views show: user request -> VM started confirmation -> VM result.
+        commentPayload.created = Date.now()
     }
 
     try {
@@ -646,8 +656,12 @@ function appendCodexActivity(evt, state) {
     }
 }
 
-function renderActivityLog(lines) {
-    return `🖥️ Working in a VM…\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
+function renderVmWorkingHeader(agentLabel) {
+    return `🖥️ Working with ${agentLabel} in a VM…`
+}
+
+function renderActivityLog(lines, agentLabel) {
+    return `${renderVmWorkingHeader(agentLabel)}\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
 }
 
 // Per-agent configuration. The assistant picks the agent per task; we map it to the
@@ -656,6 +670,7 @@ function renderActivityLog(lines) {
 const AGENT_CONFIGS = {
     claude: {
         label: 'Claude Code',
+        displayName: 'Claude',
         defaultTemplate: 'claude',
         templateEnvKey: 'E2B_CLAUDE_TEMPLATE',
         apiKeyField: 'ANTHROPIC_API_KEY',
@@ -677,15 +692,19 @@ const AGENT_CONFIGS = {
     },
     codex: {
         label: 'Codex',
+        displayName: 'Codex',
         defaultTemplate: 'codex',
         templateEnvKey: 'E2B_CODEX_TEMPLATE',
         apiKeyField: 'OPEN_AI_KEY', // reuse the existing OpenAI key
         installGuard: '(command -v codex >/dev/null 2>&1 || npm install -g @openai/codex >/dev/null 2>&1)',
         // On resume, `codex exec resume --last` continues the most recent thread.
+        // Codex has its own command sandbox inside the E2B sandbox. `--full-auto` maps to
+        // workspace-write and does not grant outbound network by itself, so enable network
+        // explicitly for package installs, git push, and PR creation.
         buildRun: isResume =>
             isResume
-                ? `codex exec resume --last --full-auto --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
-                : `codex exec --full-auto --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
+                ? `codex exec resume --last --ask-for-approval never --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
+                : `codex exec --ask-for-approval never --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
         sandboxEnv: apiKey => ({
             CODEX_API_KEY: apiKey,
             OPENAI_API_KEY: apiKey,
@@ -824,6 +843,7 @@ async function cleanupIdleVmSessions() {
 async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, gitContext = null) {
     const { Sandbox } = require('e2b')
     const env = getEnvFunctions()
+    const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Template defaults to E2B's prebuilt name for this agent; the env var is an optional override.
     const template = env[config.templateEnvKey] || process.env[config.templateEnvKey] || config.defaultTemplate
     const sessionRef = admin.firestore().doc(`vmSessions/${vmSessionDocId(vmJob)}`)
@@ -886,11 +906,15 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
         // Clone/refresh the connected GitLab repo and configure auth before the agent runs.
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
-                onActivity(`🖥️ Working in a VM…\n\n📥 ${isResume ? 'Refreshing' : 'Cloning'} the connected repository…`)
+                onActivity(
+                    `${renderVmWorkingHeader(agentLabel)}\n\n📥 ${
+                        isResume ? 'Refreshing' : 'Cloning'
+                    } the connected repository…`
+                )
             }
             await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
             if (typeof onActivity === 'function') {
-                onActivity('🖥️ Working in a VM…\n\n📦 Installing repository dependencies when needed…')
+                onActivity(`${renderVmWorkingHeader(agentLabel)}\n\n📦 Installing repository dependencies when needed…`)
             }
             await setupRepoDependencies(sandbox, vmJob.correlationId)
         }
@@ -914,7 +938,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity))
+                onActivity(renderActivityLog(state.activity, agentLabel))
             }
         }
         const handleStdout = data => {
@@ -1216,6 +1240,7 @@ async function runVmJobByCorrelationId(correlationId) {
     const e2bApiKey = env.E2B_API_KEY
     // Resolve the agent the assistant chose (defaults to Claude) and its config.
     const config = AGENT_CONFIGS[vmJob.agent] || AGENT_CONFIGS[DEFAULT_AGENT]
+    const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     const apiKey = env[config.apiKeyField]
     if (!apiKey || !e2bApiKey) {
         const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
@@ -1259,7 +1284,7 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     try {
-        await writeStatusComment(pendingWebhook, `🖥️ Working in a VM (${config.label})…`)
+        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel))
         const { output, usage, artifacts } = await runAgentInSandbox(
             vmJob,
             config,
@@ -1333,6 +1358,8 @@ module.exports = {
     MAX_VM_RUNTIME_MS,
     __private__: {
         buildAgentPrompt,
+        renderActivityLog,
+        renderVmWorkingHeader,
         buildWhatsAppVmResultMessage,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,

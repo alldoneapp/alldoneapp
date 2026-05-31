@@ -15,6 +15,7 @@ jest.mock('./vmJob', () => ({
     VM_JOB_GOLD_REFUND_SOURCE: 'vm_execution_refund',
     VM_GOLD_PER_MINUTE: 1,
     VM_TOKENS_PER_GOLD: 100,
+    getAgentLabel: jest.fn(agent => (agent === 'codex' ? 'Codex' : 'Claude')),
 }))
 
 jest.mock('../Services/TwilioWhatsAppService', () =>
@@ -73,6 +74,13 @@ describe('VM runner prompt', () => {
         expect(prompt).toContain('If there is no repository diff, do NOT commit, push, or open a Pull/Merge Request')
         expect(prompt).toContain(
             'If you made no repository changes, your final message MUST say that no Merge Request was opened'
+        )
+    })
+
+    test('renders live activity with the selected VM agent', () => {
+        expect(__private__.renderVmWorkingHeader('Codex')).toBe('🖥️ Working with Codex in a VM…')
+        expect(__private__.renderActivityLog(['💻 npm run lint'], 'Claude')).toContain(
+            '🖥️ Working with Claude in a VM…'
         )
     })
 })

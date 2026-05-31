@@ -32,6 +32,14 @@ const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const VALID_AGENTS = ['claude', 'codex']
 const DEFAULT_AGENT = 'claude'
+const AGENT_LABELS = {
+    claude: 'Claude',
+    codex: 'Codex',
+}
+
+function getAgentLabel(agent) {
+    return AGENT_LABELS[agent] || AGENT_LABELS[DEFAULT_AGENT]
+}
 
 /**
  * Build the fully-qualified Cloud Tasks queue resource for the worker function so
@@ -145,6 +153,7 @@ async function startVmJob({
         }
     }
     const selectedAgent = VALID_AGENTS.includes(agent) ? agent : DEFAULT_AGENT
+    const selectedAgentLabel = getAgentLabel(selectedAgent)
     if (!projectId || !objectId) {
         return {
             success: false,
@@ -200,7 +209,7 @@ async function startVmJob({
             objectType,
             objectId,
             assistantId,
-            '🖥️ Spinning up a VM to work on this…',
+            `🖥️ Spinning up ${selectedAgentLabel} in a VM to work on this…`,
             userIdsToNotify,
             isPublicFor,
             [requestUserId]
@@ -278,7 +287,7 @@ async function startVmJob({
             .doc(`pendingWebhooks/${correlationId}`)
             .update({ status: 'failed', error: error.message, failedAt: Date.now() })
             .catch(() => {})
-        // Replace the "Spinning up a VM…" status comment so it doesn't linger and
+        // Replace the initial VM status comment so it doesn't linger and
         // contradict the assistant's failure response.
         if (statusCommentId) {
             const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
@@ -306,7 +315,7 @@ async function startVmJob({
         status: 'started',
         correlationId,
         agent: selectedAgent,
-        message: `VM task started (${selectedAgent}). It will work autonomously and post the finished result back into this conversation when ready.`,
+        message: `VM task started with ${selectedAgentLabel}. It will work autonomously and post the finished result back into this conversation when ready.`,
     }
 }
 
@@ -320,4 +329,5 @@ module.exports = {
     VM_JOB_EXPIRY_MS,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     VALID_TASK_TYPES,
+    getAgentLabel,
 }
