@@ -44,10 +44,9 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
     return acc
 }, {})
 
-// Powerful / billable tools that must be explicitly enabled per assistant. They are
-// excluded from the default permission set so a brand-new assistant cannot spend Gold
-// on a VM run until the owner opts in via the Tools Access UI.
-export const OPT_IN_ONLY_TOOLS = new Set(['execute_task_in_vm'])
+// Powerful / billable tools that must be explicitly enabled per assistant.
+// Currently empty: new assistants receive the full selectable tool set by default.
+export const OPT_IN_ONLY_TOOLS = new Set([])
 
 export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key).filter(key => !OPT_IN_ONLY_TOOLS.has(key))
 

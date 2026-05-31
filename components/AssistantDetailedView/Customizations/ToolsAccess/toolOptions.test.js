@@ -24,14 +24,12 @@ describe('assistant tool options', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })
 
-    test('defaults to every selectable tool except opt-in-only tools', () => {
-        expect(DEFAULT_ALLOWED_TOOLS).toEqual(
-            TOOL_OPTIONS.map(option => option.key).filter(key => key !== 'execute_task_in_vm')
-        )
+    test('defaults to every selectable tool', () => {
+        expect(DEFAULT_ALLOWED_TOOLS).toEqual(TOOL_OPTIONS.map(option => option.key))
     })
 
-    test('does not enable the VM task tool by default', () => {
-        expect(DEFAULT_ALLOWED_TOOLS).not.toContain('execute_task_in_vm')
+    test('enables the VM task tool by default', () => {
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('execute_task_in_vm')
         expect(TOOL_OPTIONS.map(option => option.key)).toContain('execute_task_in_vm')
     })
 })
