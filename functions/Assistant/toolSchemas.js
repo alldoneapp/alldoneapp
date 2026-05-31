@@ -1753,11 +1753,13 @@ const toolSchemas = {
             name: 'execute_task_in_vm',
             description:
                 'Hand off an open-ended, longer-running piece of work to an autonomous agent running in a fresh sandbox VM. ' +
-                'Use this when the request cannot be answered directly in the chat and needs real work done over several minutes — ' +
-                'e.g. deep multi-source research and a written report, generating a document/spreadsheet/slide deck, building a small ' +
-                'code prototype, or pulling and analyzing data. This is asynchronous: the tool returns immediately with a "started" ' +
+                'Always use this when the user wants coding work done: creating or editing code, building a prototype or app, making ' +
+                'a single-file HTML/CSS/JS page, writing scripts, or changing a connected repository. Also use it when the request ' +
+                'cannot be answered directly in the chat and needs real work done over several minutes — e.g. deep multi-source ' +
+                'research and a written report, generating a document/spreadsheet/slide deck, or pulling and analyzing data. ' +
+                'This is asynchronous: the tool returns immediately with a "started" ' +
                 'status, the VM works on its own, and the finished result is posted back into this conversation when it is ready. ' +
-                'Do NOT use this for quick answers, simple lookups, or anything the other tools already cover — it is slower and costs Gold. ' +
+                'Do NOT use this for quick answers, simple lookups, or anything the other tools already cover unless the user is asking for coding work — it is slower and costs Gold. ' +
                 'Give a clear, self-contained objective; the VM does not have access to the app, only to the context you pass and the public internet. ' +
                 'Do not ask the VM to create an output file for a normal text answer; files should only be created when the user requested an artifact or the work genuinely produces one.',
             parameters: {
@@ -1777,7 +1779,7 @@ const toolSchemas = {
                             'Required. The kind of work, which selects the VM tooling profile and system prompt. ' +
                             '"research" = web research and a written report; "document" = produce a formatted document/spreadsheet/slides; ' +
                             '"prototype" = write code or build a small app/prototype; "data" = pull/scrape, clean and analyze data. ' +
-                            'Use "prototype" for changes to the project\'s codebase: if a GitLab or GitHub repository is connected to this ' +
+                            'Always use "prototype" for coding tasks, including simple HTML/CSS/JS pages, scripts, apps, prototypes, and changes to the project\'s codebase. If a GitLab or GitHub repository is connected to this ' +
                             'project and the requesting user has linked their token, a "prototype" task runs inside a checkout of that repo ' +
                             'and opens a Merge Request (GitLab) / Pull Request (GitHub) only when it actually changes repository files.',
                     },

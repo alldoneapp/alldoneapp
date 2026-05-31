@@ -213,6 +213,18 @@ describe('OKR assistant tool schemas', () => {
     })
 })
 
+describe('VM assistant tool schema', () => {
+    test('directs coding work to the VM tool', () => {
+        expect(toolSchemas.execute_task_in_vm.function.description).toContain(
+            'Always use this when the user wants coding work done'
+        )
+        expect(toolSchemas.execute_task_in_vm.function.description).toContain('single-file HTML/CSS/JS page')
+        expect(toolSchemas.execute_task_in_vm.function.parameters.properties.task_type.description).toContain(
+            'Always use "prototype" for coding tasks'
+        )
+    })
+})
+
 describe('Project happiness assistant tool schema', () => {
     test('exposes project happiness read tool when allowed', () => {
         expect(getToolSchemas(['get_project_happiness']).map(schema => schema.function.name)).toEqual([
