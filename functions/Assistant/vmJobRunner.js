@@ -48,6 +48,7 @@ const TASK_TYPE_PROFILES = {
 // paused-session snapshot. The git credential helper we configure stores only a reference to
 // $GIT_TOKEN, not the token itself, so resuming a paused sandbox never leaks it.
 const REPO_DIR = '/home/user/repo'
+const REPO_DEPENDENCY_INSTALL_TIMEOUT_MS = 7 * 60 * 1000
 
 // Static setup script. ALL dynamic values arrive via env vars (so nothing untrusted is
 // interpolated into the script text — no shell injection). The credential helper is
@@ -81,6 +82,40 @@ else
   git checkout "$GIT_BASE_BRANCH" 2>/dev/null || true
 fi
 echo "GIT_SETUP_OK $(git rev-parse --abbrev-ref HEAD)"
+`
+
+// Best-effort dependency install for JavaScript/TypeScript repos. Without this, scripts like
+// `npm run lint` can fail with `eslint: not found` because npm resolves eslint from
+// node_modules/.bin, not from the base VM image. The install is intentionally non-fatal: private
+// registries or large monorepos should not prevent the agent from attempting the requested change.
+const REPO_DEPENDENCY_SETUP_SCRIPT = `set -e
+cd "${REPO_DIR}"
+if [ -d .git/info ]; then
+  grep -qxF "node_modules/" .git/info/exclude 2>/dev/null || printf "\\nnode_modules/\\n" >> .git/info/exclude
+fi
+if [ ! -f package.json ]; then
+  echo "DEPENDENCY_SETUP_SKIPPED no package.json"
+  exit 0
+fi
+if [ -d node_modules ]; then
+  echo "DEPENDENCY_SETUP_SKIPPED node_modules exists"
+  exit 0
+fi
+if command -v corepack >/dev/null 2>&1; then
+  corepack enable >/dev/null 2>&1 || true
+fi
+if [ -f pnpm-lock.yaml ]; then
+  command -v pnpm >/dev/null 2>&1 || npm install -g pnpm >/dev/null 2>&1
+  pnpm install --frozen-lockfile
+elif [ -f yarn.lock ]; then
+  command -v yarn >/dev/null 2>&1 || npm install -g yarn >/dev/null 2>&1
+  yarn install --frozen-lockfile
+elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+  npm ci
+else
+  npm install --no-package-lock
+fi
+echo "DEPENDENCY_SETUP_OK"
 `
 
 // Build the provider-specific context from a project's repo config + a user token doc.
@@ -205,6 +240,34 @@ async function setupGitRepo(sandbox, gitContext, correlationId) {
     })
 }
 
+async function setupRepoDependencies(sandbox, correlationId) {
+    await sandbox.files.write('/home/user/repo-dependencies-setup.sh', REPO_DEPENDENCY_SETUP_SCRIPT)
+    let stderr = ''
+    let stdout = ''
+    try {
+        await sandbox.commands.run('bash /home/user/repo-dependencies-setup.sh', {
+            timeoutMs: REPO_DEPENDENCY_INSTALL_TIMEOUT_MS,
+            onStdout: d => {
+                stdout += d
+            },
+            onStderr: d => {
+                stderr += d
+            },
+        })
+        const status = ((stdout || '').match(/DEPENDENCY_SETUP_(OK|SKIPPED[^\n]*)/) || [])[0] || null
+        console.log('🖥️ VM JOB: repo dependency setup finished', {
+            correlationId,
+            status,
+        })
+    } catch (error) {
+        console.warn('🖥️ VM JOB: repo dependency setup failed; continuing', {
+            correlationId,
+            error: error.message,
+            stderrPreview: stderr ? stderr.substring(0, 500) : '',
+        })
+    }
+}
+
 /**
  * Update the single live status comment in place (created when the job started).
  * Falls back to creating a new comment if no commentId was recorded.
@@ -313,7 +376,8 @@ function buildAgentPrompt(vmJob, gitContext = null) {
             `1. Create a new branch off "${base}": git checkout -b ai/<short-descriptive-slug>`,
             '2. Make your edits.',
             '3. Before committing, run git status --short and/or git diff --quiet. If there is no repository diff, do NOT commit, push, or open a Pull/Merge Request; just explain the answer or why no code change was needed in your final message.',
-            '4. If there are actual repository changes, commit them with clear, conventional commit messages.'
+            '4. If there are actual repository changes, commit them with clear, conventional commit messages.',
+            'The runner has already performed a best-effort dependency install for JavaScript/TypeScript repos. If a lint/test/build script still reports a missing local tool such as eslint, install the repo dependencies with its package manager and rerun the validation before giving up.'
         )
         if (isGithub) {
             parts.push(
@@ -331,6 +395,7 @@ function buildAgentPrompt(vmJob, gitContext = null) {
             )
         }
         parts.push(
+            'If git push, gh pr create, or the REST API call fails with a transient network or DNS error, wait briefly and retry before reporting failure.',
             'Authentication is already configured via a git credential helper. Do NOT change git remotes, credentials, or config, and never print, echo, or commit any tokens. ' +
                 `If a direct push to the base branch is rejected because it is protected, that is expected — open a ${reqName} instead.`,
             `If you made repository changes, your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why). If you made no repository changes, your final message MUST say that no ${reqName} was opened because no code change was needed.`
@@ -776,7 +841,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
                 if (sess.status !== 'running') {
                     await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(MAX_VM_RUNTIME_MS / 1000))
                 }
-                sandbox = await Sandbox.connect(sess.sandboxId, { apiKey: e2bApiKey })
+                sandbox = await Sandbox.connect(sess.sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
                 await sandbox.setTimeout(MAX_VM_RUNTIME_MS).catch(() => {})
                 isResume = true
                 console.log('🖥️ VM JOB: resumed session', {
@@ -797,7 +862,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
     }
 
     if (!sandbox) {
-        const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS }
+        const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS, allowInternetAccess: true }
         console.log('🖥️ VM JOB: creating sandbox', {
             correlationId: vmJob.correlationId,
             agent: config.label,
@@ -824,6 +889,10 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
                 onActivity(`🖥️ Working in a VM…\n\n📥 ${isResume ? 'Refreshing' : 'Cloning'} the connected repository…`)
             }
             await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
+            if (typeof onActivity === 'function') {
+                onActivity('🖥️ Working in a VM…\n\n📦 Installing repository dependencies when needed…')
+            }
+            await setupRepoDependencies(sandbox, vmJob.correlationId)
         }
 
         const state = { activity: [], finalResult: '', assistantText: '', usage: null }

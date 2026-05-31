@@ -56,6 +56,8 @@ describe('VM runner prompt', () => {
         expect(prompt).toContain(
             'If you made no repository changes, your final message MUST say that no Pull Request was opened'
         )
+        expect(prompt).toContain('best-effort dependency install for JavaScript/TypeScript repos')
+        expect(prompt).toContain('retry before reporting failure')
     })
 
     test('only asks for a GitLab merge request when repository files changed', () => {
