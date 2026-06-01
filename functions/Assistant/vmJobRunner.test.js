@@ -265,7 +265,7 @@ describe('VM runner WhatsApp notifications', () => {
         expect(result.success).toBe(true)
         expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledWith(
             'whatsapp:+123',
-            'Final VM result\n\nGenerated file:\nreport.pdf: https://storage.example/report.pdf',
+            'Generated file:\nreport.pdf: https://storage.example/report.pdf\n\nFinal VM result',
             {
                 projectId: 'project-1',
                 objectId: 'chat-1',
@@ -310,11 +310,11 @@ describe('VM runner WhatsApp notifications', () => {
         })
 
         expect(finalTextWithToken).toContain('EbDsQTD14ahtSR5')
-        expect(whatsappMessage).toBe('Final VM result\n\nGenerated file:\nfile.pdf: https://storage.example/file.pdf')
+        expect(whatsappMessage).toBe('Generated file:\nfile.pdf: https://storage.example/file.pdf\n\nFinal VM result')
         expect(whatsappMessage).not.toContain('EbDsQTD14ahtSR5')
     })
 
-    test('lists every artifact download link', () => {
+    test('lists every artifact download link before the answer', () => {
         const whatsappMessage = __private__.buildWhatsAppVmResultMessage('Done', {
             mediaContext: [
                 { fileName: 'a.pdf', storageUrl: 'https://storage.example/a' },
@@ -323,19 +323,18 @@ describe('VM runner WhatsApp notifications', () => {
         })
 
         expect(whatsappMessage).toBe(
-            'Done\n\nGenerated files:\na.pdf: https://storage.example/a\nb.csv: https://storage.example/b'
+            'Generated files:\na.pdf: https://storage.example/a\nb.csv: https://storage.example/b\n\nDone'
         )
     })
 
-    test('keeps the artifact link even when the answer is long', () => {
+    test('leads with the artifact link so it survives WhatsApp tail truncation', () => {
         const longAnswer = 'x'.repeat(2000)
         const whatsappMessage = __private__.buildWhatsAppVmResultMessage(longAnswer, {
             mediaContext: [{ fileName: 'big.pdf', storageUrl: 'https://storage.example/big.pdf' }],
         })
 
-        expect(whatsappMessage.length).toBeLessThanOrEqual(1400)
-        expect(whatsappMessage).toContain('big.pdf: https://storage.example/big.pdf')
-        expect(whatsappMessage).toContain('…')
+        // Link is at the very top; the service trims the answer tail (never the leading link).
+        expect(whatsappMessage.startsWith('Generated file:\nbig.pdf: https://storage.example/big.pdf')).toBe(true)
     })
 
     test('falls back to the plain answer when there are no artifacts', () => {

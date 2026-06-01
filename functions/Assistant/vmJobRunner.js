@@ -1395,15 +1395,14 @@ function isWhatsAppTriggeredVmJob(pendingWebhook) {
     )
 }
 
-// Mirrors MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH in TwilioWhatsAppService. We keep the artifact
-// download links intact by trimming the agent's answer (never the links) so the combined
-// message stays under the cap the service would otherwise truncate from the end.
-const WHATSAPP_PLAIN_MESSAGE_LIMIT = 1400
-
-// Build the WhatsApp result message. When the run produced downloadable artifacts, append each
-// file's public download URL so a WhatsApp-originated request gets the link directly — the
-// chat-only attachment tokens (ATTACHMENT_TRIGGER) can't render in WhatsApp. Falls back to the
-// plain answer for text-only completions and failure notifications (no mediaContext).
+// Build the WhatsApp result message. When the run produced downloadable artifacts, lead with each
+// file's public download URL so a WhatsApp-originated request gets the link first — matching the
+// chat comment (buildVmFinalCommentText also puts artifacts before the answer). The chat-only
+// attachment tokens (ATTACHMENT_TRIGGER) can't render in WhatsApp, so we send the raw URLs.
+// Putting the links first also means they survive the WhatsApp plain-message cap: the service
+// truncates the tail of long messages (and appends a "read full message" thread link), so the
+// answer text is what gets trimmed, never the links. Falls back to the plain answer for
+// text-only completions and failure notifications (no mediaContext).
 function buildWhatsAppVmResultMessage(output, { mediaContext = [] } = {}) {
     const message = String(output || '').trim() || 'The VM task completed.'
     const files = Array.isArray(mediaContext) ? mediaContext.filter(m => m && m.storageUrl) : []
@@ -1411,12 +1410,7 @@ function buildWhatsAppVmResultMessage(output, { mediaContext = [] } = {}) {
 
     const heading = files.length === 1 ? 'Generated file:' : 'Generated files:'
     const links = files.map(m => `${m.fileName || 'file'}: ${m.storageUrl}`).join('\n')
-    const filesSection = `${heading}\n${links}`
-
-    const budget = WHATSAPP_PLAIN_MESSAGE_LIMIT - filesSection.length - 2 // 2 = the joining "\n\n"
-    if (budget <= 0) return filesSection
-    const trimmedMessage = message.length > budget ? `${message.slice(0, budget - 1).trimEnd()}…` : message
-    return `${trimmedMessage}\n\n${filesSection}`
+    return `${heading}\n${links}\n\n${message}`
 }
 
 async function sendWhatsAppVmResultNotification(
