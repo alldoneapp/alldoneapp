@@ -1,4 +1,6 @@
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
+const mockDeductGold = jest.fn()
+const mockRefundGold = jest.fn()
 
 jest.mock('firebase-admin', () => ({
     firestore: jest.fn(() => ({
@@ -23,6 +25,11 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
         sendWhatsAppMessageWithConversationLink: mockSendWhatsAppMessageWithConversationLink,
     }))
 )
+
+jest.mock('../Gold/goldHelper', () => ({
+    deductGold: mockDeductGold,
+    refundGold: mockRefundGold,
+}))
 
 const { __private__ } = require('./vmJobRunner')
 
@@ -81,6 +88,128 @@ describe('VM runner prompt', () => {
         expect(__private__.renderVmWorkingHeader('Codex')).toBe('🖥️ Working with Codex in a VM…')
         expect(__private__.renderActivityLog(['💻 npm run lint'], 'Claude')).toContain(
             '🖥️ Working with Claude in a VM…'
+        )
+    })
+})
+
+describe('VM runner runtime Gold monitor', () => {
+    const pendingWebhook = {
+        correlationId: 'correlation-1',
+        userId: 'user-1',
+        goldCharged: 2,
+        projectId: 'project-1',
+        objectType: 'topics',
+        objectId: 'chat-1',
+    }
+    const vmJob = { agent: 'claude' }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    test('deducts newly accrued runtime Gold while balance remains positive', async () => {
+        const pendingRef = { update: jest.fn(async () => {}) }
+        const commandHandle = { kill: jest.fn(async () => true) }
+        mockDeductGold.mockResolvedValue({ success: true, amount: 1, newBalance: 4 })
+
+        const charged = await __private__.checkAndChargeVmRuntimeGold({
+            pendingWebhook,
+            pendingRef,
+            commandHandle,
+            runStartMs: 0,
+            runtimeGoldCharged: 0,
+            vmJob,
+            now: () => 60000,
+            getCurrentGold: jest.fn(async () => 5),
+        })
+
+        expect(charged).toBe(1)
+        expect(mockDeductGold).toHaveBeenCalledWith(
+            'user-1',
+            1,
+            expect.objectContaining({
+                source: 'vm_execution',
+                projectId: 'project-1',
+                objectId: 'chat-1',
+            })
+        )
+        expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 1 })
+        expect(commandHandle.kill).not.toHaveBeenCalled()
+    })
+
+    test('kills the command when balance is already zero', async () => {
+        const pendingRef = { update: jest.fn(async () => {}) }
+        const commandHandle = { kill: jest.fn(async () => true) }
+
+        await expect(
+            __private__.checkAndChargeVmRuntimeGold({
+                pendingWebhook,
+                pendingRef,
+                commandHandle,
+                runStartMs: 0,
+                runtimeGoldCharged: 0,
+                vmJob,
+                now: () => 60000,
+                getCurrentGold: jest.fn(async () => 0),
+            })
+        ).rejects.toMatchObject({ code: 'insufficient_gold', runtimeGoldCharged: 0 })
+
+        expect(mockDeductGold).not.toHaveBeenCalled()
+        expect(commandHandle.kill).toHaveBeenCalled()
+    })
+
+    test('deducts remaining positive balance and then kills when charge cannot be fully paid', async () => {
+        const pendingRef = { update: jest.fn(async () => {}) }
+        const commandHandle = { kill: jest.fn(async () => true) }
+        mockDeductGold.mockResolvedValue({ success: true, amount: 1, newBalance: 0 })
+
+        await expect(
+            __private__.checkAndChargeVmRuntimeGold({
+                pendingWebhook,
+                pendingRef,
+                commandHandle,
+                runStartMs: 0,
+                runtimeGoldCharged: 0,
+                vmJob,
+                now: () => 120000,
+                getCurrentGold: jest.fn(async () => 1),
+            })
+        ).rejects.toMatchObject({ code: 'insufficient_gold', runtimeGoldCharged: 1 })
+
+        expect(mockDeductGold).toHaveBeenCalledWith('user-1', 1, expect.any(Object))
+        expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 1 })
+        expect(commandHandle.kill).toHaveBeenCalled()
+    })
+
+    test('completion top-up excludes runtime Gold already charged by the monitor', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 125000,
+            usage: { totalTokens: 250 },
+            runtimeGoldCharged: 2,
+        })
+
+        expect(charges).toEqual(
+            expect.objectContaining({
+                minutes: 3,
+                runtimeGoldRemaining: 1,
+                tokenGold: 3,
+                topup: 4,
+            })
+        )
+    })
+
+    test('technical failure refund includes base reserve plus runtime Gold already charged', async () => {
+        mockRefundGold.mockResolvedValue({ success: true, amount: 5 })
+
+        await __private__.refundVmJob(pendingWebhook, 'VM task failed during execution', 3)
+
+        expect(mockRefundGold).toHaveBeenCalledWith(
+            'user-1',
+            5,
+            expect.objectContaining({
+                source: 'vm_execution_refund',
+                note: 'VM task failed during execution',
+            })
         )
     })
 })

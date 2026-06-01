@@ -16,6 +16,12 @@ const {
 const MAX_VM_RUNTIME_MS = 25 * 60 * 1000 // 25 minutes
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
+// Runtime Gold is charged while the VM is running. The interval can fire twice per
+// billable minute; only newly accrued whole-minute charges are deducted.
+const VM_GOLD_MONITOR_INTERVAL_MS = 30 * 1000
+const VM_GOLD_EXHAUSTED_FAILURE_REASON = 'insufficient_gold'
+const VM_GOLD_EXHAUSTED_TEXT =
+    '🛑 VM task stopped because you ran out of Gold. Add Gold and start a new VM task to continue.'
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -716,6 +722,193 @@ const AGENT_CONFIGS = {
 
 const DEFAULT_AGENT = 'claude'
 
+class VmGoldExhaustedError extends Error {
+    constructor(message = VM_GOLD_EXHAUSTED_TEXT, runtimeGoldCharged = 0) {
+        super(message)
+        this.name = 'VmGoldExhaustedError'
+        this.code = VM_GOLD_EXHAUSTED_FAILURE_REASON
+        this.runtimeGoldCharged = runtimeGoldCharged
+    }
+}
+
+function isVmGoldExhaustedError(error) {
+    return error && error.code === VM_GOLD_EXHAUSTED_FAILURE_REASON
+}
+
+function calculateAccruedRuntimeGold(runtimeMs) {
+    const elapsedMinutes = Math.floor(Math.max(0, Number(runtimeMs) || 0) / 60000)
+    return elapsedMinutes * VM_GOLD_PER_MINUTE
+}
+
+function calculateCompletionGoldCharges({ runtimeMs, usage, runtimeGoldCharged = 0 }) {
+    const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
+    const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
+    const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
+    const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
+    const tokenGold = Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+    return {
+        minutes,
+        totalTokens,
+        runtimeGoldTotal,
+        runtimeGoldRemaining,
+        runtimeGoldCharged: Number(runtimeGoldCharged) || 0,
+        tokenGold,
+        topup: runtimeGoldRemaining + tokenGold,
+    }
+}
+
+async function getUserGoldBalance(userId) {
+    try {
+        const snap = await admin.firestore().doc(`users/${userId}`).get()
+        if (!snap.exists) return 0
+        return Number(snap.data()?.gold) || 0
+    } catch (error) {
+        console.warn('🖥️ VM JOB: failed reading user Gold balance', { userId, error: error.message })
+        throw error
+    }
+}
+
+function buildVmGoldContext(pendingWebhook, vmJob, note) {
+    return {
+        source: VM_JOB_GOLD_SOURCE,
+        channel: 'assistant',
+        projectId: pendingWebhook.projectId,
+        objectId: pendingWebhook.objectId,
+        objectType: pendingWebhook.objectType,
+        note: note || `VM ${vmJob.agent || 'claude'} runtime`,
+    }
+}
+
+async function killCommandForGold(commandHandle, runtimeGoldCharged) {
+    const error = new VmGoldExhaustedError(VM_GOLD_EXHAUSTED_TEXT, runtimeGoldCharged)
+    if (commandHandle && typeof commandHandle.kill === 'function') {
+        commandHandle.kill().catch(killError => {
+            console.warn('🖥️ VM JOB: failed killing command after Gold exhaustion', { error: killError.message })
+        })
+    }
+    throw error
+}
+
+async function checkAndChargeVmRuntimeGold({
+    pendingWebhook,
+    pendingRef,
+    commandHandle,
+    runStartMs,
+    runtimeGoldCharged = 0,
+    vmJob,
+    now = Date.now,
+    getCurrentGold = getUserGoldBalance,
+    deductGoldFn = null,
+}) {
+    const currentGold = await getCurrentGold(pendingWebhook.userId)
+    if (currentGold <= 0) {
+        await killCommandForGold(commandHandle, runtimeGoldCharged)
+    }
+
+    const accruedGold = calculateAccruedRuntimeGold(now() - runStartMs)
+    const chargeDue = Math.max(0, accruedGold - runtimeGoldCharged)
+    if (chargeDue <= 0) return runtimeGoldCharged
+
+    const amountToCharge = Math.min(chargeDue, currentGold)
+    const deductGold = deductGoldFn || require('../Gold/goldHelper').deductGold
+    const context = buildVmGoldContext(
+        pendingWebhook,
+        vmJob,
+        `VM ${vmJob.agent || 'claude'} runtime charge (${accruedGold} accrued Gold)`
+    )
+
+    let charged = 0
+    let balanceAfter = currentGold
+    let result
+    try {
+        result = await deductGold(pendingWebhook.userId, amountToCharge, context)
+    } catch (error) {
+        error.runtimeGoldCharged = runtimeGoldCharged
+        throw error
+    }
+    if (result && result.success) {
+        charged = Number(result.amount) || amountToCharge
+        balanceAfter = typeof result.newBalance === 'number' ? result.newBalance : currentGold - charged
+    } else if (result && typeof result.currentGold === 'number' && result.currentGold > 0) {
+        const fallbackAmount = Math.min(chargeDue, result.currentGold)
+        let fallback
+        try {
+            fallback = await deductGold(pendingWebhook.userId, fallbackAmount, context)
+        } catch (error) {
+            error.runtimeGoldCharged = runtimeGoldCharged
+            throw error
+        }
+        if (fallback && fallback.success) {
+            charged = Number(fallback.amount) || fallbackAmount
+            balanceAfter = typeof fallback.newBalance === 'number' ? fallback.newBalance : result.currentGold - charged
+        }
+    }
+
+    const updatedRuntimeGoldCharged = runtimeGoldCharged + charged
+    if (charged > 0 && pendingRef && typeof pendingRef.update === 'function') {
+        await pendingRef.update({ runtimeGoldCharged: updatedRuntimeGoldCharged }).catch(() => {})
+    }
+
+    if (charged < chargeDue || balanceAfter <= 0) {
+        await killCommandForGold(commandHandle, updatedRuntimeGoldCharged)
+    }
+
+    return updatedRuntimeGoldCharged
+}
+
+function startVmRuntimeGoldMonitor({
+    pendingWebhook,
+    pendingRef,
+    commandHandle,
+    runStartMs,
+    vmJob,
+    initialRuntimeGoldCharged = 0,
+    intervalMs = VM_GOLD_MONITOR_INTERVAL_MS,
+}) {
+    let runtimeGoldCharged = Number(initialRuntimeGoldCharged) || 0
+    let stopped = false
+    let checking = false
+    let timer = null
+    let rejectMonitor
+    const promise = new Promise((_, reject) => {
+        rejectMonitor = reject
+    })
+
+    const tick = async () => {
+        if (stopped || checking) return
+        checking = true
+        try {
+            const nextRuntimeGoldCharged = await checkAndChargeVmRuntimeGold({
+                pendingWebhook,
+                pendingRef,
+                commandHandle,
+                runStartMs,
+                runtimeGoldCharged,
+                vmJob,
+            })
+            if (!stopped) runtimeGoldCharged = nextRuntimeGoldCharged
+        } catch (error) {
+            if (stopped) return
+            stopped = true
+            if (timer) clearInterval(timer)
+            if (typeof error.runtimeGoldCharged !== 'number') error.runtimeGoldCharged = runtimeGoldCharged
+            rejectMonitor(error)
+        } finally {
+            checking = false
+        }
+    }
+
+    timer = setInterval(tick, intervalMs)
+    return {
+        promise,
+        stop: () => {
+            stopped = true
+            if (timer) clearInterval(timer)
+        },
+        getRuntimeGoldCharged: () => runtimeGoldCharged,
+    }
+}
+
 // One persistent VM session per chat thread.
 function vmSessionDocId(vmJob) {
     return `${vmJob.projectId}__${vmJob.objectId}`
@@ -840,7 +1033,16 @@ async function cleanupIdleVmSessions() {
  * event stream to surface live activity via onActivity(text), and pauses the sandbox on
  * completion so the session can be resumed later.
  */
-async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, gitContext = null) {
+async function runAgentInSandbox(
+    vmJob,
+    config,
+    apiKey,
+    e2bApiKey,
+    onActivity,
+    gitContext = null,
+    pendingWebhook = null,
+    pendingRef = null
+) {
     const { Sandbox } = require('e2b')
     const env = getEnvFunctions()
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
@@ -851,6 +1053,7 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
     // Resume the thread's paused sandbox (same agent) if there is one; else create fresh.
     let sandbox = null
     let isResume = false
+    let runtimeGoldCharged = Number(pendingWebhook?.runtimeGoldCharged) || 0
     try {
         const sessSnap = await sessionRef.get()
         const sess = sessSnap.exists ? sessSnap.data() : null
@@ -976,12 +1179,40 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
         })
         let result
         try {
-            result = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
+            const commandHandle = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
                 envs: runEnvs,
                 timeoutMs: MAX_VM_RUNTIME_MS,
+                background: true,
                 onStdout: handleStdout,
                 onStderr: handleStderr,
             })
+            const commandPromise = commandHandle.wait()
+            const monitor =
+                pendingWebhook && pendingRef
+                    ? startVmRuntimeGoldMonitor({
+                          pendingWebhook,
+                          pendingRef,
+                          commandHandle,
+                          runStartMs,
+                          vmJob,
+                          initialRuntimeGoldCharged: runtimeGoldCharged,
+                      })
+                    : null
+
+            try {
+                result = await Promise.race([commandPromise, monitor ? monitor.promise : new Promise(() => {})])
+            } catch (error) {
+                if (isVmGoldExhaustedError(error)) {
+                    runtimeGoldCharged = error.runtimeGoldCharged || runtimeGoldCharged
+                    await commandPromise.catch(() => {})
+                }
+                throw error
+            } finally {
+                if (monitor) {
+                    monitor.stop()
+                    runtimeGoldCharged = monitor.getRuntimeGoldCharged()
+                }
+            }
         } catch (runError) {
             // The command was killed (e.g. timeout) before returning — log whatever it
             // produced so we can see where the agent got stuck, then rethrow.
@@ -994,7 +1225,9 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
                 stdoutBufLen: stdoutBuf.length,
                 stderrLen: stderr.length,
                 stderrPreview: stderr ? stderr.substring(0, 800) : '',
+                runtimeGoldCharged,
             })
+            if (typeof runError.runtimeGoldCharged !== 'number') runError.runtimeGoldCharged = runtimeGoldCharged
             throw runError
         }
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
@@ -1017,10 +1250,11 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
         // Keep the sandbox alive (grace window) + record the session so the thread can resume it.
         await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey)
-        return { output, usage: state.usage, artifacts }
+        return { output, usage: state.usage, artifacts, runtimeGoldCharged }
     } catch (err) {
         // Preserve the session on failure too, so prior work in the thread isn't lost.
         await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey).catch(() => {})
+        if (typeof err.runtimeGoldCharged !== 'number') err.runtimeGoldCharged = runtimeGoldCharged
         throw err
     }
 }
@@ -1028,8 +1262,8 @@ async function runAgentInSandbox(vmJob, config, apiKey, e2bApiKey, onActivity, g
 /**
  * Refund the Gold charged for a job that failed before producing a result.
  */
-async function refundVmJob(pendingWebhook, reason) {
-    const amount = pendingWebhook.goldCharged
+async function refundVmJob(pendingWebhook, reason, extraGold = 0) {
+    const amount = (Number(pendingWebhook.goldCharged) || 0) + (Number(extraGold) || 0)
     if (!amount) return
     try {
         const { refundGold } = require('../Gold/goldHelper')
@@ -1097,11 +1331,17 @@ async function uploadArtifacts(pendingWebhook, artifacts) {
  * per-token (LLM usage). The base reserve was already charged up-front in startVmJob.
  * If the user can't cover the full amount, charge whatever balance remains.
  */
-async function chargeVmTopup(pendingWebhook, vmJob, { topup, minutes, totalTokens, costUsd }) {
+async function chargeVmTopup(
+    pendingWebhook,
+    vmJob,
+    { topup, minutes, totalTokens, costUsd, runtimeGoldAlreadyCharged = 0, runtimeGoldRemaining = 0, tokenGold = 0 }
+) {
     if (!topup || topup <= 0) return
     const { deductGold } = require('../Gold/goldHelper')
     const note =
-        `VM ${vmJob.agent || 'claude'} metered: ${minutes} min + ${totalTokens} tokens` +
+        `VM ${vmJob.agent || 'claude'} metered: ${minutes} min ` +
+        `(${runtimeGoldAlreadyCharged} runtime Gold already charged, ${runtimeGoldRemaining} runtime Gold remaining) ` +
+        `+ ${totalTokens} tokens (${tokenGold} Gold)` +
         (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
     const ctx = {
         source: VM_JOB_GOLD_SOURCE,
@@ -1285,13 +1525,15 @@ async function runVmJobByCorrelationId(correlationId) {
 
     try {
         await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel))
-        const { output, usage, artifacts } = await runAgentInSandbox(
+        const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
             vmJob,
             config,
             apiKey,
             e2bApiKey,
             onActivity,
-            gitContext && gitContext.enabled ? gitContext : null
+            gitContext && gitContext.enabled ? gitContext : null,
+            pendingWebhook,
+            pendingRef
         )
 
         // Upload any generated files and attach them to the result comment as real chat
@@ -1313,10 +1555,20 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Metered Gold top-up from actual usage: per-minute (VM compute) + per-token (LLM).
         const runtimeMs = Date.now() - (vmJob.createdAt || Date.now())
-        const minutes = Math.max(1, Math.ceil(runtimeMs / 60000))
-        const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
-        const topup = minutes * VM_GOLD_PER_MINUTE + Math.round(totalTokens / VM_TOKENS_PER_GOLD)
-        await chargeVmTopup(pendingWebhook, vmJob, { topup, minutes, totalTokens, costUsd: usage?.costUsd })
+        const { minutes, totalTokens, runtimeGoldRemaining, tokenGold, topup } = calculateCompletionGoldCharges({
+            runtimeMs,
+            usage,
+            runtimeGoldCharged,
+        })
+        await chargeVmTopup(pendingWebhook, vmJob, {
+            topup,
+            minutes,
+            totalTokens,
+            costUsd: usage?.costUsd,
+            runtimeGoldAlreadyCharged: runtimeGoldCharged,
+            runtimeGoldRemaining,
+            tokenGold,
+        })
 
         await pendingRef
             .update({
@@ -1324,7 +1576,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 completedAt: Date.now(),
                 runtimeMs,
                 usage: usage || null,
-                goldTopup: topup,
+                goldTopup: runtimeGoldCharged + topup,
+                runtimeGoldCharged,
                 artifactCount: mediaContext.length,
             })
             .catch(() => {})
@@ -1334,11 +1587,33 @@ async function runVmJobByCorrelationId(correlationId) {
             artifacts: mediaContext.length,
             minutes,
             totalTokens,
+            runtimeGoldCharged,
+            runtimeGoldRemaining,
+            tokenGold,
             topup,
             costUsd: usage?.costUsd ?? null,
         })
     } catch (error) {
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
+        const runtimeGoldCharged = Number(error.runtimeGoldCharged) || 0
+        if (isVmGoldExhaustedError(error)) {
+            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT)
+            await sendWhatsAppVmResultNotification(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
+                pendingRef,
+                notificationType: 'failed',
+            })
+            await pendingRef
+                .update({
+                    status: 'failed',
+                    error: VM_GOLD_EXHAUSTED_TEXT,
+                    failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
+                    interruptedAt: Date.now(),
+                    runtimeGoldCharged,
+                })
+                .catch(() => {})
+            return
+        }
+
         const message = `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText)
@@ -1346,8 +1621,10 @@ async function runVmJobByCorrelationId(correlationId) {
             pendingRef,
             notificationType: 'failed',
         })
-        await pendingRef.update({ status: 'failed', error: error.message, failedAt: Date.now() }).catch(() => {})
-        await refundVmJob(pendingWebhook, 'VM task failed during execution')
+        await pendingRef
+            .update({ status: 'failed', error: error.message, failedAt: Date.now(), runtimeGoldCharged })
+            .catch(() => {})
+        await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged)
     }
 }
 
@@ -1360,6 +1637,12 @@ module.exports = {
         buildAgentPrompt,
         renderActivityLog,
         renderVmWorkingHeader,
+        calculateAccruedRuntimeGold,
+        calculateCompletionGoldCharges,
+        checkAndChargeVmRuntimeGold,
+        refundVmJob,
+        VmGoldExhaustedError,
+        isVmGoldExhaustedError,
         buildWhatsAppVmResultMessage,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,
