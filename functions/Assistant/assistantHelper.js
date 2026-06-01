@@ -35,9 +35,9 @@ const {
     getAttachmentData,
     extractMediaContextFromText,
 } = require('../Utils/parseTextUtils')
-const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
+const { getObjectFollowersIds, copyInnerFeedsToOtherProject } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
-const { getChat } = require('../Chats/chatsFirestoreCloud')
+const { getChat, copyChatToOtherProject } = require('../Chats/chatsFirestoreCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
@@ -3392,6 +3392,33 @@ async function moveTaskToDifferentProject(params) {
         }
     }
 
+    // Copy each moved task's chat (conversation + comments) and Updates feed (activity history) into the
+    // target project BEFORE deleting the source. Both live in project-scoped paths keyed by the old project,
+    // so without this the moved task would show up with an empty Chat and Updates tab and the original
+    // history would be lost (the source chat is also wiped by the delete cascade).
+    for (const id of taskIdsToMove) {
+        try {
+            await copyChatToOtherProject(admin, sourceProjectId, targetProjectId, 'tasks', id)
+        } catch (error) {
+            console.warn('Task move: failed to copy chat to target project', {
+                taskId: id,
+                sourceProjectId,
+                targetProjectId,
+                error: error.message,
+            })
+        }
+        try {
+            await copyInnerFeedsToOtherProject(admin, sourceProjectId, targetProjectId, 'tasks', id)
+        } catch (error) {
+            console.warn('Task move: failed to copy updates feed to target project', {
+                taskId: id,
+                sourceProjectId,
+                targetProjectId,
+                error: error.message,
+            })
+        }
+    }
+
     // Delete only root task; existing delete triggers cascade source subtasks cleanup.
     await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).delete()
 
@@ -3463,6 +3490,31 @@ async function moveNoteToDifferentProject(params) {
     if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
 
     await sourceNoteRef.update(sourceMoveMarkerUpdate)
+
+    // Copy the note's chat (conversation + comments) and Updates feed (activity history) into the target
+    // project before deleting the source, otherwise the source delete cascade wipes the chat and the moved
+    // note loses both its chat and its update history.
+    try {
+        await copyChatToOtherProject(admin, sourceProjectId, targetProjectId, 'notes', noteId)
+    } catch (error) {
+        console.warn('Note move: failed to copy chat to target project', {
+            noteId,
+            sourceProjectId,
+            targetProjectId,
+            error: error.message,
+        })
+    }
+    try {
+        await copyInnerFeedsToOtherProject(admin, sourceProjectId, targetProjectId, 'notes', noteId)
+    } catch (error) {
+        console.warn('Note move: failed to copy updates feed to target project', {
+            noteId,
+            sourceProjectId,
+            targetProjectId,
+            error: error.message,
+        })
+    }
+
     await sourceNoteRef.delete()
 
     return {

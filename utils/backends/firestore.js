@@ -1939,6 +1939,33 @@ export async function setTaskProjectFeedsChain(currentProject, newProject, task,
     batchFeed.commit()
 }
 
+// The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds, which is
+// project-scoped by path. When an object is moved to another project it keeps its id but lives under a new
+// project path, so its activity history would otherwise become unreachable from the new project. This copies
+// that history across (verbatim, preserving isPublicFor/lastChangeDate) so the moved object's Updates tab
+// keeps showing it. Mirrors moveChatOnMoveObjectFromProject for the feed side of a move.
+export async function moveInnerFeedsOnMoveObjectFromProject(oldProjectId, newProjectId, objectType, objectId) {
+    if (!oldProjectId || !newProjectId || !objectType || !objectId) return 0
+    if (oldProjectId === newProjectId) return 0
+
+    const feedsSnapshot = await db
+        .collection(`projectsInnerFeeds/${oldProjectId}/${objectType}/${objectId}/feeds`)
+        .get()
+
+    if (feedsSnapshot.empty) return 0
+
+    const batch = new BatchWrapper(db)
+    feedsSnapshot.forEach(feedDoc => {
+        batch.set(
+            db.doc(`projectsInnerFeeds/${newProjectId}/${objectType}/${objectId}/feeds/${feedDoc.id}`),
+            feedDoc.data()
+        )
+    })
+    await batch.commit()
+
+    return feedsSnapshot.size
+}
+
 export async function setTaskParentGoalMultiple(tasks, goal) {
     const batch = new BatchWrapper(db)
     const goalId = goal ? goal.id : null

@@ -41,6 +41,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import { setTaskAssignee, setTaskProject } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { setNoteProject } from '../../../../utils/backends/Notes/notesFirestore'
 import { moveChatOnMoveObjectFromProject } from '../../../../utils/backends/Chats/chatsFirestore'
+import { moveInnerFeedsOnMoveObjectFromProject } from '../../../../utils/backends/firestore'
 import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setContactProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import store from '../../../../redux/store'
@@ -152,6 +153,8 @@ export default function SelectProjectModal({
             const { type, data } = item
 
             await moveChatOnMoveObjectFromProject(project.id, newProject.id, type + 's', data.id).then(callback)
+            // Keep the object's "Updates" activity history with it across the move (chat is handled above).
+            await moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, type + 's', data.id)
 
             if (type === 'task') {
                 const task = data

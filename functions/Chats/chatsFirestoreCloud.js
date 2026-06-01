@@ -7,6 +7,79 @@ const deleteChat = async (admin, projectId, chatId) => {
     await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).delete()
 }
 
+// When an object (task/note) is moved to another project the object document is recreated in the
+// target project, but its chat lives in project-scoped collections (chatObjects + chatComments) keyed
+// by the OLD project id. Without copying it across, the moved object shows up with an empty chat and the
+// original conversation is orphaned (and then deleted by the source object's delete cascade). This mirrors
+// the client-side moveChatOnMoveObjectFromProject so assistant-driven moves keep the chat content.
+const moveAssistantLastCommentPointer = async (admin, sourceProjectId, targetProjectId, chatId) => {
+    try {
+        const projectDoc = await admin.firestore().doc(`projects/${sourceProjectId}`).get()
+        const userIds = projectDoc.exists ? projectDoc.data().userIds || [] : []
+        if (userIds.length === 0) return
+
+        const userDocs = await Promise.all(userIds.map(uid => admin.firestore().doc(`users/${uid}`).get()))
+        const updates = []
+        userDocs.forEach(userDoc => {
+            if (!userDoc.exists) return
+            const lastAssistantCommentData = userDoc.data().lastAssistantCommentData || {}
+            const allProjectsPointer = lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
+            // Repoint the global "last assistant comment" jump target at the new project so it survives the
+            // source delete cascade (which would otherwise drop it). The per-project pointer is cleaned up by
+            // that cascade already, so it does not need handling here.
+            if (
+                allProjectsPointer &&
+                allProjectsPointer.projectId === sourceProjectId &&
+                allProjectsPointer.objectId === chatId
+            ) {
+                updates.push(
+                    userDoc.ref.update({
+                        [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                            ...allProjectsPointer,
+                            projectId: targetProjectId,
+                        },
+                    })
+                )
+            }
+        })
+        await Promise.all(updates)
+    } catch (e) {
+        console.warn('moveAssistantLastCommentPointer failed', {
+            sourceProjectId,
+            targetProjectId,
+            chatId,
+            error: e.message,
+        })
+    }
+}
+
+const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, objectType, chatId) => {
+    if (!sourceProjectId || !targetProjectId || !objectType || !chatId) return false
+    if (sourceProjectId === targetProjectId) return false
+
+    const firestore = admin.firestore()
+    const chatDoc = await firestore.doc(`chatObjects/${sourceProjectId}/chats/${chatId}`).get()
+    if (!chatDoc.exists) return false
+
+    const commentsSnapshot = await firestore
+        .collection(`chatComments/${sourceProjectId}/${objectType}/${chatId}/comments`)
+        .get()
+
+    const batch = new BatchWrapper(firestore)
+    batch.set(firestore.doc(`chatObjects/${targetProjectId}/chats/${chatId}`), chatDoc.data())
+    commentsSnapshot.forEach(commentDoc => {
+        batch.set(
+            firestore.doc(`chatComments/${targetProjectId}/${objectType}/${chatId}/comments/${commentDoc.id}`),
+            commentDoc.data()
+        )
+    })
+    await batch.commit()
+
+    await moveAssistantLastCommentPointer(admin, sourceProjectId, targetProjectId, chatId)
+
+    return true
+}
+
 const getChat = async (projectId, chatId) => {
     const doc = await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).get()
     return doc.data()
@@ -98,6 +171,7 @@ const removeChatPushNotifications = async notifications => {
 
 module.exports = {
     deleteChat,
+    copyChatToOtherProject,
     getChat,
     updateChatEditionData,
     deleteChatNotifications,

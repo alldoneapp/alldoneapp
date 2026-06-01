@@ -378,6 +378,34 @@ function globalInnerFeedsGenerator(projectId, objectTypes, feedObjectId, feed, f
     setLastActionDate(projectId, feed.lastChangeDate, batch)
 }
 
+// The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectsType}/{objectId}/feeds, which is
+// project-scoped by path. When an object is moved to another project the object keeps its id but lives under a
+// new project path, so its activity history would otherwise become unreachable. This copies that history into
+// the target project so the moved object's Updates tab keeps showing it. Feed docs are copied verbatim
+// (preserving isPublicFor / lastChangeDate), so visibility and ordering are unchanged.
+async function copyInnerFeedsToOtherProject(adminRef, sourceProjectId, targetProjectId, objectsType, objectId) {
+    if (!sourceProjectId || !targetProjectId || !objectsType || !objectId) return 0
+    if (sourceProjectId === targetProjectId) return 0
+
+    const firestore = adminRef.firestore()
+    const feedsSnapshot = await firestore
+        .collection(`projectsInnerFeeds/${sourceProjectId}/${objectsType}/${objectId}/feeds`)
+        .get()
+
+    if (feedsSnapshot.empty) return 0
+
+    const batch = new BatchWrapper(firestore)
+    feedsSnapshot.forEach(feedDoc => {
+        batch.set(
+            firestore.doc(`projectsInnerFeeds/${targetProjectId}/${objectsType}/${objectId}/feeds/${feedDoc.id}`),
+            feedDoc.data()
+        )
+    })
+    await batch.commit()
+
+    return feedsSnapshot.size
+}
+
 function deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, tabsToRemove, batch) {
     const { admin } = getGlobalState()
 
@@ -759,4 +787,5 @@ module.exports = {
     cleanObjectFeeds,
     getMentionIdsFromTitle,
     getObjectFollowersIds,
+    copyInnerFeedsToOtherProject,
 }
