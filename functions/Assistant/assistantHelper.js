@@ -6989,6 +6989,16 @@ async function executeToolNatively(
                 requestUserId: requestUserId || null,
             })
 
+            // Identity hardening: a VM job bills Gold and selects the requesting user's connected
+            // git token, so it must run as the authenticated requesting user. Do NOT fall back to
+            // the assistant/creator id — fail clearly rather than attribute the job to the wrong user.
+            if (!requestUserId) {
+                return {
+                    success: false,
+                    message: 'A VM task requires an authenticated requesting user.',
+                }
+            }
+
             try {
                 // Forward the same thread context the in-chat assistant has (user/project
                 // descriptions, persona, conversation so far, shared files, date/time, language)
@@ -6998,7 +7008,7 @@ async function executeToolNatively(
                     objectType: toolRuntimeContext?.objectType || 'tasks',
                     objectId: toolRuntimeContext?.objectId,
                     assistantId,
-                    requestUserId: requestUserId || creatorId,
+                    requestUserId,
                     userTimezoneOffset: toolRuntimeContext?.userTimezoneOffset ?? null,
                     language: toolRuntimeContext?.language || '',
                 }).catch(error => {
@@ -7020,7 +7030,7 @@ async function executeToolNatively(
                     objectType: toolRuntimeContext?.objectType || 'tasks',
                     objectId: toolRuntimeContext?.objectId,
                     assistantId,
-                    requestUserId: requestUserId || creatorId,
+                    requestUserId,
                     triggerChannel: toolRuntimeContext?.sourceChannel === 'whatsapp' ? 'whatsapp' : '',
                     whatsappTo:
                         toolRuntimeContext?.sourceChannel === 'whatsapp'

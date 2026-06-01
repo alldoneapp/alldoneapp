@@ -67,6 +67,8 @@ const getEnvFunctions = () => {
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
             E2B_API_KEY: process.env.E2B_API_KEY || '',
             E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
+            VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
+            VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -111,6 +113,8 @@ const getEnvFunctions = () => {
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
                     E2B_CLAUDE_TEMPLATE: envJson.E2B_CLAUDE_TEMPLATE || '',
+                    VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
+                    VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -155,6 +159,8 @@ const getEnvFunctions = () => {
                         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                         E2B_API_KEY: process.env.E2B_API_KEY || '',
                         E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
+                        VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
+                        VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
                     }
                 }
             } catch (error) {
@@ -195,6 +201,8 @@ const getEnvFunctions = () => {
                     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                     E2B_API_KEY: process.env.E2B_API_KEY || '',
                     E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
+                    VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
+                    VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
                 }
             }
         } else {
@@ -236,6 +244,8 @@ const getEnvFunctions = () => {
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
                 E2B_CLAUDE_TEMPLATE: process.env.E2B_CLAUDE_TEMPLATE || '',
+                VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
+                VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
             }
         }
     }

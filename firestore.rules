@@ -166,7 +166,12 @@ service cloud.firestore {
 
     match /chatComments/{projectId}/{chatType}/{objectId}/comments/{commentId} {
       allow read: if canReadProject(projectId);
-      allow create: if isProjectMember(projectId);
+      // A member may only create a comment authored as themselves: if creatorId is set it must
+      // equal the caller's uid. This blocks forging a comment as another user (impersonation /
+      // confused-deputy). Assistant/system comments are written server-side (admin SDK) and bypass
+      // rules, so they are unaffected.
+      allow create: if isProjectMember(projectId)
+        && (!('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid);
       allow update, delete: if isProjectMember(projectId) && signedIn();
     }
 

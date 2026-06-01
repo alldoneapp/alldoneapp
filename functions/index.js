@@ -3026,6 +3026,22 @@ exports.executeWebhookForMessage = onCall(
     }
 )
 
+// VM LLM PROXY - Public endpoint the sandbox agent calls instead of api.anthropic.com /
+// api.openai.com. It authenticates a short-lived per-job token, swaps in the real platform key
+// server-side, and streams the response back, so the real Anthropic/OpenAI key never enters the
+// VM (see functions/Assistant/vmLlmProxy.js). Long timeout for streamed model responses.
+exports.vmLlmProxy = onRequest(
+    {
+        timeoutSeconds: 600,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleProxyRequest } = require('./Assistant/vmLlmProxy')
+        await handleProxyRequest(req, res)
+    }
+)
+
 // RUN VM JOB - Long-running worker that runs Claude Code in an E2B sandbox for the
 // execute_task_in_vm assistant tool, then posts the result back into the conversation.
 exports.runVmJob = onTaskDispatched(

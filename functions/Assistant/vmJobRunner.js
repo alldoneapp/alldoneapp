@@ -693,8 +693,12 @@ const AGENT_CONFIGS = {
             `claude -p ${
                 isResume ? '--continue ' : ''
             }"$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`,
-        sandboxEnv: apiKey => ({
+        // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
+        // mode; when `baseUrl` is set, Claude Code is pointed at the proxy and the real key stays
+        // server-side (see vmLlmProxy.js).
+        sandboxEnv: ({ apiKey, baseUrl }) => ({
             ANTHROPIC_API_KEY: apiKey,
+            ...(baseUrl ? { ANTHROPIC_BASE_URL: `${baseUrl}/anthropic` } : {}),
             CI: 'true',
             DISABLE_AUTOUPDATER: '1',
             DISABLE_TELEMETRY: '1',
@@ -718,9 +722,13 @@ const AGENT_CONFIGS = {
             isResume
                 ? `codex exec resume --last --ask-for-approval never --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
                 : `codex exec --ask-for-approval never --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
-        sandboxEnv: apiKey => ({
+        // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
+        // mode; when `baseUrl` is set, Codex is pointed at the proxy via OPENAI_BASE_URL and the
+        // real key stays server-side (see vmLlmProxy.js).
+        sandboxEnv: ({ apiKey, baseUrl }) => ({
             CODEX_API_KEY: apiKey,
             OPENAI_API_KEY: apiKey,
+            ...(baseUrl ? { OPENAI_BASE_URL: `${baseUrl}/openai/v1` } : {}),
             CI: 'true',
         }),
         handleEvent: appendCodexActivity,
@@ -1170,10 +1178,22 @@ async function runAgentInSandbox(
         // still go to the absolute /home/user/output. Git credentials are injected per-command
         // via envs (never persisted to disk).
         const workdir = gitContext && gitContext.enabled ? REPO_DIR : '/home/user'
-        const runEnvs =
-            gitContext && gitContext.enabled
-                ? { ...config.sandboxEnv(apiKey), ...buildGitEnv(gitContext) }
-                : config.sandboxEnv(apiKey)
+        // Keep the real Anthropic/OpenAI key OUT of the sandbox when the proxy is configured: the
+        // agent gets a short-lived per-job token + the proxy base URL instead, and the real key is
+        // swapped in server-side by vmLlmProxy. Falls back to the real key if the proxy is unset.
+        const { buildVmAgentCredentials } = require('./vmLlmProxy')
+        const agentCredentials = buildVmAgentCredentials({
+            vmJob,
+            agent: vmJob.agent || DEFAULT_AGENT,
+            realApiKey: apiKey,
+            ttlMs: MAX_VM_RUNTIME_MS + 5 * 60 * 1000,
+        })
+        console.log('🖥️ VM JOB: agent credential mode', {
+            correlationId: vmJob.correlationId,
+            mode: agentCredentials.mode,
+        })
+        const agentEnv = config.sandboxEnv(agentCredentials)
+        const runEnvs = gitContext && gitContext.enabled ? { ...agentEnv, ...buildGitEnv(gitContext) } : agentEnv
         const command = `mkdir -p /home/user/output && cd ${workdir} && ${config.installGuard} && ${config.buildRun(
             isResume
         )}`
