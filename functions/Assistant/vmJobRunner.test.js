@@ -256,13 +256,16 @@ describe('VM runner WhatsApp notifications', () => {
                 objectId: 'chat-1',
             },
             'Final VM result',
-            { artifactCount: 1, pendingRef }
+            {
+                mediaContext: [{ fileName: 'report.pdf', storageUrl: 'https://storage.example/report.pdf' }],
+                pendingRef,
+            }
         )
 
         expect(result.success).toBe(true)
         expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledWith(
             'whatsapp:+123',
-            'Final VM result\n\nGenerated file is attached in the Alldone thread.',
+            'Final VM result\n\nGenerated file:\nreport.pdf: https://storage.example/report.pdf',
             {
                 projectId: 'project-1',
                 objectId: 'chat-1',
@@ -299,14 +302,47 @@ describe('VM runner WhatsApp notifications', () => {
         expect(pendingRef.update).not.toHaveBeenCalled()
     })
 
-    test('uses raw output so internal attachment tokens are not sent to WhatsApp', () => {
+    test('sends the public artifact link, not the internal chat attachment token', () => {
         const finalTextWithToken =
             'Final VM result \n\n EbDsQTD14ahtSR5https://storage.example/fileEbDsQTD14ahtSR5file.pdfEbDsQTD14ahtSR5false'
-        const whatsappMessage = __private__.buildWhatsAppVmResultMessage('Final VM result', { artifactCount: 1 })
+        const whatsappMessage = __private__.buildWhatsAppVmResultMessage('Final VM result', {
+            mediaContext: [{ fileName: 'file.pdf', storageUrl: 'https://storage.example/file.pdf' }],
+        })
 
         expect(finalTextWithToken).toContain('EbDsQTD14ahtSR5')
-        expect(whatsappMessage).toBe('Final VM result\n\nGenerated file is attached in the Alldone thread.')
+        expect(whatsappMessage).toBe('Final VM result\n\nGenerated file:\nfile.pdf: https://storage.example/file.pdf')
         expect(whatsappMessage).not.toContain('EbDsQTD14ahtSR5')
+    })
+
+    test('lists every artifact download link', () => {
+        const whatsappMessage = __private__.buildWhatsAppVmResultMessage('Done', {
+            mediaContext: [
+                { fileName: 'a.pdf', storageUrl: 'https://storage.example/a' },
+                { fileName: 'b.csv', storageUrl: 'https://storage.example/b' },
+            ],
+        })
+
+        expect(whatsappMessage).toBe(
+            'Done\n\nGenerated files:\na.pdf: https://storage.example/a\nb.csv: https://storage.example/b'
+        )
+    })
+
+    test('keeps the artifact link even when the answer is long', () => {
+        const longAnswer = 'x'.repeat(2000)
+        const whatsappMessage = __private__.buildWhatsAppVmResultMessage(longAnswer, {
+            mediaContext: [{ fileName: 'big.pdf', storageUrl: 'https://storage.example/big.pdf' }],
+        })
+
+        expect(whatsappMessage.length).toBeLessThanOrEqual(1400)
+        expect(whatsappMessage).toContain('big.pdf: https://storage.example/big.pdf')
+        expect(whatsappMessage).toContain('…')
+    })
+
+    test('falls back to the plain answer when there are no artifacts', () => {
+        expect(__private__.buildWhatsAppVmResultMessage('Just a text answer', {})).toBe('Just a text answer')
+        expect(__private__.buildWhatsAppVmResultMessage('Just a text answer', { mediaContext: [] })).toBe(
+            'Just a text answer'
+        )
     })
 
     test('sends failure text for WhatsApp-originated VM jobs', async () => {
