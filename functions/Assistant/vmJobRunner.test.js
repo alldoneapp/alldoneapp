@@ -214,6 +214,25 @@ describe('VM runner runtime Gold monitor', () => {
     })
 })
 
+describe('VM runner artifact presentation', () => {
+    test('places generated artifact links before the VM answer', () => {
+        const finalText = __private__.buildVmFinalCommentText('Here is the summary.', [
+            {
+                fileName: 'report draft.pdf',
+                storageUrl: 'https://storage.example/report.pdf',
+            },
+        ])
+
+        expect(finalText).toBe(
+            'EbDsQTD14ahtSR5https://storage.example/report.pdfEbDsQTD14ahtSR5report_draft.pdfEbDsQTD14ahtSR5false\n\nHere is the summary.'
+        )
+    })
+
+    test('leaves text-only VM answers unchanged', () => {
+        expect(__private__.buildVmFinalCommentText('Here is the summary.', [])).toBe('Here is the summary.')
+    })
+})
+
 describe('VM runner WhatsApp notifications', () => {
     beforeEach(() => {
         jest.clearAllMocks()

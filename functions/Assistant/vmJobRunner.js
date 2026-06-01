@@ -449,6 +449,13 @@ function buildAttachmentTokens(mediaContext) {
         .join(' ')
 }
 
+function buildVmFinalCommentText(output, mediaContext) {
+    const message = String(output || '').trim()
+    if (!Array.isArray(mediaContext) || !mediaContext.length) return message
+
+    return `${buildAttachmentTokens(mediaContext)}\n\n${message}`
+}
+
 const MIME_BY_EXT = {
     html: 'text/html',
     htm: 'text/html',
@@ -1537,13 +1544,10 @@ async function runVmJobByCorrelationId(correlationId) {
         )
 
         // Upload any generated files and attach them to the result comment as real chat
-        // attachment tokens (render as inline downloadable FileDownloadableTags). The leading
-        // " \n\n " keeps the tokens as their own space-delimited words so the parser matches them.
+        // attachment tokens (render as inline downloadable FileDownloadableTags). Keep the
+        // tokens on their own first line so generated artifacts are visible before the VM answer.
         const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
-        let finalText = output
-        if (mediaContext.length) {
-            finalText = `${output} \n\n ${buildAttachmentTokens(mediaContext)}`
-        }
+        const finalText = buildVmFinalCommentText(output, mediaContext)
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
@@ -1646,5 +1650,7 @@ module.exports = {
         buildWhatsAppVmResultMessage,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,
+        buildAttachmentTokens,
+        buildVmFinalCommentText,
     },
 }
