@@ -7075,6 +7075,8 @@ async function executeToolNatively(
                     objective: toolArgs.objective,
                     taskType: toolArgs.task_type,
                     agent: toolArgs.agent,
+                    agentModel: toolArgs.agentModel,
+                    agentReasoningEffort: toolArgs.agentReasoningEffort,
                     contextObjectIds: toolArgs.context_object_ids,
                     deliverable: toolArgs.deliverable,
                     threadContext,

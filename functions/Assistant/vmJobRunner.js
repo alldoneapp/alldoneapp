@@ -6,6 +6,10 @@ const {
     VM_GOLD_PER_MINUTE,
     VM_TOKENS_PER_GOLD,
     getAgentLabel,
+    DEFAULT_CLAUDE_MODEL,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CLAUDE_EFFORT_LEVEL,
+    DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
 
 // Hard ceiling on a single VM run. The worker is an onTaskDispatched function capped
@@ -680,6 +684,20 @@ function renderActivityLog(lines, agentLabel) {
 // Per-agent configuration. The assistant picks the agent per task; we map it to the
 // matching E2B prebuilt template, API key, sandbox env, headless command, and parser.
 // E2B_*_TEMPLATE env vars are optional overrides — they default to E2B's prebuilt names.
+function buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort) {
+    const resumeFlag = isResume ? '--continue ' : ''
+    const modelFlag = agentModel ? `--model ${agentModel} ` : ''
+    const effortFlag = agentReasoningEffort ? `--effort ${agentReasoningEffort} ` : ''
+    return `claude ${resumeFlag}${modelFlag}${effortFlag}-p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`
+}
+
+function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort) {
+    const resumePart = isResume ? 'exec resume --last' : 'exec'
+    const modelFlag = agentModel ? ` --model ${agentModel}` : ''
+    const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
+    return `codex ${resumePart} --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag} --json "$(cat /home/user/prompt.txt)" </dev/null`
+}
+
 const AGENT_CONFIGS = {
     claude: {
         label: 'Claude Code',
@@ -689,10 +707,8 @@ const AGENT_CONFIGS = {
         apiKeyField: 'ANTHROPIC_API_KEY',
         installGuard: '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1)',
         // On resume, `--continue` continues the most recent session in the working dir.
-        buildRun: isResume =>
-            `claude -p ${
-                isResume ? '--continue ' : ''
-            }"$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`,
+        buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
+            buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort),
         // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
         // mode; when `baseUrl` is set, Claude Code is pointed at the proxy and the real key stays
         // server-side (see vmLlmProxy.js).
@@ -720,10 +736,8 @@ const AGENT_CONFIGS = {
         // "unexpected argument '--ask-for-approval' found"). Codex has its own command sandbox
         // inside the E2B sandbox; `--sandbox workspace-write` does not grant outbound network by
         // itself, so enable it explicitly for package installs, git push, and PR creation.
-        buildRun: isResume =>
-            isResume
-                ? `codex exec resume --last --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
-                : `codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
+        buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
+            buildCodexRunCommand(isResume, agentModel, agentReasoningEffort),
         // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
         // mode; when `baseUrl` is set, Codex is pointed at the proxy via OPENAI_BASE_URL and the
         // real key stays server-side (see vmLlmProxy.js).
@@ -1196,8 +1210,17 @@ async function runAgentInSandbox(
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
         const runEnvs = gitContext && gitContext.enabled ? { ...agentEnv, ...buildGitEnv(gitContext) } : agentEnv
+        const resolvedAgentModel =
+            vmJob.agentModel || (vmJob.agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
+        const resolvedReasoningEffort =
+            vmJob.agentReasoningEffort ||
+            (vmJob.agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
         const command = `mkdir -p /home/user/output && cd ${workdir} && ${config.installGuard} && ${config.buildRun(
-            isResume
+            isResume,
+            {
+                agentModel: resolvedAgentModel,
+                agentReasoningEffort: resolvedReasoningEffort,
+            }
         )}`
 
         const runStartMs = Date.now()

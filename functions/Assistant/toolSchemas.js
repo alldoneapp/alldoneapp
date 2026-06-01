@@ -1791,6 +1791,21 @@ const toolSchemas = {
                             'Use "claude" (Claude Code) for research, writing, analysis and general tasks; ' +
                             'consider "codex" (OpenAI Codex) for heavy coding / repository work. If unsure, omit it.',
                     },
+                    agentModel: {
+                        type: 'string',
+                        description:
+                            'Optional. The specific model to use inside the VM agent. Defaults to the best available model per agent ' +
+                            '(Claude Code: Opus alias; Codex: latest GPT model). ' +
+                            'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "claude-opus-4-8") only when agent="claude". ' +
+                            'Use OpenAI model ids (e.g. "gpt-5.5", "gpt-5.4", "gpt-5.3-codex") only when agent="codex".',
+                    },
+                    agentReasoningEffort: {
+                        type: 'string',
+                        enum: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+                        description:
+                            'Optional. Effort/reasoning setting for the VM agent. Defaults to "high". ' +
+                            'For Claude Code this maps to the CLI `--effort` flag; for Codex it maps to the `model_reasoning_effort` config.',
+                    },
                     context_object_ids: {
                         type: 'array',
                         items: { type: 'string' },

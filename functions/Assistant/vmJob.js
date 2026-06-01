@@ -32,6 +32,13 @@ const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const VALID_AGENTS = ['claude', 'codex']
 const DEFAULT_AGENT = 'claude'
+const DEFAULT_CLAUDE_MODEL = 'opus'
+const DEFAULT_CODEX_MODEL = 'gpt-5.5'
+const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
+const DEFAULT_CODEX_REASONING_EFFORT = 'high'
+const VALID_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
+const VALID_CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh']
+const MODEL_SAFE_PATTERN = /^[A-Za-z0-9._-]+$/
 const AGENT_LABELS = {
     claude: 'Claude',
     codex: 'Codex',
@@ -39,6 +46,62 @@ const AGENT_LABELS = {
 
 function getAgentLabel(agent) {
     return AGENT_LABELS[agent] || AGENT_LABELS[DEFAULT_AGENT]
+}
+
+function isClaudeModelId(model) {
+    return model === 'opus' || model === 'sonnet' || model === 'haiku' || model.startsWith('claude-')
+}
+
+function isCodexModelId(model) {
+    if (model.startsWith('gpt-')) return true
+    return /^o\d/.test(model)
+}
+
+function normalizeAgentModel(agent, agentModel) {
+    const trimmed = typeof agentModel === 'string' ? agentModel.trim() : ''
+    const fallback = agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL
+    if (!trimmed) return { value: fallback }
+    if (!MODEL_SAFE_PATTERN.test(trimmed)) {
+        return { error: 'agentModel contains invalid characters.' }
+    }
+    if (agent === 'claude') {
+        return isClaudeModelId(trimmed)
+            ? { value: trimmed }
+            : { error: 'agentModel must be a Claude model id when agent="claude".' }
+    }
+    if (agent === 'codex') {
+        return isCodexModelId(trimmed)
+            ? { value: trimmed }
+            : { error: 'agentModel must be an OpenAI model id when agent="codex".' }
+    }
+    return { value: fallback }
+}
+
+function normalizeAgentReasoningEffort(agent, effort) {
+    const trimmed = typeof effort === 'string' ? effort.trim().toLowerCase() : ''
+    const fallback = agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL
+    if (agent === 'codex') {
+        if (!trimmed) return { value: fallback }
+        if (!VALID_CODEX_REASONING_EFFORTS.includes(trimmed)) {
+            return {
+                error: `agentReasoningEffort must be one of: ${VALID_CODEX_REASONING_EFFORTS.join(', ')}.`,
+            }
+        }
+        return { value: trimmed }
+    }
+    if (agent === 'claude') {
+        if (!trimmed) return { value: fallback }
+        if (!VALID_CLAUDE_EFFORT_LEVELS.includes(trimmed)) {
+            return {
+                error: `agentReasoningEffort must be one of: ${VALID_CLAUDE_EFFORT_LEVELS.join(', ')}.`,
+            }
+        }
+        return { value: trimmed }
+    }
+    if (trimmed) {
+        return { error: 'agentReasoningEffort is not supported for this agent.' }
+    }
+    return { value: null }
 }
 
 /**
@@ -132,6 +195,8 @@ async function startVmJob({
     objective,
     taskType,
     agent = DEFAULT_AGENT,
+    agentModel,
+    agentReasoningEffort,
     contextObjectIds = [],
     deliverable = '',
     threadContext = '',
@@ -154,6 +219,14 @@ async function startVmJob({
     }
     const selectedAgent = VALID_AGENTS.includes(agent) ? agent : DEFAULT_AGENT
     const selectedAgentLabel = getAgentLabel(selectedAgent)
+    const modelResult = normalizeAgentModel(selectedAgent, agentModel)
+    if (modelResult.error) {
+        return { success: false, message: modelResult.error }
+    }
+    const effortResult = normalizeAgentReasoningEffort(selectedAgent, agentReasoningEffort)
+    if (effortResult.error) {
+        return { success: false, message: effortResult.error }
+    }
     if (!projectId || !objectId) {
         return {
             success: false,
@@ -256,6 +329,8 @@ async function startVmJob({
             objective: objective.trim(),
             taskType,
             agent: selectedAgent,
+            agentModel: modelResult.value,
+            agentReasoningEffort: effortResult.value,
             deliverable: deliverable || '',
             packagedContext: packagedContext || '',
             threadContext: threadContext || '',
@@ -330,4 +405,8 @@ module.exports = {
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     VALID_TASK_TYPES,
     getAgentLabel,
+    DEFAULT_CLAUDE_MODEL,
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CLAUDE_EFFORT_LEVEL,
+    DEFAULT_CODEX_REASONING_EFFORT,
 }
