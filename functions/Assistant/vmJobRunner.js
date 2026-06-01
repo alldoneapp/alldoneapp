@@ -715,13 +715,15 @@ const AGENT_CONFIGS = {
         apiKeyField: 'OPEN_AI_KEY', // reuse the existing OpenAI key
         installGuard: '(command -v codex >/dev/null 2>&1 || npm install -g @openai/codex >/dev/null 2>&1)',
         // On resume, `codex exec resume --last` continues the most recent thread.
-        // Codex has its own command sandbox inside the E2B sandbox. `--full-auto` maps to
-        // workspace-write and does not grant outbound network by itself, so enable network
-        // explicitly for package installs, git push, and PR creation.
+        // `codex exec` is already non-interactive (it never prompts for approval), so we do NOT
+        // pass `--ask-for-approval` — newer Codex CLIs reject that flag on `exec` (exit status 2:
+        // "unexpected argument '--ask-for-approval' found"). Codex has its own command sandbox
+        // inside the E2B sandbox; `--sandbox workspace-write` does not grant outbound network by
+        // itself, so enable it explicitly for package installs, git push, and PR creation.
         buildRun: isResume =>
             isResume
-                ? `codex exec resume --last --ask-for-approval never --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
-                : `codex exec --ask-for-approval never --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
+                ? `codex exec resume --last --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`
+                : `codex exec --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check --json "$(cat /home/user/prompt.txt)" </dev/null`,
         // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
         // mode; when `baseUrl` is set, Codex is pointed at the proxy via OPENAI_BASE_URL and the
         // real key stays server-side (see vmLlmProxy.js).
@@ -1393,21 +1395,34 @@ function isWhatsAppTriggeredVmJob(pendingWebhook) {
     )
 }
 
-function buildWhatsAppVmResultMessage(output, { artifactCount = 0 } = {}) {
-    const message = String(output || '').trim() || 'The VM task completed.'
-    if (!artifactCount) return message
+// Mirrors MAX_PLAIN_WHATSAPP_MESSAGE_LENGTH in TwilioWhatsAppService. We keep the artifact
+// download links intact by trimming the agent's answer (never the links) so the combined
+// message stays under the cap the service would otherwise truncate from the end.
+const WHATSAPP_PLAIN_MESSAGE_LIMIT = 1400
 
-    const suffix =
-        artifactCount === 1
-            ? 'Generated file is attached in the Alldone thread.'
-            : 'Generated files are attached in the Alldone thread.'
-    return `${message}\n\n${suffix}`
+// Build the WhatsApp result message. When the run produced downloadable artifacts, append each
+// file's public download URL so a WhatsApp-originated request gets the link directly — the
+// chat-only attachment tokens (ATTACHMENT_TRIGGER) can't render in WhatsApp. Falls back to the
+// plain answer for text-only completions and failure notifications (no mediaContext).
+function buildWhatsAppVmResultMessage(output, { mediaContext = [] } = {}) {
+    const message = String(output || '').trim() || 'The VM task completed.'
+    const files = Array.isArray(mediaContext) ? mediaContext.filter(m => m && m.storageUrl) : []
+    if (!files.length) return message
+
+    const heading = files.length === 1 ? 'Generated file:' : 'Generated files:'
+    const links = files.map(m => `${m.fileName || 'file'}: ${m.storageUrl}`).join('\n')
+    const filesSection = `${heading}\n${links}`
+
+    const budget = WHATSAPP_PLAIN_MESSAGE_LIMIT - filesSection.length - 2 // 2 = the joining "\n\n"
+    if (budget <= 0) return filesSection
+    const trimmedMessage = message.length > budget ? `${message.slice(0, budget - 1).trimEnd()}…` : message
+    return `${trimmedMessage}\n\n${filesSection}`
 }
 
 async function sendWhatsAppVmResultNotification(
     pendingWebhook,
     output,
-    { artifactCount = 0, pendingRef = null, notificationType = 'completed' } = {}
+    { mediaContext = [], pendingRef = null, notificationType = 'completed' } = {}
 ) {
     if (!isWhatsAppTriggeredVmJob(pendingWebhook)) return null
 
@@ -1423,7 +1438,7 @@ async function sendWhatsAppVmResultNotification(
     try {
         const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
         const whatsappService = new TwilioWhatsAppService()
-        const message = buildWhatsAppVmResultMessage(output, { artifactCount })
+        const message = buildWhatsAppVmResultMessage(output, { mediaContext })
         const result = await whatsappService.sendWhatsAppMessageWithConversationLink(
             pendingWebhook.whatsappTo,
             message,
@@ -1572,7 +1587,7 @@ async function runVmJobByCorrelationId(correlationId) {
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
         await sendWhatsAppVmResultNotification(pendingWebhook, output, {
-            artifactCount: mediaContext.length,
+            mediaContext,
             pendingRef,
             notificationType: 'completed',
         })
