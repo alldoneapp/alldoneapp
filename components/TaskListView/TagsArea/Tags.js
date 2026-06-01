@@ -157,7 +157,7 @@ export default function Tags({
 
     const photoURL = isObservedTask || isToReviewTask ? taskOwner.photoURL : undefined
 
-    const updateTaskDate = async (dateTimestamp, isObservedTabActive) => {
+    const updateTaskDate = async (taskToUpdate, dateTimestamp, isObservedTabActive) => {
         const inReview = task.userIds.length > 0 && !task.inDone
         const moveObservedDateAndDueDate = inMyDayOpenTab && isObservedTask && inReview
 
@@ -169,7 +169,7 @@ export default function Tags({
         }
     }
 
-    const updateTaskDateToBacklog = async isObservedTabActive => {
+    const updateTaskDateToBacklog = async (taskToUpdate, isObservedTabActive) => {
         const inReview = task.userIds.length > 0 && !task.inDone
         const moveObservedDateAndDueDate = inMyDayOpenTab && isObservedTask && inReview
 
