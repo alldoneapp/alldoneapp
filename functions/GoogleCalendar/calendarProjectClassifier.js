@@ -4,7 +4,7 @@ const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('
 const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
-    'You route Google Calendar events to exactly one configured Alldone project or no match. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1.'
+    "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1."
 const INCONSISTENT_ROUTING_REASON = 'Classifier returned inconsistent project routing details.'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
