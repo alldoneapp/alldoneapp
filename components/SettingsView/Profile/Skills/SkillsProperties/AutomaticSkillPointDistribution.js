@@ -1,19 +1,14 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../../Icon'
 import Switch from '../../../../UIControls/Switch'
-import Button from '../../../../UIControls/Button'
 import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
-import {
-    distributeManualSkillPoints,
-    setUserAutomaticSkillPointDistributionEnabled,
-} from '../../../../../utils/backends/Users/usersFirestore'
+import { setUserAutomaticSkillPointDistributionEnabled } from '../../../../../utils/backends/Users/usersFirestore'
 
 export default function AutomaticSkillPointDistribution() {
-    const [processing, setProcessing] = useState(false)
     const userId = useSelector(state => state.loggedUser.uid)
     const automaticSkillPointDistributionEnabled = useSelector(
         state => state.loggedUser.automaticSkillPointDistributionEnabled !== false
@@ -21,17 +16,6 @@ export default function AutomaticSkillPointDistribution() {
 
     const setEnabled = enabled => {
         setUserAutomaticSkillPointDistributionEnabled(userId, enabled)
-    }
-
-    const manuallyDistributePoints = async () => {
-        setProcessing(true)
-        try {
-            await distributeManualSkillPoints()
-        } catch (error) {
-            console.error('Error manually distributing skill points', error)
-        } finally {
-            setProcessing(false)
-        }
     }
 
     return (
@@ -50,17 +34,6 @@ export default function AutomaticSkillPointDistribution() {
                         deactiveSwitch={() => setEnabled(false)}
                     />
                 </View>
-            </View>
-            <View style={localStyles.manualButton}>
-                <Button
-                    icon={'trending-up'}
-                    type={'secondary'}
-                    title={translate('Distribute 5 skill points')}
-                    onPress={manuallyDistributePoints}
-                    disabled={processing}
-                    processing={processing}
-                    processingTitle={translate('Distributing')}
-                />
             </View>
         </View>
     )
@@ -86,9 +59,5 @@ const localStyles = StyleSheet.create({
     },
     settingRowRight: {
         justifyContent: 'flex-end',
-    },
-    manualButton: {
-        marginLeft: 40,
-        alignSelf: 'flex-start',
     },
 })
