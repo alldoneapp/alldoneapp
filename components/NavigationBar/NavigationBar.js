@@ -1,8 +1,9 @@
 import React, { Component } from 'react'
-import { Animated, ScrollView, StyleSheet, View } from 'react-native'
+import { Animated, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
 import NavigationBarItem from './NavigationBarItem'
 import NavigationBarPicker from './NavigationBarPicker'
 import MyPlatform from '../MyPlatform'
+import Icon from '../Icon'
 import { colors } from '../styles/global'
 import store from '../../redux/store'
 import { toggleNavPicker } from '../../redux/actions'
@@ -32,10 +33,16 @@ export default class NavigationBar extends Component {
             height: new Animated.Value(0),
             forceTabletMargins: false,
             lastNavWidth: 0,
+            isOverflowing: false,
+            canScrollLeft: false,
+            canScrollRight: false,
             unsubscribe: store.subscribe(this.updateState),
         }
 
         this.scrollDesktop = React.createRef()
+        this.desktopScrollView = React.createRef()
+        this.scrollMetrics = { x: 0, viewport: 0, content: 0 }
+        this._wheelNode = null
         this.itemRefs = []
         this.hotkeyParentRef = React.createRef()
     }
@@ -43,6 +50,7 @@ export default class NavigationBar extends Component {
     componentDidMount() {
         this._isMounted = true
         this.mountHotKey()
+        this.attachWheel()
     }
 
     componentDidUpdate(prevProps, prevState, snapshot) {
@@ -56,11 +64,14 @@ export default class NavigationBar extends Component {
         if (this.state.route !== prevState.route) {
             this.mountHotKey()
         }
+
+        this.attachWheel()
     }
 
     componentWillUnmount() {
         this._isMounted = false
         this.state.unsubscribe()
+        this.detachWheel()
     }
 
     mountHotKey = () => {
@@ -84,6 +95,105 @@ export default class NavigationBar extends Component {
                 }
             }
         }
+    }
+
+    getScrollNode = () => {
+        try {
+            const ref = this.desktopScrollView.current
+            return ref && ref.getScrollableNode ? ref.getScrollableNode() : null
+        } catch (e) {
+            return null
+        }
+    }
+
+    // On desktop web the horizontal tab ScrollView has no scrollbar and a mouse wheel
+    // only produces deltaY, so there is no input that reaches it. Translate the wheel
+    // into horizontal scrolling (trackpad horizontal swipes keep working as before).
+    attachWheel = () => {
+        if (Platform.OS !== 'web') return
+        const node = this.getScrollNode()
+        if (node && node !== this._wheelNode) {
+            this.detachWheel()
+            node.addEventListener('wheel', this.onWheel, { passive: false })
+            this._wheelNode = node
+        }
+    }
+
+    detachWheel = () => {
+        if (this._wheelNode) {
+            this._wheelNode.removeEventListener('wheel', this.onWheel)
+            this._wheelNode = null
+        }
+    }
+
+    onWheel = e => {
+        const node = this._wheelNode
+        if (!node) return
+        // No horizontal overflow → leave the event alone so the page can scroll vertically.
+        if (node.scrollWidth <= node.clientWidth + 1) return
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+        if (!delta) return
+        node.scrollLeft += delta
+        e.preventDefault()
+    }
+
+    onDesktopScroll = ({ nativeEvent }) => {
+        this.scrollMetrics = {
+            x: nativeEvent.contentOffset.x,
+            viewport: nativeEvent.layoutMeasurement.width,
+            content: nativeEvent.contentSize.width,
+        }
+        this.updateScrollMetrics()
+    }
+
+    onDesktopContentSizeChange = contentWidth => {
+        this.scrollMetrics.content = contentWidth
+        this.updateScrollMetrics()
+    }
+
+    onDesktopScrollLayout = ({ nativeEvent }) => {
+        this.scrollMetrics.viewport = nativeEvent.layout.width
+        this.updateScrollMetrics()
+    }
+
+    updateScrollMetrics = () => {
+        const { x, viewport, content } = this.scrollMetrics
+        const isOverflowing = content > viewport + 1
+        const canScrollLeft = x > 1
+        const canScrollRight = x < content - viewport - 1
+        if (
+            isOverflowing !== this.state.isOverflowing ||
+            canScrollLeft !== this.state.canScrollLeft ||
+            canScrollRight !== this.state.canScrollRight
+        ) {
+            this.setState({ isOverflowing, canScrollLeft, canScrollRight })
+        }
+    }
+
+    scrollByAmount = direction => {
+        const ref = this.desktopScrollView.current
+        if (!ref) return
+        const { x, viewport } = this.scrollMetrics
+        const step = Math.max(120, (viewport || 200) * 0.7)
+        const target = direction === 'left' ? x - step : x + step
+        ref.scrollTo({ x: Math.max(0, target), animated: true })
+    }
+
+    renderScrollArrow = direction => {
+        const enabled = direction === 'left' ? this.state.canScrollLeft : this.state.canScrollRight
+        return (
+            <TouchableOpacity
+                style={[localStyles.scrollArrow, !enabled && localStyles.scrollArrowDisabled]}
+                onPress={enabled ? () => this.scrollByAmount(direction) : undefined}
+                disabled={!enabled}
+            >
+                <Icon
+                    name={direction === 'left' ? 'chevron-left' : 'chevron-right'}
+                    size={24}
+                    color={enabled ? colors.Text03 : colors.Grey400}
+                />
+            </TouchableOpacity>
+        )
     }
 
     onShortcutSwitch = (s, e) => {
@@ -139,6 +249,7 @@ export default class NavigationBar extends Component {
 
         const { height, forceTabletMargins, expanded, selectedNavItem, smallScreenNavigation } = this.state
         if (!smallScreenNavigation || isSecondary) {
+            const showScrollArrows = isSecondary && Platform.OS === 'web' && this.state.isOverflowing
             return (
                 <View
                     onLayout={this.onLayoutChange}
@@ -148,12 +259,18 @@ export default class NavigationBar extends Component {
                         style,
                     ]}
                 >
+                    {showScrollArrows && this.renderScrollArrow('left')}
                     <View style={isSecondary && { flex: 1 }} ref={this.scrollDesktop}>
                         <ScrollView
+                            ref={this.desktopScrollView}
                             style={{ flex: 1 }}
                             horizontal={true}
                             showsHorizontalScrollIndicator={false}
                             overScrollMode={'never'}
+                            scrollEventThrottle={16}
+                            onScroll={this.onDesktopScroll}
+                            onContentSizeChange={this.onDesktopContentSizeChange}
+                            onLayout={this.onDesktopScrollLayout}
                             contentContainerStyle={localStyles.itemsContainer}
                         >
                             {/* This is to insert dynamically the hotkey component */}
@@ -185,6 +302,7 @@ export default class NavigationBar extends Component {
                             ))}
                         </ScrollView>
                     </View>
+                    {showScrollArrows && this.renderScrollArrow('right')}
                 </View>
             )
         } else {
@@ -294,6 +412,17 @@ const localStyles = StyleSheet.create({
     itemsContainer: {
         flexDirection: 'row',
         alignItems: 'flex-end',
+    },
+    scrollArrow: {
+        width: 28,
+        height: 48,
+        alignSelf: 'flex-end',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'white',
+    },
+    scrollArrowDisabled: {
+        opacity: 0.4,
     },
     containerMobile: {
         flex: 1,
