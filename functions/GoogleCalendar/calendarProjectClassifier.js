@@ -2,6 +2,7 @@
 
 const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('../Gmail/gmailLabelingConfig')
 const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
+const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
     "You route Google Calendar events to exactly one configured Alldone project or no match. Weigh every available signal in the event. Treat the attendees' and organizer's email addresses, and especially their domains, as a strong hint about which client or project an event belongs to: when attendees share a company or client domain, match that domain against the project descriptions, client names, and stakeholders. Return strict JSON only with keys matched, projectId, projectName, confidence, reasoning. projectName must exactly match the selected project name. Never invent project IDs or project names. Confidence must be a number between 0 and 1."
@@ -99,16 +100,15 @@ function normalizeProjectDefinitions(projectDefinitionsOrIds = []) {
         .filter(project => project.projectId)
 }
 
+// Detect whether the reasoning names a DIFFERENT configured project than the selected one.
+// Uses the shared token-based detector so partial mentions (e.g. "JTL" when the project is
+// "JTL Software – Project Juno") are caught, not just full project-name substrings.
 function reasoningMentionsDifferentProject(reasoning = '', selectedProjectId = '', projectDefinitions = []) {
-    const normalizedReasoning = normalizeForProjectComparison(reasoning)
-    if (!normalizedReasoning) return false
-
-    return projectDefinitions.some(project => {
-        if (project.projectId === selectedProjectId) return false
-
-        const normalizedProjectName = normalizeForProjectComparison(project.name)
-        return normalizedProjectName.length >= 4 && normalizedReasoning.includes(normalizedProjectName)
-    })
+    const options = normalizeProjectDefinitions(projectDefinitions).map(project => ({
+        key: project.projectId,
+        names: [project.name],
+    }))
+    return !!reasoningReferencesDifferentOption(reasoning, selectedProjectId, options)
 }
 
 function coerceCalendarProjectResult(

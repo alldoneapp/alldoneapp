@@ -1224,6 +1224,7 @@ async function processSingleMessage({
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
         tokenUsage: classifierResult.usage || null,
+        consistencyCheck: classifierResult.consistencyCheck || null,
     })
 
     const tokenUsage = classifierResult?.usage || null
@@ -1286,6 +1287,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
+            consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
             archived: false,
             skippedReason: 'no_match',
@@ -1418,6 +1420,7 @@ async function processSingleMessage({
         autoArchive: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : !!selectedDefinition.autoArchive,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
+        consistencyCheck: classifierResult.consistencyCheck || null,
         applied: modifyResult.applied,
         archived: modifyResult.archived,
         skippedReason: null,

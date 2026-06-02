@@ -241,6 +241,13 @@ async function addProjectRoutingReasonComment({
     if (chatDoc.exists) {
         await chatRef.update(chatData)
     } else {
+        // This helper is often the FIRST writer to create the task's chat object (the task
+        // itself doesn't pre-create one). The chat list query in hooks/Chats/useGetChats.js
+        // requires `stickyData.days == 0` and the logged user in `usersFollowing`, so we must
+        // set both here — otherwise the topic never shows up in the chat list view even though
+        // the comment exists inside the task. Mirrors createChat() in chatsComments.js.
+        const taskOwnerId = taskData?.userId || taskData?.creatorId || ''
+        const followingIds = [assistantContext.assistantId, taskOwnerId].filter(Boolean)
         await chatRef.set({
             id: taskId,
             title: taskData?.extendedName || taskData?.name || '',
@@ -248,8 +255,9 @@ async function addProjectRoutingReasonComment({
             creatorId: taskData?.creatorId || taskData?.userId || '',
             created: taskData?.created || now,
             isPublicFor: taskData?.isPublicFor || [0, taskData?.userId].filter(Boolean),
-            usersFollowing: admin.firestore.FieldValue.arrayUnion(assistantContext.assistantId),
+            usersFollowing: admin.firestore.FieldValue.arrayUnion(...followingIds),
             hasStar: taskData?.hasStar || '#ffffff',
+            stickyData: { days: 0, stickyEndDate: 0 },
             ...chatData,
         })
     }

@@ -4165,33 +4165,51 @@ async function executeToolNatively(
                     toolArgs.projectRoutingConfidence
                 )
 
+                // When create_task runs inside a Gmail post-label follow-up, the Gmail labeling
+                // pipeline (addRoutingCommentsToCreatedGmailTasks) adds its own routing comment
+                // afterwards using the classifier's reasoning/confidence. Skip the assistant_create_task
+                // comment here to avoid two contradictory "I chose X because…" comments on the same task.
+                // Other flows (e.g. WhatsApp, normal chat) have no labeling step and keep this comment.
+                const isGmailLabelFollowUp =
+                    toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN
+
                 let projectSelectionComment = null
-                try {
-                    projectSelectionComment = await addProjectRoutingReasonComment({
-                        userData,
-                        projectId: resolvedProjectId,
-                        taskId: resolvedTaskId,
-                        task: result.task,
-                        projectName: targetProjectName || '',
-                        reasoning: projectRoutingReasoning,
-                        confidence: projectRoutingConfidence,
-                        source: 'assistant_create_task',
-                        routingKey: resolvedTaskId,
-                        routingData: {
-                            selectionSource: createTaskProjectSelection.source,
-                            assistantProvidedReasoning: !!assistantProvidedProjectReasoning,
-                            requestedProjectId: toolArgs.projectId || '',
-                            requestedProjectName: toolArgs.projectName || '',
-                            contextProjectId: projectId || '',
-                            assistantId: assistantId || '',
-                        },
-                    })
-                } catch (error) {
-                    console.warn('CREATE_TASK TOOL: Failed to add project selection comment', {
-                        taskId: resolvedTaskId,
-                        projectId: resolvedProjectId,
-                        error: error.message,
-                    })
+                if (isGmailLabelFollowUp) {
+                    console.log(
+                        '📝 CREATE_TASK TOOL: Skipping assistant_create_task routing comment (Gmail labeling adds its own)',
+                        {
+                            taskId: resolvedTaskId,
+                            projectId: resolvedProjectId,
+                        }
+                    )
+                } else {
+                    try {
+                        projectSelectionComment = await addProjectRoutingReasonComment({
+                            userData,
+                            projectId: resolvedProjectId,
+                            taskId: resolvedTaskId,
+                            task: result.task,
+                            projectName: targetProjectName || '',
+                            reasoning: projectRoutingReasoning,
+                            confidence: projectRoutingConfidence,
+                            source: 'assistant_create_task',
+                            routingKey: resolvedTaskId,
+                            routingData: {
+                                selectionSource: createTaskProjectSelection.source,
+                                assistantProvidedReasoning: !!assistantProvidedProjectReasoning,
+                                requestedProjectId: toolArgs.projectId || '',
+                                requestedProjectName: toolArgs.projectName || '',
+                                contextProjectId: projectId || '',
+                                assistantId: assistantId || '',
+                            },
+                        })
+                    } catch (error) {
+                        console.warn('CREATE_TASK TOOL: Failed to add project selection comment', {
+                            taskId: resolvedTaskId,
+                            projectId: resolvedProjectId,
+                            error: error.message,
+                        })
+                    }
                 }
 
                 return {

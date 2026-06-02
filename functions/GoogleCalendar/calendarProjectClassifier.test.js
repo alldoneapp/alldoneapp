@@ -100,6 +100,31 @@ describe('calendarProjectClassifier', () => {
         )
     })
 
+    test('rejects reasoning that only partially names a different project', () => {
+        // The selected project name is internally consistent (so projectNameMismatch is false),
+        // but the reasoning references another project by a partial token ("JTL") rather than its
+        // full name. The token-based detector must still flag this as inconsistent.
+        const result = coerceCalendarProjectResult(
+            {
+                matched: true,
+                projectId: 'family-project',
+                projectName: 'Familie',
+                confidence: 0.86,
+                reasoning: 'This is a product strategy alignment that clearly belongs to the JTL workstream.',
+            },
+            projectDefinitions,
+            0.7
+        )
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                matched: false,
+                projectId: null,
+                reasoning: 'Classifier returned inconsistent project routing details.',
+            })
+        )
+    })
+
     test('normalizes calendar event details for classifier input', () => {
         const event = normalizeCalendarEventForClassifier(
             {
