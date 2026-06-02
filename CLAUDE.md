@@ -86,6 +86,8 @@ Always consider i18n. Translations in `i18n/translations/` (en.json, de.json, es
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
 
+**Chat message edit dismiss race**: In `components/ChatsView/ChatDV/EditorView/MessageItem.js`, opening the per-message edit `DismissibleItem` directly from the timestamp/pencil click can mount `react-dismissible` early enough that the same click is interpreted as an outside-dismiss click. Symptoms: the edit handler fires, `openModal()` runs, `onToggleModal(true)` is immediately followed by `onToggleModal(false)`, and nothing appears on screen. Defer the `openModal(true)` call with `setTimeout(..., 0)` after dispatching `setActiveChatMessageId(message.id)`, and clear the timeout on unmount. If diagnosing this path, use scoped logs around `MessageItemHeader` click handling, `enableEditMode`, and `MessageItemContent`'s `onToggleModal`.
+
 **Popover Width Control**: Most modals use `applyPopoverWidth()` from `utils/HelperFunctions.js` which applies fixed widths based on screen size (mobile/tablet/desktop). This helper overrides inline styles due to how it's applied via `style={[localStyles.container, applyPopoverWidth()]}`. To create larger modals that use more screen width, avoid `applyPopoverWidth()` and calculate width dynamically using `Dimensions.get('window').width`.
 
 **React Native Dimensions Compatibility**: Do not use `useWindowDimensions()` in this codebase. The current React Native/web setup does not provide it reliably and it causes runtime failures such as `TypeError: useWindowDimensions is not a function`. Use `Dimensions.get('window')` instead when sizing responsive modals or panels.

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { View, Animated } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { useDispatch, useSelector } from 'react-redux'
@@ -28,17 +28,52 @@ export default function MessageItem({
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const itemSwipe = useRef(null)
     const dismissibleRef = useRef(null)
+    const editOpenTimeoutRef = useRef(null)
     const creatorData = useGetUserPresentationData(message.creatorId)
-
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
 
     const enableEditMode = () => {
-        if (!blockOpen && activeChatMessageId === '' && !showFloatPopup && dismissibleRef.current) {
+        const hasDismissibleRef = !!dismissibleRef.current
+        const modalVisibleBefore = hasDismissibleRef ? dismissibleRef.current.modalIsVisible() : null
+
+        console.log('[ChatEditDebug] enableEditMode called', {
+            messageId: message.id,
+            blockOpen,
+            userIsAnonymous,
+            showFloatPopup,
+            activeChatMessageId,
+            hasDismissibleRef,
+            modalVisibleBefore,
+        })
+
+        if (!blockOpen && dismissibleRef.current) {
             dispatch(setActiveChatMessageId(message.id))
-            dismissibleRef.current.openModal()
+            if (editOpenTimeoutRef.current) clearTimeout(editOpenTimeoutRef.current)
+            editOpenTimeoutRef.current = setTimeout(() => {
+                dismissibleRef.current?.openModal(true)
+            })
+
+            setTimeout(() => {
+                console.log('[ChatEditDebug] enableEditMode after openModal', {
+                    messageId: message.id,
+                    modalVisibleAfter: dismissibleRef.current?.modalIsVisible?.(),
+                })
+            })
+        } else {
+            console.log('[ChatEditDebug] enableEditMode blocked', {
+                messageId: message.id,
+                blockOpen,
+                hasDismissibleRef,
+            })
         }
     }
+
+    useEffect(() => {
+        return () => {
+            if (editOpenTimeoutRef.current) clearTimeout(editOpenTimeoutRef.current)
+        }
+    }, [])
 
     const onQuote = () => {
         const { displayName } = creatorData
@@ -80,7 +115,7 @@ export default function MessageItem({
 
     return (
         <View style={{ paddingVertical: 8, marginLeft: 14 }}>
-            <SwipeAreasContainer style={{ paddingBottom: 16 }} leftText="Quote" />
+            <SwipeAreasContainer pointerEvents="none" style={{ paddingBottom: 16 }} leftText="Quote" />
             <Swipeable
                 ref={itemSwipe}
                 leftThreshold={80}

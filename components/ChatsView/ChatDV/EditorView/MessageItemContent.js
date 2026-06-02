@@ -381,6 +381,11 @@ export default function MessageItemContent({
                 />
             }
             onToggleModal={visable => {
+                console.log('[ChatEditDebug] message edit modal toggled', {
+                    messageId,
+                    visible: visable,
+                    activeChatMessageId,
+                })
                 if (!visable) dispatch(setActiveChatMessageId(''))
             }}
         />

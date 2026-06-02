@@ -1,6 +1,6 @@
 import React from 'react'
-import { Image, View, Text, StyleSheet, TouchableOpacity } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
+import { Image, View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native'
+import { useDispatch } from 'react-redux'
 
 import global, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
@@ -42,6 +42,34 @@ export default function MessageItemHeader({
         }
     }
 
+    const handleEditPress = (source, event) => {
+        console.log('[ChatEditDebug] header edit event', {
+            source,
+            messageId: message.id,
+            creatorId,
+            editDisabled,
+            platform: Platform.OS,
+        })
+        event?.preventDefault?.()
+        event?.stopPropagation?.()
+        onEditPress()
+    }
+
+    const editButtonWebEvents =
+        Platform.OS === 'web'
+            ? {
+                  onClick: event => handleEditPress('onClick', event),
+                  onStartShouldSetResponder: () => {
+                      console.log('[ChatEditDebug] header edit responder start', {
+                          messageId: message.id,
+                          creatorId,
+                      })
+                      return true
+                  },
+                  onResponderRelease: event => handleEditPress('onResponderRelease', event),
+              }
+            : {}
+
     return (
         <View style={localStyles.title}>
             {highlight && <View style={localStyles.dotNotification} />}
@@ -53,21 +81,34 @@ export default function MessageItemHeader({
                 <Image source={photoURL} style={localStyles.userImage} />
                 <Text style={localStyles.userName}>{displayName}</Text>
             </TouchableOpacity>
-            <Text style={localStyles.datetime}> • {parseLastEdited(serverTime, accurateTime)}</Text>
-            {isVoiceTranscription && (
-                <View style={localStyles.voiceIndicator}>
-                    <Icon name="mic" size={12} color={colors.Text03} />
-                </View>
-            )}
-            {source === 'whatsapp' && <Text style={localStyles.sourceLabel}> • WhatsApp</Text>}
-            {!editDisabled && (
+            {editDisabled ? (
+                <>
+                    <Text style={localStyles.datetime}> • {parseLastEdited(serverTime, accurateTime)}</Text>
+                    {isVoiceTranscription && (
+                        <View style={localStyles.voiceIndicator}>
+                            <Icon name="mic" size={12} color={colors.Text03} />
+                        </View>
+                    )}
+                    {source === 'whatsapp' && <Text style={localStyles.sourceLabel}> • WhatsApp</Text>}
+                </>
+            ) : (
                 <TouchableOpacity
-                    style={localStyles.editButton}
-                    onPress={onEditPress}
+                    style={localStyles.editMetadata}
+                    onPress={event => handleEditPress('onPress', event)}
+                    {...editButtonWebEvents}
                     hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
                     accessibilityLabel="Edit message"
                 >
-                    <Icon name="edit-2" size={12} color={colors.Text03} />
+                    <Text style={localStyles.datetime}> • {parseLastEdited(serverTime, accurateTime)}</Text>
+                    {isVoiceTranscription && (
+                        <View style={localStyles.voiceIndicator}>
+                            <Icon name="mic" size={12} color={colors.Text03} />
+                        </View>
+                    )}
+                    {source === 'whatsapp' && <Text style={localStyles.sourceLabel}> • WhatsApp</Text>}
+                    <View style={localStyles.editButton}>
+                        <Icon name="edit-2" size={12} color={colors.Text03} />
+                    </View>
                 </TouchableOpacity>
             )}
         </View>
@@ -93,6 +134,10 @@ const localStyles = StyleSheet.create({
     datetime: {
         ...global.caption2,
         color: colors.Text03,
+    },
+    editMetadata: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     dotNotification: {
         width: 6,

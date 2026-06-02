@@ -14,19 +14,23 @@ import { translate } from '../../../i18n/TranslationService'
 import { useSelector, useDispatch } from 'react-redux'
 import OpenDvButton from './OpenDvButton'
 import GhostButton from '../../UIControls/GhostButton'
-import Icon from '../../Icon'
-import { updateFocusedTask } from '../../../utils/backends/Tasks/tasksFirestore'
+import Button from '../../UIControls/Button'
+import { updateFocusedTask, setTaskAssistant } from '../../../utils/backends/Tasks/tasksFirestore'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn, popoverToTop } from '../../../utils/HelperFunctions'
 import { colors } from '../../styles/global'
 
 import TaskParentGoalModal from '../../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
-import { TASK_PARENT_GOAL_MODAL_ID, storeModal, removeModal } from '../../ModalsManager/modalsManager'
-import { showFloatPopup, hideFloatPopup } from '../../../redux/actions'
+import { showFloatPopup, hideFloatPopup, setAssistantEnabled, setSelectedNavItem } from '../../../redux/actions'
 import { Keyboard } from 'react-native'
 import Backend from '../../../utils/BackendBridge'
 import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelper'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
+import AssistantAvatar from '../../AdminPanel/Assistants/AssistantAvatar'
+import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/assistantsHelper'
+import NavigationService from '../../../utils/NavigationService'
+import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
+import { setObjectAssistantEnabled } from '../../../utils/assistantHelper'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -65,9 +69,17 @@ export default function SecondaryButtonsArea({
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
     const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const isLockedGmailTask = isInboxSummaryGmailTask(tmpTask)
+    const assistantButtonRef = useRef(null)
 
     const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
+    const projectAssistant = getDefaultAssistantInProjectById(projectId)
+    const repoConnected = !!(
+        (project?.githubRepoUrl && project.githubRepoUrl.trim()) ||
+        (project?.gitlabRepoUrl && project.gitlabRepoUrl.trim())
+    )
+    const showProjectAssistantButton = !adding && repoConnected && !!projectAssistant?.uid && !tmpTask.calendarData
 
     const loggedSetDueDateBeforeSave = (task, date, isObserved) => {
         setDueDateBeforeSave(date, isObserved)
@@ -81,6 +93,33 @@ export default function SecondaryButtonsArea({
         updateFocusedTask(loggedUserId, projectId, inFocusTaskId === tmpTask.id ? null : tmpTask, null, null)
         dismissEditMode?.()
     }
+
+    const openTaskChatWithProjectAssistant = async () => {
+        const assistantId = projectAssistant.uid
+        const taskWithProjectAssistant = { ...tmpTask, assistantId, isAssistantEnabled: true }
+        const assistantNeedsUpdate = tmpTask.assistantId !== assistantId
+
+        dismissEditMode?.()
+
+        try {
+            await Promise.all([
+                assistantNeedsUpdate
+                    ? setTaskAssistant(projectId, tmpTask.id, assistantId, !!tmpTask.assistantId)
+                    : Promise.resolve(),
+                setObjectAssistantEnabled(projectId, tmpTask.id, 'tasks', true),
+            ])
+        } catch (error) {
+            console.error('Error opening task chat with project assistant:', error)
+        }
+
+        NavigationService.navigate('TaskDetailedView', {
+            task: taskWithProjectAssistant,
+            projectId,
+            assistantId,
+        })
+        dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setAssistantEnabled(true)])
+    }
+
     const focusButtonRef = React.useRef(null)
     const parentGoalButtonRef = useRef(null)
 
@@ -162,36 +201,59 @@ export default function SecondaryButtonsArea({
                 disabled={(adding && !hasName) || isLoadingGoal}
             />
 
-            {loggedUserCanUpdateObject &&
-                !tmpTask.done &&
-                taskViewToggleSection !== 'Workflow' &&
-                !isLockedGmailTask && (
-                    <>
-                        {tmpTask.calendarData ? (
-                            <TranscribeButton
-                                task={tmpTask}
-                                projectId={projectId}
-                                style={buttonItemStyle}
+            {loggedUserCanUpdateObject && !tmpTask.done && taskViewToggleSection !== 'Workflow' && !isLockedGmailTask && (
+                <>
+                    {showProjectAssistantButton ? (
+                        <Hotkeys
+                            keyName={'alt+R'}
+                            disabled={!hasName || !accessGranted || blockShortcuts || isLoadingGoal}
+                            onKeyDown={(sht, event) =>
+                                execShortcutFn(assistantButtonRef.current, openTaskChatWithProjectAssistant, event)
+                            }
+                            filter={e => true}
+                        >
+                            <Button
+                                ref={assistantButtonRef}
+                                type={'ghost'}
+                                noBorder={true}
+                                buttonStyle={buttonItemStyle}
+                                onPress={openTaskChatWithProjectAssistant}
                                 disabled={!hasName || !accessGranted || isLoadingGoal}
                                 shortcutText={'R'}
-                                onDismissPopup={onDismissPopup}
+                                customIcon={
+                                    <AssistantAvatar
+                                        photoURL={projectAssistant.photoURL50}
+                                        assistantId={projectAssistant.uid}
+                                        size={24}
+                                    />
+                                }
                             />
-                        ) : (
-                            <DueDateButton
-                                task={tmpTask}
-                                projectId={projectId}
-                                style={buttonItemStyle}
-                                disabled={!hasName || !accessGranted || isLoadingGoal}
-                                inEditTask={true}
-                                saveDueDateBeforeSaveTask={loggedSetDueDateBeforeSave}
-                                setToBacklogBeforeSaveTask={loggedSetToBacklogBeforeSave}
-                                onDismissPopup={onDismissPopup}
-                                shortcutText={'R'}
-                                isObservedTask={isObservedTask}
-                            />
-                        )}
-                    </>
-                )}
+                        </Hotkeys>
+                    ) : tmpTask.calendarData ? (
+                        <TranscribeButton
+                            task={tmpTask}
+                            projectId={projectId}
+                            style={buttonItemStyle}
+                            disabled={!hasName || !accessGranted || isLoadingGoal}
+                            shortcutText={'R'}
+                            onDismissPopup={onDismissPopup}
+                        />
+                    ) : (
+                        <DueDateButton
+                            task={tmpTask}
+                            projectId={projectId}
+                            style={buttonItemStyle}
+                            disabled={!hasName || !accessGranted || isLoadingGoal}
+                            inEditTask={true}
+                            saveDueDateBeforeSaveTask={loggedSetDueDateBeforeSave}
+                            setToBacklogBeforeSaveTask={loggedSetToBacklogBeforeSave}
+                            onDismissPopup={onDismissPopup}
+                            shortcutText={'R'}
+                            isObservedTask={isObservedTask}
+                        />
+                    )}
+                </>
+            )}
 
             {adding ? (
                 <PrivacyButton

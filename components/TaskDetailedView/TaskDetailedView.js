@@ -68,7 +68,7 @@ const TaskDetailedView = ({ navigation }) => {
     const taskInDetailView = useSelector(state => state.taskInDetailView)
     const [isFullscreen, setFullscreen] = useState(false)
     const [task, setTask] = useState(navigation.getParam('task', undefined))
-    const [assistantId, setAssistantId] = useState(task?.assistantId || '')
+    const [assistantId, setAssistantId] = useState(navigation.getParam('assistantId', '') || task?.assistantId || '')
     usePrivateProject(projectId)
     const scrollRef = useRef()
     const isAssistant = task?.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE

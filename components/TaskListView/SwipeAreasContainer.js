@@ -4,9 +4,12 @@ import { StyleSheet, View } from 'react-native'
 import SwipeLeftArea from './SwipeLeftArea'
 import SwipeRightArea from './SwipeRightArea'
 
-export default function SwipeAreasContainer({ isActiveOrganizeMode, style, leftText, rightText }) {
+export default function SwipeAreasContainer({ isActiveOrganizeMode, style, leftText, rightText, pointerEvents }) {
     return (
-        <View style={[localStyles.swipeContainer, isActiveOrganizeMode && localStyles.dragModeSwipe, style]}>
+        <View
+            pointerEvents={pointerEvents}
+            style={[localStyles.swipeContainer, isActiveOrganizeMode && localStyles.dragModeSwipe, style]}
+        >
             {leftText && <SwipeLeftArea text={leftText} />}
             {rightText && <SwipeRightArea text={rightText} />}
         </View>
