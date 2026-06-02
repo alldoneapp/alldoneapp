@@ -9,6 +9,7 @@ import SwipeAreasContainer from '../../../TaskListView/SwipeAreasContainer'
 import MessageItemContent from './MessageItemContent'
 import MessageItemHeader from './MessageItemHeader'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
+import { getTimestampInMilliseconds } from '../../Utils/ChatHelper'
 
 export default function MessageItem({
     chat,
@@ -33,7 +34,7 @@ export default function MessageItem({
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
 
     const enableEditMode = () => {
-        if (!blockOpen && activeChatMessageId === '' && !showFloatPopup) {
+        if (!blockOpen && activeChatMessageId === '' && !showFloatPopup && dismissibleRef.current) {
             dispatch(setActiveChatMessageId(message.id))
             dismissibleRef.current.openModal()
         }
@@ -58,6 +59,17 @@ export default function MessageItem({
     const onLeftSwipe = () => {
         itemSwipe.current.close()
         onQuote()
+    }
+
+    // Treat isLoading as false if the message hasn't been updated in over 5 minutes
+    // to prevent a permanently stuck spinner from stale Firestore data.
+    const LOADING_TIMEOUT_MS = 5 * 60 * 1000
+    let effectiveIsLoading = message.isLoading
+    if (effectiveIsLoading) {
+        const messageTime = getTimestampInMilliseconds(message.lastChangeDate)
+        if (messageTime && Date.now() - messageTime > LOADING_TIMEOUT_MS) {
+            effectiveIsLoading = false
+        }
     }
 
     const backColor = panColor.interpolate({
@@ -111,7 +123,7 @@ export default function MessageItem({
                         creatorData={creatorData}
                         objectType={objectType}
                         setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
-                        isLoading={message.isLoading}
+                        isLoading={effectiveIsLoading}
                     />
                 </Animated.View>
             </Swipeable>

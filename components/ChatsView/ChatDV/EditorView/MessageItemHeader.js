@@ -45,7 +45,11 @@ export default function MessageItemHeader({
     return (
         <View style={localStyles.title}>
             {highlight && <View style={localStyles.dotNotification} />}
-            <TouchableOpacity style={{ flexDirection: 'row' }} disabled={isUnknownUser} onPress={navigateToUserDv}>
+            <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+                disabled={isUnknownUser}
+                onPress={navigateToUserDv}
+            >
                 <Image source={photoURL} style={localStyles.userImage} />
                 <Text style={localStyles.userName}>{displayName}</Text>
             </TouchableOpacity>
@@ -73,6 +77,7 @@ export default function MessageItemHeader({
 const localStyles = StyleSheet.create({
     title: {
         flexDirection: 'row',
+        alignItems: 'center',
         marginTop: 8,
     },
     userName: {
@@ -108,8 +113,8 @@ const localStyles = StyleSheet.create({
         alignSelf: 'center',
     },
     editButton: {
-        marginLeft: 6,
-        alignSelf: 'center',
+        marginLeft: 2,
+        padding: 4,
         opacity: 0.6,
     },
 })
