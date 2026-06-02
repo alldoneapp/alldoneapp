@@ -234,6 +234,26 @@ describe('VM runner runtime Gold monitor', () => {
         )
     })
 
+    test('completion top-up excludes token Gold already charged by the proxy', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 350 },
+            runtimeGoldCharged: 1,
+            proxyTokenGoldCharged: 2,
+        })
+
+        expect(charges).toEqual(
+            expect.objectContaining({
+                minutes: 2,
+                runtimeGoldRemaining: 1,
+                proxyTokenGoldCharged: 2,
+                tokenGoldTotal: 4,
+                tokenGold: 2,
+                topup: 3,
+            })
+        )
+    })
+
     test('technical failure refund includes base reserve plus runtime Gold already charged', async () => {
         mockRefundGold.mockResolvedValue({ success: true, amount: 5 })
 

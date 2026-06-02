@@ -723,9 +723,8 @@ const AGENT_CONFIGS = {
         // On resume, `--continue` continues the most recent session in the working dir.
         buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
             buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort),
-        // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
-        // mode; when `baseUrl` is set, Claude Code is pointed at the proxy and the real key stays
-        // server-side (see vmLlmProxy.js).
+        // `apiKey` is a short-lived per-job proxy token. Claude Code is pointed at the proxy,
+        // and the real key stays server-side (see vmLlmProxy.js).
         sandboxEnv: ({ apiKey, baseUrl }) => ({
             ANTHROPIC_API_KEY: apiKey,
             ...(baseUrl ? { ANTHROPIC_BASE_URL: `${baseUrl}/anthropic` } : {}),
@@ -752,9 +751,8 @@ const AGENT_CONFIGS = {
         // itself, so enable it explicitly for package installs, git push, and PR creation.
         buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
             buildCodexRunCommand(isResume, agentModel, agentReasoningEffort),
-        // `apiKey` is the real key in direct mode, or a short-lived per-job proxy token in proxy
-        // mode; when `baseUrl` is set, Codex is pointed at the proxy via OPENAI_BASE_URL and the
-        // real key stays server-side (see vmLlmProxy.js).
+        // `apiKey` is a short-lived per-job proxy token. Codex is pointed at the proxy via
+        // OPENAI_BASE_URL, and the real key stays server-side (see vmLlmProxy.js).
         sandboxEnv: ({ apiKey, baseUrl }) => ({
             CODEX_API_KEY: apiKey,
             OPENAI_API_KEY: apiKey,
@@ -785,18 +783,21 @@ function calculateAccruedRuntimeGold(runtimeMs) {
     return elapsedMinutes * VM_GOLD_PER_MINUTE
 }
 
-function calculateCompletionGoldCharges({ runtimeMs, usage, runtimeGoldCharged = 0 }) {
+function calculateCompletionGoldCharges({ runtimeMs, usage, runtimeGoldCharged = 0, proxyTokenGoldCharged = 0 }) {
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
     const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
-    const tokenGold = Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+    const tokenGoldTotal = Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+    const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,
         totalTokens,
         runtimeGoldTotal,
         runtimeGoldRemaining,
         runtimeGoldCharged: Number(runtimeGoldCharged) || 0,
+        proxyTokenGoldCharged: Number(proxyTokenGoldCharged) || 0,
+        tokenGoldTotal,
         tokenGold,
         topup: runtimeGoldRemaining + tokenGold,
     }
@@ -847,11 +848,24 @@ async function checkAndChargeVmRuntimeGold({
 }) {
     const currentGold = await getCurrentGold(pendingWebhook.userId)
     if (currentGold <= 0) {
+        console.warn('🖥️ VM JOB: runtime Gold monitor found empty balance', {
+            correlationId: pendingWebhook.correlationId,
+            userId: pendingWebhook.userId,
+            runtimeGoldCharged,
+        })
         await killCommandForGold(commandHandle, runtimeGoldCharged)
     }
 
     const accruedGold = calculateAccruedRuntimeGold(now() - runStartMs)
     const chargeDue = Math.max(0, accruedGold - runtimeGoldCharged)
+    console.log('🖥️ VM JOB: runtime Gold monitor tick', {
+        correlationId: pendingWebhook.correlationId,
+        userId: pendingWebhook.userId,
+        currentGold,
+        accruedGold,
+        runtimeGoldCharged,
+        chargeDue,
+    })
     if (chargeDue <= 0) return runtimeGoldCharged
 
     const amountToCharge = Math.min(chargeDue, currentGold)
@@ -892,9 +906,24 @@ async function checkAndChargeVmRuntimeGold({
     const updatedRuntimeGoldCharged = runtimeGoldCharged + charged
     if (charged > 0 && pendingRef && typeof pendingRef.update === 'function') {
         await pendingRef.update({ runtimeGoldCharged: updatedRuntimeGoldCharged }).catch(() => {})
+        console.log('🖥️ VM JOB: runtime Gold charged', {
+            correlationId: pendingWebhook.correlationId,
+            userId: pendingWebhook.userId,
+            charged,
+            balanceAfter,
+            runtimeGoldCharged: updatedRuntimeGoldCharged,
+        })
     }
 
     if (charged < chargeDue || balanceAfter <= 0) {
+        console.warn('🖥️ VM JOB: runtime Gold monitor stopping command', {
+            correlationId: pendingWebhook.correlationId,
+            userId: pendingWebhook.userId,
+            charged,
+            chargeDue,
+            balanceAfter,
+            runtimeGoldCharged: updatedRuntimeGoldCharged,
+        })
         await killCommandForGold(commandHandle, updatedRuntimeGoldCharged)
     }
 
@@ -917,6 +946,13 @@ function startVmRuntimeGoldMonitor({
     let rejectMonitor
     const promise = new Promise((_, reject) => {
         rejectMonitor = reject
+    })
+
+    console.log('🖥️ VM JOB: runtime Gold monitor started', {
+        correlationId: pendingWebhook.correlationId,
+        userId: pendingWebhook.userId,
+        intervalMs,
+        initialRuntimeGoldCharged: runtimeGoldCharged,
     })
 
     const tick = async () => {
@@ -1215,9 +1251,8 @@ async function runAgentInSandbox(
         // still go to the absolute /home/user/output. Git credentials are injected per-command
         // via envs (never persisted to disk).
         const workdir = gitContext && gitContext.enabled ? REPO_DIR : '/home/user'
-        // Keep the real Anthropic/OpenAI key OUT of the sandbox when the proxy is configured: the
-        // agent gets a short-lived per-job token + the proxy base URL instead, and the real key is
-        // swapped in server-side by vmLlmProxy. Falls back to the real key if the proxy is unset.
+        // Keep the real Anthropic/OpenAI key OUT of the sandbox: the agent gets a short-lived
+        // per-job token + the proxy base URL, and the real key is swapped in server-side.
         const { buildVmAgentCredentials } = require('./vmLlmProxy')
         const agentCredentials = buildVmAgentCredentials({
             vmJob,
@@ -1402,14 +1437,23 @@ async function uploadArtifacts(pendingWebhook, artifacts) {
 async function chargeVmTopup(
     pendingWebhook,
     vmJob,
-    { topup, minutes, totalTokens, costUsd, runtimeGoldAlreadyCharged = 0, runtimeGoldRemaining = 0, tokenGold = 0 }
+    {
+        topup,
+        minutes,
+        totalTokens,
+        costUsd,
+        runtimeGoldAlreadyCharged = 0,
+        runtimeGoldRemaining = 0,
+        tokenGold = 0,
+        proxyTokenGoldCharged = 0,
+    }
 ) {
     if (!topup || topup <= 0) return
     const { deductGold } = require('../Gold/goldHelper')
     const note =
         `VM ${vmJob.agent || 'claude'} metered: ${minutes} min ` +
         `(${runtimeGoldAlreadyCharged} runtime Gold already charged, ${runtimeGoldRemaining} runtime Gold remaining) ` +
-        `+ ${totalTokens} tokens (${tokenGold} Gold)` +
+        `+ ${totalTokens} tokens (${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining)` +
         (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
     const ctx = {
         source: VM_JOB_GOLD_SOURCE,
@@ -1628,10 +1672,21 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Metered Gold top-up from actual usage: per-minute (VM compute) + per-token (LLM).
         const runtimeMs = Date.now() - (vmJob.createdAt || Date.now())
-        const { minutes, totalTokens, runtimeGoldRemaining, tokenGold, topup } = calculateCompletionGoldCharges({
+        const latestPendingSnap = await pendingRef.get().catch(() => null)
+        const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
+        const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
+        const {
+            minutes,
+            totalTokens,
+            runtimeGoldRemaining,
+            tokenGold,
+            tokenGoldTotal,
+            topup,
+        } = calculateCompletionGoldCharges({
             runtimeMs,
             usage,
             runtimeGoldCharged,
+            proxyTokenGoldCharged,
         })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
@@ -1641,6 +1696,7 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldAlreadyCharged: runtimeGoldCharged,
             runtimeGoldRemaining,
             tokenGold,
+            proxyTokenGoldCharged,
         })
 
         await pendingRef
@@ -1649,8 +1705,9 @@ async function runVmJobByCorrelationId(correlationId) {
                 completedAt: Date.now(),
                 runtimeMs,
                 usage: usage || null,
-                goldTopup: runtimeGoldCharged + topup,
+                goldTopup: runtimeGoldCharged + proxyTokenGoldCharged + topup,
                 runtimeGoldCharged,
+                proxyTokenGoldCharged,
                 artifactCount: mediaContext.length,
             })
             .catch(() => {})
@@ -1662,6 +1719,8 @@ async function runVmJobByCorrelationId(correlationId) {
             totalTokens,
             runtimeGoldCharged,
             runtimeGoldRemaining,
+            proxyTokenGoldCharged,
+            tokenGoldTotal,
             tokenGold,
             topup,
             costUsd: usage?.costUsd ?? null,
@@ -1669,7 +1728,10 @@ async function runVmJobByCorrelationId(correlationId) {
     } catch (error) {
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
         const runtimeGoldCharged = Number(error.runtimeGoldCharged) || 0
-        if (isVmGoldExhaustedError(error)) {
+        const latestPendingSnap = await pendingRef.get().catch(() => null)
+        const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
+        const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
+        if (isVmGoldExhaustedError(error) || latestPendingData.failureReason === VM_GOLD_EXHAUSTED_FAILURE_REASON) {
             await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT)
             await sendWhatsAppVmResultNotification(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
                 pendingRef,
@@ -1682,6 +1744,7 @@ async function runVmJobByCorrelationId(correlationId) {
                     failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
                     interruptedAt: Date.now(),
                     runtimeGoldCharged,
+                    proxyTokenGoldCharged,
                 })
                 .catch(() => {})
             return
@@ -1695,9 +1758,15 @@ async function runVmJobByCorrelationId(correlationId) {
             notificationType: 'failed',
         })
         await pendingRef
-            .update({ status: 'failed', error: error.message, failedAt: Date.now(), runtimeGoldCharged })
+            .update({
+                status: 'failed',
+                error: error.message,
+                failedAt: Date.now(),
+                runtimeGoldCharged,
+                proxyTokenGoldCharged,
+            })
             .catch(() => {})
-        await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged)
+        await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged + proxyTokenGoldCharged)
     }
 }
 

@@ -14,17 +14,21 @@
 // provider. Per-token spend budgeting + active-job revocation are possible future hardening; for
 // now the short expiry + signature are the guard (no per-request Firestore read on the hot path).
 //
-// Config: VM_PROXY_SIGNING_SECRET (required to ENABLE the proxy) and optional VM_LLM_PROXY_BASE_URL
-// (defaults to the deployed function URL) come from getEnvFunctions(). If the secret is absent the
-// proxy is disabled and the worker falls back to injecting the real key directly (legacy behavior),
-// so the feature keeps working — but you lose this protection until the secret is set.
+// Config: VM_PROXY_SIGNING_SECRET and optional VM_LLM_PROXY_BASE_URL (defaults to the deployed
+// function URL) come from getEnvFunctions(). If the proxy cannot be configured, VM execution fails
+// closed instead of ever injecting a real provider API key into the sandbox.
 
 const crypto = require('crypto')
+const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const admin = require('firebase-admin')
 
 const REGION = 'europe-west1'
 const FUNCTION_NAME = 'vmLlmProxy'
 const TOKEN_PREFIX = 'vmpx_'
+const VM_JOB_GOLD_SOURCE = 'vm_execution'
+const VM_TOKENS_PER_GOLD = 100
+const VM_PROXY_INSUFFICIENT_GOLD_REASON = 'insufficient_gold'
 
 // Upstream providers, keyed by the path prefix the sandbox agent hits.
 const PROVIDERS = {
@@ -211,6 +215,14 @@ async function handleProxyRequest(req, res) {
             res.status(401).send('Unauthorized')
             return
         }
+        const continuity = await checkProxyJobCanContinue({
+            correlationId: verdict.payload.cid,
+            userId: verdict.payload.uid,
+        })
+        if (!continuity.allowed) {
+            res.status(402).send(continuity.message || 'VM task stopped because the user ran out of Gold')
+            return
+        }
 
         const realKey = env[config.realKeyField]
         if (!realKey) {
@@ -246,8 +258,13 @@ async function handleProxyRequest(req, res) {
         })
 
         if (upstream.body) {
-            const { Readable } = require('stream')
-            Readable.fromWeb(upstream.body).pipe(res)
+            const usage = await pipeAndCaptureUsage(upstream.body, res, matched.provider)
+            await chargeProxyTokenGold({
+                correlationId: verdict.payload.cid,
+                userId: verdict.payload.uid,
+                provider: matched.provider,
+                usage,
+            })
         } else {
             res.end()
         }
@@ -263,43 +280,325 @@ async function handleProxyRequest(req, res) {
     }
 }
 
+function normalizeUsage(usage = {}) {
+    const input =
+        Number(usage.input_tokens) ||
+        Number(usage.prompt_tokens) ||
+        Number(usage.inputTokens) ||
+        Number(usage.promptTokens) ||
+        0
+    const output =
+        Number(usage.output_tokens) ||
+        Number(usage.completion_tokens) ||
+        Number(usage.outputTokens) ||
+        Number(usage.completionTokens) ||
+        0
+    const cache =
+        (Number(usage.cache_creation_input_tokens) || 0) +
+        (Number(usage.cache_read_input_tokens) || 0) +
+        (Number(usage.cached_input_tokens) || 0) +
+        (Number(usage.input_tokens_details?.cached_tokens) || 0)
+    const total = Number(usage.total_tokens) || Number(usage.totalTokens) || input + output + cache
+    return {
+        inputTokens: Number.isFinite(input) ? input : 0,
+        outputTokens: Number.isFinite(output) ? output : 0,
+        cacheTokens: Number.isFinite(cache) ? cache : 0,
+        totalTokens: Number.isFinite(total) ? total : 0,
+    }
+}
+
+async function checkProxyJobCanContinue({ correlationId, userId }) {
+    if (!correlationId || !userId) return { allowed: false, message: 'Invalid VM proxy token' }
+    const db = admin.firestore()
+    const pendingRef = db.doc(`pendingWebhooks/${correlationId}`)
+    const userRef = db.doc(`users/${userId}`)
+    const [pendingSnap, userSnap] = await Promise.all([pendingRef.get(), userRef.get()])
+    const pendingData = pendingSnap.exists ? pendingSnap.data() || {} : {}
+    const currentGold = userSnap.exists ? Number(userSnap.data()?.gold) || 0 : 0
+    if (pendingData.failureReason === VM_PROXY_INSUFFICIENT_GOLD_REASON || currentGold <= 0) {
+        if (pendingData.failureReason !== VM_PROXY_INSUFFICIENT_GOLD_REASON) {
+            await pendingRef
+                .set(
+                    {
+                        failureReason: VM_PROXY_INSUFFICIENT_GOLD_REASON,
+                        interruptedAt: Date.now(),
+                    },
+                    { merge: true }
+                )
+                .catch(() => {})
+        }
+        console.warn('🔐 VM PROXY: rejecting request because VM job is out of Gold', {
+            correlationId,
+            userId,
+            currentGold,
+            failureReason: pendingData.failureReason || '',
+        })
+        return { allowed: false, message: 'VM task stopped because the user ran out of Gold' }
+    }
+    return { allowed: true, currentGold }
+}
+
+function addUsage(a = {}, b = {}) {
+    return {
+        inputTokens: (Number(a.inputTokens) || 0) + (Number(b.inputTokens) || 0),
+        outputTokens: (Number(a.outputTokens) || 0) + (Number(b.outputTokens) || 0),
+        cacheTokens: (Number(a.cacheTokens) || 0) + (Number(b.cacheTokens) || 0),
+        totalTokens: (Number(a.totalTokens) || 0) + (Number(b.totalTokens) || 0),
+    }
+}
+
+function extractUsageFromJsonPayload(provider, payload) {
+    if (!payload || typeof payload !== 'object') return null
+    if (provider === 'anthropic') {
+        if (payload.usage) return normalizeUsage(payload.usage)
+        if (payload.type === 'message_start' && payload.message?.usage) return normalizeUsage(payload.message.usage)
+        if (payload.type === 'message_delta' && payload.usage) return normalizeUsage(payload.usage)
+        return null
+    }
+    if (provider === 'openai') {
+        if (payload.usage) return normalizeUsage(payload.usage)
+        if (payload.response?.usage) return normalizeUsage(payload.response.usage)
+        if (payload.type === 'response.completed' && payload.response?.usage)
+            return normalizeUsage(payload.response.usage)
+    }
+    return null
+}
+
+function captureUsageFromTextChunk(provider, text, state) {
+    state.buffer = `${state.buffer || ''}${text}`
+    const lines = state.buffer.split(/\r?\n/)
+    state.buffer = lines.pop() || ''
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim()
+        if (!line || line === '[DONE]') continue
+        const jsonText = line.startsWith('data:') ? line.slice(5).trim() : line
+        if (!jsonText || jsonText === '[DONE]') continue
+        try {
+            const payload = JSON.parse(jsonText)
+            const usage = extractUsageFromJsonPayload(provider, payload)
+            if (usage && usage.totalTokens > 0) {
+                if (provider === 'anthropic' && payload.type === 'message_delta') {
+                    state.anthropicDeltaUsage = usage
+                } else if (provider === 'anthropic' && payload.type === 'message_start') {
+                    state.usage = addUsage(state.usage, usage)
+                } else {
+                    state.usage = addUsage(state.usage, usage)
+                }
+            }
+        } catch (_) {}
+    }
+}
+
+function finalizeCapturedUsage(provider, state) {
+    if (state.buffer) captureUsageFromTextChunk(provider, '\n', state)
+    if (provider === 'anthropic' && state.anthropicDeltaUsage) {
+        state.usage = addUsage(state.usage, state.anthropicDeltaUsage)
+    }
+    return state.usage || normalizeUsage()
+}
+
+async function pipeAndCaptureUsage(body, res, provider) {
+    const decoder = new TextDecoder()
+    const state = { buffer: '', usage: normalizeUsage(), anthropicDeltaUsage: null }
+
+    if (typeof body.getReader === 'function') {
+        const reader = body.getReader()
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value) {
+                res.write(Buffer.from(value))
+                captureUsageFromTextChunk(provider, decoder.decode(value, { stream: true }), state)
+            }
+        }
+        const trailing = decoder.decode()
+        if (trailing) captureUsageFromTextChunk(provider, trailing, state)
+        res.end()
+        return finalizeCapturedUsage(provider, state)
+    }
+
+    const { Readable } = require('stream')
+    for await (const chunk of Readable.fromWeb(body)) {
+        res.write(chunk)
+        captureUsageFromTextChunk(provider, decoder.decode(chunk, { stream: true }), state)
+    }
+    const trailing = decoder.decode()
+    if (trailing) captureUsageFromTextChunk(provider, trailing, state)
+    res.end()
+    return finalizeCapturedUsage(provider, state)
+}
+
+async function chargeProxyTokenGold({
+    correlationId,
+    userId,
+    provider,
+    usage,
+    db = admin.firestore(),
+    applyGoldChangeInTransactionFn = null,
+}) {
+    const totalTokens = Number(usage?.totalTokens) || 0
+    if (!correlationId || !userId || totalTokens <= 0) return { charged: 0, totalTokens: 0 }
+
+    const userRef = db.doc(`users/${userId}`)
+    const pendingRef = db.doc(`pendingWebhooks/${correlationId}`)
+    let result = { charged: 0, totalTokens }
+
+    await db.runTransaction(async transaction => {
+        const [userSnap, pendingSnap] = await Promise.all([transaction.get(userRef), transaction.get(pendingRef)])
+        if (!userSnap.exists || !pendingSnap.exists) return
+
+        const userData = userSnap.data() || {}
+        const pendingData = pendingSnap.data() || {}
+        const currentGold = Number(userData.gold) || 0
+        const previousTokens = Number(pendingData.proxyTokenUsage?.totalTokens) || 0
+        const previousGoldCharged = Number(pendingData.proxyTokenGoldCharged) || 0
+        const nextTokens = previousTokens + totalTokens
+        const goldDue = Math.max(0, Math.round(nextTokens / VM_TOKENS_PER_GOLD) - previousGoldCharged)
+        const usageUpdate = {
+            inputTokens: (Number(pendingData.proxyTokenUsage?.inputTokens) || 0) + (Number(usage.inputTokens) || 0),
+            outputTokens: (Number(pendingData.proxyTokenUsage?.outputTokens) || 0) + (Number(usage.outputTokens) || 0),
+            cacheTokens: (Number(pendingData.proxyTokenUsage?.cacheTokens) || 0) + (Number(usage.cacheTokens) || 0),
+            totalTokens: nextTokens,
+        }
+
+        if (goldDue <= 0) {
+            transaction.set(
+                pendingRef,
+                {
+                    proxyTokenUsage: usageUpdate,
+                    proxyTokenGoldCharged: previousGoldCharged,
+                    proxyLastUsageProvider: provider,
+                    proxyLastUsageAt: Date.now(),
+                },
+                { merge: true }
+            )
+            result = { charged: 0, totalTokens, totalTokensTracked: nextTokens }
+            return
+        }
+
+        const goldToCharge = Math.min(goldDue, currentGold)
+        if (goldToCharge > 0) {
+            const applyGoldChangeInTransaction =
+                applyGoldChangeInTransactionFn || require('../Gold/goldHelper').applyGoldChangeInTransaction
+            const goldResult = applyGoldChangeInTransaction({
+                transaction,
+                userRef,
+                userData,
+                delta: -goldToCharge,
+                direction: 'spend',
+                source: VM_JOB_GOLD_SOURCE,
+                context: {
+                    channel: 'assistant',
+                    projectId: pendingData.projectId,
+                    objectId: pendingData.objectId,
+                    objectType: pendingData.objectType,
+                    note: `VM ${provider} live token charge (${nextTokens} tracked tokens)`,
+                },
+                requireSufficientBalance: true,
+            })
+            if (!goldResult.success) {
+                result = { charged: 0, totalTokens, insufficient: true, currentGold }
+                transaction.set(
+                    pendingRef,
+                    {
+                        proxyTokenUsage: usageUpdate,
+                        proxyTokenGoldCharged: previousGoldCharged,
+                        failureReason: VM_PROXY_INSUFFICIENT_GOLD_REASON,
+                        interruptedAt: Date.now(),
+                        proxyLastUsageProvider: provider,
+                        proxyLastUsageAt: Date.now(),
+                    },
+                    { merge: true }
+                )
+                return
+            }
+        }
+
+        const nextGoldCharged = previousGoldCharged + goldToCharge
+        const insufficient = goldToCharge < goldDue
+        transaction.set(
+            pendingRef,
+            {
+                proxyTokenUsage: usageUpdate,
+                proxyTokenGoldCharged: nextGoldCharged,
+                ...(insufficient
+                    ? {
+                          failureReason: VM_PROXY_INSUFFICIENT_GOLD_REASON,
+                          interruptedAt: Date.now(),
+                      }
+                    : {}),
+                proxyLastUsageProvider: provider,
+                proxyLastUsageAt: Date.now(),
+            },
+            { merge: true }
+        )
+
+        result = {
+            charged: goldToCharge,
+            goldDue,
+            insufficient,
+            currentGold,
+            totalTokens,
+            totalTokensTracked: nextTokens,
+            proxyTokenGoldCharged: nextGoldCharged,
+        }
+    })
+
+    console.log('🔐 VM PROXY: token usage accounted', {
+        correlationId,
+        userId,
+        provider,
+        ...result,
+    })
+
+    if (result.insufficient) {
+        const error = new Error('VM task stopped because the user ran out of Gold during token billing')
+        error.code = VM_PROXY_INSUFFICIENT_GOLD_REASON
+        throw error
+    }
+    return result
+}
+
 /**
- * Build the sandbox credential descriptor for a run. In proxy mode the sandbox gets the per-job
- * token + the proxy base URL (NO real key). If the proxy isn't configured (no signing secret or
- * no resolvable base URL), fall back to the real key so the feature still works — with a warning.
+ * Build the sandbox credential descriptor for a run. The sandbox gets only a per-job token + the
+ * proxy base URL (NO real key). If the proxy is not configured, fail closed.
  */
 function buildVmAgentCredentials({ vmJob, agent, realApiKey, ttlMs, env = null }) {
     const resolved = resolveEnv(env)
-    if (isProxyEnabled(resolved)) {
-        const baseUrl = getProxyBaseUrl(resolved)
-        if (baseUrl) {
-            const token = mintProxyToken(
-                {
-                    correlationId: vmJob.correlationId,
-                    agent,
-                    userId: vmJob.requestUserId,
-                    expiresAtMs: Date.now() + (Number(ttlMs) || 0),
-                },
-                resolved
-            )
-            return { apiKey: token, baseUrl, mode: 'proxy' }
-        }
-        console.warn('🔐 VM PROXY: enabled but base URL could not be resolved — injecting real key', {
-            correlationId: vmJob.correlationId,
-        })
-    } else {
-        console.warn(
-            '🔐 VM PROXY: VM_PROXY_SIGNING_SECRET not set — injecting real key into the sandbox (less secure)',
-            {
-                correlationId: vmJob.correlationId,
-            }
-        )
+    if (!isProxyEnabled(resolved)) {
+        throw new Error('VM task cannot run: VM_PROXY_SIGNING_SECRET is not configured.')
     }
-    return { apiKey: realApiKey, baseUrl: null, mode: 'direct' }
+
+    const baseUrl = getProxyBaseUrl(resolved)
+    if (!baseUrl) {
+        throw new Error('VM task cannot run: VM_LLM_PROXY_BASE_URL could not be resolved.')
+    }
+
+    if (!realApiKey) {
+        throw new Error('VM task cannot run: upstream model API key is not configured.')
+    }
+
+    const token = mintProxyToken(
+        {
+            correlationId: vmJob.correlationId,
+            agent,
+            userId: vmJob.requestUserId,
+            expiresAtMs: Date.now() + (Number(ttlMs) || 0),
+        },
+        resolved
+    )
+    return { apiKey: token, baseUrl, mode: 'proxy' }
 }
 
 module.exports = {
     handleProxyRequest,
+    checkProxyJobCanContinue,
+    normalizeUsage,
+    extractUsageFromJsonPayload,
+    captureUsageFromTextChunk,
+    finalizeCapturedUsage,
+    chargeProxyTokenGold,
     mintProxyToken,
     verifyProxyToken,
     isProxyEnabled,
