@@ -6,6 +6,7 @@ const {
     VM_GOLD_PER_MINUTE,
     VM_TOKENS_PER_GOLD,
     getAgentLabel,
+    formatAgentRunSuffix,
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,
@@ -673,12 +674,25 @@ function appendCodexActivity(evt, state) {
     }
 }
 
-function renderVmWorkingHeader(agentLabel) {
-    return `🖥️ Working with ${agentLabel} in a VM…`
+// Resolve the model + effort the agent will actually run with, applying the same per-agent
+// defaults the worker uses to build the CLI command. Kept here so the status header shows the
+// real values even when the assistant omitted agentModel / agentReasoningEffort on the tool call.
+function resolveAgentRunDetails(vmJob) {
+    const agent = (vmJob && vmJob.agent) || DEFAULT_AGENT
+    const model = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
+    const effort =
+        (vmJob && vmJob.agentReasoningEffort) ||
+        (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
+    return { model, effort }
 }
 
-function renderActivityLog(lines, agentLabel) {
-    return `${renderVmWorkingHeader(agentLabel)}\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
+function renderVmWorkingHeader(agentLabel, runDetails) {
+    const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
+    return `🖥️ Working with ${agentLabel}${suffix} in a VM…`
+}
+
+function renderActivityLog(lines, agentLabel, runDetails) {
+    return `${renderVmWorkingHeader(agentLabel, runDetails)}\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
 }
 
 // Per-agent configuration. The assistant picks the agent per task; we map it to the
@@ -1077,6 +1091,8 @@ async function runAgentInSandbox(
     const { Sandbox } = require('e2b')
     const env = getEnvFunctions()
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
+    // Model + effort the agent runs with, surfaced in the live status header.
+    const runDetails = resolveAgentRunDetails(vmJob)
     // Template defaults to E2B's prebuilt name for this agent; the env var is an optional override.
     const template = env[config.templateEnvKey] || process.env[config.templateEnvKey] || config.defaultTemplate
     const sessionRef = admin.firestore().doc(`vmSessions/${vmSessionDocId(vmJob)}`)
@@ -1141,14 +1157,19 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
             }
             await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
             if (typeof onActivity === 'function') {
-                onActivity(`${renderVmWorkingHeader(agentLabel)}\n\n📦 Installing repository dependencies when needed…`)
+                onActivity(
+                    `${renderVmWorkingHeader(
+                        agentLabel,
+                        runDetails
+                    )}\n\n📦 Installing repository dependencies when needed…`
+                )
             }
             await setupRepoDependencies(sandbox, vmJob.correlationId)
         }
@@ -1172,7 +1193,7 @@ async function runAgentInSandbox(
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails))
             }
         }
         const handleStdout = data => {
@@ -1210,16 +1231,11 @@ async function runAgentInSandbox(
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
         const runEnvs = gitContext && gitContext.enabled ? { ...agentEnv, ...buildGitEnv(gitContext) } : agentEnv
-        const resolvedAgentModel =
-            vmJob.agentModel || (vmJob.agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
-        const resolvedReasoningEffort =
-            vmJob.agentReasoningEffort ||
-            (vmJob.agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
         const command = `mkdir -p /home/user/output && cd ${workdir} && ${config.installGuard} && ${config.buildRun(
             isResume,
             {
-                agentModel: resolvedAgentModel,
-                agentReasoningEffort: resolvedReasoningEffort,
+                agentModel: runDetails.model,
+                agentReasoningEffort: runDetails.effort,
             }
         )}`
 
@@ -1540,6 +1556,7 @@ async function runVmJobByCorrelationId(correlationId) {
     // Resolve the agent the assistant chose (defaults to Claude) and its config.
     const config = AGENT_CONFIGS[vmJob.agent] || AGENT_CONFIGS[DEFAULT_AGENT]
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
+    const runDetails = resolveAgentRunDetails(vmJob)
     const apiKey = env[config.apiKeyField]
     if (!apiKey || !e2bApiKey) {
         const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
@@ -1583,7 +1600,7 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     try {
-        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel))
+        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails))
         const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
             vmJob,
             config,
@@ -1693,6 +1710,7 @@ module.exports = {
         buildAgentPrompt,
         renderActivityLog,
         renderVmWorkingHeader,
+        resolveAgentRunDetails,
         calculateAccruedRuntimeGold,
         calculateCompletionGoldCharges,
         checkAndChargeVmRuntimeGold,

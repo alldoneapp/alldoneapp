@@ -18,6 +18,16 @@ jest.mock('./vmJob', () => ({
     VM_GOLD_PER_MINUTE: 1,
     VM_TOKENS_PER_GOLD: 100,
     getAgentLabel: jest.fn(agent => (agent === 'codex' ? 'Codex' : 'Claude')),
+    formatAgentRunSuffix: (model, effort) => {
+        const parts = []
+        if (model) parts.push(model)
+        if (effort) parts.push(`${effort} effort`)
+        return parts.length ? ` (${parts.join(' · ')})` : ''
+    },
+    DEFAULT_CLAUDE_MODEL: 'opus',
+    DEFAULT_CODEX_MODEL: 'gpt-5.5',
+    DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
+    DEFAULT_CODEX_REASONING_EFFORT: 'high',
 }))
 
 jest.mock('../Services/TwilioWhatsAppService', () =>
@@ -89,6 +99,32 @@ describe('VM runner prompt', () => {
         expect(__private__.renderActivityLog(['💻 npm run lint'], 'Claude')).toContain(
             '🖥️ Working with Claude in a VM…'
         )
+    })
+
+    test('header includes the model and effort the agent is running with', () => {
+        expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
+            '🖥️ Working with Claude (opus · high effort) in a VM…'
+        )
+        expect(
+            __private__.renderActivityLog(['💻 npm run lint'], 'Codex', { model: 'gpt-5.5', effort: 'medium' })
+        ).toBe('🖥️ Working with Codex (gpt-5.5 · medium effort) in a VM…\n\n💻 npm run lint')
+    })
+
+    test('header omits the suffix when neither model nor effort is known', () => {
+        expect(__private__.renderVmWorkingHeader('Claude', { model: '', effort: '' })).toBe(
+            '🖥️ Working with Claude in a VM…'
+        )
+    })
+
+    test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
+        expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
+        expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({ model: 'gpt-5.5', effort: 'high' })
+    })
+
+    test('resolveAgentRunDetails uses explicit job values when present', () => {
+        expect(
+            __private__.resolveAgentRunDetails({ agent: 'codex', agentModel: 'gpt-5.4', agentReasoningEffort: 'low' })
+        ).toEqual({ model: 'gpt-5.4', effort: 'low' })
     })
 })
 

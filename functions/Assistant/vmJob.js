@@ -48,6 +48,18 @@ function getAgentLabel(agent) {
     return AGENT_LABELS[agent] || AGENT_LABELS[DEFAULT_AGENT]
 }
 
+/**
+ * Human-readable "(model · effort)" suffix appended to the VM status messages so the user
+ * can see which model and effort level the agent is running with (e.g. "(opus · high effort)").
+ * Returns an empty string when neither is known, so older callers stay unchanged.
+ */
+function formatAgentRunSuffix(model, effort) {
+    const parts = []
+    if (model) parts.push(model)
+    if (effort) parts.push(`${effort} effort`)
+    return parts.length ? ` (${parts.join(' · ')})` : ''
+}
+
 function isClaudeModelId(model) {
     return model === 'opus' || model === 'sonnet' || model === 'haiku' || model.startsWith('claude-')
 }
@@ -282,7 +294,10 @@ async function startVmJob({
             objectType,
             objectId,
             assistantId,
-            `🖥️ Spinning up ${selectedAgentLabel} in a VM to work on this…`,
+            `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
+                modelResult.value,
+                effortResult.value
+            )} in a VM to work on this…`,
             userIdsToNotify,
             isPublicFor,
             [requestUserId]
@@ -405,6 +420,7 @@ module.exports = {
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     VALID_TASK_TYPES,
     getAgentLabel,
+    formatAgentRunSuffix,
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,

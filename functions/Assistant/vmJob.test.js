@@ -97,11 +97,39 @@ describe('startVmJob WhatsApp metadata', () => {
         expect(payload).not.toHaveProperty('whatsappTo')
     })
 
-    test('names the selected agent in the user-visible VM status', async () => {
+    test('names the selected agent, model and effort in the user-visible VM status', async () => {
         const result = await startVmJob({
             objective: 'Change the code',
             taskType: 'prototype',
             agent: 'codex',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        // No model/effort passed → the per-agent defaults (Codex: gpt-5.5 · high) are surfaced.
+        expect(createInitialStatusMessage).toHaveBeenCalledWith(
+            'project-1',
+            'topics',
+            'chat-1',
+            'assistant-1',
+            '🖥️ Spinning up Codex (gpt-5.5 · high effort) in a VM to work on this…',
+            expect.any(Array),
+            expect.any(Array),
+            expect.any(Array)
+        )
+        expect(result.message).toContain('VM task started with Codex')
+    })
+
+    test('surfaces an explicitly chosen model and effort in the VM status', async () => {
+        await startVmJob({
+            objective: 'Change the code',
+            taskType: 'prototype',
+            agent: 'claude',
+            agentModel: 'sonnet',
+            agentReasoningEffort: 'medium',
             projectId: 'project-1',
             objectType: 'topics',
             objectId: 'chat-1',
@@ -114,11 +142,10 @@ describe('startVmJob WhatsApp metadata', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex in a VM to work on this…',
+            '🖥️ Spinning up Claude (sonnet · medium effort) in a VM to work on this…',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
         )
-        expect(result.message).toContain('VM task started with Codex')
     })
 })
