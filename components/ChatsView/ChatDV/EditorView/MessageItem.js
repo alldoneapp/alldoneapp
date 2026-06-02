@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import { View, Animated } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { useDispatch, useSelector } from 'react-redux'
-import { setQuotedText } from '../../../../redux/actions'
+import { setQuotedText, setActiveChatMessageId } from '../../../../redux/actions'
 import { colors } from '../../../styles/global'
 import SwipeAreasContainer from '../../../TaskListView/SwipeAreasContainer'
 
@@ -28,6 +28,16 @@ export default function MessageItem({
     const itemSwipe = useRef(null)
     const dismissibleRef = useRef(null)
     const creatorData = useGetUserPresentationData(message.creatorId)
+
+    const showFloatPopup = useSelector(state => state.showFloatPopup)
+    const activeChatMessageId = useSelector(state => state.activeChatMessageId)
+
+    const enableEditMode = () => {
+        if (!blockOpen && activeChatMessageId === '' && !showFloatPopup) {
+            dispatch(setActiveChatMessageId(message.id))
+            dismissibleRef.current.openModal()
+        }
+    }
 
     const onQuote = () => {
         const { displayName } = creatorData
@@ -86,6 +96,8 @@ export default function MessageItem({
                         serverTime={serverTime}
                         creatorData={creatorData}
                         highlight={highlight}
+                        onEditPress={enableEditMode}
+                        editDisabled={userIsAnonymous}
                     />
                     <MessageItemContent
                         chat={chat}
@@ -95,7 +107,6 @@ export default function MessageItem({
                         members={members}
                         messageId={message.id}
                         creatorId={message.creatorId}
-                        blockOpen={blockOpen}
                         dismissibleRef={dismissibleRef}
                         creatorData={creatorData}
                         objectType={objectType}

@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, TouchableOpacity, View, ActivityIndicator, Text } from 'react-native'
+import { StyleSheet, View, ActivityIndicator, Text } from 'react-native'
 
 import global, { colors } from '../../../styles/global'
 import CommentElementsParser from '../../../Feeds/TextParser/CommentElementsParser'
@@ -36,7 +36,6 @@ export default function MessageItemContent({
     chatTitle,
     members,
     chat,
-    blockOpen,
     dismissibleRef,
     creatorData,
     objectType,
@@ -44,9 +43,7 @@ export default function MessageItemContent({
     isLoading,
 }) {
     const dispatch = useDispatch()
-    const showFloatPopup = useSelector(state => state.showFloatPopup)
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
-    const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
     // Helper to check if a comment contains block/special elements that cannot be rendered inline
     const containsBlockOrSpecialElements = text => {
@@ -65,13 +62,6 @@ export default function MessageItemContent({
 
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
-
-    const enableEditMode = () => {
-        if (!blockOpen && activeChatMessageId === '' && !showFloatPopup) {
-            dispatch(setActiveChatMessageId(messageId))
-            dismissibleRef.current.openModal()
-        }
-    }
 
     const closeEditMode = () => {
         dismissibleRef.current.closeModal()
@@ -328,7 +318,7 @@ export default function MessageItemContent({
         <DismissibleItem
             ref={dismissibleRef}
             defaultComponent={
-                <TouchableOpacity style={{ marginLeft: 36 }} onPress={enableEditMode} disabled={userIsAnonymous}>
+                <View style={{ marginLeft: 36 }}>
                     {isLoadingState ? (
                         <View style={localStyles.loadingContainer}>
                             {!containsBlockOrSpecialElements(commentText) ? (
@@ -365,7 +355,7 @@ export default function MessageItemContent({
                             }
                         })
                     )}
-                </TouchableOpacity>
+                </View>
             }
             modalComponent={
                 <ChatInput

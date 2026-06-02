@@ -11,7 +11,15 @@ import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
 import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistantsHelper'
 
-export default function MessageItemHeader({ projectId, message, serverTime, creatorData, highlight }) {
+export default function MessageItemHeader({
+    projectId,
+    message,
+    serverTime,
+    creatorData,
+    highlight,
+    onEditPress,
+    editDisabled,
+}) {
     const dispatch = useDispatch()
 
     const { lastChangeDate, creatorId, isVoiceTranscription, source } = message
@@ -48,6 +56,16 @@ export default function MessageItemHeader({ projectId, message, serverTime, crea
                 </View>
             )}
             {source === 'whatsapp' && <Text style={localStyles.sourceLabel}> • WhatsApp</Text>}
+            {!editDisabled && (
+                <TouchableOpacity
+                    style={localStyles.editButton}
+                    onPress={onEditPress}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                    accessibilityLabel="Edit message"
+                >
+                    <Icon name="edit-2" size={12} color={colors.Text03} />
+                </TouchableOpacity>
+            )}
         </View>
     )
 }
@@ -88,5 +106,10 @@ const localStyles = StyleSheet.create({
         ...global.caption2,
         color: colors.Text03,
         alignSelf: 'center',
+    },
+    editButton: {
+        marginLeft: 6,
+        alignSelf: 'center',
+        opacity: 0.6,
     },
 })
