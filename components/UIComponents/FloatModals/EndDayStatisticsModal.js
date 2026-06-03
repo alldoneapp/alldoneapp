@@ -65,6 +65,7 @@ export default function EndDayStatisticsModal() {
     const [showEmptyInbox, setShowEmptyInbox] = useState(true)
     const [dataLoaded, setDataLoaded] = useState(null)
     const [statsDate, setStatsDate] = useState(statisticsModalDate)
+    const [doneTasksByProject, setDoneTasksByProject] = useState({})
     const [happinessRatings, setHappinessRatings] = useState({})
     const [happinessComments, setHappinessComments] = useState({})
     const [visibleComments, setVisibleComments] = useState({})
@@ -72,6 +73,8 @@ export default function EndDayStatisticsModal() {
     const isOfflineRef = useRef(false)
     const isLoading = useRef(false)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
+    const commentInputRefs = useRef({})
+    const pendingCommentFocusProjectIdRef = useRef(null)
 
     const needToShowYesterdayStats = () => {
         const today = moment()
@@ -86,12 +89,14 @@ export default function EndDayStatisticsModal() {
         setXp(0)
         setDonePoints(0)
         setGold(0)
+        setDoneTasksByProject({})
         setShowEmptyInbox(true)
         setDataLoaded(null)
         setStatsDate(statisticsModalDate)
         setHappinessRatings({})
         setHappinessComments({})
         setVisibleComments({})
+        pendingCommentFocusProjectIdRef.current = null
         isOfflineRef.current = false
         isLoading.current = false
     }
@@ -106,6 +111,7 @@ export default function EndDayStatisticsModal() {
             }
 
             const { donePoints, doneTime, doneTasks, gold, xp } = statistics
+            setDoneTasksByProject(state => ({ ...state, [projectId]: doneTasks ? doneTasks : 0 }))
             setDoneTasks(state => state + (doneTasks ? doneTasks : 0))
             setDonePoints(state => state + (donePoints && estimationType === ESTIMATION_TYPE_POINTS ? donePoints : 0))
             setDoneTime(state => state + (doneTime && estimationType === ESTIMATION_TYPE_TIME ? doneTime : 0))
@@ -148,6 +154,7 @@ export default function EndDayStatisticsModal() {
             const endDayStatisticsDate = moment(statisticsModalDate)
             const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
             const dataLoaded = {}
+            setDoneTasksByProject({})
             const { loggedUserProjects, loggedUser } = store.getState()
             const { templateProjectIds } = loggedUser
             for (let i = 0; i < loggedUserProjects.length; i++) {
@@ -206,6 +213,18 @@ export default function EndDayStatisticsModal() {
         }
     }, [JSON.stringify(dataLoaded), statsDate, loggedUserId, isAnonymous])
 
+    useEffect(() => {
+        const projectId = pendingCommentFocusProjectIdRef.current
+        if (!projectId || !visibleComments[projectId]) return
+
+        const timeoutId = setTimeout(() => {
+            commentInputRefs.current[projectId]?.focus?.()
+            pendingCommentFocusProjectIdRef.current = null
+        })
+
+        return () => clearTimeout(timeoutId)
+    }, [visibleComments])
+
     const getHappinessProjects = () => getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
 
     const updateHappinessRating = (project, rating) => {
@@ -235,6 +254,14 @@ export default function EndDayStatisticsModal() {
                 happinessComments[project.id] || '',
                 project
             )
+    }
+
+    const toggleHappinessComment = projectId => {
+        setVisibleComments(state => {
+            const willShow = !state[projectId]
+            pendingCommentFocusProjectIdRef.current = willShow ? projectId : null
+            return { ...state, [projectId]: willShow }
+        })
     }
 
     const getAnimationSegment = () => {
@@ -382,16 +409,22 @@ export default function EndDayStatisticsModal() {
                                 {happinessProjects.map(project => (
                                     <View key={project.id} style={localStyles.happinessProject}>
                                         <View style={localStyles.happinessProjectHeader}>
-                                            <Text style={localStyles.happinessProjectName}>{project.name}</Text>
+                                            <View style={localStyles.happinessProjectInfo}>
+                                                <Text style={localStyles.happinessProjectName}>{project.name}</Text>
+                                                <View style={localStyles.happinessProjectStats}>
+                                                    <Icon name="check-square" size={16} color={colors.Text04} />
+                                                    <Text style={localStyles.happinessProjectStatsText}>
+                                                        {translate('Tasks done:')}{' '}
+                                                        {doneTasksByProject[project.id]
+                                                            ? doneTasksByProject[project.id]
+                                                            : 0}
+                                                    </Text>
+                                                </View>
+                                            </View>
                                             <View style={localStyles.happinessActions}>
                                                 <TouchableOpacity
                                                     style={localStyles.commentButton}
-                                                    onPress={() =>
-                                                        setVisibleComments(state => ({
-                                                            ...state,
-                                                            [project.id]: !state[project.id],
-                                                        }))
-                                                    }
+                                                    onPress={() => toggleHappinessComment(project.id)}
                                                 >
                                                     <Icon name="message-circle" size={20} color="#ffffff" />
                                                 </TouchableOpacity>
@@ -405,6 +438,13 @@ export default function EndDayStatisticsModal() {
                                         </View>
                                         {visibleComments[project.id] && (
                                             <TextInput
+                                                ref={ref => {
+                                                    if (ref) {
+                                                        commentInputRefs.current[project.id] = ref
+                                                    } else {
+                                                        delete commentInputRefs.current[project.id]
+                                                    }
+                                                }}
                                                 style={localStyles.happinessComment}
                                                 multiline
                                                 value={happinessComments[project.id] || ''}
@@ -538,11 +578,24 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
+    happinessProjectInfo: {
+        flex: 1,
+        marginRight: 8,
+        minWidth: 0,
+    },
     happinessProjectName: {
         ...styles.subtitle2,
         color: '#ffffff',
-        flex: 1,
-        marginRight: 8,
+    },
+    happinessProjectStats: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+    },
+    happinessProjectStatsText: {
+        ...styles.caption2,
+        color: colors.Text04,
+        marginLeft: 4,
     },
     happinessActions: {
         flexDirection: 'row',
