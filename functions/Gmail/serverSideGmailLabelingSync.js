@@ -846,6 +846,8 @@ function buildPostLabelGmailContext({
     normalizedMessage,
     gmailEmail,
     assistantProjectId,
+    connectionProjectId = '',
+    selectedProjectId = '',
     direction = GMAIL_DIRECTION_SCOPE_INCOMING,
     targetContactEmail = '',
     targetContactName = '',
@@ -858,7 +860,10 @@ function buildPostLabelGmailContext({
     return {
         origin: 'gmail_label_follow_up',
         gmailEmail: normalizedEmail,
-        projectId: assistantProjectId || '',
+        projectId: connectionProjectId || assistantProjectId || '',
+        connectionProjectId: connectionProjectId || assistantProjectId || '',
+        assistantProjectId: assistantProjectId || '',
+        selectedProjectId: selectedProjectId || '',
         messageId,
         threadId,
         webUrl: buildGmailMessageUrl(normalizedEmail, messageId),
@@ -938,6 +943,7 @@ async function executePostLabelPrompt({
     existingAuditEntry = null,
     reasoning = '',
     confidence = null,
+    connectionProjectId = '',
     selectedProjectId = null,
 }) {
     const prompt =
@@ -1017,6 +1023,8 @@ async function executePostLabelPrompt({
             normalizedMessage,
             gmailEmail,
             assistantProjectId,
+            connectionProjectId,
+            selectedProjectId,
             direction,
             targetContactEmail,
             targetContactName,
@@ -1401,6 +1409,7 @@ async function processSingleMessage({
             existingAuditEntry,
             reasoning: classifierResult.reasoning,
             confidence: classifierResult.confidence,
+            connectionProjectId: projectId,
             selectedProjectId,
         })
         postLabelActions.push(action)

@@ -174,6 +174,9 @@ describe('serverSideGmailLabelingSync helpers', () => {
             origin: 'gmail_label_follow_up',
             gmailEmail: 'person@example.com',
             projectId: 'project-1',
+            connectionProjectId: 'project-1',
+            assistantProjectId: 'project-1',
+            selectedProjectId: '',
             messageId: 'message-1',
             threadId: 'thread-1',
             webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
@@ -467,6 +470,9 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         origin: 'gmail_label_follow_up',
                         gmailEmail: 'person@example.com',
                         projectId: 'default-project',
+                        connectionProjectId: 'default-project',
+                        assistantProjectId: 'default-project',
+                        selectedProjectId: 'project-1',
                         messageId: 'message-1',
                         threadId: 'thread-1',
                         webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
@@ -817,6 +823,9 @@ describe('serverSideGmailLabelingSync helpers', () => {
             expect.objectContaining({
                 toolRuntimeContext: expect.objectContaining({
                     gmailContext: expect.objectContaining({
+                        projectId: 'project-1',
+                        connectionProjectId: 'project-1',
+                        selectedProjectId: 'source-project',
                         direction: 'outgoing',
                         targetContactEmail: 'alice@example.com',
                         targetContactName: 'Alice',
@@ -829,6 +838,9 @@ describe('serverSideGmailLabelingSync helpers', () => {
             expect.objectContaining({
                 toolRuntimeContext: expect.objectContaining({
                     gmailContext: expect.objectContaining({
+                        projectId: 'project-1',
+                        connectionProjectId: 'project-1',
+                        selectedProjectId: 'source-project',
                         direction: 'outgoing',
                         targetContactEmail: 'bob@example.com',
                         targetContactName: 'Bob',

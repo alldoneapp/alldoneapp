@@ -22,6 +22,8 @@ const buildProjectSelectionReason = ({ source, targetProjectName = '', requested
             return `The task creation request did not specify a project, so I used the current chat project ${projectName}.`
         case 'whatsappContextProject':
             return `The WhatsApp task request did not specify a project, so I used the current WhatsApp project context ${projectName}.`
+        case 'gmailLabelMatchedProject':
+            return `The Gmail label classifier matched ${projectName}, so I created the follow-up task there.`
         case 'defaultProject':
             return `The task creation request did not specify a project, so I used your default project ${projectName}.`
         case 'assistantProject':

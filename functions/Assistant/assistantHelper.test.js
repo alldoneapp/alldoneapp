@@ -1395,6 +1395,90 @@ describe('assistant create_task project routing comments', () => {
             commentId: 'routing-comment-1',
         })
     })
+
+    test('uses Gmail label matched project over conflicting assistant task project', async () => {
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({ name: 'JTL Software - Project Juno' }),
+            })
+            .mockResolvedValue({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-bechtle',
+                    projectIds: ['project-bechtle', 'project-jtl'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-jtl',
+            projectId: 'project-jtl',
+            message: 'Task created',
+            task: {
+                id: 'task-jtl',
+                name: 'Bereitstellung der Rechnung 004 fuer JTL',
+                userId: 'user-1',
+                commentsData: { amount: 0 },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Bereitstellung der Rechnung 004 fuer JTL',
+                projectName: 'Bechtle',
+                projectRoutingReason: 'the task is for Bechtle operations',
+            },
+            'project-bechtle',
+            'assistant-1',
+            'user-1',
+            null,
+            {
+                projectId: 'project-bechtle',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+                gmailContext: {
+                    origin: 'gmail_label_follow_up',
+                    gmailEmail: 'karsten@example.com',
+                    projectId: 'gmail-connection-project',
+                    connectionProjectId: 'gmail-connection-project',
+                    selectedProjectId: 'project-jtl',
+                    messageId: 'message-1',
+                    threadId: 'thread-1',
+                    webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
+                    archiveOnComplete: true,
+                },
+            }
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'Bereitstellung der Rechnung 004 fuer JTL',
+                projectId: 'project-jtl',
+                gmailData: expect.objectContaining({
+                    origin: 'gmail_label_follow_up',
+                    projectId: 'gmail-connection-project',
+                    taskProjectId: 'project-jtl',
+                    selectedProjectId: 'project-jtl',
+                    messageId: 'message-1',
+                }),
+            }),
+            expect.objectContaining({
+                userId: 'user-1',
+                projectId: 'project-jtl',
+            })
+        )
+        expect(result.projectId).toBe('project-jtl')
+        expect(result.projectName).toBe('JTL Software - Project Juno')
+        expect(result.projectSelection).toMatchObject({
+            source: 'gmailLabelMatchedProject',
+            reasoning:
+                'The Gmail label classifier matched JTL Software - Project Juno, so I created the follow-up task there.',
+            assistantProvidedReasoning: false,
+        })
+        expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
+    })
 })
 
 describe('assistant get chats tool', () => {

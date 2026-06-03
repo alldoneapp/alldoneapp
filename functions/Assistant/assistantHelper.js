@@ -699,17 +699,31 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
 
     const messageId = typeof gmailContext.messageId === 'string' ? gmailContext.messageId.trim() : ''
     if (!messageId) return null
+    const configuredConnectionProjectId =
+        typeof gmailContext.connectionProjectId === 'string' ? gmailContext.connectionProjectId.trim() : ''
+    const fallbackConnectionProjectId = typeof gmailContext.projectId === 'string' ? gmailContext.projectId.trim() : ''
+    const connectionProjectId = configuredConnectionProjectId || fallbackConnectionProjectId
+    const matchedProjectId =
+        typeof gmailContext.selectedProjectId === 'string' ? gmailContext.selectedProjectId.trim() : ''
 
     return {
         origin: GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
         gmailEmail: typeof gmailContext.gmailEmail === 'string' ? gmailContext.gmailEmail.trim().toLowerCase() : '',
-        projectId: targetProjectId || gmailContext.projectId || '',
+        projectId: connectionProjectId || targetProjectId || '',
+        taskProjectId: targetProjectId || '',
+        selectedProjectId: matchedProjectId,
         messageId,
         threadId: typeof gmailContext.threadId === 'string' ? gmailContext.threadId.trim() : '',
         webUrl: typeof gmailContext.webUrl === 'string' ? gmailContext.webUrl.trim() : '',
         archiveOnComplete: gmailContext.archiveOnComplete !== false,
         archiveStatus: null,
     }
+}
+
+function getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext = null) {
+    const gmailContext = toolRuntimeContext?.gmailContext
+    if (!gmailContext || gmailContext.origin !== GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN) return ''
+    return typeof gmailContext.selectedProjectId === 'string' ? gmailContext.selectedProjectId.trim() : ''
 }
 
 function buildGmailContactTargetFromRuntimeContext(toolRuntimeContext = null) {
@@ -3985,15 +3999,20 @@ async function executeToolNatively(
             const { TaskService } = require('../shared/TaskService')
             const moment = require('moment-timezone')
             const db = admin.firestore()
+            const gmailLabelMatchedProjectId = getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext)
 
             const createTaskProjectSelection = await resolveCreateTaskTargetProject(db, {
                 creatorId,
                 contextProjectId: projectId,
                 assistantId,
                 globalProjectId: GLOBAL_PROJECT_ID,
-                requestedProjectId: toolArgs.projectId,
-                requestedProjectName: toolArgs.projectName,
-                sourceHint: toolArgs.sourceHint === 'whatsappContextProject' ? 'whatsappContextProject' : '',
+                requestedProjectId: gmailLabelMatchedProjectId || toolArgs.projectId,
+                requestedProjectName: gmailLabelMatchedProjectId ? '' : toolArgs.projectName,
+                sourceHint: gmailLabelMatchedProjectId
+                    ? 'gmailLabelMatchedProject'
+                    : toolArgs.sourceHint === 'whatsappContextProject'
+                    ? 'whatsappContextProject'
+                    : '',
             })
             const targetProjectId = createTaskProjectSelection.targetProjectId
             let targetProjectName = createTaskProjectSelection.targetProjectName
@@ -4001,6 +4020,7 @@ async function executeToolNatively(
             console.log('📝 CREATE_TASK TOOL: Project selection', {
                 toolArgsProjectId: toolArgs.projectId,
                 toolArgsProjectName: toolArgs.projectName,
+                gmailLabelMatchedProjectId,
                 contextProjectId: projectId,
                 selectedProjectId: targetProjectId,
                 source: createTaskProjectSelection.source,
@@ -4156,14 +4176,14 @@ async function executeToolNatively(
                     }
                 }
 
-                const assistantProvidedProjectReasoning = normalizeCreateTaskProjectRoutingReason(
-                    toolArgs.projectRoutingReason
-                )
+                const assistantProvidedProjectReasoning = gmailLabelMatchedProjectId
+                    ? ''
+                    : normalizeCreateTaskProjectRoutingReason(toolArgs.projectRoutingReason)
                 const projectRoutingReasoning =
                     assistantProvidedProjectReasoning || createTaskProjectSelection.reasoning
-                const projectRoutingConfidence = normalizeCreateTaskProjectRoutingConfidence(
-                    toolArgs.projectRoutingConfidence
-                )
+                const projectRoutingConfidence = gmailLabelMatchedProjectId
+                    ? null
+                    : normalizeCreateTaskProjectRoutingConfidence(toolArgs.projectRoutingConfidence)
 
                 // When create_task runs inside a Gmail post-label follow-up, the Gmail labeling
                 // pipeline (addRoutingCommentsToCreatedGmailTasks) adds its own routing comment
