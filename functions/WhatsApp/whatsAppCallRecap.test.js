@@ -1,5 +1,5 @@
 const { EventEmitter } = require('events')
-const { EMPTY_CALL_RECAP, RECAP_INSTRUCTIONS, generateCallRecap } = require('./whatsAppCallRecap')
+const { NO_CONVERSATION_RECAP, RECAP_INSTRUCTIONS, generateCallRecap } = require('./whatsAppCallRecap')
 
 function createFakeWebSocket({ response, errorEvent } = {}) {
     const instances = []
@@ -112,11 +112,31 @@ describe('WhatsApp call recap', () => {
         )
     })
 
-    test('returns the completion fallback when no transcript exists', async () => {
+    test('returns the no-conversation fallback when no transcript exists', async () => {
         const { FakeWebSocket, instances } = createFakeWebSocket()
 
         await expect(generateCallRecap(config, {}, [], { WebSocketImpl: FakeWebSocket })).resolves.toEqual({
-            text: EMPTY_CALL_RECAP,
+            text: NO_CONVERSATION_RECAP,
+            tokens: 0,
+        })
+        expect(instances).toHaveLength(0)
+    })
+
+    test('returns the no-conversation fallback when only the assistant greeting exists', async () => {
+        const { FakeWebSocket, instances } = createFakeWebSocket()
+
+        // A call that dropped before the caller spoke still persists Anna's auto-greeting as an
+        // assistant turn. Without a caller turn there is no conversation to recap, so we must not
+        // summarize the greeting (which is generated with the prior thread in context).
+        await expect(
+            generateCallRecap(
+                config,
+                {},
+                [{ role: 'assistant', text: 'Hi, I am Anna. About your earlier message, how can I help?' }],
+                { WebSocketImpl: FakeWebSocket }
+            )
+        ).resolves.toEqual({
+            text: NO_CONVERSATION_RECAP,
             tokens: 0,
         })
         expect(instances).toHaveLength(0)

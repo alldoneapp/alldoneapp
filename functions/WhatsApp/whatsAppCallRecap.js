@@ -3,6 +3,8 @@ const WebSocket = require('ws')
 
 const DEFAULT_RECAP_TIMEOUT_MS = 20000
 const EMPTY_CALL_RECAP = 'Your WhatsApp assistant call is complete. The transcript is available in Alldone.'
+const NO_CONVERSATION_RECAP =
+    'The call ended before anything was discussed, so there is nothing to recap. Call back or message me here in Alldone anytime.'
 const RECAP_INSTRUCTIONS =
     'Write a short WhatsApp recap of this call in the caller language. Use at most three concise sentences. Mention decisions, actions, and unresolved follow-ups. Return only the recap text without a heading or label. No markdown and no URLs.'
 
@@ -12,6 +14,15 @@ function buildCallTranscriptText(transcript) {
         .map(turn => `${turn.role === 'assistant' ? 'Assistant' : 'Caller'}: ${String(turn.text).trim()}`)
         .join('\n')
         .slice(-24000)
+}
+
+// A call only has something worth recapping if the caller actually spoke. When a call drops
+// before the caller says anything (e.g. cold-start dead air), Anna's auto-greeting is still
+// persisted as an assistant transcript turn — and that greeting is generated with the prior
+// WhatsApp thread in context, so summarizing it recaps an older message instead of the call.
+// Requiring at least one caller turn keeps the recap scoped to the actual conversation.
+function hasCallerTurn(transcript) {
+    return (transcript || []).some(turn => turn?.role === 'user' && String(turn?.text || '').trim())
 }
 
 function getRealtimeResponseText(response) {
@@ -37,7 +48,7 @@ function getSafetyIdentifier(session) {
 
 async function generateCallRecap(config, session, transcript, options = {}) {
     const transcriptText = buildCallTranscriptText(transcript)
-    if (!transcriptText) return { text: EMPTY_CALL_RECAP, tokens: 0 }
+    if (!transcriptText || !hasCallerTurn(transcript)) return { text: NO_CONVERSATION_RECAP, tokens: 0 }
 
     const WebSocketImpl = options.WebSocketImpl || WebSocket
     const timeoutMs = Number(options.timeoutMs) || DEFAULT_RECAP_TIMEOUT_MS
@@ -149,8 +160,10 @@ async function generateCallRecap(config, session, transcript, options = {}) {
 
 module.exports = {
     EMPTY_CALL_RECAP,
+    NO_CONVERSATION_RECAP,
     RECAP_INSTRUCTIONS,
     buildCallTranscriptText,
     generateCallRecap,
     getRealtimeResponseText,
+    hasCallerTurn,
 }
