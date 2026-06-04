@@ -16,9 +16,10 @@ describe('WhatsApp call prompt', () => {
         expect(instructions).toContain(buildCallIdentityInstruction(assistant))
         expect(instructions).toContain('Be precise and act immediately.')
         expect(instructions).toContain('Use short, natural spoken responses.')
-        expect(instructions).toContain('Never introduce yourself as ChatGPT')
+        expect(instructions).toContain('Never say you are ChatGPT')
+        expect(instructions).toContain('Do not repeat your name or re-introduce yourself on every turn')
         expect(instructions.indexOf('Be precise and act immediately.')).toBeLessThan(
-            instructions.indexOf('Always identify yourself as Anna Alldone.')
+            instructions.indexOf('say only that you are Anna Alldone')
         )
     })
 

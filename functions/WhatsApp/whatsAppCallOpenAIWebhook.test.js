@@ -79,7 +79,7 @@ describe('OpenAI incoming Realtime call webhook', () => {
         )
         expect(session.instructions).toContain('You are Anna Alldone')
         expect(session.instructions).toContain('Act as Anna.')
-        expect(session.instructions).toContain('Never introduce yourself as ChatGPT')
+        expect(session.instructions).toContain('Never say you are ChatGPT')
         expect(session.tools).toBeUndefined()
     })
 

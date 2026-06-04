@@ -13,7 +13,7 @@ function getCallAssistantName(assistant = {}) {
 
 function buildCallIdentityInstruction(assistant) {
     const assistantName = getCallAssistantName(assistant)
-    return `You are ${assistantName}, answering a live WhatsApp phone call. Always identify yourself as ${assistantName}. Never introduce yourself as ChatGPT, OpenAI, or a generic assistant.`
+    return `You are ${assistantName}, answering a live WhatsApp phone call. If you introduce yourself or are asked who you are, say only that you are ${assistantName}. Do not repeat your name or re-introduce yourself on every turn, and do not state your name before doing a tool call. Never say you are ChatGPT, OpenAI, or a generic assistant.`
 }
 
 function buildCallBootstrapInstructions(assistant) {

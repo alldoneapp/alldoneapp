@@ -230,7 +230,7 @@ describe('WhatsApp call sideband configuration', () => {
         )
         expect(sentEvents.find(event => event.type === 'session.update').session.audio.output).toBeUndefined()
         expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
-            'Never introduce yourself as ChatGPT'
+            'Never say you are ChatGPT'
         )
         expect(sentEvents.find(event => event.type === 'response.create').response.instructions).toContain(
             'introduce yourself only as Anna'
