@@ -206,8 +206,10 @@ function getEmailSafeAllowedTools(rawTools = []) {
     return allowed
 }
 
-function buildDailyEmailTitle(firstName = 'User', dateLabel = '') {
-    return `Daily email <> ${String(firstName || 'User').trim() || 'User'} ${String(dateLabel || '').trim()}`.trim()
+function buildDailyEmailTitle(firstName = 'User', dateLabel = '', assistantName = 'Anna') {
+    return `Daily email ${String(assistantName || 'Anna').trim() || 'Anna'} <> ${
+        String(firstName || 'User').trim() || 'User'
+    } ${String(dateLabel || '').trim()}`.trim()
 }
 
 function buildDailyEmailParticipantEmails(values = [], assistantEmailAddresses = []) {
@@ -259,7 +261,7 @@ function buildParticipantScopedDailyEmailTitle({
     const normalizedOwnerFirstName = String(ownerFirstName || 'User').trim() || 'User'
 
     if (normalizedParticipantEmails.length <= 1) {
-        return buildDailyEmailTitle(normalizedOwnerFirstName, dateLabel)
+        return buildDailyEmailTitle(normalizedOwnerFirstName, dateLabel, assistantName)
     }
 
     const otherParticipantNames = normalizedParticipantEmails
@@ -267,9 +269,11 @@ function buildParticipantScopedDailyEmailTitle({
         .map(getEmailParticipantDisplayName)
         .filter(Boolean)
         .sort((first, second) => first.localeCompare(second))
-    const participantNames = [normalizedOwnerFirstName, ...otherParticipantNames, assistantName].filter(Boolean)
+    const participantNames = [normalizedOwnerFirstName, ...otherParticipantNames].filter(Boolean)
 
-    return `Daily email <> ${participantNames.join(', ')} ${String(dateLabel || '').trim()}`.trim()
+    return `Daily email ${String(assistantName || 'Anna').trim() || 'Anna'} <> ${participantNames.join(', ')} ${String(
+        dateLabel || ''
+    ).trim()}`.trim()
 }
 
 function stripHtmlToText(html = '') {

@@ -6,12 +6,13 @@ const mockAddBaseInstructions = jest.fn(async messages => {
 const mockGetAssistantForChat = jest.fn()
 const mockInteractWithChatStream = jest.fn()
 const mockReduceGoldWhenChatWithAI = jest.fn().mockResolvedValue(undefined)
+const mockExecuteToolNatively = jest.fn()
 
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: mockAddBaseInstructions,
     buildConversationSafeToolResult: jest.fn((toolName, result) => result),
     buildPendingAttachmentPayload: jest.fn(() => null),
-    executeToolNatively: jest.fn(),
+    executeToolNatively: mockExecuteToolNatively,
     getAssistantForChat: mockGetAssistantForChat,
     getMessageTextForTokenCounting: jest.fn(value => value),
     getToolResultFollowUpPrompt: jest.fn(() => 'Continue'),
@@ -78,6 +79,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
     beforeEach(() => {
         jest.clearAllMocks()
         getUserData.mockResolvedValue({
+            displayName: 'Karsten Wysk',
             gold: 100,
             language: 'German',
         })
@@ -174,6 +176,104 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(systemText).not.toContain('Do not use or mention any other earlier messages')
         expect(getLatestSafeEmailActionContext).not.toHaveBeenCalled()
         expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 20, 120)
+    })
+
+    test('attributes calendar availability to the account owner instead of Anna', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['find_calendar_availability'],
+            instructions: '',
+            model: 'MODEL_GPT5_5',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        mockExecuteToolNatively.mockResolvedValue({
+            success: true,
+            timeZone: 'Europe/Berlin',
+            durationMinutes: 30,
+            options: [
+                {
+                    start: '2026-06-05T09:00:00+02:00',
+                    end: '2026-06-05T09:30:00+02:00',
+                },
+            ],
+        })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [
+                            {
+                                id: 'tool-1',
+                                function: {
+                                    name: 'find_calendar_availability',
+                                    arguments: JSON.stringify({
+                                        timeMin: '2026-06-05T09:00:00+02:00',
+                                        timeMax: '2026-06-05T17:00:00+02:00',
+                                    }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Tomorrow I\u2019m free at 09:00. My calendar is otherwise busy.' }])
+
+        const responseText = await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please propose a meeting slot tomorrow',
+            'assistant-1',
+            {
+                fromEmail: 'owner@example.com',
+                toEmail: 'owner@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                ccEmails: ['guest@example.com'],
+                hasAdditionalRecipients: true,
+                isParticipantScopedTopic: true,
+                skipCurrentMessageAppend: true,
+            }
+        )
+
+        const initialMessages = mockInteractWithChatStream.mock.calls[0][0]
+        const initialSystemText = initialMessages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+        const finalMessages = mockInteractWithChatStream.mock.calls[1][0]
+        const finalInstruction = finalMessages[finalMessages.length - 1].content
+
+        expect(initialSystemText).toContain("Calendar tools operate on Karsten's connected calendars")
+        expect(initialSystemText).toContain("Availability results represent Karsten's availability")
+        expect(initialSystemText).toContain('explicitly attribute it to Karsten')
+        expect(finalInstruction).toContain(
+            "represents Karsten's availability across Karsten's connected calendars, not Anna's availability or calendar"
+        )
+        expect(finalInstruction).toContain('Attribute every free or available time to Karsten')
+        expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+            expect.objectContaining({
+                calendarOwnerName: 'Karsten',
+            })
+        )
+        expect(responseText).toBe("Tomorrow Karsten is free at 09:00. Karsten's calendar is otherwise busy.")
+        expect(storeEmailAssistantMessageInTopic).toHaveBeenCalledWith(
+            'project-1',
+            'chat-1',
+            'assistant-1',
+            "Tomorrow Karsten is free at 09:00. Karsten's calendar is otherwise busy.",
+            'user-1',
+            expect.any(Object)
+        )
+    })
+
+    test('rewrites first-person German calendar availability as the account owners availability', () => {
+        expect(
+            __private__.enforceCalendarOwnershipResponse(
+                'Ich bin verfügbar. Meine Verfügbarkeit steht in meinem Kalender.',
+                'Karsten'
+            )
+        ).toBe('Karsten ist verfügbar. Karstens Verfügbarkeit steht in Karstens Kalender.')
     })
 
     test('builds a stripped availability context for a later recipient-safe follow-up', () => {

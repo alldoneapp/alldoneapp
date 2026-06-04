@@ -32,48 +32,6 @@ async function getOrCreateDailyEmailTopic(userId, projectId, assistantId, option
     const participantKey = buildDailyEmailParticipantKey(participantEmails)
     const scopeType = participantEmails.length > 1 ? 'Group' : 'Direct'
     const chatId = `BotChatEmail${today}${userId}${scopeType}${participantKey}`
-    const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
-    const chatDoc = await chatRef.get()
-    const participantScopeData = {
-        emailParticipantScopeVersion: EMAIL_PARTICIPANT_SCOPE_VERSION,
-        emailParticipantKey: participantKey,
-        emailParticipantEmails: participantEmails,
-        isEmailParticipantScoped: true,
-    }
-
-    if (chatDoc.exists) {
-        const data = chatDoc.data() || {}
-        const patchData = {}
-
-        if (!data.stickyData || data.stickyData.days === undefined) {
-            patchData.stickyData = { days: 0, stickyEndDate: 0 }
-            patchData.hasStar = data.hasStar || '#ffffff'
-        }
-
-        if (data.isAssistantEnabled !== true) {
-            patchData.isAssistantEnabled = true
-        }
-
-        if (
-            data.emailParticipantScopeVersion !== EMAIL_PARTICIPANT_SCOPE_VERSION ||
-            data.emailParticipantKey !== participantKey
-        ) {
-            Object.assign(patchData, participantScopeData)
-        }
-
-        if (Object.keys(patchData).length > 0) {
-            await chatRef.update(patchData)
-        }
-
-        return {
-            chatId,
-            isNew: false,
-            isParticipantScopedTopic: true,
-            participantEmails,
-            participantKey,
-        }
-    }
-
     const user = await getUserData(userId)
     const ownerFirstName = getFirstName(user?.displayName || 'User')
     const ownerEmail = normalizeEmailAddress(options.ownerEmail || participantEmails[0] || user?.email || '')
@@ -92,6 +50,57 @@ async function getOrCreateDailyEmailTopic(userId, projectId, assistantId, option
         .map(getEmailParticipantDisplayName)
         .filter(Boolean)
         .sort((first, second) => first.localeCompare(second))
+    const participantNames = ['Anna', ownerFirstName, ...otherParticipantNames]
+    const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
+    const chatDoc = await chatRef.get()
+    const participantScopeData = {
+        emailParticipantScopeVersion: EMAIL_PARTICIPANT_SCOPE_VERSION,
+        emailParticipantKey: participantKey,
+        emailParticipantEmails: participantEmails,
+        emailParticipantNames: participantNames,
+        emailOwnerEmail: ownerEmail,
+        isEmailParticipantScoped: true,
+    }
+
+    if (chatDoc.exists) {
+        const data = chatDoc.data() || {}
+        const patchData = {}
+
+        if (!data.stickyData || data.stickyData.days === undefined) {
+            patchData.stickyData = { days: 0, stickyEndDate: 0 }
+            patchData.hasStar = data.hasStar || '#ffffff'
+        }
+
+        if (data.isAssistantEnabled !== true) {
+            patchData.isAssistantEnabled = true
+        }
+
+        if (data.title !== title) {
+            patchData.title = title
+        }
+
+        if (
+            data.emailParticipantScopeVersion !== EMAIL_PARTICIPANT_SCOPE_VERSION ||
+            data.emailParticipantKey !== participantKey ||
+            JSON.stringify(data.emailParticipantNames || []) !== JSON.stringify(participantNames) ||
+            data.emailOwnerEmail !== ownerEmail
+        ) {
+            Object.assign(patchData, participantScopeData)
+        }
+
+        if (Object.keys(patchData).length > 0) {
+            await chatRef.update(patchData)
+        }
+
+        return {
+            chatId,
+            isNew: false,
+            isParticipantScopedTopic: true,
+            participantEmails,
+            participantKey,
+        }
+    }
+
     const now = Date.now()
 
     await chatRef.set({
@@ -116,8 +125,6 @@ async function getOrCreateDailyEmailTopic(userId, projectId, assistantId, option
         },
         isAssistantEnabled: true,
         ...participantScopeData,
-        emailParticipantNames: [ownerFirstName, ...otherParticipantNames, 'Anna'],
-        emailOwnerEmail: ownerEmail,
     })
 
     return {

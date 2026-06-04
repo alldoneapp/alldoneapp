@@ -14,6 +14,13 @@ const { getConversationHistory } = require('./whatsAppDailyTopic')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { reconcileCallUsage } = require('./whatsAppCallGold')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
+const { EMPTY_CALL_RECAP, generateCallRecap } = require('./whatsAppCallRecap')
+const {
+    VOICE_INSTRUCTIONS,
+    buildCallBootstrapInstructions,
+    buildCallGreetingInstruction,
+    buildCallIdentityInstruction,
+} = require('./whatsAppCallPrompt')
 const {
     CONFIRMATION_TOOL_NAME,
     buildRealtimeToolSchemas,
@@ -37,15 +44,6 @@ const MAX_SIDEBAND_RECONNECTS = 3
 const RECONNECT_DELAY_MS = 1000
 const CLOSING_GRACE_MS = 3500
 const CONTROLLER_FINALIZATION_RESERVE_SECONDS = 30
-
-const VOICE_INSTRUCTIONS = [
-    'This is a live WhatsApp phone call.',
-    'Use short, natural spoken responses. Do not use markdown, tables, emoji, or visual formatting.',
-    'Never read a URL aloud. Say that the link is available in Alldone or WhatsApp instead.',
-    'Briefly announce when an operation may take time.',
-    'Never claim an action succeeded until its tool result confirms success.',
-    'Sensitive actions require explicit spoken confirmation. Ask a concise confirmation question when a tool result says confirmation_required.',
-].join(' ')
 
 function getTextFromHistoryContent(content) {
     if (typeof content === 'string') return content
@@ -129,7 +127,6 @@ async function buildCallBootstrapContext(session) {
         sourceChannel: 'whatsapp_call',
     }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtimeContext)
-    const assistantName = assistant.displayName || assistant.name || 'Assistant'
 
     return {
         assistant,
@@ -138,13 +135,7 @@ async function buildCallBootstrapContext(session) {
         runtimeContext,
         allowedTools,
         tools: [],
-        instructions: [
-            `You are ${assistantName}, answering a live WhatsApp phone call.`,
-            assistant.instructions,
-            VOICE_INSTRUCTIONS,
-        ]
-            .filter(Boolean)
-            .join('\n\n'),
+        instructions: buildCallBootstrapInstructions(assistant),
     }
 }
 
@@ -164,6 +155,7 @@ async function completeCallContext(context) {
             userTimezoneName: context.user.timezoneName || context.user.timezone || null,
         }
     )
+    baseMessages.push(['system', buildCallIdentityInstruction(context.assistant)])
     baseMessages.push(['system', VOICE_INSTRUCTIONS])
 
     return {
@@ -192,50 +184,6 @@ async function hangUpOpenAICall(config, openAiCallId) {
     if (!response.ok && response.status !== 404) {
         throw new Error(`OpenAI hangup failed with HTTP ${response.status}`)
     }
-}
-
-async function generateCallRecap(config, session, transcript) {
-    const transcriptText = transcript
-        .map(turn => `${turn.role === 'assistant' ? 'Assistant' : 'Caller'}: ${turn.text}`)
-        .join('\n')
-        .slice(-24000)
-    if (!transcriptText) {
-        return { text: 'Your WhatsApp assistant call is complete. The transcript is available in Alldone.', tokens: 0 }
-    }
-
-    const response = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${config.openAiApiKey}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model: config.realtimeModel,
-            reasoning: { effort: config.reasoningEffort },
-            store: false,
-            tools: [],
-            input: [
-                {
-                    role: 'system',
-                    content:
-                        'Write a short WhatsApp recap of this call in the caller language. Use at most three concise sentences. Mention decisions, actions, and unresolved follow-ups. No markdown and no URLs.',
-                },
-                { role: 'user', content: transcriptText },
-            ],
-        }),
-    })
-    if (!response.ok) throw new Error(`Recap generation failed with HTTP ${response.status}`)
-    const payload = await response.json()
-    const text =
-        String(payload.output_text || '').trim() ||
-        (payload.output || [])
-            .flatMap(item => item.content || [])
-            .map(item => item.text || item.output_text || '')
-            .filter(Boolean)
-            .join(' ')
-            .trim()
-    if (!text) throw new Error('Recap generation returned no text')
-    return { text, tokens: Number(payload.usage?.total_tokens) || 0, responseId: payload.id || 'recap' }
 }
 
 async function sendCallRecap(sessionId) {
@@ -270,7 +218,7 @@ async function sendCallRecap(sessionId) {
                 sessionId,
                 error: getSafeCallErrorDetails(error),
             })
-            recap = { text: 'Your WhatsApp assistant call is complete. The transcript is available in Alldone.' }
+            recap = { text: EMPTY_CALL_RECAP }
         }
         await storeCallTranscriptTurn({
             sessionId,
@@ -580,7 +528,7 @@ async function runWhatsAppRealtimeCall(sessionId) {
         )
         if (!initialized) {
             context.history.forEach(([role, content]) => send(createConversationItem(role, content)))
-            requestResponse('Greet the caller briefly, introduce yourself by name, and ask how you can help.')
+            requestResponse(buildCallGreetingInstruction(context.assistant))
             initialized = true
         }
     }

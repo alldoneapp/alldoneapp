@@ -47,7 +47,6 @@ const { getCallTranscript, getCallTranscriptTurn } = require('./whatsAppCallTran
 const {
     buildRealtimeSessionUpdate,
     createConversationItem,
-    generateCallRecap,
     runWhatsAppRealtimeCall,
     sendCallRecap,
 } = require('./whatsAppCallController')
@@ -121,32 +120,6 @@ describe('WhatsApp call sideband configuration', () => {
                 content: [{ type: 'input_text', text: 'Hello' }],
             },
         })
-    })
-
-    test('generates the recap in text-only Responses mode without tools or storage', async () => {
-        global.fetch = jest.fn(async () => ({
-            ok: true,
-            json: async () => ({
-                id: 'recap-response',
-                output_text: 'A short recap.',
-                usage: { total_tokens: 25 },
-            }),
-        }))
-
-        await expect(generateCallRecap(config, {}, [{ role: 'user', text: 'Hello' }])).resolves.toEqual({
-            text: 'A short recap.',
-            tokens: 25,
-            responseId: 'recap-response',
-        })
-        const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-        expect(body).toEqual(
-            expect.objectContaining({
-                model: 'gpt-realtime-2',
-                reasoning: { effort: 'medium' },
-                store: false,
-                tools: [],
-            })
-        )
     })
 
     test('reuses a stored recap across delivery retries without regenerating or rebilling it', async () => {
@@ -256,6 +229,12 @@ describe('WhatsApp call sideband configuration', () => {
             expect.arrayContaining(['session.update', 'response.create'])
         )
         expect(sentEvents.find(event => event.type === 'session.update').session.audio.output).toBeUndefined()
+        expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
+            'Never introduce yourself as ChatGPT'
+        )
+        expect(sentEvents.find(event => event.type === 'response.create').response.instructions).toContain(
+            'introduce yourself only as Anna'
+        )
 
         resolveDynamicTools([])
         await new Promise(resolve => setImmediate(resolve))

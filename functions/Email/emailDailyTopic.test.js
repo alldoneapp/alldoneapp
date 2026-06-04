@@ -92,9 +92,9 @@ describe('emailDailyTopic participant-scoped routing', () => {
         expect(first.isParticipantScopedTopic).toBe(true)
         expect(chatRef.set).toHaveBeenCalledWith(
             expect.objectContaining({
-                title: `Daily email <> Karsten, Peter Mueller, Anna ${moment().format('DD MMM YYYY')}`,
+                title: `Daily email Anna <> Karsten, Peter Mueller ${moment().format('DD MMM YYYY')}`,
                 emailParticipantEmails: ['owner@example.com', 'peter.mueller@example.com'],
-                emailParticipantNames: ['Karsten', 'Peter Mueller', 'Anna'],
+                emailParticipantNames: ['Anna', 'Karsten', 'Peter Mueller'],
                 isEmailParticipantScoped: true,
             })
         )
@@ -116,8 +116,31 @@ describe('emailDailyTopic participant-scoped routing', () => {
         expect(direct.chatId).not.toBe(group.chatId)
         expect(chatRef.set).toHaveBeenCalledWith(
             expect.objectContaining({
+                title: `Daily email Anna <> Karsten ${moment().format('DD MMM YYYY')}`,
+                emailParticipantNames: ['Anna', 'Karsten'],
+            })
+        )
+    })
+
+    test('renames an existing participant-scoped topic to the current title format', async () => {
+        const { chatRef } = setChatDoc({
+            exists: true,
+            data: {
                 title: `Daily email <> Karsten ${moment().format('DD MMM YYYY')}`,
-                emailParticipantNames: ['Karsten', 'Anna'],
+                emailParticipantScopeVersion: 1,
+                emailParticipantKey: 'outdated-key',
+            },
+        })
+
+        await getOrCreateDailyEmailTopic('user-1', 'project-1', 'assistant-1', {
+            ownerEmail: 'owner@example.com',
+            participantEmails: ['owner@example.com'],
+        })
+
+        expect(chatRef.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: `Daily email Anna <> Karsten ${moment().format('DD MMM YYYY')}`,
+                emailParticipantNames: ['Anna', 'Karsten'],
             })
         )
     })

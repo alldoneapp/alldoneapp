@@ -53,7 +53,12 @@ describe('OpenAI incoming Realtime call webhook', () => {
     })
 
     test('builds the documented voice session configuration', () => {
-        expect(buildInitialRealtimeSession({ config, voice: 'marin' })).toEqual(
+        const session = buildInitialRealtimeSession({
+            config,
+            voice: 'marin',
+            assistant: { displayName: 'Anna Alldone', instructions: 'Act as Anna.' },
+        })
+        expect(session).toEqual(
             expect.objectContaining({
                 type: 'realtime',
                 model: 'gpt-realtime-2',
@@ -72,6 +77,10 @@ describe('OpenAI incoming Realtime call webhook', () => {
                 },
             })
         )
+        expect(session.instructions).toContain('You are Anna Alldone')
+        expect(session.instructions).toContain('Act as Anna.')
+        expect(session.instructions).toContain('Never introduce yourself as ChatGPT')
+        expect(session.tools).toBeUndefined()
     })
 
     test('uses deterministic hashed Cloud Task IDs for webhook retries', () => {
@@ -146,7 +155,11 @@ describe('OpenAI incoming Realtime call webhook', () => {
                 assistantId: 'assistant-1',
             },
         })
-        getAssistantForChat.mockResolvedValue({ realtimeVoice: 'cedar' })
+        getAssistantForChat.mockResolvedValue({
+            displayName: 'Anna Alldone',
+            instructions: 'Act as Anna.',
+            realtimeVoice: 'cedar',
+        })
         const req = {
             method: 'POST',
             headers: {},
@@ -168,6 +181,9 @@ describe('OpenAI incoming Realtime call webhook', () => {
             'https://api.openai.com/v1/realtime/calls/openai-call/accept',
             expect.objectContaining({ method: 'POST' })
         )
+        const acceptBody = JSON.parse(global.fetch.mock.calls[0][1].body)
+        expect(acceptBody.instructions).toContain('You are Anna Alldone')
+        expect(acceptBody.instructions).toContain('Act as Anna.')
         expect(mockTaskEnqueue).toHaveBeenCalledWith(
             { sessionId: 'session-1' },
             { id: getRunCallTaskId('session-1'), dispatchDeadlineSeconds: 1800 }

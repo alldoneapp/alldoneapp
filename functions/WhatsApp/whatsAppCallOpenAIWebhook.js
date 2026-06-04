@@ -14,6 +14,7 @@ const {
     updateCallSession,
 } = require('./whatsAppCallSessions')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
+const { buildCallBootstrapInstructions } = require('./whatsAppCallPrompt')
 
 const RUN_CALL_FUNCTION_NAME = 'runWhatsAppRealtimeCall'
 
@@ -26,13 +27,12 @@ function getRunCallTaskId(sessionId) {
     return `whatsapp-call-${crypto.createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 40)}`
 }
 
-function buildInitialRealtimeSession({ config, voice }) {
+function buildInitialRealtimeSession({ config, voice, assistant }) {
     return {
         type: 'realtime',
         model: config.realtimeModel,
         output_modalities: ['audio'],
-        instructions:
-            'You are answering a live phone call. Speak briefly and naturally. Do not use markdown or read URLs aloud.',
+        instructions: buildCallBootstrapInstructions(assistant),
         reasoning: { effort: config.reasoningEffort },
         audio: {
             input: {
@@ -130,7 +130,7 @@ async function handleOpenAIRealtimeCallWebhook(req, res) {
                     config,
                     callId,
                     'POST',
-                    buildInitialRealtimeSession({ config, voice }),
+                    buildInitialRealtimeSession({ config, voice, assistant }),
                     'accept'
                 )
                 await updateCallSession(consumed.sessionId, { acceptCompletedAt: Date.now() })

@@ -50,6 +50,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
     const messages = []
     const userTimezoneOffset = resolveUserTimezoneOffset(user)
     const userTimezoneName = resolveUserTimezoneName(user)
+    const calendarOwnerName = getEmailAccountOwnerName(user)
     const currentEmailParticipants = buildCurrentEmailParticipants({
         fromEmail: options.fromEmail || options.toEmail || '',
         toEmails: options.toEmails || [],
@@ -64,6 +65,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         currentEmailParticipants,
         latestSafeActionContext: null,
         userTimezoneName,
+        calendarOwnerName,
     }
 
     await addBaseInstructions(
@@ -87,6 +89,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- Do not claim that a task or external action succeeded unless the tool result confirms success.\n' +
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
+    messages.push(['system', buildCalendarOwnershipSystemMessage(calendarOwnerName)])
     messages.push(['system', buildCurrentEmailParticipantsSystemMessage(currentEmailParticipants)])
     const shouldRestrictPriorHistory = options.hasAdditionalRecipients && options.isParticipantScopedTopic !== true
     if (shouldRestrictPriorHistory) {
@@ -192,6 +195,10 @@ async function collectStreamWithToolCalls(
             taskId: null,
             projectId: null,
         },
+        calendarAvailability: {
+            called: false,
+            succeeded: false,
+        },
     }
 
     for await (const chunk of stream) {
@@ -246,6 +253,12 @@ async function collectStreamWithToolCalls(
                         buildSafeActionContextFromToolResult(toolName, toolResult) ||
                         toolRuntimeContext.latestSafeActionContext
 
+                    if (toolName === 'find_calendar_availability') {
+                        toolEvidence.calendarAvailability.called = true
+                        toolEvidence.calendarAvailability.succeeded =
+                            toolEvidence.calendarAvailability.succeeded || toolResult?.success === true
+                    }
+
                     if (toolName === 'create_task') {
                         const taskId = toolResult?.taskId || toolResult?.taskid || null
                         const createdProjectId = toolResult?.projectId || toolResult?.projectid || null
@@ -264,11 +277,7 @@ async function collectStreamWithToolCalls(
                     return getUserFacingToolErrorMessage(toolName, error)
                 }
 
-                const followUpInstruction = getToolResultFollowUpPrompt({
-                    finalReply: true,
-                    toolPhrase: 'other available tools',
-                    usePlural: false,
-                })
+                const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext)
 
                 currentConversation = [
                     ...currentConversation,
@@ -326,7 +335,25 @@ async function collectStreamWithToolCalls(
         if (chunk.content) responseText += chunk.content
     }
 
-    return enforceSafeTaskResponse(String(responseText || '').trim(), toolEvidence)
+    const safeResponseText = enforceSafeTaskResponse(String(responseText || '').trim(), toolEvidence)
+    return toolEvidence.calendarAvailability.succeeded
+        ? enforceCalendarOwnershipResponse(safeResponseText, toolRuntimeContext?.calendarOwnerName)
+        : safeResponseText
+}
+
+function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}) {
+    const basePrompt = getToolResultFollowUpPrompt({
+        finalReply: true,
+        toolPhrase: 'other available tools',
+        usePlural: false,
+    })
+    if (toolName !== 'find_calendar_availability') return basePrompt
+
+    const ownerName = toolRuntimeContext?.calendarOwnerName || 'the account owner'
+    return (
+        `${basePrompt} The availability result represents ${ownerName}'s availability across ${ownerName}'s connected calendars, not Anna's availability or calendar. ` +
+        `Attribute every free or available time to ${ownerName}. Never say or imply that Anna, "I", or "my calendar" is free or available.`
+    )
 }
 
 function normalizeEmailToolArgs(toolName, toolArgs, fallbackProjectId) {
@@ -361,6 +388,27 @@ function enforceSafeTaskResponse(responseText, toolEvidence) {
     return responseText
 }
 
+function enforceCalendarOwnershipResponse(responseText, ownerName = 'the account owner') {
+    if (!responseText) return responseText
+
+    return String(responseText)
+        .replace(/\bI(?:(?:'|\u2019)m| am) (free|available)\b/gi, (_, status) => {
+            return `${ownerName} is ${String(status).toLowerCase()}`
+        })
+        .replace(/\bI have ((?:the )?following available (?:times|slots)|availability)\b/gi, (_, availability) => {
+            return `${ownerName} has ${String(availability).toLowerCase()}`
+        })
+        .replace(/\bmy (calendar|availability)\b/gi, (_, subject) => {
+            return `${ownerName}'s ${String(subject).toLowerCase()}`
+        })
+        .replace(/\bich bin (frei|verf(?:u|\u00fc)gbar)\b/gi, (_, status) => {
+            return `${ownerName} ist ${String(status).toLowerCase()}`
+        })
+        .replace(/\bmein(?:e|em|en|er|es)? (Kalender|Verf(?:u|\u00fc)gbarkeit)\b/gi, (_, subject) => {
+            return `${ownerName}s ${subject}`
+        })
+}
+
 function buildCurrentEmailParticipantsSystemMessage(participants = {}) {
     return (
         'Current email participant metadata from this message only:\n' +
@@ -369,6 +417,21 @@ function buildCurrentEmailParticipantsSystemMessage(participants = {}) {
         `- CC: ${JSON.stringify(participants.ccEmails || [])}\n` +
         'You may use these exact addresses to resolve references such as "the person in CC" or "the other recipient" when unambiguous. For calendar creation, include the resolved address as an attendee when the sender explicitly asks to invite that person. Never invent, substitute, or infer an email address that is not listed here. If the requested recipient is ambiguous or absent, ask the sender.'
     )
+}
+
+function buildCalendarOwnershipSystemMessage(ownerName = 'the account owner') {
+    return (
+        `Calendar ownership: Calendar tools operate on ${ownerName}'s connected calendars, not Anna's calendar. Availability results represent ${ownerName}'s availability. ` +
+        `When reporting calendar availability, explicitly attribute it to ${ownerName}, for example "${ownerName} is available at...". ` +
+        'Never say or imply that Anna, "I", or "my calendar" is free or available.'
+    )
+}
+
+function getEmailAccountOwnerName(user = {}) {
+    const displayName = String(user.displayName || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    return displayName.split(' ')[0] || 'the account owner'
 }
 
 function buildPriorSafeActionContextSystemMessage(context = {}) {
@@ -402,8 +465,12 @@ function mentionsTaskCreation(text) {
 module.exports = {
     processAnnaEmailAssistantMessage,
     __private__: {
+        buildCalendarOwnershipSystemMessage,
         buildCurrentEmailParticipantsSystemMessage,
+        buildEmailToolResultFollowUpPrompt,
         buildPriorSafeActionContextSystemMessage,
         buildSafeActionContextFromToolResult,
+        enforceCalendarOwnershipResponse,
+        getEmailAccountOwnerName,
     },
 }

@@ -161,7 +161,7 @@ describe('emailChannelHelpers', () => {
     })
 
     test('builds daily email title in WhatsApp-like style', () => {
-        expect(buildDailyEmailTitle('Karsten', '18 Mar 2026')).toBe('Daily email <> Karsten 18 Mar 2026')
+        expect(buildDailyEmailTitle('Karsten', '18 Mar 2026')).toBe('Daily email Anna <> Karsten 18 Mar 2026')
     })
 
     test('builds deterministic participant-scoped daily email metadata', () => {
@@ -184,7 +184,7 @@ describe('emailChannelHelpers', () => {
                 participantEmails,
                 dateLabel: '18 Mar 2026',
             })
-        ).toBe('Daily email <> Karsten, Peter Mueller, Anna 18 Mar 2026')
+        ).toBe('Daily email Anna <> Karsten, Peter Mueller 18 Mar 2026')
     })
 
     test('keeps the existing title format for a direct participant scope', () => {
@@ -195,7 +195,7 @@ describe('emailChannelHelpers', () => {
                 participantEmails: ['owner@example.com'],
                 dateLabel: '18 Mar 2026',
             })
-        ).toBe('Daily email <> Karsten 18 Mar 2026')
+        ).toBe('Daily email Anna <> Karsten 18 Mar 2026')
     })
 
     test('builds comment text from subject and body', () => {
