@@ -88,7 +88,8 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
     messages.push(['system', buildCurrentEmailParticipantsSystemMessage(currentEmailParticipants)])
-    if (options.hasAdditionalRecipients) {
+    const shouldRestrictPriorHistory = options.hasAdditionalRecipients && options.isParticipantScopedTopic !== true
+    if (shouldRestrictPriorHistory) {
         const priorSafeActionContext = await getLatestSafeEmailActionContext(
             projectId,
             chatId,
@@ -101,9 +102,14 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         if (priorSafeActionContext) {
             messages.push(['system', buildPriorSafeActionContextSystemMessage(priorSafeActionContext)])
         }
+    } else if (options.hasAdditionalRecipients) {
+        messages.push([
+            'system',
+            'This daily email topic contains only messages with the same participant set. You may use its earlier messages as context, while continuing to protect calendar details and other private data.',
+        ])
     }
 
-    const historyLimit = options.hasAdditionalRecipients ? 1 : THREAD_CONTEXT_MESSAGE_LIMIT
+    const historyLimit = shouldRestrictPriorHistory ? 1 : THREAD_CONTEXT_MESSAGE_LIMIT
     const history = await getConversationHistory(projectId, chatId, historyLimit, userTimezoneOffset)
     history.forEach(([role, content]) => messages.push([role, content]))
     if (!options.skipCurrentMessageAppend && String(messageText || '').trim()) {

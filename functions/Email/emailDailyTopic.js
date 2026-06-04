@@ -10,21 +10,36 @@ const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
 const { getUserData } = require('../Users/usersFirestore')
 const {
     buildAttachmentSummaryForComment,
+    buildDailyEmailParticipantEmails,
+    buildDailyEmailParticipantKey,
     buildDailyEmailTitle,
+    buildParticipantScopedDailyEmailTitle,
+    getEmailParticipantDisplayName,
     normalizeEmailAddress,
     normalizeSafeEmailActionContext,
 } = require('./emailChannelHelpers')
+
+const EMAIL_PARTICIPANT_SCOPE_VERSION = 1
 
 function getFirstName(displayName) {
     if (!displayName) return 'User'
     return String(displayName).trim().split(' ')[0] || 'User'
 }
 
-async function getOrCreateDailyEmailTopic(userId, projectId, assistantId) {
+async function getOrCreateDailyEmailTopic(userId, projectId, assistantId, options = {}) {
     const today = moment().format('YYYYMMDD')
-    const chatId = `BotChatEmail${today}${userId}`
+    const participantEmails = buildDailyEmailParticipantEmails(options.participantEmails || [])
+    const participantKey = buildDailyEmailParticipantKey(participantEmails)
+    const scopeType = participantEmails.length > 1 ? 'Group' : 'Direct'
+    const chatId = `BotChatEmail${today}${userId}${scopeType}${participantKey}`
     const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`)
     const chatDoc = await chatRef.get()
+    const participantScopeData = {
+        emailParticipantScopeVersion: EMAIL_PARTICIPANT_SCOPE_VERSION,
+        emailParticipantKey: participantKey,
+        emailParticipantEmails: participantEmails,
+        isEmailParticipantScoped: true,
+    }
 
     if (chatDoc.exists) {
         const data = chatDoc.data() || {}
@@ -39,15 +54,44 @@ async function getOrCreateDailyEmailTopic(userId, projectId, assistantId) {
             patchData.isAssistantEnabled = true
         }
 
+        if (
+            data.emailParticipantScopeVersion !== EMAIL_PARTICIPANT_SCOPE_VERSION ||
+            data.emailParticipantKey !== participantKey
+        ) {
+            Object.assign(patchData, participantScopeData)
+        }
+
         if (Object.keys(patchData).length > 0) {
             await chatRef.update(patchData)
         }
 
-        return { chatId, isNew: false }
+        return {
+            chatId,
+            isNew: false,
+            isParticipantScopedTopic: true,
+            participantEmails,
+            participantKey,
+        }
     }
 
     const user = await getUserData(userId)
-    const title = buildDailyEmailTitle(getFirstName(user?.displayName || 'User'), moment().format('DD MMM YYYY'))
+    const ownerFirstName = getFirstName(user?.displayName || 'User')
+    const ownerEmail = normalizeEmailAddress(options.ownerEmail || participantEmails[0] || user?.email || '')
+    const dateLabel = moment().format('DD MMM YYYY')
+    const title =
+        participantEmails.length > 1
+            ? buildParticipantScopedDailyEmailTitle({
+                  ownerFirstName,
+                  ownerEmail,
+                  participantEmails,
+                  dateLabel,
+              })
+            : buildDailyEmailTitle(ownerFirstName, dateLabel)
+    const otherParticipantNames = participantEmails
+        .filter(email => email !== ownerEmail)
+        .map(getEmailParticipantDisplayName)
+        .filter(Boolean)
+        .sort((first, second) => first.localeCompare(second))
     const now = Date.now()
 
     await chatRef.set({
@@ -71,9 +115,18 @@ async function getOrCreateDailyEmailTopic(userId, projectId, assistantId) {
             lastCommentType: '',
         },
         isAssistantEnabled: true,
+        ...participantScopeData,
+        emailParticipantNames: [ownerFirstName, ...otherParticipantNames, 'Anna'],
+        emailOwnerEmail: ownerEmail,
     })
 
-    return { chatId, isNew: true }
+    return {
+        chatId,
+        isNew: true,
+        isParticipantScopedTopic: true,
+        participantEmails,
+        participantKey,
+    }
 }
 
 async function storeEmailUserMessageInTopic(projectId, chatId, userId, messageText, options = {}) {

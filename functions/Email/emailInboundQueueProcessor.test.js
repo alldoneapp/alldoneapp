@@ -63,14 +63,17 @@ jest.mock('./emailAssistantBridge', () => ({
 }))
 
 jest.mock('./emailDailyTopic', () => ({
-    getOrCreateDailyEmailTopic: jest.fn().mockResolvedValue({ chatId: 'chat-1' }),
+    getOrCreateDailyEmailTopic: jest.fn().mockResolvedValue({
+        chatId: 'chat-1',
+        isParticipantScopedTopic: true,
+    }),
     storeEmailAssistantMessageInTopic: jest.fn().mockResolvedValue('assistant-comment'),
     storeEmailUserMessageInTopic: jest.fn().mockResolvedValue('user-comment'),
 }))
 
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
 const { sendAnnaEmailReply } = require('./emailReplyService')
-const { storeEmailUserMessageInTopic } = require('./emailDailyTopic')
+const { getOrCreateDailyEmailTopic, storeEmailUserMessageInTopic } = require('./emailDailyTopic')
 const { __private__ } = require('./emailInboundQueueProcessor')
 
 describe('emailInboundQueueProcessor', () => {
@@ -110,6 +113,10 @@ describe('emailInboundQueueProcessor', () => {
             },
         })
 
+        expect(getOrCreateDailyEmailTopic).toHaveBeenCalledWith('user-1', 'project-1', 'assistant-1', {
+            ownerEmail: 'sender@example.com',
+            participantEmails: ['sender@example.com', 'teammate@example.com', 'observer@example.com'],
+        })
         expect(storeEmailUserMessageInTopic).toHaveBeenCalled()
         expect(processAnnaEmailAssistantMessage).toHaveBeenCalledWith(
             'user-1',
@@ -128,6 +135,7 @@ describe('emailInboundQueueProcessor', () => {
                 toEmails: ['anna@alldoneapp.com', 'teammate@example.com'],
                 ccEmails: ['observer@example.com'],
                 hasAdditionalRecipients: true,
+                isParticipantScopedTopic: true,
             })
         )
         expect(sendAnnaEmailReply).toHaveBeenCalledWith(

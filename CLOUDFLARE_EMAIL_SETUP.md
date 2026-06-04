@@ -127,4 +127,8 @@ cd cloudflare/email-worker && npm test
 
 -   The Worker must send inline attachment bytes; Firebase no longer downloads attachments from an inbound provider
 -   Large emails are limited by Cloudflare Email Routing limits and the Firebase request body size you can practically handle
--   The daily topic title remains `Daily email <> {FirstName} {DD MMM YYYY}`
+-   Direct 1:1 emails use `Daily email <> {FirstName} {DD MMM YYYY}`
+-   Emails with additional To/CC recipients use a separate daily topic for each exact participant set, titled like
+    `Daily email <> {FirstName}, {OtherName}, Anna {DD MMM YYYY}`
+-   Moving a recipient between To and CC keeps the same daily topic; adding or removing a recipient starts a different
+    topic so prior context is not exposed to a changed participant set

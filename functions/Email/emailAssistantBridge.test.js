@@ -146,6 +146,36 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         )
     })
 
+    test('uses full history when the daily topic is isolated to the current participant set', async () => {
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Create the 13:30 meeting with the person in CC',
+            'assistant-1',
+            {
+                fromEmail: 'owner@example.com',
+                toEmail: 'owner@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                ccEmails: ['guest@example.com'],
+                hasAdditionalRecipients: true,
+                isParticipantScopedTopic: true,
+                skipCurrentMessageAppend: true,
+            }
+        )
+
+        const messages = mockInteractWithChatStream.mock.calls[0][0]
+        const systemText = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemText).toContain('only messages with the same participant set')
+        expect(systemText).not.toContain('Do not use or mention any other earlier messages')
+        expect(getLatestSafeEmailActionContext).not.toHaveBeenCalled()
+        expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 20, 120)
+    })
+
     test('builds a stripped availability context for a later recipient-safe follow-up', () => {
         expect(
             __private__.buildSafeActionContextFromToolResult(

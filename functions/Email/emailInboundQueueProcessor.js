@@ -52,9 +52,15 @@ async function processQueueItem(userId, item) {
     const messageId = data.messageId || item.id
     const replyDelivery = getReplyDeliveryForQueueItem(data)
     let chatId = null
+    let isParticipantScopedTopic = false
 
     try {
-        ;({ chatId } = await getOrCreateDailyEmailTopic(userId, projectId, assistantId))
+        const topic = await getOrCreateDailyEmailTopic(userId, projectId, assistantId, {
+            ownerEmail: data.fromEmail || '',
+            participantEmails: [...replyDelivery.toEmails, ...replyDelivery.ccEmails],
+        })
+        chatId = topic.chatId
+        isParticipantScopedTopic = topic.isParticipantScopedTopic === true
         const hydratedAttachments = await hydrateAttachments(data.attachments)
         const messageText = buildEmailCommentText(data.subject, data.textBody, data.htmlBody)
 
@@ -97,6 +103,7 @@ async function processQueueItem(userId, item) {
                 messageId,
                 initialPendingAttachmentPayload,
                 hasAdditionalRecipients: replyDelivery.toEmails.length + replyDelivery.ccEmails.length > 1,
+                isParticipantScopedTopic,
                 skipCurrentMessageAppend: true,
             }
         )

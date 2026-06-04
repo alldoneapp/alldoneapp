@@ -1,11 +1,15 @@
 'use strict'
 
 const {
+    buildDailyEmailParticipantEmails,
+    buildDailyEmailParticipantKey,
     buildDailyEmailTitle,
     buildEmailCommentText,
     buildCurrentEmailParticipants,
+    buildParticipantScopedDailyEmailTitle,
     buildReplyAllRecipients,
     computeWebhookSignature,
+    getEmailParticipantDisplayName,
     getEmailSafeAllowedTools,
     looksLikeForwardedEmail,
     normalizeEmailAddress,
@@ -158,6 +162,40 @@ describe('emailChannelHelpers', () => {
 
     test('builds daily email title in WhatsApp-like style', () => {
         expect(buildDailyEmailTitle('Karsten', '18 Mar 2026')).toBe('Daily email <> Karsten 18 Mar 2026')
+    })
+
+    test('builds deterministic participant-scoped daily email metadata', () => {
+        const participantEmails = buildDailyEmailParticipantEmails([
+            'Peter.Mueller@example.com',
+            'anna@alldoneapp.com',
+            'owner@example.com',
+            'peter.mueller@example.com',
+        ])
+
+        expect(participantEmails).toEqual(['owner@example.com', 'peter.mueller@example.com'])
+        expect(buildDailyEmailParticipantKey(participantEmails)).toBe(
+            buildDailyEmailParticipantKey(['peter.mueller@example.com', 'owner@example.com'])
+        )
+        expect(getEmailParticipantDisplayName('peter.mueller@example.com')).toBe('Peter Mueller')
+        expect(
+            buildParticipantScopedDailyEmailTitle({
+                ownerFirstName: 'Karsten',
+                ownerEmail: 'owner@example.com',
+                participantEmails,
+                dateLabel: '18 Mar 2026',
+            })
+        ).toBe('Daily email <> Karsten, Peter Mueller, Anna 18 Mar 2026')
+    })
+
+    test('keeps the existing title format for a direct participant scope', () => {
+        expect(
+            buildParticipantScopedDailyEmailTitle({
+                ownerFirstName: 'Karsten',
+                ownerEmail: 'owner@example.com',
+                participantEmails: ['owner@example.com'],
+                dateLabel: '18 Mar 2026',
+            })
+        ).toBe('Daily email <> Karsten 18 Mar 2026')
     })
 
     test('builds comment text from subject and body', () => {

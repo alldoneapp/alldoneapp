@@ -210,6 +210,68 @@ function buildDailyEmailTitle(firstName = 'User', dateLabel = '') {
     return `Daily email <> ${String(firstName || 'User').trim() || 'User'} ${String(dateLabel || '').trim()}`.trim()
 }
 
+function buildDailyEmailParticipantEmails(values = [], assistantEmailAddresses = []) {
+    const excluded = new Set(
+        normalizeEmailAddressList([...DEFAULT_ASSISTANT_EMAIL_ADDRESSES, ...assistantEmailAddresses])
+    )
+
+    return normalizeEmailAddressList(values)
+        .filter(email => !excluded.has(email))
+        .sort()
+}
+
+function buildDailyEmailParticipantKey(participantEmails = []) {
+    return crypto
+        .createHash('sha256')
+        .update(buildDailyEmailParticipantEmails(participantEmails).join('\n'))
+        .digest('hex')
+        .substring(0, 24)
+}
+
+function getEmailParticipantDisplayName(value = '') {
+    const email = normalizeEmailAddress(value)
+    const localPart = String(email.split('@')[0] || '')
+        .split('+')[0]
+        .replace(/[._-]+/g, ' ')
+        .replace(/[^a-z0-9' ]+/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    if (!localPart) return email.substring(0, 60)
+
+    return localPart
+        .split(' ')
+        .filter(Boolean)
+        .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
+        .join(' ')
+        .substring(0, 60)
+}
+
+function buildParticipantScopedDailyEmailTitle({
+    ownerFirstName = 'User',
+    ownerEmail = '',
+    participantEmails = [],
+    assistantName = 'Anna',
+    dateLabel = '',
+} = {}) {
+    const normalizedOwnerEmail = normalizeEmailAddress(ownerEmail)
+    const normalizedParticipantEmails = buildDailyEmailParticipantEmails(participantEmails)
+    const normalizedOwnerFirstName = String(ownerFirstName || 'User').trim() || 'User'
+
+    if (normalizedParticipantEmails.length <= 1) {
+        return buildDailyEmailTitle(normalizedOwnerFirstName, dateLabel)
+    }
+
+    const otherParticipantNames = normalizedParticipantEmails
+        .filter(email => email !== normalizedOwnerEmail)
+        .map(getEmailParticipantDisplayName)
+        .filter(Boolean)
+        .sort((first, second) => first.localeCompare(second))
+    const participantNames = [normalizedOwnerFirstName, ...otherParticipantNames, assistantName].filter(Boolean)
+
+    return `Daily email <> ${participantNames.join(', ')} ${String(dateLabel || '').trim()}`.trim()
+}
+
 function stripHtmlToText(html = '') {
     return String(html || '')
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -475,10 +537,14 @@ module.exports = {
     EMAIL_UPDATE_NOTE_KEY,
     buildAttachmentSummaryForComment,
     buildCurrentEmailParticipants,
+    buildDailyEmailParticipantEmails,
+    buildDailyEmailParticipantKey,
     buildDailyEmailTitle,
     buildEmailCommentText,
+    buildParticipantScopedDailyEmailTitle,
     buildReplyAllRecipients,
     computeWebhookSignature,
+    getEmailParticipantDisplayName,
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
     normalizeEmailAddressList,
