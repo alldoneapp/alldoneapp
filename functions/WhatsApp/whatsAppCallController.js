@@ -3,13 +3,18 @@ const WebSocket = require('ws')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const {
     addBaseInstructions,
+    buildCompactThreadContextMessage,
     buildConversationSafeToolResult,
     executeToolNatively,
     filterAllowedToolsForRuntimeContext,
     getAssistantForChat,
     getDynamicToolSchemasWithCache,
+    getOpenTasksContextMessage,
     isToolAllowedForExecution,
+    loadAssistantThreadState,
 } = require('../Assistant/assistantHelper')
+const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
+const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
 const { getConversationHistory } = require('./whatsAppDailyTopic')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { reconcileCallUsage } = require('./whatsAppCallGold')
@@ -20,6 +25,7 @@ const {
     buildCallBootstrapInstructions,
     buildCallGreetingInstruction,
     buildCallIdentityInstruction,
+    buildCallLanguageInstruction,
 } = require('./whatsAppCallPrompt')
 const {
     CONFIRMATION_TOOL_NAME,
@@ -112,12 +118,37 @@ function serializeToolResult(result) {
 }
 
 async function buildCallBootstrapContext(session) {
-    const [userDoc, assistant, history] = await Promise.all([
-        admin.firestore().doc(`users/${session.userId}`).get(),
-        getAssistantForChat(session.projectId, session.assistantId, session.userId),
-        getConversationHistory(session.projectId, session.chatId),
-    ])
+    const userDocPromise = admin.firestore().doc(`users/${session.userId}`).get()
+    const assistantPromise = getAssistantForChat(session.projectId, session.assistantId, session.userId)
+    const compactedThreadStatePromise = loadAssistantThreadState(
+        admin.firestore(),
+        session.projectId,
+        'topics',
+        session.chatId,
+        session.assistantId
+    ).catch(() => null)
+
+    // History must be fetched with the user's timezone (for correct timestamps) and the
+    // compaction trim point (to drop messages already summarized), so resolve those first.
+    const userDoc = await userDocPromise
     const user = userDoc.exists ? userDoc.data() || {} : {}
+    const userTimezoneOffset = resolveUserTimezoneOffset(user)
+    const compactedThreadState = await compactedThreadStatePromise
+    const trimHistoryBeforeMs =
+        compactedThreadState && Number.isFinite(Number(compactedThreadState.trimHistoryBeforeMs))
+            ? Number(compactedThreadState.trimHistoryBeforeMs)
+            : 0
+
+    const [assistant, history] = await Promise.all([
+        assistantPromise,
+        getConversationHistory(
+            session.projectId,
+            session.chatId,
+            THREAD_CONTEXT_MESSAGE_LIMIT,
+            userTimezoneOffset,
+            trimHistoryBeforeMs
+        ),
+    ])
     const runtimeContext = {
         projectId: session.projectId,
         assistantId: session.assistantId,
@@ -131,17 +162,20 @@ async function buildCallBootstrapContext(session) {
     return {
         assistant,
         user,
+        userTimezoneOffset,
+        compactedThreadState,
         history,
         runtimeContext,
         allowedTools,
         tools: [],
-        instructions: buildCallBootstrapInstructions(assistant),
+        instructions: buildCallBootstrapInstructions(assistant, user.language),
     }
 }
 
 async function completeCallContext(context) {
     const dynamicTools = await getDynamicToolSchemasWithCache(context.allowedTools, context.runtimeContext)
     const tools = buildRealtimeToolSchemas(context.allowedTools, dynamicTools)
+    const userTimezoneOffset = Number.isFinite(context.userTimezoneOffset) ? context.userTimezoneOffset : null
     const baseMessages = []
     await addBaseInstructions(
         baseMessages,
@@ -149,14 +183,33 @@ async function completeCallContext(context) {
         context.user.language || 'English',
         context.assistant.instructions,
         context.allowedTools,
-        Number.isFinite(Number(context.user.timezoneOffset)) ? Number(context.user.timezoneOffset) : null,
+        userTimezoneOffset,
         {
             ...context.runtimeContext,
             userTimezoneName: context.user.timezoneName || context.user.timezone || null,
         }
     )
+
+    const compactedContextMessage = context.compactedThreadState
+        ? buildCompactThreadContextMessage(context.compactedThreadState)
+        : ''
+    if (compactedContextMessage) baseMessages.push(['system', compactedContextMessage])
+
+    baseMessages.push(['system', buildCallLanguageInstruction(context.user.language)])
     baseMessages.push(['system', buildCallIdentityInstruction(context.assistant)])
     baseMessages.push(['system', VOICE_INSTRUCTIONS])
+
+    try {
+        const openTasksContext = await getOpenTasksContextMessage(
+            context.runtimeContext.requestUserId,
+            userTimezoneOffset
+        )
+        if (openTasksContext?.message) baseMessages.push(['system', openTasksContext.message])
+    } catch (error) {
+        console.warn('WhatsApp Call: Failed to load open tasks context', {
+            error: getSafeCallErrorDetails(error),
+        })
+    }
 
     return {
         ...context,
@@ -528,7 +581,7 @@ async function runWhatsAppRealtimeCall(sessionId) {
         )
         if (!initialized) {
             context.history.forEach(([role, content]) => send(createConversationItem(role, content)))
-            requestResponse(buildCallGreetingInstruction(context.assistant))
+            requestResponse(buildCallGreetingInstruction(context.assistant, context.user.language))
             initialized = true
         }
     }

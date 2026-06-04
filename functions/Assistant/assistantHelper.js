@@ -10187,4 +10187,6 @@ module.exports = {
     getAssistantThreadStateContextMessage,
     getProjectDescriptionContextMessage,
     getOpenTasksContextMessage,
+    loadAssistantThreadState,
+    buildCompactThreadContextMessage,
 }

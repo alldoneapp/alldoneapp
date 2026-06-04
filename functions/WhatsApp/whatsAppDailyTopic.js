@@ -290,7 +290,8 @@ async function getConversationHistory(
     projectId,
     chatId,
     limit = THREAD_CONTEXT_MESSAGE_LIMIT,
-    userTimezoneOffset = null
+    userTimezoneOffset = null,
+    trimHistoryBeforeMs = 0
 ) {
     const snapshot = await admin
         .firestore()
@@ -304,6 +305,9 @@ async function getConversationHistory(
     for (const doc of snapshot.docs.reverse()) {
         const data = doc.data()
         const messageTimestamp = Number(data.created || data.lastChangeDate || 0)
+        if (trimHistoryBeforeMs && Number.isFinite(messageTimestamp) && messageTimestamp < trimHistoryBeforeMs) {
+            continue
+        }
         if (data.commentText) {
             const role = data.fromAssistant ? 'assistant' : 'user'
             if (role === 'user') {

@@ -3,12 +3,15 @@ jest.mock('ws', () => jest.fn())
 jest.mock('../Services/TwilioWhatsAppService', () => jest.fn())
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: jest.fn(),
+    buildCompactThreadContextMessage: jest.fn(),
     buildConversationSafeToolResult: jest.fn(),
     executeToolNatively: jest.fn(),
     filterAllowedToolsForRuntimeContext: jest.fn(),
     getAssistantForChat: jest.fn(),
     getDynamicToolSchemasWithCache: jest.fn(),
+    getOpenTasksContextMessage: jest.fn(),
     isToolAllowedForExecution: jest.fn(),
+    loadAssistantThreadState: jest.fn(),
 }))
 jest.mock('./whatsAppDailyTopic', () => ({ getConversationHistory: jest.fn() }))
 jest.mock('./whatsAppCallConfig', () => ({
@@ -34,9 +37,12 @@ const admin = require('firebase-admin')
 const WebSocket = require('ws')
 const {
     addBaseInstructions,
+    buildCompactThreadContextMessage,
     filterAllowedToolsForRuntimeContext,
     getAssistantForChat,
     getDynamicToolSchemasWithCache,
+    getOpenTasksContextMessage,
+    loadAssistantThreadState,
 } = require('../Assistant/assistantHelper')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { getConversationHistory } = require('./whatsAppDailyTopic')
@@ -215,6 +221,11 @@ describe('WhatsApp call sideband configuration', () => {
         addBaseInstructions.mockImplementation(async messages => {
             messages.push(['system', 'Full instructions'])
         })
+        getOpenTasksContextMessage.mockResolvedValue({
+            message: 'Today (including overdue) the user has 5 open tasks in total.',
+        })
+        loadAssistantThreadState.mockResolvedValue({ trimHistoryBeforeMs: 1700000000000 })
+        buildCompactThreadContextMessage.mockReturnValue('Compacted thread summary: prior progress.')
         updateCallSession.mockResolvedValue()
         finalizeCallSession.mockResolvedValue()
         claimRecap.mockResolvedValue(false)
@@ -235,10 +246,27 @@ describe('WhatsApp call sideband configuration', () => {
         expect(sentEvents.find(event => event.type === 'response.create').response.instructions).toContain(
             'introduce yourself only as Anna'
         )
+        expect(sentEvents.find(event => event.type === 'response.create').response.instructions).toContain(
+            'Greet the caller briefly in English'
+        )
+        expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
+            'Start the call in English'
+        )
 
         resolveDynamicTools([])
         await new Promise(resolve => setImmediate(resolve))
         expect(addBaseInstructions).toHaveBeenCalled()
+        expect(getOpenTasksContextMessage).toHaveBeenCalledWith('user-1', null)
+        expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 50, null, 1700000000000)
+        const enrichedSessionUpdate = socket.send.mock.calls
+            .map(([payload]) => JSON.parse(payload))
+            .reverse()
+            .find(event => event.type === 'session.update')
+        expect(enrichedSessionUpdate.session.instructions).toContain(
+            'Today (including overdue) the user has 5 open tasks in total.'
+        )
+        expect(enrichedSessionUpdate.session.instructions).toContain('Compacted thread summary: prior progress.')
+        expect(enrichedSessionUpdate.session.instructions).toContain('Start the call in English')
 
         socket.readyState = 3
         eventHandlers.close(1000)
