@@ -3719,6 +3719,9 @@ exports.whatsAppIncomingCall = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
+        // Keep one instance warm: this is the Twilio entry point for a live phone call, so a
+        // cold start here adds seconds of dead air before the caller can be connected to Anna.
+        minInstances: 1,
     },
     async (req, res) => {
         const { handleIncomingWhatsAppCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
@@ -3743,6 +3746,9 @@ exports.openAIRealtimeCallWebhook = onRequest(
         timeoutSeconds: 60,
         memory: '512MiB',
         region: 'europe-west1',
+        // Keep one instance warm: OpenAI calls this to accept the live SIP call, and a cold
+        // start delays the accept (observed ~7.7s), which the caller experiences as silence.
+        minInstances: 1,
     },
     async (req, res) => {
         const { handleOpenAIRealtimeCallWebhook } = require('./WhatsApp/whatsAppCallOpenAIWebhook')
@@ -3757,6 +3763,10 @@ exports.runWhatsAppRealtimeCall = onTaskDispatched(
         memory: '1GiB',
         retryConfig: { maxAttempts: 1 },
         rateLimits: { maxConcurrentDispatches: 5 },
+        // Keep one instance warm: this is the sideband controller that connects to OpenAI
+        // Realtime. A cold start here was observed to push setup latency to ~14.5s, long
+        // enough that the caller hangs up before Anna can greet (the call "doesn't connect").
+        minInstances: 1,
     },
     async req => {
         const sessionId = req.data && req.data.sessionId
