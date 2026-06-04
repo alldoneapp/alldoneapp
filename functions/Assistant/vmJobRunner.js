@@ -1,6 +1,18 @@
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const {
+    ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
+    FEED_PUBLIC_FOR_ALL,
+    STAYWARD_COMMENT,
+    getBaseUrl,
+} = require('../Utils/HelperFunctionsCloud')
+const {
+    LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
+    cleanTextMetaData,
+    removeFormatTagsFromText,
+    shrinkTagText,
+} = require('../Utils/parseTextUtils')
+const {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_GOLD_PER_MINUTE,
@@ -66,6 +78,192 @@ const TASK_TYPE_PROFILES = {
 // $GIT_TOKEN, not the token itself, so resuming a paused sandbox never leaks it.
 const REPO_DIR = '/home/user/repo'
 const REPO_DEPENDENCY_INSTALL_TIMEOUT_MS = 7 * 60 * 1000
+
+function uniqueDefined(values) {
+    return Array.from(new Set((Array.isArray(values) ? values : []).filter(value => !!value)))
+}
+
+function getVmParentObjectPath(projectId, objectType, objectId) {
+    switch (objectType) {
+        case 'assistants':
+            return `assistants/${projectId}/items/${objectId}`
+        case 'contacts':
+            return `projectsContacts/${projectId}/contacts/${objectId}`
+        case 'goals':
+            return `goals/${projectId}/items/${objectId}`
+        case 'notes':
+            return `noteItems/${projectId}/notes/${objectId}`
+        case 'skills':
+            return `skills/${projectId}/items/${objectId}`
+        case 'tasks':
+            return `items/${projectId}/tasks/${objectId}`
+        default:
+            return null
+    }
+}
+
+function buildVmChatLink(projectId, objectType, objectId) {
+    return `${getBaseUrl()}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
+}
+
+async function resolveVmCompletionFollowers(pendingWebhook) {
+    const { projectId, objectType = 'tasks', objectId, isPublicFor = [] } = pendingWebhook
+    let followerIds = []
+    try {
+        const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
+        followerIds = await getObjectFollowersIds(projectId, objectType, objectId)
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed resolving followers for completion metadata', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+    }
+
+    const visibleToAll = Array.isArray(isPublicFor) && isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
+    const visibleFollowerIds = visibleToAll
+        ? followerIds
+        : followerIds.filter(followerId => !Array.isArray(isPublicFor) || isPublicFor.includes(followerId))
+
+    return uniqueDefined([...(visibleFollowerIds || []), ...(pendingWebhook.userIdsToNotify || [])])
+}
+
+async function applyVmCompletionMetadata(pendingWebhook, commentId, text) {
+    const { projectId, objectType = 'tasks', objectId, assistantId } = pendingWebhook
+    if (!projectId || !objectId || !assistantId || !commentId) return { applied: false, reason: 'missing-context' }
+
+    const db = admin.firestore()
+    const now = Date.now()
+    const userIdsToNotify = uniqueDefined([...(pendingWebhook.userIdsToNotify || []), pendingWebhook.userId])
+    const followerIds = await resolveVmCompletionFollowers(pendingWebhook)
+    const notificationUsers = uniqueDefined(userIdsToNotify)
+    const lastComment = cleanTextMetaData(removeFormatTagsFromText(text), true)
+    const parentLastComment = shrinkTagText(lastComment, LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN)
+    const commentRef = db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+    const chatRef = db.doc(`chatObjects/${projectId}/chats/${objectId}`)
+    const parentObjectPath = getVmParentObjectPath(projectId, objectType, objectId)
+    const parentRef = parentObjectPath ? db.doc(parentObjectPath) : null
+    const projectRef = db.doc(`projects/${projectId}`)
+    const assistantRef = db.doc(`assistants/${projectId}/items/${assistantId}`)
+
+    return db.runTransaction(async transaction => {
+        const [commentSnap, chatSnap, parentSnap, projectSnap, assistantSnap] = await Promise.all([
+            transaction.get(commentRef),
+            transaction.get(chatRef),
+            parentRef ? transaction.get(parentRef) : Promise.resolve(null),
+            transaction.get(projectRef),
+            transaction.get(assistantRef),
+        ])
+
+        if (commentSnap.exists && commentSnap.data()?.vmCompletionMetadataAppliedAt) {
+            return { applied: false, reason: 'already-applied' }
+        }
+
+        const chat = chatSnap.exists ? chatSnap.data() || {} : {}
+        const project = projectSnap && projectSnap.exists ? projectSnap.data() || {} : {}
+        const assistant = assistantSnap && assistantSnap.exists ? assistantSnap.data() || {} : {}
+        const members = uniqueDefined([...(chat.members || []), ...notificationUsers, assistantId])
+        const followersMap = {}
+        followerIds.forEach(followerId => {
+            followersMap[followerId] = true
+        })
+
+        transaction.set(
+            commentRef,
+            {
+                vmCompletionMetadataAppliedAt: now,
+                vmCompletionNotificationUserIds: notificationUsers,
+            },
+            { merge: true }
+        )
+
+        transaction.set(
+            chatRef,
+            {
+                members,
+                lastEditionDate: now,
+                lastEditorId: assistantId,
+                lastAssistantComment: now,
+                assistantId,
+                followerIds,
+                [`commentsData.lastCommentOwnerId`]: assistantId,
+                [`commentsData.lastComment`]: lastComment,
+                [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+            },
+            { merge: true }
+        )
+
+        if (parentRef && parentSnap && parentSnap.exists) {
+            transaction.update(parentRef, {
+                [`commentsData.lastComment`]: parentLastComment,
+                [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+            })
+        }
+
+        const updateDate = {
+            objectType,
+            objectId,
+            creatorId: assistantId,
+            creatorType: 'assistant',
+            date: now,
+        }
+        followerIds.forEach(followerId => {
+            transaction.set(
+                db.doc(`users/${followerId}`),
+                {
+                    [`lastAssistantCommentData.${projectId}`]: updateDate,
+                    [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                        ...updateDate,
+                        projectId,
+                    },
+                },
+                { merge: true }
+            )
+        })
+
+        notificationUsers.forEach(userId => {
+            transaction.set(db.doc(`chatNotifications/${projectId}/${userId}/${commentId}`), {
+                chatId: objectId,
+                chatType: objectType,
+                followed: !!followersMap[userId],
+                date: now,
+                creatorId: assistantId,
+                creatorType: 'assistant',
+            })
+        })
+
+        transaction.set(
+            db.doc(`emailNotifications/${objectId}`),
+            {
+                userIds: followerIds,
+                projectId,
+                objectType: objectType === 'topics' ? 'chats' : objectType,
+                objectId,
+                objectName: chat.title || 'Task',
+                messageTimestamp: now,
+            },
+            { merge: true }
+        )
+
+        if (followerIds.length > 0) {
+            transaction.set(db.doc(`pushNotifications/${commentId}`), {
+                userIds: followerIds,
+                body: `${project.name || projectId}\n  ✔ ${chat.title || 'Task'}\n ${
+                    assistant.displayName || assistant.name || 'Assistant'
+                } commented: ${lastComment}`,
+                link: buildVmChatLink(projectId, objectType, objectId),
+                messageTimestamp: now,
+                type: 'Chat Notification',
+                chatId: objectId,
+                projectId,
+                initiatorId: pendingWebhook.userId || notificationUsers[0] || null,
+            })
+        }
+
+        return { applied: true, followerIds, userIdsToNotify: notificationUsers }
+    })
+}
 
 // Static setup script. ALL dynamic values arrive via env vars (so nothing untrusted is
 // interpolated into the script text — no shell injection). The credential helper is
@@ -329,26 +527,15 @@ async function writeStatusComment(pendingWebhook, text, { isFinal = false, outpu
         return
     }
 
-    // Keep the chat object / parent object comment preview in sync.
+    // Keep the chat object / parent object comment preview in sync and emit the
+    // same unread/notification metadata as a normal assistant message. The live
+    // VM status comment was already counted when created, so this final transition
+    // is idempotently counted as the new result message that users should see.
     if (isFinal) {
         try {
-            const chatRef = db.doc(`chatObjects/${projectId}/chats/${objectId}`)
-            const chatDoc = await chatRef.get()
-            if (chatDoc.exists) {
-                const current = chatDoc.data().commentsData || { amount: 0 }
-                await chatRef.update({
-                    commentsData: {
-                        lastCommentOwnerId: assistantId,
-                        lastComment: text.substring(0, 100),
-                        lastCommentType: 'STAYWARD_COMMENT',
-                        amount: current.amount || 0,
-                    },
-                    lastEditionDate: Date.now(),
-                    lastEditorId: assistantId,
-                })
-            }
+            await applyVmCompletionMetadata(pendingWebhook, commentId, text)
         } catch (error) {
-            console.warn('🖥️ VM JOB: Failed updating chat object on finalize', {
+            console.warn('🖥️ VM JOB: Failed applying completion metadata', {
                 correlationId: pendingWebhook.correlationId,
                 error: error.message,
             })
@@ -1791,5 +1978,7 @@ module.exports = {
         sendWhatsAppVmResultNotification,
         buildAttachmentTokens,
         buildVmFinalCommentText,
+        applyVmCompletionMetadata,
+        resolveVmCompletionFollowers,
     },
 }

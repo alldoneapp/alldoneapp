@@ -1,11 +1,26 @@
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
 const mockDeductGold = jest.fn()
 const mockRefundGold = jest.fn()
+const mockGetObjectFollowersIds = jest.fn()
+const mockFirestore = jest.fn(() => ({
+    doc: jest.fn(),
+}))
+mockFirestore.Timestamp = { now: jest.fn(() => ({ seconds: 123, nanoseconds: 0 })) }
+mockFirestore.FieldValue = { increment: jest.fn(value => ({ __op: 'increment', value })) }
 
 jest.mock('firebase-admin', () => ({
-    firestore: jest.fn(() => ({
-        doc: jest.fn(),
-    })),
+    firestore: mockFirestore,
+}))
+
+jest.mock('../Feeds/globalFeedsHelper', () => ({
+    getObjectFollowersIds: mockGetObjectFollowersIds,
+}))
+
+jest.mock('../Utils/HelperFunctionsCloud', () => ({
+    ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY: 'allProjects',
+    FEED_PUBLIC_FOR_ALL: 0,
+    STAYWARD_COMMENT: 2,
+    getBaseUrl: jest.fn(() => 'https://app.alldone.test'),
 }))
 
 jest.mock('../envFunctionsHelper', () => ({
@@ -286,6 +301,149 @@ describe('VM runner artifact presentation', () => {
 
     test('leaves text-only VM answers unchanged', () => {
         expect(__private__.buildVmFinalCommentText('Here is the summary.', [])).toBe('Here is the summary.')
+    })
+})
+
+describe('VM completion chat metadata', () => {
+    const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
+        const refs = new Map()
+        const doc = jest.fn(path => {
+            if (!refs.has(path)) refs.set(path, { path })
+            return refs.get(path)
+        })
+        const transaction = {
+            get: jest.fn(async ref => {
+                if (ref.path.includes('/comments/comment-1')) {
+                    return { exists: true, data: () => commentData }
+                }
+                if (ref.path === 'chatObjects/project-1/chats/task-1') {
+                    return { exists: true, data: () => ({ title: 'Important task', members: ['user-2'], ...chatData }) }
+                }
+                if (ref.path === 'items/project-1/tasks/task-1') {
+                    return { exists: true, data: () => ({ commentsData: { amount: 1 } }) }
+                }
+                if (ref.path === 'projects/project-1') {
+                    return { exists: true, data: () => ({ name: 'Product' }) }
+                }
+                if (ref.path === 'assistants/project-1/items/assistant-1') {
+                    return { exists: true, data: () => ({ displayName: 'Anna' }) }
+                }
+                return { exists: false, data: () => ({}) }
+            }),
+            set: jest.fn(),
+            update: jest.fn(),
+        }
+        const runTransaction = jest.fn(async callback => callback(transaction))
+        mockFirestore.mockReturnValue({ doc, runTransaction })
+        return { doc, runTransaction, transaction, refs }
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockFirestore.FieldValue.increment.mockImplementation(value => ({ __op: 'increment', value }))
+        mockGetObjectFollowersIds.mockResolvedValue(['user-1', 'user-2'])
+    })
+
+    test('applies the same unread and task metadata as a normal assistant message', async () => {
+        const { transaction, refs } = createFirestoreMock()
+
+        const result = await __private__.applyVmCompletionMetadata(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+            },
+            'comment-1',
+            'Finished VM result'
+        )
+
+        expect(result.applied).toBe(true)
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('chatObjects/project-1/chats/task-1'),
+            expect.objectContaining({
+                members: ['user-2', 'user-1', 'assistant-1'],
+                lastEditorId: 'assistant-1',
+                lastAssistantComment: expect.any(Number),
+                'commentsData.lastCommentOwnerId': 'assistant-1',
+                'commentsData.lastComment': 'Finished VM result',
+                'commentsData.lastCommentType': 2,
+                'commentsData.amount': { __op: 'increment', value: 1 },
+            }),
+            { merge: true }
+        )
+        expect(transaction.update).toHaveBeenCalledWith(
+            refs.get('items/project-1/tasks/task-1'),
+            expect.objectContaining({
+                'commentsData.lastComment': expect.any(String),
+                'commentsData.lastCommentType': 2,
+                'commentsData.amount': { __op: 'increment', value: 1 },
+            })
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('chatNotifications/project-1/user-1/comment-1'),
+            expect.objectContaining({
+                chatId: 'task-1',
+                chatType: 'tasks',
+                followed: true,
+                creatorId: 'assistant-1',
+                creatorType: 'assistant',
+            })
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('users/user-1'),
+            expect.objectContaining({
+                'lastAssistantCommentData.project-1': expect.objectContaining({
+                    objectType: 'tasks',
+                    objectId: 'task-1',
+                    creatorId: 'assistant-1',
+                    creatorType: 'assistant',
+                }),
+                'lastAssistantCommentData.allProjects': expect.objectContaining({
+                    projectId: 'project-1',
+                    objectId: 'task-1',
+                }),
+            }),
+            { merge: true }
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('pushNotifications/comment-1'),
+            expect.objectContaining({
+                userIds: ['user-1', 'user-2'],
+                chatId: 'task-1',
+                projectId: 'project-1',
+                type: 'Chat Notification',
+            })
+        )
+    })
+
+    test('does not double-apply metadata when the VM finalizer is retried', async () => {
+        const { transaction } = createFirestoreMock({
+            commentData: { vmCompletionMetadataAppliedAt: 123 },
+        })
+
+        const result = await __private__.applyVmCompletionMetadata(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+            },
+            'comment-1',
+            'Finished VM result'
+        )
+
+        expect(result).toEqual({ applied: false, reason: 'already-applied' })
+        expect(transaction.set).not.toHaveBeenCalled()
+        expect(transaction.update).not.toHaveBeenCalled()
     })
 })
 
