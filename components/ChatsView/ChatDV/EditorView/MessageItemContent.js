@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View, ActivityIndicator, Text } from 'react-native'
+import { Platform, StyleSheet, View, ActivityIndicator, Text } from 'react-native'
 
 import global, { colors } from '../../../styles/global'
 import CommentElementsParser from '../../../Feeds/TextParser/CommentElementsParser'
@@ -318,7 +318,7 @@ export default function MessageItemContent({
         <DismissibleItem
             ref={dismissibleRef}
             defaultComponent={
-                <View style={{ marginLeft: 36 }}>
+                <View style={localStyles.messageContentContainer}>
                     {isLoadingState ? (
                         <View style={localStyles.loadingContainer}>
                             {!containsBlockOrSpecialElements(commentText) ? (
@@ -393,6 +393,10 @@ export default function MessageItemContent({
 }
 
 const localStyles = StyleSheet.create({
+    messageContentContainer: {
+        marginLeft: 36,
+        ...(Platform.OS === 'web' ? { userSelect: 'text', cursor: 'text' } : {}),
+    },
     text: {
         ...global.body1,
         color: colors.Text02,
