@@ -26,8 +26,11 @@ export default {
 
 export async function buildNormalizedPayload(message, env = {}) {
     const rawHeaders = objectFromHeaders(message.headers)
-    const parsedFrom = extractMailboxAddress(rawHeaders.from || rawHeaders.From || message.from || '')
+    // Use only the SMTP envelope sender for authorization. Header From can be spoofed independently.
+    const parsedFrom = extractMailboxAddress(message.from || '')
     const parsedReplyTo = extractMailboxAddress(rawHeaders['reply-to'] || rawHeaders['Reply-To'] || '')
+    const toEmails = extractMailboxAddresses(rawHeaders.to || rawHeaders.To || message.to || '')
+    const ccEmails = extractMailboxAddresses(rawHeaders.cc || rawHeaders.Cc || '')
     const parsedEmail = await parseMimeMessage(message)
     const { textBody, htmlBody } = await readBodyParts(message, parsedEmail)
     const attachments = await readAttachments(message, parsedEmail)
@@ -35,6 +38,8 @@ export async function buildNormalizedPayload(message, env = {}) {
     return {
         messageId: String(message.headers?.get?.('message-id') || message.messageId || cryptoRandomId()).trim(),
         fromEmail: parsedFrom,
+        toEmails,
+        ccEmails,
         subject: String(message.headers?.get?.('subject') || '').trim(),
         textBody,
         htmlBody,
@@ -157,6 +162,33 @@ function extractMailboxAddress(value = '') {
     return String(candidate || '')
         .trim()
         .toLowerCase()
+}
+
+function extractMailboxAddresses(value = '') {
+    const input = String(value || '').trim()
+    if (!input) return []
+
+    const entries = []
+    let current = ''
+    let insideQuotes = false
+    let angleDepth = 0
+
+    for (let index = 0; index < input.length; index += 1) {
+        const char = input[index]
+        if (char === '"' && input[index - 1] !== '\\') insideQuotes = !insideQuotes
+        if (!insideQuotes && char === '<') angleDepth += 1
+        if (!insideQuotes && char === '>' && angleDepth > 0) angleDepth -= 1
+
+        if (!insideQuotes && angleDepth === 0 && char === ',') {
+            entries.push(current)
+            current = ''
+            continue
+        }
+        current += char
+    }
+    entries.push(current)
+
+    return Array.from(new Set(entries.map(extractMailboxAddress).filter(email => email.includes('@'))))
 }
 
 function uint8ToBase64(bytes) {

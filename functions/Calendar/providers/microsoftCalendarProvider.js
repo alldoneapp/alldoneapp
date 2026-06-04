@@ -8,6 +8,7 @@ const { normalizeEmailAddress, resolveCalendarConnection } = require('../../Inte
 const DEFAULT_CALENDAR_ID = 'primary'
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
+const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
 
 function getActiveProjectIds(userData = {}) {
     const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
@@ -31,6 +32,16 @@ function normalizeLimit(limit) {
     const parsed = parseInt(limit, 10)
     if (!Number.isFinite(parsed)) return DEFAULT_SEARCH_LIMIT
     return Math.min(Math.max(parsed, 1), MAX_SEARCH_LIMIT)
+}
+
+async function settleAll(promises) {
+    return Promise.all(
+        promises.map(promise =>
+            Promise.resolve(promise)
+                .then(value => ({ status: 'fulfilled', value }))
+                .catch(reason => ({ status: 'rejected', reason }))
+        )
+    )
 }
 
 function normalizeAttendees(attendees) {
@@ -201,6 +212,114 @@ async function searchConnectedAccount({
     return {
         searchedAccount: account,
         results: filtered.map(event => normalizeCalendarEvent(event, account, calendarId, includeDescription)),
+    }
+}
+
+function parseMicrosoftEventDateTime(value = {}) {
+    const dateTime = safeTrim(value.dateTime)
+    if (!dateTime) return null
+
+    const hasOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(dateTime)
+    const parsed = hasOffset
+        ? moment.parseZone(dateTime)
+        : safeTrim(value.timeZone).toUpperCase() === 'UTC'
+        ? moment.utc(dateTime)
+        : moment(dateTime)
+    return parsed.isValid() ? parsed.valueOf() : null
+}
+
+function normalizeMicrosoftGraphNextLink(nextLink = '') {
+    const normalized = safeTrim(nextLink)
+    if (!normalized) return ''
+    let path = normalized
+
+    if (normalized.startsWith('/v1.0/')) {
+        path = normalized.substring('/v1.0'.length)
+    } else if (!normalized.startsWith('/')) {
+        try {
+            const parsed = new URL(normalized)
+            if (parsed.origin !== 'https://graph.microsoft.com' || !parsed.pathname.startsWith('/v1.0/')) return ''
+            path = `${parsed.pathname.substring('/v1.0'.length)}${parsed.search}`
+        } catch (_) {
+            return ''
+        }
+    }
+
+    return /^\/me\/calendarView(?:\?|$)/.test(path) ? path : ''
+}
+
+async function getMicrosoftBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax }) {
+    const client = await getMicrosoftGraphClient(userId, account.projectId, 'calendar')
+    const busyIntervals = []
+    const seenPaths = new Set()
+    let pageCount = 0
+    let path = `/me/calendarView${buildQuery({
+        startDateTime: timeMin,
+        endDateTime: timeMax,
+        $top: 1000,
+        $orderby: 'start/dateTime',
+        $select: 'start,end,showAs,isCancelled',
+    })}`
+
+    while (path) {
+        pageCount += 1
+        if (pageCount > MAX_AVAILABILITY_PAGES_PER_CALENDAR) {
+            throw new Error('Microsoft Calendar availability exceeded the page limit.')
+        }
+        if (seenPaths.has(path)) throw new Error('Microsoft Calendar pagination loop detected.')
+        seenPaths.add(path)
+
+        const response = await client.request(path, { headers: { Prefer: 'outlook.timezone="UTC"' } })
+        busyIntervals.push(
+            ...(Array.isArray(response?.value) ? response.value : [])
+                .filter(event => !event?.isCancelled && String(event?.showAs || '').toLowerCase() !== 'free')
+                .map(event => {
+                    const startMs = parseMicrosoftEventDateTime(event.start)
+                    const endMs = parseMicrosoftEventDateTime(event.end)
+                    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+                        throw new Error('Microsoft Calendar returned invalid busy-event timing.')
+                    }
+                    return { startMs, endMs }
+                })
+        )
+
+        const nextLink = safeTrim(response?.['@odata.nextLink'])
+        path = normalizeMicrosoftGraphNextLink(nextLink)
+        if (nextLink && !path) throw new Error('Microsoft Calendar returned an invalid pagination link.')
+    }
+
+    return busyIntervals
+}
+
+async function getMicrosoftCalendarBusyIntervalsForAssistantRequest({ userId, timeMin, timeMax }) {
+    const accounts = await getConnectedMicrosoftCalendarAccounts(userId)
+    const settledResults = await settleAll(
+        accounts.map(account =>
+            getMicrosoftBusyIntervalsForConnectedAccount({
+                userId,
+                account,
+                timeMin,
+                timeMax,
+            })
+        )
+    )
+
+    const busyIntervals = []
+    let searchedCalendarCount = 0
+    let failedCalendarCount = 0
+    settledResults.forEach(entry => {
+        if (entry.status === 'fulfilled') {
+            searchedCalendarCount += 1
+            busyIntervals.push(...entry.value)
+        } else {
+            failedCalendarCount += 1
+        }
+    })
+
+    return {
+        busyIntervals,
+        searchedCalendarCount,
+        failedCalendarCount,
     }
 }
 
@@ -408,6 +527,7 @@ async function deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId
 module.exports = {
     createMicrosoftCalendarEventForAssistantRequest,
     deleteMicrosoftCalendarEventForAssistantRequest,
+    getMicrosoftCalendarBusyIntervalsForAssistantRequest,
     getConnectedMicrosoftCalendarAccounts,
     normalizeCalendarEvent,
     searchMicrosoftCalendarEventsForAssistantRequest,

@@ -3,6 +3,7 @@
 const SibApiV3Sdk = require('sib-api-v3-sdk')
 
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { normalizeEmailAddressList } = require('./emailChannelHelpers')
 
 const defaultClient = SibApiV3Sdk.ApiClient.instance
 const apiKey = defaultClient.authentications['api-key']
@@ -31,6 +32,8 @@ function buildReplyHtml(replyText = '') {
 
 async function sendAnnaEmailReply({
     toEmail,
+    toEmails = [],
+    ccEmails = [],
     subject,
     replyText,
     inReplyTo = '',
@@ -38,10 +41,9 @@ async function sendAnnaEmailReply({
     fromEmail = '',
     fromName = 'Anna at Alldone',
 }) {
-    const recipient = String(toEmail || '')
-        .trim()
-        .toLowerCase()
-    if (!recipient) {
+    const normalizedToEmails = normalizeEmailAddressList([toEmail, ...toEmails])
+    const normalizedCcEmails = normalizeEmailAddressList(ccEmails).filter(email => !normalizedToEmails.includes(email))
+    if (normalizedToEmails.length === 0) {
         return { success: false, skipped: true, reason: 'missing_recipient' }
     }
 
@@ -52,14 +54,15 @@ async function sendAnnaEmailReply({
 
     const message = {
         sender: { email: senderEmail, name: fromName },
-        to: [{ email: recipient }],
+        to: normalizedToEmails.map(email => ({ email })),
         subject: String(subject || '').trim() || 'Re: Anna at Alldone',
         htmlContent: buildReplyHtml(replyText),
         headers,
     }
+    if (normalizedCcEmails.length > 0) message.cc = normalizedCcEmails.map(email => ({ email }))
 
     await transactionalApi.sendTransacEmail(message)
-    return { success: true }
+    return { success: true, toEmails: normalizedToEmails, ccEmails: normalizedCcEmails }
 }
 
 module.exports = {

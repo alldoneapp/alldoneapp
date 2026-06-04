@@ -97,6 +97,7 @@
     "Create email reply draft": "Create email reply draft",
     "Use as default Gmail account": "Use as default Gmail account",
     "New assistant email drafts use this Gmail account by default.": "New assistant email drafts use this Gmail account by default.",
+    "Find free Calendar times": "Find free Calendar times",
     "Search Calendar events": "Search Calendar events",
     "Create Calendar event": "Create Calendar event",
     "Update Calendar event": "Update Calendar event",
@@ -1941,5 +1942,9 @@
     "Happiness trend": "Happiness trend",
     "Recent happiness notes": "Recent happiness notes",
     "History": "History",
-    "but since we are offline right now we don’t know": "but since we are offline right now we don’t know"
+    "but since we are offline right now we don’t know": "but since we are offline right now we don’t know",
+    "Realtime call voice": "Realtime call voice",
+    "Select the voice used for WhatsApp assistant calls": "Select the voice used for WhatsApp assistant calls",
+    "WhatsApp assistant call": "WhatsApp assistant call",
+    "onboarding_whatsapp_call_disclosure": "Premium users can also call the assistant on WhatsApp. Calls are saved as text transcripts in Alldone; audio is not recorded."
 }

@@ -3,6 +3,7 @@ const { getToolSchemas, toolSchemas } = require('./toolSchemas')
 describe('Calendar assistant tool schemas', () => {
     test('exposes all calendar tool schemas when allowed', () => {
         const schemas = getToolSchemas([
+            'find_calendar_availability',
             'search_calendar_events',
             'create_calendar_event',
             'update_calendar_event',
@@ -10,6 +11,7 @@ describe('Calendar assistant tool schemas', () => {
         ])
 
         expect(schemas.map(schema => schema.function.name)).toEqual([
+            'find_calendar_availability',
             'search_calendar_events',
             'create_calendar_event',
             'update_calendar_event',
@@ -18,6 +20,7 @@ describe('Calendar assistant tool schemas', () => {
     })
 
     test('defines required fields for calendar event writes', () => {
+        expect(toolSchemas.find_calendar_availability.function.parameters.required).toEqual(['timeMin', 'timeMax'])
         expect(toolSchemas.create_calendar_event.function.parameters.required).toEqual(['summary', 'start', 'end'])
         expect(toolSchemas.update_calendar_event.function.parameters.required).toEqual(['eventId'])
         expect(toolSchemas.delete_calendar_event.function.parameters.required).toEqual(['eventId'])
@@ -98,6 +101,21 @@ describe('User memory assistant tool schemas', () => {
             'update_assistant_settings',
         ])
         expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('documents all supported realtime call voices for assistant settings', () => {
+        expect(toolSchemas.update_assistant_settings.function.parameters.properties.realtimeVoice.enum).toEqual([
+            'alloy',
+            'ash',
+            'ballad',
+            'coral',
+            'echo',
+            'sage',
+            'shimmer',
+            'verse',
+            'marin',
+            'cedar',
+        ])
     })
 
     test('exposes compact_thread_context only when allowed', () => {

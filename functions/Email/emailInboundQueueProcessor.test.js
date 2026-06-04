@@ -69,6 +69,7 @@ jest.mock('./emailDailyTopic', () => ({
 }))
 
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
+const { sendAnnaEmailReply } = require('./emailReplyService')
 const { storeEmailUserMessageInTopic } = require('./emailDailyTopic')
 const { __private__ } = require('./emailInboundQueueProcessor')
 
@@ -90,6 +91,8 @@ describe('emailInboundQueueProcessor', () => {
                 assistantId: 'assistant-1',
                 messageId: 'msg-1',
                 fromEmail: 'sender@example.com',
+                toEmails: ['anna@alldoneapp.com', 'teammate@example.com'],
+                ccEmails: ['observer@example.com'],
                 subject: 'Fwd: invoice',
                 textBody: 'Please process the attached invoice',
                 attachments: [
@@ -121,6 +124,13 @@ describe('emailInboundQueueProcessor', () => {
                     source: 'email',
                     messageId: 'msg-1',
                 }),
+                hasAdditionalRecipients: true,
+            })
+        )
+        expect(sendAnnaEmailReply).toHaveBeenCalledWith(
+            expect.objectContaining({
+                toEmails: ['sender@example.com', 'teammate@example.com'],
+                ccEmails: ['observer@example.com'],
             })
         )
     })

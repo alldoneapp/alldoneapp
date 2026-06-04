@@ -720,6 +720,10 @@ export function updateAssistantTemperature(projectId, assistant, temperature) {
         assistantTemperatureChangedUpdatesChain(projectId, assistant, assistant.temperature, temperature)
 }
 
+export function updateAssistantRealtimeVoice(projectId, assistant, realtimeVoice) {
+    updateAssistantData(projectId, assistant.uid, { realtimeVoice }, null)
+}
+
 export function updateAssistantLastVisitedBoardDate(
     projectId,
     assistantId,

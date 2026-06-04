@@ -250,6 +250,20 @@ const getEnvFunctions = () => {
         }
     }
 
+    // Realtime calling is configured through runtime environment variables/secrets.
+    ;[
+        'OPENAI_PROJECT_ID',
+        'OPENAI_WEBHOOK_SECRET',
+        'WHATSAPP_CALL_ROUTING_SECRET',
+        'OPENAI_REALTIME_MODEL',
+        'OPENAI_REALTIME_TRANSCRIPTION_MODEL',
+        'OPENAI_REALTIME_REASONING_EFFORT',
+        'WHATSAPP_CALLS_ENABLED',
+        'WHATSAPP_CALL_MAX_DURATION_SECONDS',
+    ].forEach(key => {
+        if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
+    })
+
     // Enhanced logging removed to reduce console noise
 
     if (!envFunctions.PERPLEXITY_API_KEY || isPlaceholderValue(envFunctions.PERPLEXITY_API_KEY)) {

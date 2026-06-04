@@ -46,6 +46,7 @@ export function getNewDefaultAssistant() {
         instructions: '',
         model: MODEL_GPT5_5,
         temperature: TEMPERATURE_NORMAL,
+        realtimeVoice: 'marin',
         allowedTools: [...DEFAULT_ALLOWED_TOOLS],
         delegationToolDescriptionManual: '',
         delegationToolDescriptionGenerated: '',

@@ -64,13 +64,22 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         'system',
         'Email channel rules:\n' +
             '- This channel is action-only. Do not reveal private account, project, or message history data.\n' +
+            '- Calendar availability tools may return free meeting options only. Never reveal event titles, participants, descriptions, locations, or other calendar details.\n' +
+            '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n' +
             '- Only use the available tools. If a request needs any other tool or data retrieval, explain that it is not available by email.\n' +
             '- Keep the email reply concise and outcome-focused.\n' +
             '- Do not claim that a task or external action succeeded unless the tool result confirms success.\n' +
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
+    if (options.hasAdditionalRecipients) {
+        messages.push([
+            'system',
+            'This reply has additional To/CC recipients. Use only the current email and current tool outcomes. Do not use or mention earlier messages from the daily email thread.',
+        ])
+    }
 
-    const history = await getConversationHistory(projectId, chatId, THREAD_CONTEXT_MESSAGE_LIMIT, userTimezoneOffset)
+    const historyLimit = options.hasAdditionalRecipients ? 1 : THREAD_CONTEXT_MESSAGE_LIMIT
+    const history = await getConversationHistory(projectId, chatId, historyLimit, userTimezoneOffset)
     history.forEach(([role, content]) => messages.push([role, content]))
     if (!options.skipCurrentMessageAppend && String(messageText || '').trim()) {
         messages.push(['user', messageText])

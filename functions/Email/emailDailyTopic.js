@@ -87,6 +87,8 @@ async function storeEmailUserMessageInTopic(projectId, chatId, userId, messageTe
         source: 'email',
         emailMetadata: {
             fromEmail: options.fromEmail || '',
+            toEmails: Array.isArray(options.toEmails) ? options.toEmails : [],
+            ccEmails: Array.isArray(options.ccEmails) ? options.ccEmails : [],
             subject: options.subject || '',
             messageId: options.messageId || '',
             replyTo: options.replyTo || '',

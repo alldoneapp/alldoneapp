@@ -53,6 +53,7 @@ function getTransactionLabel(source) {
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
         whatsapp_voice: 'WhatsApp voice message',
+        whatsapp_call: 'WhatsApp assistant call',
         iframe_deduction: 'Embedded app deduction',
         iframe_refund: 'Embedded app refund',
         global_search: 'Full search indexing',

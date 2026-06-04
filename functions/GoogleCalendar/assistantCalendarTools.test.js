@@ -165,6 +165,138 @@ describe('assistantCalendarTools', () => {
         })
     })
 
+    test('finds free options without returning calendar event metadata', async () => {
+        setUser('user-1', {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'private@example.com' },
+            },
+        })
+
+        const client = setCalendarClient('p1')
+        client.events.list
+            .mockResolvedValueOnce({
+                data: {
+                    nextPageToken: 'private-next-page-token',
+                    items: [
+                        {
+                            summary: 'Private board meeting',
+                            description: 'Confidential',
+                            attendees: [{ email: 'secret@example.com' }],
+                            location: 'Private room',
+                            status: 'confirmed',
+                            start: { dateTime: '2026-03-10T10:00:00+01:00' },
+                            end: { dateTime: '2026-03-10T10:30:00+01:00' },
+                        },
+                    ],
+                },
+            })
+            .mockResolvedValueOnce({
+                data: {
+                    items: [
+                        {
+                            summary: 'Second private meeting',
+                            status: 'confirmed',
+                            start: { dateTime: '2026-03-10T10:30:00+01:00' },
+                            end: { dateTime: '2026-03-10T11:00:00+01:00' },
+                        },
+                    ],
+                },
+            })
+
+        const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+            userId: 'user-1',
+            timeMin: '2026-03-10T09:00:00+01:00',
+            timeMax: '2026-03-10T12:00:00+01:00',
+            durationMinutes: 30,
+            maxOptions: 3,
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.options).toEqual([
+            { start: '2026-03-10T09:00:00+01:00', end: '2026-03-10T09:30:00+01:00' },
+            { start: '2026-03-10T09:30:00+01:00', end: '2026-03-10T10:00:00+01:00' },
+            { start: '2026-03-10T11:00:00+01:00', end: '2026-03-10T11:30:00+01:00' },
+        ])
+        expect(JSON.stringify(result)).not.toMatch(/Private board meeting|Confidential|secret@example.com|Private room/)
+        expect(client.events.list).toHaveBeenCalledWith(
+            expect.objectContaining({
+                fields: 'nextPageToken,items(start,end,status,transparency)',
+            })
+        )
+        expect(client.events.list).toHaveBeenCalledTimes(2)
+        expect(client.events.list.mock.calls[1][0]).toEqual(
+            expect.objectContaining({ pageToken: 'private-next-page-token' })
+        )
+    })
+
+    test('fails closed when any connected calendar cannot be checked', async () => {
+        setUser('user-1', {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1', 'p2'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+                p2: { calendar: true, calendarEmail: 'two@example.com' },
+            },
+        })
+
+        setCalendarClient('p1')
+        const failingClient = setCalendarClient('p2')
+        failingClient.events.list.mockRejectedValue(new Error('provider account private@example.com failed'))
+
+        const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+            userId: 'user-1',
+            timeMin: '2026-03-10T09:00:00+01:00',
+            timeMax: '2026-03-10T12:00:00+01:00',
+        })
+
+        expect(result).toMatchObject({
+            success: false,
+            options: [],
+            searchedCalendarCount: 1,
+            failedCalendarCount: 1,
+            message: 'Calendar availability could not be checked completely. Please reconnect Calendar and try again.',
+        })
+        expect(JSON.stringify(result)).not.toContain('private@example.com')
+    })
+
+    test('fails closed when a busy event has invalid timing', async () => {
+        setUser('user-1', {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com' },
+            },
+        })
+
+        const client = setCalendarClient('p1')
+        client.events.list.mockResolvedValue({
+            data: {
+                items: [
+                    {
+                        status: 'confirmed',
+                        start: { dateTime: 'invalid' },
+                        end: { dateTime: '2026-03-10T11:00:00+01:00' },
+                    },
+                ],
+            },
+        })
+
+        const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+            userId: 'user-1',
+            timeMin: '2026-03-10T09:00:00+01:00',
+            timeMax: '2026-03-10T12:00:00+01:00',
+        })
+
+        expect(result).toMatchObject({
+            success: false,
+            options: [],
+            searchedCalendarCount: 0,
+            failedCalendarCount: 1,
+        })
+    })
+
     test('creates timed and all-day calendar events', async () => {
         setUser('user-1', {
             projectIds: ['p1'],

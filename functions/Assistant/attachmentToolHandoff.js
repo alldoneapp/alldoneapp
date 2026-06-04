@@ -17,7 +17,44 @@ function isSuccessfulAttachmentToolResult(toolName, toolResult) {
     return !!(toolResult?.success && typeof toolResult?.fileBase64 === 'string' && toolResult.fileBase64.trim())
 }
 
+function buildConversationSafeCalendarAvailabilityResult(toolResult) {
+    const result = isObject(toolResult) ? toolResult : {}
+    const safeResult = {
+        success: result.success === true,
+        options: Array.isArray(result.options)
+            ? result.options
+                  .map(option => ({
+                      start: typeof option?.start === 'string' ? option.start : '',
+                      end: typeof option?.end === 'string' ? option.end : '',
+                  }))
+                  .filter(option => option.start && option.end)
+            : [],
+        message: typeof result.message === 'string' ? result.message : '',
+    }
+
+    if (typeof result.timeZone === 'string') safeResult.timeZone = result.timeZone
+    if (Number.isFinite(result.durationMinutes)) safeResult.durationMinutes = result.durationMinutes
+    if (isObject(result.requestedRange)) {
+        safeResult.requestedRange = {
+            start: typeof result.requestedRange.start === 'string' ? result.requestedRange.start : '',
+            end: typeof result.requestedRange.end === 'string' ? result.requestedRange.end : '',
+        }
+    }
+    if (isObject(result.workingHours)) {
+        safeResult.workingHours = {
+            start: typeof result.workingHours.start === 'string' ? result.workingHours.start : '',
+            end: typeof result.workingHours.end === 'string' ? result.workingHours.end : '',
+            includeWeekends: result.workingHours.includeWeekends === true,
+        }
+    }
+
+    return safeResult
+}
+
 function buildConversationSafeToolResult(toolName, toolResult) {
+    if (toolName === 'find_calendar_availability') {
+        return buildConversationSafeCalendarAvailabilityResult(toolResult)
+    }
     if (!isSuccessfulAttachmentToolResult(toolName, toolResult)) return toolResult
 
     return {

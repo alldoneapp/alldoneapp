@@ -429,6 +429,9 @@ export default function WhatsAppOnboarding({ navigation }) {
                     <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24, fontSize: 14 }]}>
                         {translate('onboarding_whatsapp_success_desc')}
                     </Text>
+                    <Text style={[localStyles.subtitle, isMobile && { fontSize: 14 }]}>
+                        {translate('onboarding_whatsapp_call_disclosure')}
+                    </Text>
                 </View>
             )
         }
@@ -447,8 +450,11 @@ export default function WhatsAppOnboarding({ navigation }) {
                 <Text style={[titleStyle, isMobile && { marginBottom: 8 }]}>
                     {translate("What's your WhatsApp number?")}
                 </Text>
-                <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24, fontSize: 14 }]}>
+                <Text style={[localStyles.subtitle, { marginBottom: 8 }, isMobile && { fontSize: 14 }]}>
                     {translate('Please enter your whatsapp number including your country code')}
+                </Text>
+                <Text style={[localStyles.subtitle, isMobile && { marginBottom: 24, fontSize: 14 }]}>
+                    {translate('onboarding_whatsapp_call_disclosure')}
                 </Text>
 
                 <View style={[localStyles.inputContainer, isMobile && { marginBottom: 16 }]}>

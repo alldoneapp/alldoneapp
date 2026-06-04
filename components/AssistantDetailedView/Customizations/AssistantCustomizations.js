@@ -11,6 +11,7 @@ import TypeOfAssistantProperty from './TypeOfAssistant/TypeOfAssistantProperty'
 import InstructionsProperty from './Instructions/InstructionsProperty'
 import ModelProperty from './Model/ModelProperty'
 import TemperatureProperty from './Temperature/TemperatureProperty'
+import RealtimeVoiceProperty from './RealtimeVoice/RealtimeVoiceProperty'
 import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
 import DelegationDescriptionProperty from './DelegationDescription/DelegationDescriptionProperty'
 import DelegationTargetsAccessProperty from './DelegationTargetsAccess/DelegationTargetsAccessProperty'
@@ -149,6 +150,7 @@ export default function AssistantCustomizations({
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <TemperatureProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <RealtimeVoiceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     {hasTalkToAssistantTool && (
                         <DelegationTargetsAccessProperty

@@ -3713,6 +3713,72 @@ exports.whatsAppIncomingMessage = onRequest(
     }
 )
 
+// WHATSAPP ASSISTANT CALLING - Twilio inbound call routing, OpenAI SIP acceptance, and sideband controller
+exports.whatsAppIncomingCall = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleIncomingWhatsAppCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
+        await handleIncomingWhatsAppCall(req, res)
+    }
+)
+
+exports.whatsAppCallStatusCallback = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleWhatsAppCallStatus } = require('./WhatsApp/whatsAppCallTwilioWebhook')
+        await handleWhatsAppCallStatus(req, res)
+    }
+)
+
+exports.openAIRealtimeCallWebhook = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleOpenAIRealtimeCallWebhook } = require('./WhatsApp/whatsAppCallOpenAIWebhook')
+        await handleOpenAIRealtimeCallWebhook(req, res)
+    }
+)
+
+exports.runWhatsAppRealtimeCall = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 1800,
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 5 },
+    },
+    async req => {
+        const sessionId = req.data && req.data.sessionId
+        if (!sessionId) return
+        const { runWhatsAppRealtimeCall } = require('./WhatsApp/whatsAppCallController')
+        await runWhatsAppRealtimeCall(sessionId)
+    }
+)
+
+exports.cleanupStaleWhatsAppCalls = onSchedule(
+    {
+        schedule: 'every 5 minutes',
+        region: 'europe-west1',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+    },
+    async () => {
+        const { cleanupStaleWhatsAppCalls } = require('./WhatsApp/whatsAppCallController')
+        await cleanupStaleWhatsAppCalls()
+    }
+)
+
 // WHATSAPP INBOUND QUEUE PROCESSOR - Async processing for inbound webhook items
 exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
     {

@@ -82,6 +82,26 @@ describe('emailUserRouting', () => {
         expect(result?.uid).toBe('user1')
     })
 
+    test('does not match an unverified primary email', async () => {
+        const userDataById = {
+            user1: { email: 'unverified@example.com', apisConnected: {} },
+        }
+
+        admin.firestore.mockReturnValue({
+            collection: jest.fn().mockReturnValue(buildQuery([buildUserDoc('user1', userDataById.user1)])),
+            collectionGroup: jest.fn().mockReturnValue(buildQuery([])),
+        })
+        admin.auth.mockReturnValue({
+            getUser: jest.fn().mockResolvedValue({
+                email: 'unverified@example.com',
+                emailVerified: false,
+            }),
+        })
+
+        const result = await findVerifiedUserByEmailIdentity('unverified@example.com')
+        expect(result).toBeNull()
+    })
+
     test('matches a unique connected Gmail email', async () => {
         const userDataById = {
             user1: {
@@ -108,6 +128,34 @@ describe('emailUserRouting', () => {
 
         const result = await findVerifiedUserByEmailIdentity('karsten@alldone.app')
         expect(result?.uid).toBe('user1')
+    })
+
+    test('does not match a disconnected Gmail identity', async () => {
+        const userDataById = {
+            user1: {
+                email: 'other@example.com',
+                apisConnected: {
+                    p1: { gmail: false, gmailEmail: 'disconnected@example.com' },
+                },
+            },
+        }
+
+        admin.firestore.mockReturnValue({
+            collection: jest.fn().mockReturnValue(buildQuery([])),
+            collectionGroup: jest
+                .fn()
+                .mockReturnValue(
+                    buildQuery([
+                        buildPrivateDoc('user1', { service: 'gmail', email: 'disconnected@example.com' }, userDataById),
+                    ])
+                ),
+        })
+        admin.auth.mockReturnValue({
+            getUser: jest.fn(),
+        })
+
+        const result = await findVerifiedUserByEmailIdentity('disconnected@example.com')
+        expect(result).toBeNull()
     })
 
     test('dedupes the same user when the same email is both primary and connected Gmail', async () => {

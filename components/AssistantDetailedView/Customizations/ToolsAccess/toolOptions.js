@@ -28,6 +28,7 @@ export const TOOL_OPTIONS = [
     { key: 'create_gmail_draft', labelKey: 'Create email draft' },
     { key: 'update_gmail_draft', labelKey: 'Update email draft' },
     { key: 'update_gmail_email', labelKey: 'Update email' },
+    { key: 'find_calendar_availability', labelKey: 'Find free Calendar times' },
     { key: 'search_calendar_events', labelKey: 'Search Calendar events' },
     { key: 'create_calendar_event', labelKey: 'Create Calendar event' },
     { key: 'update_calendar_event', labelKey: 'Update Calendar event' },

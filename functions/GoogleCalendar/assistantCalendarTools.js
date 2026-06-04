@@ -8,6 +8,7 @@ const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthH
 const {
     createMicrosoftCalendarEventForAssistantRequest,
     deleteMicrosoftCalendarEventForAssistantRequest,
+    getMicrosoftCalendarBusyIntervalsForAssistantRequest,
     getConnectedMicrosoftCalendarAccounts,
     searchMicrosoftCalendarEventsForAssistantRequest,
     updateMicrosoftCalendarEventForAssistantRequest,
@@ -16,6 +17,14 @@ const {
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
 const DEFAULT_CALENDAR_ID = 'primary'
+const DEFAULT_AVAILABILITY_DURATION_MINUTES = 30
+const DEFAULT_AVAILABILITY_MAX_OPTIONS = 3
+const MAX_AVAILABILITY_OPTIONS = 10
+const DEFAULT_AVAILABILITY_SLOT_INTERVAL_MINUTES = 30
+const MAX_AVAILABILITY_RANGE_DAYS = 31
+const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
+const DEFAULT_WORKING_HOURS_START = '09:00'
+const DEFAULT_WORKING_HOURS_END = '17:00'
 
 function getActiveProjectIds(userData = {}) {
     const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
@@ -243,6 +252,328 @@ async function getUserDefaultTimeZone(userId) {
     if (!userDoc.exists) return ''
 
     return resolveUserIanaTimeZone(userDoc.data() || {})
+}
+
+function normalizeBoundedInteger(value, fallback, min, max) {
+    const parsed = parseInt(value, 10)
+    if (!Number.isFinite(parsed)) return fallback
+    return Math.min(Math.max(parsed, min), max)
+}
+
+function normalizeClockTime(value, fallback) {
+    const normalized = safeTrim(value) || fallback
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(normalized)) {
+        throw new Error(`Invalid working-hours time "${normalized}". Use HH:mm in 24-hour format.`)
+    }
+    return normalized
+}
+
+function parseAvailabilityBoundary(value, timeZone, label) {
+    const normalized = safeTrim(value)
+    if (!normalized) throw new Error(`${label} is required.`)
+
+    const parsed = hasExplicitDateTimeTimezone(normalized)
+        ? moment.parseZone(normalized)
+        : moment.tz(normalized, timeZone)
+    if (!parsed.isValid()) throw new Error(`${label} must be a valid ISO 8601 date-time.`)
+    return parsed
+}
+
+function parseGoogleEventBoundary(value = {}, timeZone) {
+    if (safeTrim(value.dateTime)) {
+        const dateTime = safeTrim(value.dateTime)
+        const parsed = hasExplicitDateTimeTimezone(dateTime)
+            ? moment.parseZone(dateTime)
+            : moment.tz(dateTime, safeTrim(value.timeZone) || timeZone)
+        return parsed.isValid() ? parsed.valueOf() : null
+    }
+
+    if (safeTrim(value.date)) {
+        const parsed = moment.tz(safeTrim(value.date), timeZone)
+        return parsed.isValid() ? parsed.valueOf() : null
+    }
+
+    return null
+}
+
+function normalizeGoogleBusyInterval(event, timeZone) {
+    if (event?.status === 'cancelled' || event?.transparency === 'transparent') return null
+
+    const startMs = parseGoogleEventBoundary(event?.start, timeZone)
+    const endMs = parseGoogleEventBoundary(event?.end, timeZone)
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+        throw new Error('Google Calendar returned invalid busy-event timing.')
+    }
+    return { startMs, endMs }
+}
+
+function mergeBusyIntervals(intervals = [], rangeStartMs, rangeEndMs) {
+    const normalized = intervals
+        .map(interval => ({
+            startMs: Math.max(Number(interval?.startMs), rangeStartMs),
+            endMs: Math.min(Number(interval?.endMs), rangeEndMs),
+        }))
+        .filter(interval => Number.isFinite(interval.startMs) && Number.isFinite(interval.endMs))
+        .filter(interval => interval.endMs > interval.startMs)
+        .sort((a, b) => a.startMs - b.startMs)
+
+    const merged = []
+    normalized.forEach(interval => {
+        const previous = merged[merged.length - 1]
+        if (!previous || interval.startMs > previous.endMs) {
+            merged.push({ ...interval })
+            return
+        }
+        previous.endMs = Math.max(previous.endMs, interval.endMs)
+    })
+    return merged
+}
+
+function ceilMomentToInterval(value, anchor, intervalMinutes) {
+    const elapsedMinutes = value.diff(anchor, 'minutes', true)
+    return anchor.clone().add(Math.ceil(Math.max(elapsedMinutes, 0) / intervalMinutes) * intervalMinutes, 'minutes')
+}
+
+function buildAvailabilityOptions({
+    busyIntervals,
+    rangeStart,
+    rangeEnd,
+    timeZone,
+    durationMinutes,
+    maxOptions,
+    slotIntervalMinutes,
+    workingHoursStart,
+    workingHoursEnd,
+    includeWeekends,
+}) {
+    const options = []
+    let day = rangeStart.clone().tz(timeZone).startOf('day')
+    const lastDay = rangeEnd.clone().tz(timeZone).startOf('day')
+
+    while (day.isSameOrBefore(lastDay, 'day') && options.length < maxOptions) {
+        const dayOfWeek = day.day()
+        if (includeWeekends || (dayOfWeek !== 0 && dayOfWeek !== 6)) {
+            const date = day.format('YYYY-MM-DD')
+            const dayStart = moment.tz(`${date}T${workingHoursStart}:00`, timeZone)
+            const dayEnd = moment.tz(`${date}T${workingHoursEnd}:00`, timeZone)
+            let candidate = moment.max(rangeStart, dayStart)
+            const candidateLimit = moment.min(rangeEnd, dayEnd)
+            candidate = ceilMomentToInterval(candidate, dayStart, slotIntervalMinutes)
+
+            while (candidate.clone().add(durationMinutes, 'minutes').isSameOrBefore(candidateLimit)) {
+                const candidateEnd = candidate.clone().add(durationMinutes, 'minutes')
+                const conflict = busyIntervals.find(
+                    interval => interval.startMs < candidateEnd.valueOf() && interval.endMs > candidate.valueOf()
+                )
+
+                if (conflict) {
+                    candidate = ceilMomentToInterval(moment(conflict.endMs), dayStart, slotIntervalMinutes)
+                    continue
+                }
+
+                options.push({
+                    start: candidate.clone().tz(timeZone).format(),
+                    end: candidateEnd.clone().tz(timeZone).format(),
+                })
+                if (options.length >= maxOptions) break
+                candidate.add(slotIntervalMinutes, 'minutes')
+            }
+        }
+        day.add(1, 'day')
+    }
+
+    return options
+}
+
+async function getGoogleBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax, calendarId, timeZone }) {
+    const calendar = await getCalendarClient(userId, account.projectId)
+    const busyIntervals = []
+    const seenPageTokens = new Set()
+    let pageToken
+    let pageCount = 0
+
+    do {
+        pageCount += 1
+        if (pageCount > MAX_AVAILABILITY_PAGES_PER_CALENDAR) {
+            throw new Error('Google Calendar availability exceeded the page limit.')
+        }
+        if (pageToken && seenPageTokens.has(pageToken)) throw new Error('Google Calendar pagination loop detected.')
+        if (pageToken) seenPageTokens.add(pageToken)
+
+        const response = await calendar.events.list({
+            calendarId,
+            timeMin,
+            timeMax,
+            showDeleted: false,
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 2500,
+            fields: 'nextPageToken,items(start,end,status,transparency)',
+            ...(pageToken ? { pageToken } : {}),
+        })
+
+        busyIntervals.push(
+            ...(Array.isArray(response?.data?.items) ? response.data.items : [])
+                .map(event => normalizeGoogleBusyInterval(event, timeZone))
+                .filter(Boolean)
+        )
+        pageToken = safeTrim(response?.data?.nextPageToken)
+    } while (pageToken)
+
+    return busyIntervals
+}
+
+async function findCalendarAvailabilityForAssistantRequest({
+    userId,
+    timeMin,
+    timeMax,
+    timeZone,
+    calendarId,
+    durationMinutes = DEFAULT_AVAILABILITY_DURATION_MINUTES,
+    maxOptions = DEFAULT_AVAILABILITY_MAX_OPTIONS,
+    slotIntervalMinutes = DEFAULT_AVAILABILITY_SLOT_INTERVAL_MINUTES,
+    workingHoursStart = DEFAULT_WORKING_HOURS_START,
+    workingHoursEnd = DEFAULT_WORKING_HOURS_END,
+    includeWeekends = false,
+}) {
+    const requestedTimeZone = safeTrim(timeZone)
+    const resolvedTimeZone =
+        (requestedTimeZone && moment.tz.zone(requestedTimeZone) ? requestedTimeZone : '') ||
+        (await getUserDefaultTimeZone(userId)) ||
+        'UTC'
+    if (requestedTimeZone && !moment.tz.zone(requestedTimeZone)) {
+        return { success: false, options: [], message: `Unknown IANA timezone "${requestedTimeZone}".` }
+    }
+
+    const rangeStart = parseAvailabilityBoundary(timeMin, resolvedTimeZone, 'timeMin')
+    const rangeEnd = parseAvailabilityBoundary(timeMax, resolvedTimeZone, 'timeMax')
+    if (!rangeEnd.isAfter(rangeStart)) {
+        return { success: false, options: [], message: 'timeMax must be after timeMin.' }
+    }
+    if (rangeEnd.diff(rangeStart, 'days', true) > MAX_AVAILABILITY_RANGE_DAYS) {
+        return {
+            success: false,
+            options: [],
+            message: `Availability searches are limited to ${MAX_AVAILABILITY_RANGE_DAYS} days.`,
+        }
+    }
+
+    const normalizedDurationMinutes = normalizeBoundedInteger(
+        durationMinutes,
+        DEFAULT_AVAILABILITY_DURATION_MINUTES,
+        5,
+        480
+    )
+    const normalizedMaxOptions = normalizeBoundedInteger(
+        maxOptions,
+        DEFAULT_AVAILABILITY_MAX_OPTIONS,
+        1,
+        MAX_AVAILABILITY_OPTIONS
+    )
+    const normalizedSlotIntervalMinutes = normalizeBoundedInteger(
+        slotIntervalMinutes,
+        DEFAULT_AVAILABILITY_SLOT_INTERVAL_MINUTES,
+        5,
+        120
+    )
+    const normalizedWorkingHoursStart = normalizeClockTime(workingHoursStart, DEFAULT_WORKING_HOURS_START)
+    const normalizedWorkingHoursEnd = normalizeClockTime(workingHoursEnd, DEFAULT_WORKING_HOURS_END)
+    if (normalizedWorkingHoursEnd <= normalizedWorkingHoursStart) {
+        return { success: false, options: [], message: 'workingHoursEnd must be after workingHoursStart.' }
+    }
+
+    const normalizedCalendarId = normalizeCalendarId(calendarId)
+    const normalizedTimeMin = rangeStart.toISOString()
+    const normalizedTimeMax = rangeEnd.toISOString()
+    const googleAccounts = await getConnectedCalendarAccounts(userId)
+    const googleResults = await settleAll(
+        googleAccounts.map(account =>
+            getGoogleBusyIntervalsForConnectedAccount({
+                userId,
+                account,
+                timeMin: normalizedTimeMin,
+                timeMax: normalizedTimeMax,
+                calendarId: normalizedCalendarId,
+                timeZone: resolvedTimeZone,
+            })
+        )
+    )
+    const microsoftResult = await getMicrosoftCalendarBusyIntervalsForAssistantRequest({
+        userId,
+        timeMin: normalizedTimeMin,
+        timeMax: normalizedTimeMax,
+    }).catch(() => ({
+        busyIntervals: [],
+        searchedCalendarCount: 0,
+        failedCalendarCount: 1,
+    }))
+
+    const busyIntervals = [...microsoftResult.busyIntervals]
+    let searchedCalendarCount = microsoftResult.searchedCalendarCount
+    let failedCalendarCount = microsoftResult.failedCalendarCount
+    googleResults.forEach(entry => {
+        if (entry.status === 'fulfilled') {
+            searchedCalendarCount += 1
+            busyIntervals.push(...entry.value)
+        } else {
+            failedCalendarCount += 1
+        }
+    })
+
+    if (searchedCalendarCount === 0) {
+        return {
+            success: false,
+            options: [],
+            searchedCalendarCount: 0,
+            failedCalendarCount,
+            message: 'No connected Calendar account could be read. Please connect or reconnect Calendar first.',
+        }
+    }
+    if (failedCalendarCount > 0) {
+        return {
+            success: false,
+            options: [],
+            searchedCalendarCount,
+            failedCalendarCount,
+            message: 'Calendar availability could not be checked completely. Please reconnect Calendar and try again.',
+        }
+    }
+
+    const mergedBusyIntervals = mergeBusyIntervals(busyIntervals, rangeStart.valueOf(), rangeEnd.valueOf())
+    const options = buildAvailabilityOptions({
+        busyIntervals: mergedBusyIntervals,
+        rangeStart,
+        rangeEnd,
+        timeZone: resolvedTimeZone,
+        durationMinutes: normalizedDurationMinutes,
+        maxOptions: normalizedMaxOptions,
+        slotIntervalMinutes: normalizedSlotIntervalMinutes,
+        workingHoursStart: normalizedWorkingHoursStart,
+        workingHoursEnd: normalizedWorkingHoursEnd,
+        includeWeekends: includeWeekends === true,
+    })
+
+    return {
+        success: true,
+        timeZone: resolvedTimeZone,
+        durationMinutes: normalizedDurationMinutes,
+        requestedRange: {
+            start: rangeStart.clone().tz(resolvedTimeZone).format(),
+            end: rangeEnd.clone().tz(resolvedTimeZone).format(),
+        },
+        workingHours: {
+            start: normalizedWorkingHoursStart,
+            end: normalizedWorkingHoursEnd,
+            includeWeekends: includeWeekends === true,
+        },
+        searchedCalendarCount,
+        failedCalendarCount,
+        options,
+        message:
+            options.length > 0
+                ? `Found ${options.length} free meeting option${options.length === 1 ? '' : 's'}.`
+                : 'No free meeting options were found in the requested range.',
+    }
 }
 
 function normalizeCalendarEvent(event, account, calendarId, includeDescription = true) {
@@ -815,6 +1146,7 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
 
 module.exports = {
     searchCalendarEventsForAssistantRequest,
+    findCalendarAvailabilityForAssistantRequest,
     createCalendarEventForAssistantRequest,
     updateCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,
@@ -828,6 +1160,8 @@ module.exports = {
         resolveCalendarAccountForWrite,
         resolveEventTargetForWrite,
         normalizeCalendarEvent,
+        mergeBusyIntervals,
+        buildAvailabilityOptions,
         buildEventPayload,
         hasExplicitDateTimeTimezone,
         resolveUserIanaTimeZone,

@@ -602,6 +602,56 @@ describe('assistant attachment handoff helpers', () => {
         expect(buildConversationSafeToolResult('create_task', toolResult)).toBe(toolResult)
     })
 
+    test('exposes only privacy-safe availability fields to the conversation', () => {
+        expect(
+            buildConversationSafeToolResult('find_calendar_availability', {
+                success: true,
+                timeZone: 'Europe/Berlin',
+                durationMinutes: 30,
+                requestedRange: {
+                    start: '2026-03-10T09:00:00+01:00',
+                    end: '2026-03-10T17:00:00+01:00',
+                },
+                workingHours: {
+                    start: '09:00',
+                    end: '17:00',
+                    includeWeekends: false,
+                },
+                searchedCalendarCount: 2,
+                failedCalendarCount: 0,
+                providerAccount: 'private@example.com',
+                options: [
+                    {
+                        start: '2026-03-10T11:00:00+01:00',
+                        end: '2026-03-10T11:30:00+01:00',
+                        conflictingEventTitle: 'Private meeting',
+                    },
+                ],
+                message: 'Found 1 free meeting option.',
+            })
+        ).toEqual({
+            success: true,
+            timeZone: 'Europe/Berlin',
+            durationMinutes: 30,
+            requestedRange: {
+                start: '2026-03-10T09:00:00+01:00',
+                end: '2026-03-10T17:00:00+01:00',
+            },
+            workingHours: {
+                start: '09:00',
+                end: '17:00',
+                includeWeekends: false,
+            },
+            options: [
+                {
+                    start: '2026-03-10T11:00:00+01:00',
+                    end: '2026-03-10T11:30:00+01:00',
+                },
+            ],
+            message: 'Found 1 free meeting option.',
+        })
+    })
+
     test('captures the full attachment payload for the next external tool call', () => {
         const toolResult = {
             success: true,
@@ -2452,6 +2502,43 @@ describe('assistant settings prompt history', () => {
             success: true,
             updatedFields: ['instructions'],
             instructionsHistoryLength: 10,
+        })
+    })
+
+    test('updates the assistant realtime call voice explicitly', async () => {
+        const assistant = {
+            uid: 'assistant-1',
+            allowedTools: ['update_assistant_settings'],
+            instructions: 'Current instructions',
+            realtimeVoice: 'marin',
+        }
+        mockDocGet
+            .mockResolvedValueOnce({ exists: true, data: () => assistant })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+            .mockResolvedValueOnce({ exists: true, data: () => assistant })
+            .mockResolvedValueOnce({ exists: false, data: () => ({}) })
+            .mockResolvedValueOnce({ exists: true, data: () => assistant })
+
+        const result = await executeToolNatively(
+            'update_assistant_settings',
+            { realtimeVoice: 'cedar' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.objectContaining({
+                realtimeVoice: 'cedar',
+                lastEditorId: 'user-1',
+                lastEditionDate: expect.any(Number),
+            })
+        )
+        expect(result).toMatchObject({
+            success: true,
+            updatedFields: ['realtimeVoice'],
         })
     })
 })

@@ -20,6 +20,13 @@ describe('assistant tool options', () => {
         expect(TOOL_LABEL_BY_KEY.get_project_happiness).toBe('Get project happiness')
     })
 
+    test('includes privacy-safe Calendar availability in selectable permissions', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'find_calendar_availability', labelKey: 'Find free Calendar times' }])
+        )
+        expect(TOOL_LABEL_BY_KEY.find_calendar_availability).toBe('Find free Calendar times')
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })

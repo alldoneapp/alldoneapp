@@ -85,6 +85,7 @@
     "Update Gmail draft": "Gmail-Entwurf aktualisieren",
     "Use as default Gmail account": "Als Standard-Gmail-Konto verwenden",
     "New assistant email drafts use this Gmail account by default.": "Neue vom Assistenten erstellte E-Mail-Entwuerfe verwenden standardmaessig dieses Gmail-Konto.",
+    "Find free Calendar times": "Freie Kalenderzeiten finden",
     "Search Calendar events": "Kalendereintraege durchsuchen",
     "Create Calendar event": "Kalendereintrag erstellen",
     "Update Calendar event": "Kalendereintrag aktualisieren",
@@ -1488,5 +1489,9 @@
     "Start new day": "Neuen Tag starten",
     "Time logged": "Erfasste Zeit",
     "Clear": "Löschen",
-    "but since we are offline right now we don’t know": "aber da wir gerade offline sind, wissen wir es nicht"
+    "but since we are offline right now we don’t know": "aber da wir gerade offline sind, wissen wir es nicht",
+    "Realtime call voice": "Stimme für Echtzeitanrufe",
+    "Select the voice used for WhatsApp assistant calls": "Wähle die Stimme für WhatsApp-Assistentenanrufe",
+    "WhatsApp assistant call": "WhatsApp-Assistentenanruf",
+    "onboarding_whatsapp_call_disclosure": "Premium-Nutzer können den Assistenten auch über WhatsApp anrufen. Anrufe werden als Texttranskripte in Alldone gespeichert; Audio wird nicht aufgezeichnet."
 }

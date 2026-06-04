@@ -91,6 +91,7 @@
     "Update Gmail email": "Actualizar correo de Gmail",
     "Use as default Gmail account": "Usar como cuenta predeterminada de Gmail",
     "New assistant email drafts use this Gmail account by default.": "Los nuevos borradores de correo del asistente usaran esta cuenta de Gmail por defecto.",
+    "Find free Calendar times": "Buscar horarios libres en el calendario",
     "Search Calendar events": "Buscar eventos del calendario",
     "Create Calendar event": "Crear evento del calendario",
     "Update Calendar event": "Actualizar evento del calendario",
@@ -1922,5 +1923,9 @@
     "Happiness trend": "Tendencia de felicidad",
     "Recent happiness notes": "Notas recientes de felicidad",
     "History": "Historial",
-    "but since we are offline right now we don’t know": "pero como estamos sin conexión ahora mismo, no lo sabemos"
+    "but since we are offline right now we don’t know": "pero como estamos sin conexión ahora mismo, no lo sabemos",
+    "Realtime call voice": "Voz para llamadas en tiempo real",
+    "Select the voice used for WhatsApp assistant calls": "Selecciona la voz para las llamadas del asistente por WhatsApp",
+    "WhatsApp assistant call": "Llamada del asistente por WhatsApp",
+    "onboarding_whatsapp_call_disclosure": "Los usuarios premium también pueden llamar al asistente por WhatsApp. Las llamadas se guardan como transcripciones de texto en Alldone; el audio no se graba."
 }

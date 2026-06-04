@@ -466,7 +466,11 @@ class TwilioWhatsAppService {
      * @param {string} message - Message content
      * @returns {Promise<Object>} - Twilio message response
      */
-    async sendWhatsAppMessage(to, message, { projectId, objectId, objectType = 'tasks' } = {}) {
+    async sendWhatsAppMessage(
+        to,
+        message,
+        { projectId, objectId, objectType = 'tasks', suppressSensitiveLogging = false } = {}
+    ) {
         try {
             const client = this._initializeTwilioClient()
             const formattedTo = this._formatWhatsAppNumber(to)
@@ -490,8 +494,9 @@ class TwilioWhatsAppService {
             }
 
             console.log('Sending WhatsApp message:', {
-                from: this.twilioWhatsAppFrom,
-                to: formattedTo,
+                ...(suppressSensitiveLogging
+                    ? { privacyMode: true }
+                    : { from: this.twilioWhatsAppFrom, to: formattedTo }),
                 messageLength: preparedMessage.message.length,
                 timestamp: new Date().toISOString(),
             })
@@ -505,7 +510,7 @@ class TwilioWhatsAppService {
             console.log('WhatsApp message sent successfully:', {
                 sid: response.sid,
                 status: response.status,
-                to: formattedTo,
+                ...(suppressSensitiveLogging ? { privacyMode: true } : { to: formattedTo }),
                 timestamp: new Date().toISOString(),
             })
 
@@ -518,12 +523,12 @@ class TwilioWhatsAppService {
             }
         } catch (error) {
             console.error('Failed to send WhatsApp message:', {
-                error: error.message,
+                ...(suppressSensitiveLogging
+                    ? { privacyMode: true }
+                    : { error: error.message, to, stack: error.stack }),
                 code: error.code,
                 status: error.status,
-                to,
                 timestamp: new Date().toISOString(),
-                stack: error.stack,
             })
 
             return {

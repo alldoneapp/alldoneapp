@@ -3,10 +3,12 @@
 const {
     buildDailyEmailTitle,
     buildEmailCommentText,
+    buildReplyAllRecipients,
     computeWebhookSignature,
     getEmailSafeAllowedTools,
     looksLikeForwardedEmail,
     normalizeEmailAddress,
+    normalizeEmailAddressList,
     parseEmailHeaderAddresses,
     pickActionableAttachment,
     stripHtmlToText,
@@ -51,6 +53,7 @@ describe('emailChannelHelpers', () => {
         expect(
             getEmailSafeAllowedTools([
                 'create_task',
+                'find_calendar_availability',
                 'create_calendar_event',
                 'create_note',
                 'update_note',
@@ -64,12 +67,38 @@ describe('emailChannelHelpers', () => {
             ])
         ).toEqual([
             'create_task',
+            'find_calendar_availability',
             'create_calendar_event',
             'create_note',
             'update_note',
             'create_gmail_draft',
             'create_gmail_reply_draft',
             'external_tools',
+        ])
+    })
+
+    test('uses calendar search permission as a backwards-compatible availability permission', () => {
+        expect(getEmailSafeAllowedTools(['search_calendar_events'])).toEqual(['find_calendar_availability'])
+    })
+
+    test('builds reply-all recipients without replying to Anna or duplicating recipients', () => {
+        expect(
+            buildReplyAllRecipients({
+                fromEmail: 'Owner@Example.com',
+                toEmails: ['anna@alldoneapp.com', 'Bob <bob@example.com>', 'owner@example.com'],
+                ccEmails: ['bob@example.com', 'Carol <carol@example.com>', 'anna@alldone.app'],
+                assistantEmailAddresses: ['anna@alldoneapp.com'],
+            })
+        ).toEqual({
+            toEmails: ['owner@example.com', 'bob@example.com'],
+            ccEmails: ['carol@example.com'],
+        })
+    })
+
+    test('normalizes lists containing comma-separated email header values', () => {
+        expect(normalizeEmailAddressList(['Alice <alice@example.com>, Bob <bob@example.com>'])).toEqual([
+            'alice@example.com',
+            'bob@example.com',
         ])
     })
 
@@ -214,6 +243,8 @@ describe('emailChannelHelpers', () => {
             {
                 providerMessageId: 'msg-1',
                 from: 'User@Example.com',
+                to: 'anna@alldoneapp.com, teammate@example.com',
+                cc: ['observer@example.com'],
                 subject: 'Invoice',
                 text: 'Please add this invoice',
                 threadHeaders: {
@@ -233,6 +264,8 @@ describe('emailChannelHelpers', () => {
 
         expect(payload.messageId).toBe('msg-1')
         expect(payload.fromEmail).toBe('user@example.com')
+        expect(payload.toEmails).toEqual(['anna@alldoneapp.com', 'teammate@example.com'])
+        expect(payload.ccEmails).toEqual(['observer@example.com'])
         expect(payload.textBody).toBe('Please add this invoice')
         expect(payload.threadHeaders.inReplyTo).toBe('<message-id>')
         expect(payload.attachments).toEqual([

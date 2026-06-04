@@ -883,7 +883,10 @@ function runWithTimeout(promise, timeoutMs, message) {
 }
 
 module.exports = {
+    findUserByPhone,
+    getDefaultAssistantId,
     handleIncomingWhatsAppMessage,
+    normalizePhoneNumber,
     __private__: {
         extractMediaItems,
         buildStoredMediaFileName,

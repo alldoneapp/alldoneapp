@@ -2,9 +2,12 @@
 
 const crypto = require('crypto')
 
-const DEFAULT_PUBLIC_EMAIL = 'anna@alldone.app'
+const DEFAULT_PUBLIC_EMAIL = 'anna@alldoneapp.com'
+const DEFAULT_ASSISTANT_EMAIL_ADDRESSES = [DEFAULT_PUBLIC_EMAIL, 'anna@alldone.app', 'noreply@alldone.app']
 const EMAIL_EXTERNAL_TOOLS_KEY = 'external_tools'
 const EMAIL_CREATE_TASK_KEY = 'create_task'
+const EMAIL_FIND_CALENDAR_AVAILABILITY_KEY = 'find_calendar_availability'
+const EMAIL_SEARCH_CALENDAR_EVENTS_KEY = 'search_calendar_events'
 const EMAIL_CREATE_CALENDAR_EVENT_KEY = 'create_calendar_event'
 const EMAIL_CREATE_NOTE_KEY = 'create_note'
 const EMAIL_UPDATE_NOTE_KEY = 'update_note'
@@ -91,11 +94,60 @@ function parseEmailHeaderAddresses(value = '') {
     return splitEmailHeaderEntries(value).map(parseEmailHeaderEntry).filter(Boolean)
 }
 
+function isValidEmailAddress(value = '') {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim())
+}
+
+function normalizeEmailAddressList(values = []) {
+    const rawValues = Array.isArray(values) ? values : [values]
+    const normalized = []
+
+    rawValues.forEach(value => {
+        const raw = typeof value === 'object' && value ? value.email || value.address || '' : value
+        parseEmailHeaderAddresses(raw).forEach(entry => {
+            if (isValidEmailAddress(entry.email) && !normalized.includes(entry.email)) {
+                normalized.push(entry.email)
+            }
+        })
+    })
+
+    return normalized
+}
+
+function buildReplyAllRecipients({ fromEmail, toEmails = [], ccEmails = [], assistantEmailAddresses = [] } = {}) {
+    const excluded = new Set(
+        normalizeEmailAddressList([...DEFAULT_ASSISTANT_EMAIL_ADDRESSES, ...assistantEmailAddresses])
+    )
+    const normalizedFrom = normalizeEmailAddressList(fromEmail)[0] || ''
+    const replyToEmails = []
+    const replyCcEmails = []
+
+    const append = (target, email) => {
+        if (!email || excluded.has(email) || replyToEmails.includes(email) || replyCcEmails.includes(email)) return
+        target.push(email)
+    }
+
+    append(replyToEmails, normalizedFrom)
+    normalizeEmailAddressList(toEmails).forEach(email => append(replyToEmails, email))
+    normalizeEmailAddressList(ccEmails).forEach(email => append(replyCcEmails, email))
+
+    return {
+        toEmails: replyToEmails,
+        ccEmails: replyCcEmails,
+    }
+}
+
 function getEmailSafeAllowedTools(rawTools = []) {
     if (!Array.isArray(rawTools)) return []
 
     const allowed = []
     if (rawTools.includes(EMAIL_CREATE_TASK_KEY)) allowed.push(EMAIL_CREATE_TASK_KEY)
+    if (
+        rawTools.includes(EMAIL_FIND_CALENDAR_AVAILABILITY_KEY) ||
+        rawTools.includes(EMAIL_SEARCH_CALENDAR_EVENTS_KEY)
+    ) {
+        allowed.push(EMAIL_FIND_CALENDAR_AVAILABILITY_KEY)
+    }
     if (rawTools.includes(EMAIL_CREATE_CALENDAR_EVENT_KEY)) allowed.push(EMAIL_CREATE_CALENDAR_EVENT_KEY)
     if (rawTools.includes(EMAIL_CREATE_NOTE_KEY)) allowed.push(EMAIL_CREATE_NOTE_KEY)
     if (rawTools.includes(EMAIL_UPDATE_NOTE_KEY)) allowed.push(EMAIL_UPDATE_NOTE_KEY)
@@ -366,6 +418,7 @@ function verifyInboundEmailSignature(secret, signature = {}, payload) {
 }
 
 module.exports = {
+    DEFAULT_ASSISTANT_EMAIL_ADDRESSES,
     DEFAULT_PUBLIC_EMAIL,
     EMAIL_CREATE_CALENDAR_EVENT_KEY,
     EMAIL_CREATE_GMAIL_DRAFT_KEY,
@@ -373,13 +426,16 @@ module.exports = {
     EMAIL_CREATE_NOTE_KEY,
     EMAIL_CREATE_TASK_KEY,
     EMAIL_EXTERNAL_TOOLS_KEY,
+    EMAIL_FIND_CALENDAR_AVAILABILITY_KEY,
     EMAIL_UPDATE_NOTE_KEY,
     buildAttachmentSummaryForComment,
     buildDailyEmailTitle,
     buildEmailCommentText,
+    buildReplyAllRecipients,
     computeWebhookSignature,
     getEmailSafeAllowedTools,
     normalizeEmailAddress,
+    normalizeEmailAddressList,
     normalizeEmailDisplayName,
     parseEmailHeaderAddresses,
     pickActionableAttachment,

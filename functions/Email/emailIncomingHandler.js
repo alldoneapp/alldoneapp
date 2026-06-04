@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid')
 
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
-const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress } = require('./emailChannelHelpers')
+const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress, normalizeEmailAddressList } = require('./emailChannelHelpers')
 const { findVerifiedUserByEmailIdentity, getDefaultAssistantIdForUser } = require('./emailUserRouting')
 
 async function handleIncomingAnnaEmail(req, res) {
@@ -58,6 +58,8 @@ async function handleIncomingAnnaEmail(req, res) {
             assistantId: assistantId || null,
             messageId: payload.messageId,
             fromEmail: payload.fromEmail,
+            toEmails: payload.toEmails,
+            ccEmails: payload.ccEmails,
             subject: payload.subject,
             textBody: payload.textBody,
             htmlBody: payload.htmlBody,
@@ -98,6 +100,12 @@ function normalizeInboundEmailPayload(body = {}, headers = {}) {
     return {
         messageId: String(body.messageId || body.providerMessageId || body.id || uuidv4()).trim(),
         fromEmail: normalizeEmailAddress(body.fromEmail || body.senderEmail || body.from || ''),
+        toEmails: normalizeEmailAddressList(
+            body.toEmails || body.to || normalizedHeaders.To || normalizedHeaders.to || []
+        ),
+        ccEmails: normalizeEmailAddressList(
+            body.ccEmails || body.cc || normalizedHeaders.Cc || normalizedHeaders.cc || []
+        ),
         subject: String(body.subject || '').trim(),
         textBody: String(body.textBody || body.text || '').trim(),
         htmlBody: String(body.htmlBody || body.html || '').trim(),

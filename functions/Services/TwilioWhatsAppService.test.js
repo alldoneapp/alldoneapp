@@ -102,6 +102,31 @@ describe('TwilioWhatsAppService conversation links', () => {
         expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
         expect(mockMessagesCreate.mock.calls[0][0].body).toBe('Done for John Doe.')
     })
+
+    test('omits recipient and provider error details from privacy-mode logs', async () => {
+        const log = jest.spyOn(console, 'log').mockImplementation(() => {})
+        const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+        const service = new TwilioWhatsAppService()
+
+        await service.sendWhatsAppMessage('+1234567890', 'Private call recap', {
+            suppressSensitiveLogging: true,
+        })
+        mockMessagesCreate.mockRejectedValueOnce(
+            Object.assign(new Error('Provider response with sensitive details'), {
+                code: 'ERR',
+                status: 500,
+            })
+        )
+        await service.sendWhatsAppMessage('+1234567890', 'Private rejection reason', {
+            suppressSensitiveLogging: true,
+        })
+
+        expect(JSON.stringify(log.mock.calls)).not.toContain('+1234567890')
+        expect(JSON.stringify(errorLog.mock.calls)).not.toContain('+1234567890')
+        expect(JSON.stringify(errorLog.mock.calls)).not.toContain('Provider response with sensitive details')
+        log.mockRestore()
+        errorLog.mockRestore()
+    })
 })
 
 describe('TwilioWhatsAppService task completion template', () => {

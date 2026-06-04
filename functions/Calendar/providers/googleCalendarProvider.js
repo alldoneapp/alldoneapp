@@ -3,6 +3,7 @@
 const {
     createCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,
+    findCalendarAvailabilityForAssistantRequest,
     searchCalendarEventsForAssistantRequest,
     updateCalendarEventForAssistantRequest,
 } = require('../../GoogleCalendar/assistantCalendarTools')
@@ -11,6 +12,7 @@ const { syncCalendarEvents } = require('../../GoogleCalendar/serverSideCalendarS
 module.exports = {
     createCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,
+    findCalendarAvailabilityForAssistantRequest,
     searchCalendarEventsForAssistantRequest,
     syncCalendarEvents,
     updateCalendarEventForAssistantRequest,

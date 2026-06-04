@@ -13,6 +13,7 @@ const {
 } = require('./emailDailyTopic')
 const {
     DEFAULT_PUBLIC_EMAIL,
+    buildReplyAllRecipients,
     buildEmailCommentText,
     pickActionableAttachment,
     summarizeAttachments,
@@ -49,6 +50,7 @@ async function processQueueItem(userId, item) {
     const projectId = data.projectId
     const assistantId = data.assistantId || null
     const messageId = data.messageId || item.id
+    const replyDelivery = getReplyDeliveryForQueueItem(data)
     let chatId = null
 
     try {
@@ -58,6 +60,8 @@ async function processQueueItem(userId, item) {
 
         await storeEmailUserMessageInTopic(projectId, chatId, userId, messageText, {
             fromEmail: data.fromEmail || '',
+            toEmails: data.toEmails || [],
+            ccEmails: data.ccEmails || [],
             subject: data.subject || '',
             messageId,
             replyTo: data.threadHeaders?.replyTo || '',
@@ -89,11 +93,12 @@ async function processQueueItem(userId, item) {
                 subject: buildReplySubject(data.subject),
                 messageId,
                 initialPendingAttachmentPayload,
+                hasAdditionalRecipients: replyDelivery.toEmails.length + replyDelivery.ccEmails.length > 1,
                 skipCurrentMessageAppend: true,
             }
         )
 
-        await sendReplyForQueueItem(data, responseText)
+        await sendReplyForQueueItem(data, responseText, replyDelivery)
         await finalizeQueueItem(item.ref, messageId, {
             status: 'processed',
             replyStatus: 'sent',
@@ -191,14 +196,30 @@ async function hydrateAttachments(attachments = []) {
     return hydrated
 }
 
-async function sendReplyForQueueItem(data, replyText) {
+function getReplyDeliveryForQueueItem(data) {
+    const fromEmail =
+        require('../envFunctionsHelper').getEnvFunctions().ANNA_EMAIL_PUBLIC_ADDRESS || DEFAULT_PUBLIC_EMAIL
+    const recipients = buildReplyAllRecipients({
+        fromEmail: data.fromEmail || '',
+        toEmails: data.toEmails || [],
+        ccEmails: data.ccEmails || [],
+        assistantEmailAddresses: [fromEmail],
+    })
+    return {
+        fromEmail,
+        ...recipients,
+    }
+}
+
+async function sendReplyForQueueItem(data, replyText, replyDelivery = getReplyDeliveryForQueueItem(data)) {
     return sendAnnaEmailReply({
-        toEmail: data.fromEmail || '',
+        toEmails: replyDelivery.toEmails,
+        ccEmails: replyDelivery.ccEmails,
         subject: buildReplySubject(data.subject),
         replyText,
         inReplyTo: data.threadHeaders?.inReplyTo || '',
         references: data.threadHeaders?.references || '',
-        fromEmail: require('../envFunctionsHelper').getEnvFunctions().ANNA_EMAIL_PUBLIC_ADDRESS || DEFAULT_PUBLIC_EMAIL,
+        fromEmail: replyDelivery.fromEmail,
     })
 }
 

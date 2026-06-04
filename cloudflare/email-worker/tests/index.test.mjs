@@ -21,8 +21,11 @@ function createHeaders(entries) {
 async function run() {
     {
         const payload = await buildNormalizedPayload({
+            from: 'alice@example.com',
             headers: createHeaders([
                 ['from', 'Alice <alice@example.com>'],
+                ['to', 'Anna <anna@alldoneapp.com>, Bob <bob@example.com>'],
+                ['cc', '"Smith, Carol" <carol@example.com>'],
                 ['subject', 'Invoice April'],
                 ['message-id', '<abc@example.com>'],
                 ['reply-to', 'reply@example.com'],
@@ -37,12 +40,50 @@ async function run() {
 
         assert.equal(payload.messageId, '<abc@example.com>')
         assert.equal(payload.fromEmail, 'alice@example.com')
+        assert.deepEqual(payload.toEmails, ['anna@alldoneapp.com', 'bob@example.com'])
+        assert.deepEqual(payload.ccEmails, ['carol@example.com'])
         assert.equal(payload.subject, 'Invoice April')
         assert.equal(payload.textBody, 'Please process this invoice')
         assert.equal(payload.threadHeaders.replyTo, 'reply@example.com')
         assert.equal(payload.threadHeaders.inReplyTo, '<prior@example.com>')
         assert.equal(payload.threadHeaders.references, '<prior@example.com>')
         assert.deepEqual(payload.attachments, [])
+    }
+
+    {
+        const payload = await buildNormalizedPayload({
+            from: 'attacker@example.com',
+            headers: createHeaders([
+                ['from', 'Trusted User <trusted@example.com>'],
+                ['to', 'anna@alldoneapp.com'],
+                ['subject', 'Spoof attempt'],
+                ['message-id', '<spoof@example.com>'],
+            ]),
+            raw: Promise.resolve({
+                text: async () => 'Do something private',
+            }),
+            attachments: [],
+        })
+
+        assert.equal(payload.fromEmail, 'attacker@example.com')
+    }
+
+    {
+        const payload = await buildNormalizedPayload({
+            from: '',
+            headers: createHeaders([
+                ['from', 'Trusted User <trusted@example.com>'],
+                ['to', 'anna@alldoneapp.com'],
+                ['subject', 'Empty-envelope spoof attempt'],
+                ['message-id', '<empty-envelope-spoof@example.com>'],
+            ]),
+            raw: Promise.resolve({
+                text: async () => 'Do something private',
+            }),
+            attachments: [],
+        })
+
+        assert.equal(payload.fromEmail, '')
     }
 
     {
@@ -56,6 +97,7 @@ async function run() {
         ].join('\r\n')
 
         const payload = await buildNormalizedPayload({
+            from: 'alice@example.com',
             headers: createHeaders([
                 ['from', 'Alice <alice@example.com>'],
                 ['subject', 'Plain body'],
@@ -78,6 +120,7 @@ async function run() {
     {
         const bytes = new Uint8Array([104, 101, 108, 108, 111])
         const payload = await buildNormalizedPayload({
+            from: 'alice@example.com',
             headers: createHeaders([
                 ['from', 'Alice <alice@example.com>'],
                 ['subject', 'Invoice'],
