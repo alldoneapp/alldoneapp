@@ -1,6 +1,7 @@
 const {
     buildCallBootstrapInstructions,
     buildCallGreetingInstruction,
+    buildCallHistoryContextMessage,
     buildCallIdentityInstruction,
     buildCallLanguageInstruction,
 } = require('./whatsAppCallPrompt')
@@ -50,14 +51,70 @@ describe('WhatsApp call prompt', () => {
     })
 
     test('greets the caller in the settings language', () => {
-        expect(buildCallGreetingInstruction(assistant, 'German')).toBe(
-            'Greet the caller briefly in German, introduce yourself only as Anna Alldone, and ask how you can help. Do not mention ChatGPT or OpenAI.'
-        )
+        const greeting = buildCallGreetingInstruction(assistant, 'German')
+        expect(greeting).toContain('Greet the caller briefly in German')
+        expect(greeting).toContain('introduce yourself only as Anna Alldone')
+        expect(greeting).toContain('ask how you can help')
+        expect(greeting).toContain('Do not mention ChatGPT or OpenAI.')
     })
 
     test('defaults the greeting language to English when no settings language is available', () => {
-        expect(buildCallGreetingInstruction(assistant)).toBe(
-            'Greet the caller briefly in English, introduce yourself only as Anna Alldone, and ask how you can help. Do not mention ChatGPT or OpenAI.'
-        )
+        expect(buildCallGreetingInstruction(assistant)).toContain('Greet the caller briefly in English')
+    })
+
+    test('greeting forces a clean opener that does not resume earlier conversation', () => {
+        const greeting = buildCallGreetingInstruction(assistant, 'English')
+        expect(greeting).toContain('This is the very start of a new incoming phone call')
+        expect(greeting).toContain('background context only')
+        expect(greeting).toContain('do not assume there is a pending task')
+        expect(greeting).toContain('wait for the caller')
+    })
+
+    test('voice instructions treat earlier conversation as background context only', () => {
+        const instructions = buildCallBootstrapInstructions(assistant)
+        expect(instructions).toContain('provided to you only as background context')
+        expect(instructions).toContain('never assume there is a pending task or output to work on')
+    })
+
+    describe('call history context block', () => {
+        test('returns empty string when there is no history', () => {
+            expect(buildCallHistoryContextMessage([])).toBe('')
+            expect(buildCallHistoryContextMessage(undefined)).toBe('')
+        })
+
+        test('renders prior turns as a labeled, read-only background block (not live turns)', () => {
+            const block = buildCallHistoryContextMessage([
+                ['user', 'Add a task for the report'],
+                ['assistant', 'Done, I created it.'],
+            ])
+            expect(block).toContain('Background context — here is what was discussed')
+            expect(block).toContain('for your reference only')
+            expect(block).toContain('do not read it aloud')
+            expect(block).toContain('User: Add a task for the report')
+            expect(block).toContain('You: Done, I created it.')
+        })
+
+        test('extracts text from multimodal content and skips empty turns', () => {
+            const block = buildCallHistoryContextMessage([
+                [
+                    'user',
+                    [
+                        { type: 'text', text: 'See this image' },
+                        { type: 'image_url', image_url: { url: 'x' } },
+                    ],
+                ],
+                ['assistant', '   '],
+            ])
+            expect(block).toContain('User: See this image')
+            expect(block).not.toContain('You:')
+        })
+
+        test('caps the block to the most recent turns', () => {
+            const history = Array.from({ length: 30 }, (_, i) => ['user', `msg ${i}`])
+            const block = buildCallHistoryContextMessage(history, { maxTurns: 5 })
+            expect(block).toContain('msg 29')
+            expect(block).toContain('msg 25')
+            expect(block).not.toContain('msg 24')
+        })
     })
 })

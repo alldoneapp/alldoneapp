@@ -24,6 +24,7 @@ const {
     VOICE_INSTRUCTIONS,
     buildCallBootstrapInstructions,
     buildCallGreetingInstruction,
+    buildCallHistoryContextMessage,
     buildCallIdentityInstruction,
     buildCallLanguageInstruction,
 } = require('./whatsAppCallPrompt')
@@ -159,16 +160,23 @@ async function buildCallBootstrapContext(session) {
     }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtimeContext)
 
+    // Prior thread turns are provided as a single labeled background-context block (not replayed
+    // as live conversation turns), so the model greets cleanly instead of resuming old work.
+    const historyContextMessage = buildCallHistoryContextMessage(history)
+
     return {
         assistant,
         user,
         userTimezoneOffset,
         compactedThreadState,
         history,
+        historyContextMessage,
         runtimeContext,
         allowedTools,
         tools: [],
-        instructions: buildCallBootstrapInstructions(assistant, user.language),
+        instructions: [buildCallBootstrapInstructions(assistant, user.language), historyContextMessage]
+            .filter(Boolean)
+            .join('\n\n'),
     }
 }
 
@@ -189,6 +197,8 @@ async function completeCallContext(context) {
             userTimezoneName: context.user.timezoneName || context.user.timezone || null,
         }
     )
+
+    if (context.historyContextMessage) baseMessages.push(['system', context.historyContextMessage])
 
     const compactedContextMessage = context.compactedThreadState
         ? buildCompactThreadContextMessage(context.compactedThreadState)
@@ -580,7 +590,9 @@ async function runWhatsAppRealtimeCall(sessionId) {
             })
         )
         if (!initialized) {
-            context.history.forEach(([role, content]) => send(createConversationItem(role, content)))
+            // Prior thread turns are carried in the instructions as a labeled background-context
+            // block (see buildCallHistoryContextMessage), not replayed as live conversation turns,
+            // so the model opens with a clean greeting instead of resuming earlier work.
             requestResponse(buildCallGreetingInstruction(context.assistant, context.user.language))
             initialized = true
         }

@@ -23,8 +23,16 @@ async function routeCalendarEventsToProjects({
     userData = {},
     events = [],
     calendarEmail = '',
+    alreadyRoutedEventIds = null,
 }) {
     if (!userId || !syncProjectId || !Array.isArray(events) || events.length === 0) return {}
+
+    // Events routed in a previous sync keep their stored decision — don't re-classify them.
+    // This avoids re-charging gold every sync and the non-deterministic re-routing that would
+    // otherwise re-stamp the routing chat (worst case: sparse full-day events). See
+    // resolveCalendarRoutingForEvent in calendarTasks.js for the matching task-side guard.
+    const routedEventIds =
+        alreadyRoutedEventIds instanceof Set ? alreadyRoutedEventIds : new Set(alreadyRoutedEventIds || [])
 
     const { config } = await loadCalendarProjectRoutingConfig(userId, syncProjectId, calendarEmail)
     if (!config.enabled) return {}
@@ -46,6 +54,14 @@ async function routeCalendarEventsToProjects({
 
     for (const event of events) {
         if (!event?.id) continue
+        if (routedEventIds.has(event.id)) {
+            logRouting('Skipping already-routed calendar event', {
+                userId,
+                syncProjectId,
+                eventId: event.id,
+            })
+            continue
+        }
 
         try {
             const userSnapshot = await admin.firestore().collection('users').doc(userId).get()

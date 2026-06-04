@@ -163,6 +163,27 @@ const normalizeRoutingDecision = decision => {
     }
 }
 
+// A calendar event is "already routed" once the classifier ran and its explanation comment
+// was written (which is the only thing that persists `calendarData.projectRouting.commentId`).
+const isCalendarEventAlreadyRouted = task => Boolean(task?.calendarData?.projectRouting?.commentId)
+
+// Resolve the target project + routing decision for a single calendar event during sync.
+//
+// Once an event has been routed and commented, treat that decision as FINAL: keep the task in
+// its current project and pass no routing decision. Re-running the classifier on every sync is
+// non-deterministic — especially for sparse full-day events that carry no attendee/domain signal
+// — so without this guard the chosen project flip-flops between syncs, which re-adds the routing
+// comment and re-stamps the routing chat's "last edited" date several times a day.
+const resolveCalendarRoutingForEvent = (existingTask, rawRoutingDecision, syncProjectId) => {
+    if (isCalendarEventAlreadyRouted(existingTask)) {
+        return { routingDecision: null, targetProjectId: existingTask.projectId }
+    }
+
+    const routingDecision = normalizeRoutingDecision(rawRoutingDecision)
+    const targetProjectId = routingDecision?.matched ? routingDecision.targetProjectId : syncProjectId
+    return { routingDecision, targetProjectId }
+}
+
 const shouldAddRoutingComment = (task, targetProjectId, routingDecision) => {
     // Comment whenever routing actually ran (matched or not). When the classifier
     // leaves the task in the connected/default project (matched === false), we still
@@ -333,8 +354,11 @@ const addCalendarEvents = async (
     const promises = []
     filteredEvents.forEach(event => {
         const existingTask = tasksMap[event.id]
-        const routingDecision = normalizeRoutingDecision(routingDecisionsByEventId[event.id])
-        const targetProjectId = routingDecision?.matched ? routingDecision.targetProjectId : syncProjectId
+        const { routingDecision, targetProjectId } = resolveCalendarRoutingForEvent(
+            existingTask,
+            routingDecisionsByEventId[event.id],
+            syncProjectId
+        )
         promises.push(
             addOrUpdateCalendarTask(
                 syncProjectId,
@@ -411,6 +435,26 @@ const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks
         tasks.push(...projectTasks)
     })
     return tasks
+}
+
+// Event ids whose task has already been routed (and commented) in a previous sync. The sync
+// uses this to skip re-classifying those events, which avoids re-charging gold and the
+// non-deterministic re-routing that re-stamps the routing chat. Mirrors the task set that
+// addCalendarEvents matches against (open tasks + today's done tasks across all projects).
+const getRoutedCalendarEventIds = async (userId, timezoneOffset = 0) => {
+    const user = await getUserData(userId)
+    if (!user) {
+        return new Set()
+    }
+
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true, timezoneOffset)
+    const routedEventIds = new Set()
+    tasks.forEach(task => {
+        if (isCalendarEventAlreadyRouted(task)) {
+            routedEventIds.add(task.id)
+        }
+    })
+    return routedEventIds
 }
 
 const removeCalendarTasks = async (
@@ -516,4 +560,12 @@ const removeCalendarTasks = async (
     await batch.commit()
 }
 
-module.exports = { removeCalendarTasks, generateTask, addCalendarEvents, filterEvents, addOrUpdateCalendarTask }
+module.exports = {
+    removeCalendarTasks,
+    generateTask,
+    addCalendarEvents,
+    filterEvents,
+    addOrUpdateCalendarTask,
+    resolveCalendarRoutingForEvent,
+    getRoutedCalendarEventIds,
+}

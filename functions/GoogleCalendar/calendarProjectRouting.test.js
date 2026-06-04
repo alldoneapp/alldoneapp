@@ -133,6 +133,21 @@ describe('calendarProjectRouting', () => {
         expect(deductGold).toHaveBeenCalled()
     })
 
+    test('skips classification for events already routed in a previous sync', async () => {
+        const result = await routeCalendarEventsToProjects({
+            userId: 'user-1',
+            syncProjectId: 'connected-project',
+            userData: premiumUser,
+            events: [event],
+            calendarEmail: 'me@example.com',
+            alreadyRoutedEventIds: new Set(['event-1']),
+        })
+
+        expect(result).toEqual({})
+        expect(classifyCalendarEventProject).not.toHaveBeenCalled()
+        expect(deductGold).not.toHaveBeenCalled()
+    })
+
     test('skips classification for non-premium users', async () => {
         const result = await routeCalendarEventsToProjects({
             userId: 'user-1',

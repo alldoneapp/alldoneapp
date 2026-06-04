@@ -252,6 +252,15 @@ describe('WhatsApp call sideband configuration', () => {
         expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
             'Start the call in English'
         )
+        // Prior thread history is carried as a labeled background-context block in the
+        // instructions, not replayed as live conversation turns.
+        expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
+            'Background context — here is what was discussed'
+        )
+        expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
+            'User: Earlier context'
+        )
+        expect(sentEvents.some(event => event.type === 'conversation.item.create')).toBe(false)
 
         resolveDynamicTools([])
         await new Promise(resolve => setImmediate(resolve))
@@ -267,6 +276,13 @@ describe('WhatsApp call sideband configuration', () => {
         )
         expect(enrichedSessionUpdate.session.instructions).toContain('Compacted thread summary: prior progress.')
         expect(enrichedSessionUpdate.session.instructions).toContain('Start the call in English')
+        expect(enrichedSessionUpdate.session.instructions).toContain('User: Earlier context')
+        // History is never replayed as live conversation items, only carried in instructions.
+        expect(
+            socket.send.mock.calls
+                .map(([payload]) => JSON.parse(payload))
+                .some(event => event.type === 'conversation.item.create')
+        ).toBe(false)
 
         socket.readyState = 3
         eventHandlers.close(1000)

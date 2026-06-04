@@ -18,6 +18,29 @@ async function getCallTranscriptTurn({ sessionId, turnId, role, projectId, chatI
     }
 }
 
+// Mirror storeAssistantMessageInTopic: point the user's AssistantLine "Last comment" bubble at this
+// thread whenever the assistant speaks. The chat-doc commentsData update only feeds the Chats-list
+// preview; the MyDay AssistantLine reads lastAssistantCommentData on the user doc instead.
+async function updateLastAssistantCommentData({ projectId, chatId, assistantId, userId, date }) {
+    const updateData = {
+        objectType: 'topics',
+        objectId: chatId,
+        creatorId: assistantId,
+        creatorType: 'user',
+        date,
+    }
+    await admin
+        .firestore()
+        .doc(`users/${userId}`)
+        .update({
+            [`lastAssistantCommentData.${projectId}`]: updateData,
+            ['lastAssistantCommentData.allProjects']: {
+                ...updateData,
+                projectId,
+            },
+        })
+}
+
 async function storeCallTranscriptTurn({ sessionId, turnId, role, text, projectId, chatId, userId, assistantId }) {
     const normalizedText = String(text || '').trim()
     if (!normalizedText) return { stored: false, reason: 'empty' }
@@ -63,6 +86,17 @@ async function storeCallTranscriptTurn({ sessionId, turnId, role, text, projectI
         )
         stored = true
     })
+
+    // Only on a newly stored assistant turn (recap or spoken reply), so idempotent retries and the
+    // caller's own turns don't move the AssistantLine pointer. Best-effort: never fail the transcript
+    // write if the user-doc update fails.
+    if (stored && role === 'assistant' && userId) {
+        await updateLastAssistantCommentData({ projectId, chatId, assistantId, userId, date: now }).catch(error => {
+            console.warn('WhatsApp Call: Failed to update lastAssistantCommentData', {
+                error: error?.message || String(error),
+            })
+        })
+    }
 
     return { stored, commentId }
 }

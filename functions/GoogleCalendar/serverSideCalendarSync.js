@@ -3,7 +3,12 @@ const { google } = require('googleapis')
 const admin = require('firebase-admin')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { getMicrosoftGraphClient } = require('../MicrosoftGraph/graphClient')
-const { addCalendarEvents, filterEvents, removeCalendarTasks } = require('../GoogleCalendarTasks/calendarTasks')
+const {
+    addCalendarEvents,
+    filterEvents,
+    removeCalendarTasks,
+    getRoutedCalendarEventIds,
+} = require('../GoogleCalendarTasks/calendarTasks')
 const { routeCalendarEventsToProjects } = require('./calendarProjectRouting')
 const moment = require('moment-timezone')
 
@@ -213,12 +218,18 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         }
 
         const filteredEvents = filterEvents(events, userEmail)
+        // Events already routed in a previous sync keep their stored project decision, so we
+        // skip re-classifying them. This prevents re-charging routing gold every sync and the
+        // non-deterministic re-routing that re-stamps the routing chat's "last edited" date
+        // (most visible on full-day events, which carry no attendee/domain signal).
+        const alreadyRoutedEventIds = await getRoutedCalendarEventIds(userId, timezoneOffset)
         const routingDecisionsByEventId = await routeCalendarEventsToProjects({
             userId,
             syncProjectId: projectId,
             userData,
             events: filteredEvents,
             calendarEmail: userEmail,
+            alreadyRoutedEventIds,
         })
 
         // Process events - add/update calendar tasks

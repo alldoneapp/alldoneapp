@@ -41,7 +41,7 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
 
 const admin = require('firebase-admin')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
-const { addOrUpdateCalendarTask } = require('./calendarTasks')
+const { addOrUpdateCalendarTask, resolveCalendarRoutingForEvent } = require('./calendarTasks')
 
 const event = {
     id: 'event-1',
@@ -253,6 +253,57 @@ describe('calendarTasks routing', () => {
         expect(admin.__mock.refs.get('items/target-project/tasks/event-1')).toBeUndefined()
         expect(admin.__mock.refs.get('items/old-project/tasks/event-1').delete).not.toHaveBeenCalled()
         expect(admin.__mock.refs.get('items/old-project/tasks/event-1').update).toHaveBeenCalled()
+    })
+
+    describe('resolveCalendarRoutingForEvent', () => {
+        test('uses the classifier decision for events that have not been routed yet', () => {
+            const decision = { matched: true, targetProjectId: 'target-project', reasoning: 'x', confidence: 0.9 }
+
+            expect(resolveCalendarRoutingForEvent(undefined, decision, 'connected-project')).toEqual({
+                routingDecision: expect.objectContaining({ matched: true, targetProjectId: 'target-project' }),
+                targetProjectId: 'target-project',
+            })
+        })
+
+        test('falls back to the connected project when the new decision has no match', () => {
+            const decision = { matched: false, targetProjectId: null }
+
+            expect(resolveCalendarRoutingForEvent(undefined, decision, 'connected-project')).toEqual({
+                routingDecision: expect.objectContaining({ matched: false }),
+                targetProjectId: 'connected-project',
+            })
+        })
+
+        test('keeps already-routed tasks in place and drops the routing decision so no re-comment fires', () => {
+            const existingTask = {
+                id: 'event-1',
+                projectId: 'routed-project',
+                calendarData: {
+                    projectRouting: { chosenProjectId: 'routed-project', commentId: 'existing-comment' },
+                },
+            }
+            // A fresh (and possibly different) classifier decision must be ignored entirely.
+            const noisyDecision = { matched: true, targetProjectId: 'some-other-project', confidence: 0.71 }
+
+            expect(resolveCalendarRoutingForEvent(existingTask, noisyDecision, 'connected-project')).toEqual({
+                routingDecision: null,
+                targetProjectId: 'routed-project',
+            })
+        })
+
+        test('still routes existing tasks that were never routed (no stored commentId)', () => {
+            const existingTask = {
+                id: 'event-1',
+                projectId: 'connected-project',
+                calendarData: { email: 'me@example.com' },
+            }
+            const decision = { matched: true, targetProjectId: 'target-project', confidence: 0.9 }
+
+            expect(resolveCalendarRoutingForEvent(existingTask, decision, 'connected-project')).toEqual({
+                routingDecision: expect.objectContaining({ targetProjectId: 'target-project' }),
+                targetProjectId: 'target-project',
+            })
+        })
     })
 
     test('does not add classifier routing comments to pinned tasks kept in another project', async () => {

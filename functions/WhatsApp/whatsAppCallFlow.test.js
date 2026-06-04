@@ -13,6 +13,10 @@ jest.mock('firebase-admin', () => {
     const doc = path => ({
         path,
         collection: name => ({ doc: id => doc(`${path}/${name}/${id || `auto-${++autoId}`}`) }),
+        get: async () => ({ exists: docs.has(path), data: () => clone(docs.get(path) || {}) }),
+        set: (data, options) => applyWrite(path, data, options?.merge),
+        update: data => applyWrite(path, data, true),
+        delete: () => docs.delete(path),
     })
     const firestore = jest.fn(() => ({
         doc,
@@ -151,5 +155,15 @@ describe('mocked WhatsApp assistant call flow', () => {
         expect(admin.__mock.get('whatsAppCallLocks/user-1')).toBeUndefined()
         expect(admin.__mock.list('chatComments/project-1/topics/chat-1/comments/')).toHaveLength(3)
         expect(admin.__mock.list('users/user-1/goldTransactions/')).toHaveLength(1)
+
+        // The assistant's spoken turns + recap point the MyDay AssistantLine "Last comment" bubble
+        // at the daily WhatsApp topic (the chat-doc commentsData alone only feeds the Chats list).
+        const userDoc = admin.__mock.get('users/user-1')
+        expect(userDoc['lastAssistantCommentData.project-1']).toEqual(
+            expect.objectContaining({ objectType: 'topics', objectId: 'chat-1', creatorId: 'assistant-1' })
+        )
+        expect(userDoc['lastAssistantCommentData.allProjects']).toEqual(
+            expect.objectContaining({ objectType: 'topics', objectId: 'chat-1', projectId: 'project-1' })
+        )
     })
 })
