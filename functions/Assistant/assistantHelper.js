@@ -5,6 +5,7 @@ const moment = require('moment')
 const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
+const { getAccessibleProjectIdsFromUserData, getDelegationScopeProjectIdsFromUserData } = require('./projectScope')
 
 const {
     MENTION_SPACE_CODE,
@@ -168,6 +169,10 @@ const ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES = [
 const COMPACT_THREAD_CONTEXT_TOOL_KEY = 'compact_thread_context'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
+// How many projects to scan in parallel when discovering delegation targets. The scan used to
+// be sequential (one project per round-trip), which made tool-schema builds take tens of seconds
+// for accounts with many accessible projects.
+const DELEGATION_PROJECT_SCAN_CONCURRENCY = 25
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 200
@@ -1466,22 +1471,8 @@ async function resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeC
     return targets.find(target => target.toolName === toolName) || null
 }
 
-const getAccessibleProjectIdsFromUserData = userData => {
-    const allIds = []
-    const appendIds = ids => {
-        if (!Array.isArray(ids)) return
-        ids.forEach(id => {
-            if (typeof id === 'string' && id.trim() && !allIds.includes(id.trim())) {
-                allIds.push(id.trim())
-            }
-        })
-    }
-    appendIds(userData?.projectIds)
-    appendIds(userData?.guideProjectIds)
-    appendIds(userData?.templateProjectIds)
-    appendIds(userData?.archivedProjectIds)
-    return allIds
-}
+// getAccessibleProjectIdsFromUserData / getDelegationScopeProjectIdsFromUserData are pure helpers
+// extracted to ./projectScope so they can be unit-tested without loading the full assistant stack.
 
 const buildDelegationTargetKey = (projectId, assistantId) =>
     `${String(projectId || '').trim()}:${String(assistantId || '').trim()}`
@@ -1569,44 +1560,65 @@ async function getReachableDelegationTargets({
         return []
     }
 
-    const scopedProjectIds = isPrivilegedDefaultProjectAssistant ? accessibleProjectIds : [projectId]
-    const projectNames = new Map()
+    // A privileged default-project assistant can delegate across the user's projects; everyone
+    // else is limited to the current project. The scope excludes archived/template projects and
+    // always includes the current project.
+    const scopedProjectIds = isPrivilegedDefaultProjectAssistant
+        ? Array.from(new Set([projectId, ...getDelegationScopeProjectIdsFromUserData(userData)]))
+        : [projectId]
+
+    const scanProjectForDelegationTargets = async targetProjectId => {
+        try {
+            const [projectDoc, assistantsSnapshot] = await Promise.all([
+                db.doc(`projects/${targetProjectId}`).get(),
+                db.collection(`assistants/${targetProjectId}/items`).orderBy('lastEditionDate', 'desc').limit(50).get(),
+            ])
+
+            const projectName = projectDoc.exists ? projectDoc.data()?.name || targetProjectId : targetProjectId
+
+            return assistantsSnapshot.docs
+                .filter(doc => doc.id !== assistantId)
+                .map(doc => {
+                    const targetAssistant = doc.data() || {}
+                    return {
+                        toolName: buildTalkToAssistantToolName(
+                            targetProjectId,
+                            doc.id,
+                            targetAssistant.displayName || doc.id,
+                            projectName
+                        ),
+                        projectId: targetProjectId,
+                        projectName,
+                        assistantId: doc.id,
+                        displayName: targetAssistant.displayName || 'Assistant',
+                        description: targetAssistant.description || '',
+                        delegationToolDescriptionManual: targetAssistant.delegationToolDescriptionManual || '',
+                        delegationToolDescriptionGenerated: targetAssistant.delegationToolDescriptionGenerated || '',
+                    }
+                })
+        } catch (error) {
+            console.warn('🔁 DELEGATION: project scan failed', { targetProjectId, error: error.message })
+            return []
+        }
+    }
+
+    // Scan projects with bounded concurrency instead of one-at-a-time. Project order (and
+    // assistant order within each project) is preserved, and we stop once we have enough targets.
     const targets = []
-
-    for (let i = 0; i < scopedProjectIds.length && targets.length < maxTargets; i++) {
-        const targetProjectId = scopedProjectIds[i]
-
-        const [projectDoc, assistantsSnapshot] = await Promise.all([
-            db.doc(`projects/${targetProjectId}`).get(),
-            db.collection(`assistants/${targetProjectId}/items`).orderBy('lastEditionDate', 'desc').limit(50).get(),
-        ])
-
-        const projectName = projectDoc.exists ? projectDoc.data()?.name || targetProjectId : targetProjectId
-        projectNames.set(targetProjectId, projectName)
-
-        assistantsSnapshot.docs.forEach(doc => {
-            if (targets.length >= maxTargets) return
-
-            const targetAssistantId = doc.id
-            if (targetAssistantId === assistantId) return
-
-            const targetAssistant = doc.data() || {}
-            targets.push({
-                toolName: buildTalkToAssistantToolName(
-                    targetProjectId,
-                    targetAssistantId,
-                    targetAssistant.displayName || targetAssistantId,
-                    projectName
-                ),
-                projectId: targetProjectId,
-                projectName: projectNames.get(targetProjectId) || targetProjectId,
-                assistantId: targetAssistantId,
-                displayName: targetAssistant.displayName || 'Assistant',
-                description: targetAssistant.description || '',
-                delegationToolDescriptionManual: targetAssistant.delegationToolDescriptionManual || '',
-                delegationToolDescriptionGenerated: targetAssistant.delegationToolDescriptionGenerated || '',
-            })
-        })
+    for (
+        let start = 0;
+        start < scopedProjectIds.length && targets.length < maxTargets;
+        start += DELEGATION_PROJECT_SCAN_CONCURRENCY
+    ) {
+        const batch = scopedProjectIds.slice(start, start + DELEGATION_PROJECT_SCAN_CONCURRENCY)
+        const batchResults = await Promise.all(batch.map(scanProjectForDelegationTargets))
+        for (const projectTargets of batchResults) {
+            for (const target of projectTargets) {
+                if (targets.length >= maxTargets) break
+                targets.push(target)
+            }
+            if (targets.length >= maxTargets) break
+        }
     }
 
     const filteredTargets = filterDelegationTargetsByCallerSelection(targets, callerAssistantData)
@@ -10189,4 +10201,6 @@ module.exports = {
     getOpenTasksContextMessage,
     loadAssistantThreadState,
     buildCompactThreadContextMessage,
+    getAccessibleProjectIdsFromUserData,
+    getDelegationScopeProjectIdsFromUserData,
 }
