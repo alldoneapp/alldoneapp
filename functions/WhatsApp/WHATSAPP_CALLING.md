@@ -3,14 +3,24 @@
 WhatsApp assistant calling is disabled by default. Configure these Firebase Functions runtime environment variables or
 secrets before enabling it:
 
-- `WHATSAPP_CALLS_ENABLED=false`
-- `OPENAI_PROJECT_ID`
-- `OPENAI_WEBHOOK_SECRET`
-- `WHATSAPP_CALL_ROUTING_SECRET`
-- `OPENAI_REALTIME_MODEL=gpt-realtime-2`
-- `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`
-- `OPENAI_REALTIME_REASONING_EFFORT=medium`
-- `WHATSAPP_CALL_MAX_DURATION_SECONDS=1800`
+-   `WHATSAPP_CALLS_ENABLED=false`
+-   `OPENAI_PROJECT_ID`
+-   `OPENAI_WEBHOOK_SECRET`
+-   `WHATSAPP_CALL_ROUTING_SECRET`
+-   `OPENAI_REALTIME_MODEL=gpt-realtime-2`
+-   `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`
+-   `OPENAI_REALTIME_REASONING_EFFORT=medium`
+-   `WHATSAPP_CALL_MAX_DURATION_SECONDS=1800`
+
+For this repository's GitLab production deployment, add the call settings to the existing protected
+`GOOGLE_FUNCTIONS_ENV_PROD` JSON variable. Keep the existing `OPEN_AI_KEY`, `TWILIO_ACCOUNT_SID`,
+`TWILIO_AUTH_TOKEN`, and `TWILIO_WHATSAPP_FROM` entries. The equivalent staging variable is
+`GOOGLE_FUNCTIONS_ENV_DEV`.
+
+`OPENAI_PROJECT_ID` is the `proj_...` ID from OpenAI Project settings. Create an OpenAI webhook for
+`realtime.call.incoming` using the deployed `openAIRealtimeCallWebhook` URL and store the signing secret shown during
+creation as `OPENAI_WEBHOOK_SECRET`. Generate `WHATSAPP_CALL_ROUTING_SECRET` independently using at least 32 random
+bytes.
 
 Twilio's WhatsApp sender must have WhatsApp Business Calling enabled. Its TwiML Voice Application should send inbound
 calls to `whatsAppIncomingCall` and status callbacks to `whatsAppCallStatusCallback`. Register

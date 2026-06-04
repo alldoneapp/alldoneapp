@@ -115,6 +115,14 @@ const getEnvFunctions = () => {
                     E2B_CLAUDE_TEMPLATE: envJson.E2B_CLAUDE_TEMPLATE || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
+                    OPENAI_PROJECT_ID: envJson.OPENAI_PROJECT_ID || '',
+                    OPENAI_WEBHOOK_SECRET: envJson.OPENAI_WEBHOOK_SECRET || '',
+                    WHATSAPP_CALL_ROUTING_SECRET: envJson.WHATSAPP_CALL_ROUTING_SECRET || '',
+                    OPENAI_REALTIME_MODEL: envJson.OPENAI_REALTIME_MODEL || '',
+                    OPENAI_REALTIME_TRANSCRIPTION_MODEL: envJson.OPENAI_REALTIME_TRANSCRIPTION_MODEL || '',
+                    OPENAI_REALTIME_REASONING_EFFORT: envJson.OPENAI_REALTIME_REASONING_EFFORT || '',
+                    WHATSAPP_CALLS_ENABLED: envJson.WHATSAPP_CALLS_ENABLED || '',
+                    WHATSAPP_CALL_MAX_DURATION_SECONDS: envJson.WHATSAPP_CALL_MAX_DURATION_SECONDS || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -250,7 +258,7 @@ const getEnvFunctions = () => {
         }
     }
 
-    // Realtime calling is configured through runtime environment variables/secrets.
+    // Runtime environment variables/secrets can override missing realtime calling values.
     ;[
         'OPENAI_PROJECT_ID',
         'OPENAI_WEBHOOK_SECRET',
