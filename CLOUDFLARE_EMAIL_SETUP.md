@@ -87,7 +87,8 @@ Firebase executes an assistant request only when:
 
 To/CC recipients never authorize execution. Valid-user replies use reply-all to the sender and original To/CC
 recipients, excluding Anna’s own addresses. When additional recipients are present, the assistant receives only the
-current email rather than earlier daily-email context. Rejection replies for unknown senders remain sender-only.
+current email, current-message participant addresses, and an immediately preceding privacy-safe availability result
+rather than general earlier daily-email context. Rejection replies for unknown senders remain sender-only.
 
 ## Sender Authentication Boundary
 

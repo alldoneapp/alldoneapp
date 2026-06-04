@@ -40,7 +40,7 @@ function buildInitialRealtimeSession({ config, voice }) {
                 turn_detection: {
                     type: 'semantic_vad',
                     eagerness: 'auto',
-                    create_response: false,
+                    create_response: true,
                     interrupt_response: true,
                 },
             },

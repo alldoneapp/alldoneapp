@@ -65,7 +65,7 @@ describe('OpenAI incoming Realtime call webhook', () => {
                         turn_detection: expect.objectContaining({
                             type: 'semantic_vad',
                             interrupt_response: true,
-                            create_response: false,
+                            create_response: true,
                         }),
                     }),
                     output: { voice: 'marin' },

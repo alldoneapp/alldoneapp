@@ -124,6 +124,9 @@ describe('emailInboundQueueProcessor', () => {
                     source: 'email',
                     messageId: 'msg-1',
                 }),
+                fromEmail: 'sender@example.com',
+                toEmails: ['anna@alldoneapp.com', 'teammate@example.com'],
+                ccEmails: ['observer@example.com'],
                 hasAdditionalRecipients: true,
             })
         )

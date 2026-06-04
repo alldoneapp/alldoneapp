@@ -17,8 +17,17 @@ const {
 const { resolveUserTimezoneOffset, resolveUserTimezoneName } = require('../Assistant/contextTimestampHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { TASK_CREATION_FAILURE_MESSAGE, getUserFacingToolErrorMessage } = require('../WhatsApp/whatsAppToolErrorUtils')
-const { getConversationHistory, storeEmailAssistantMessageInTopic } = require('./emailDailyTopic')
-const { getEmailSafeAllowedTools } = require('./emailChannelHelpers')
+const {
+    getConversationHistory,
+    getLatestSafeEmailActionContext,
+    storeEmailAssistantMessageInTopic,
+} = require('./emailDailyTopic')
+const {
+    EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY,
+    buildCurrentEmailParticipants,
+    getEmailSafeAllowedTools,
+    normalizeSafeEmailActionContext,
+} = require('./emailChannelHelpers')
 
 const MAX_TOOL_ITERATIONS = 50
 
@@ -41,12 +50,19 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
     const messages = []
     const userTimezoneOffset = resolveUserTimezoneOffset(user)
     const userTimezoneName = resolveUserTimezoneName(user)
+    const currentEmailParticipants = buildCurrentEmailParticipants({
+        fromEmail: options.fromEmail || options.toEmail || '',
+        toEmails: options.toEmails || [],
+        ccEmails: options.ccEmails || [],
+    })
     const toolRuntimeContext = {
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
         channel: 'email',
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
+        currentEmailParticipants,
+        latestSafeActionContext: null,
         userTimezoneName,
     }
 
@@ -71,11 +87,20 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- Do not claim that a task or external action succeeded unless the tool result confirms success.\n' +
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
+    messages.push(['system', buildCurrentEmailParticipantsSystemMessage(currentEmailParticipants)])
     if (options.hasAdditionalRecipients) {
+        const priorSafeActionContext = await getLatestSafeEmailActionContext(
+            projectId,
+            chatId,
+            currentEmailParticipants.senderEmail
+        )
         messages.push([
             'system',
-            'This reply has additional To/CC recipients. Use only the current email and current tool outcomes. Do not use or mention earlier messages from the daily email thread.',
+            'This reply has additional To/CC recipients. Use only the current email, current tool outcomes, and any explicitly supplied privacy-safe prior action context. Do not use or mention any other earlier messages from the daily email thread.',
         ])
+        if (priorSafeActionContext) {
+            messages.push(['system', buildPriorSafeActionContextSystemMessage(priorSafeActionContext)])
+        }
     }
 
     const historyLimit = options.hasAdditionalRecipients ? 1 : THREAD_CONTEXT_MESSAGE_LIMIT
@@ -106,6 +131,12 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             toolRuntimeContext
         )
     } catch (error) {
+        console.error('Email Channel: Assistant response processing failed', {
+            error: error.message,
+            userId,
+            projectId,
+            chatId,
+        })
         responseText = 'I could not complete this email request right now. Please try again later.'
     }
 
@@ -114,6 +145,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         toEmail: options.toEmail || '',
         subject: options.subject || '',
         messageId: options.messageId || '',
+        safeActionContext: toolRuntimeContext.latestSafeActionContext,
     })
 
     try {
@@ -204,6 +236,9 @@ async function collectStreamWithToolCalls(
                     )
                     pendingAttachmentPayload =
                         buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                    toolRuntimeContext.latestSafeActionContext =
+                        buildSafeActionContextFromToolResult(toolName, toolResult) ||
+                        toolRuntimeContext.latestSafeActionContext
 
                     if (toolName === 'create_task') {
                         const taskId = toolResult?.taskId || toolResult?.taskid || null
@@ -320,6 +355,33 @@ function enforceSafeTaskResponse(responseText, toolEvidence) {
     return responseText
 }
 
+function buildCurrentEmailParticipantsSystemMessage(participants = {}) {
+    return (
+        'Current email participant metadata from this message only:\n' +
+        `- Sender: ${participants.senderEmail || '(unknown)'}\n` +
+        `- To: ${JSON.stringify(participants.toEmails || [])}\n` +
+        `- CC: ${JSON.stringify(participants.ccEmails || [])}\n` +
+        'You may use these exact addresses to resolve references such as "the person in CC" or "the other recipient" when unambiguous. For calendar creation, include the resolved address as an attendee when the sender explicitly asks to invite that person. Never invent, substitute, or infer an email address that is not listed here. If the requested recipient is ambiguous or absent, ask the sender.'
+    )
+}
+
+function buildPriorSafeActionContextSystemMessage(context = {}) {
+    return (
+        'Privacy-safe prior action context from the immediately preceding assistant reply:\n' +
+        `${JSON.stringify(context)}\n` +
+        'Use this context only when the current email explicitly refers to that prior availability result. When the sender selects exactly one listed option, use its exact start, end, duration, and timezone instead of asking again. If the selection matches multiple options, ask for the date. Do not quote, list, or otherwise reveal the unused availability options to additional recipients.'
+    )
+}
+
+function buildSafeActionContextFromToolResult(toolName, toolResult, createdAt = Date.now()) {
+    if (toolName !== 'find_calendar_availability' || toolResult?.success !== true) return null
+    return normalizeSafeEmailActionContext({
+        type: EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY,
+        ...buildConversationSafeToolResult(toolName, toolResult),
+        createdAt,
+    })
+}
+
 function mentionsTaskCreation(text) {
     if (!text) return false
     return [
@@ -333,4 +395,9 @@ function mentionsTaskCreation(text) {
 
 module.exports = {
     processAnnaEmailAssistantMessage,
+    __private__: {
+        buildCurrentEmailParticipantsSystemMessage,
+        buildPriorSafeActionContextSystemMessage,
+        buildSafeActionContextFromToolResult,
+    },
 }

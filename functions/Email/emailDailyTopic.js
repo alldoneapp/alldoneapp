@@ -8,7 +8,12 @@ const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFuncti
 const { addTimestampToContextContent } = require('../Assistant/contextTimestampHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
 const { getUserData } = require('../Users/usersFirestore')
-const { buildAttachmentSummaryForComment, buildDailyEmailTitle } = require('./emailChannelHelpers')
+const {
+    buildAttachmentSummaryForComment,
+    buildDailyEmailTitle,
+    normalizeEmailAddress,
+    normalizeSafeEmailActionContext,
+} = require('./emailChannelHelpers')
 
 function getFirstName(displayName) {
     if (!displayName) return 'User'
@@ -110,6 +115,15 @@ async function storeEmailUserMessageInTopic(projectId, chatId, userId, messageTe
 async function storeEmailAssistantMessageInTopic(projectId, chatId, assistantId, responseText, userId, options = {}) {
     const commentId = uuidv4()
     const now = Date.now()
+    const safeActionContext = normalizeSafeEmailActionContext(options.safeActionContext)
+    const emailReplyMetadata = {
+        status: options.status || '',
+        subject: options.subject || '',
+        toEmail: options.toEmail || '',
+        messageId: options.messageId || '',
+    }
+    if (safeActionContext) emailReplyMetadata.safeActionContext = safeActionContext
+
     const comment = {
         commentText: String(responseText || '').trim(),
         lastChangeDate: admin.firestore.Timestamp.now(),
@@ -117,12 +131,7 @@ async function storeEmailAssistantMessageInTopic(projectId, chatId, assistantId,
         creatorId: assistantId,
         fromAssistant: true,
         source: 'email',
-        emailReplyMetadata: {
-            status: options.status || '',
-            subject: options.subject || '',
-            toEmail: options.toEmail || '',
-            messageId: options.messageId || '',
-        },
+        emailReplyMetadata,
     }
 
     await storeTopicComment(projectId, chatId, commentId, comment, assistantId, responseText)
@@ -205,6 +214,23 @@ async function getConversationHistory(
     return messages
 }
 
+async function getLatestSafeEmailActionContext(projectId, chatId, senderEmail = '') {
+    const snapshot = await admin
+        .firestore()
+        .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+        .orderBy('created', 'desc')
+        .limit(5)
+        .get()
+    const latestAssistantComment = snapshot.docs.map(doc => doc.data() || {}).find(data => data.fromAssistant)
+    if (!latestAssistantComment) return null
+
+    const normalizedSenderEmail = normalizeEmailAddress(senderEmail)
+    const replyToEmail = normalizeEmailAddress(latestAssistantComment.emailReplyMetadata?.toEmail || '')
+    if (normalizedSenderEmail && replyToEmail !== normalizedSenderEmail) return null
+
+    return normalizeSafeEmailActionContext(latestAssistantComment.emailReplyMetadata?.safeActionContext)
+}
+
 function buildFileContextForAssistant(emailAttachments = []) {
     if (!Array.isArray(emailAttachments) || emailAttachments.length === 0) return ''
 
@@ -223,6 +249,7 @@ function buildFileContextForAssistant(emailAttachments = []) {
 
 module.exports = {
     getConversationHistory,
+    getLatestSafeEmailActionContext,
     getOrCreateDailyEmailTopic,
     storeEmailAssistantMessageInTopic,
     storeEmailUserMessageInTopic,

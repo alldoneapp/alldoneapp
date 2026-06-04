@@ -89,6 +89,9 @@ async function processQueueItem(userId, item) {
             messageText,
             assistantId,
             {
+                fromEmail: data.fromEmail || '',
+                toEmails: data.toEmails || [],
+                ccEmails: data.ccEmails || [],
                 toEmail: data.fromEmail || '',
                 subject: buildReplySubject(data.subject),
                 messageId,

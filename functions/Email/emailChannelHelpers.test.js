@@ -3,12 +3,14 @@
 const {
     buildDailyEmailTitle,
     buildEmailCommentText,
+    buildCurrentEmailParticipants,
     buildReplyAllRecipients,
     computeWebhookSignature,
     getEmailSafeAllowedTools,
     looksLikeForwardedEmail,
     normalizeEmailAddress,
     normalizeEmailAddressList,
+    normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,
     pickActionableAttachment,
     stripHtmlToText,
@@ -92,6 +94,58 @@ describe('emailChannelHelpers', () => {
         ).toEqual({
             toEmails: ['owner@example.com', 'bob@example.com'],
             ccEmails: ['carol@example.com'],
+        })
+    })
+
+    test('builds current-message participant metadata without Anna addresses', () => {
+        expect(
+            buildCurrentEmailParticipants({
+                fromEmail: 'Owner@Example.com',
+                toEmails: ['anna@alldoneapp.com', 'Bob <bob@example.com>', 'owner@example.com'],
+                ccEmails: ['Carol <carol@example.com>', 'anna@alldone.app'],
+            })
+        ).toEqual({
+            senderEmail: 'owner@example.com',
+            toEmails: ['bob@example.com', 'owner@example.com'],
+            ccEmails: ['carol@example.com'],
+        })
+    })
+
+    test('keeps only privacy-safe calendar availability follow-up context', () => {
+        expect(
+            normalizeSafeEmailActionContext({
+                type: 'calendar_availability',
+                timeZone: 'Europe/Berlin',
+                durationMinutes: 30,
+                requestedRange: {
+                    start: '2026-06-05T09:00:00+02:00',
+                    end: '2026-06-05T17:00:00+02:00',
+                },
+                options: [
+                    {
+                        start: '2026-06-05T13:30:00+02:00',
+                        end: '2026-06-05T14:00:00+02:00',
+                        eventTitle: 'Private event',
+                    },
+                ],
+                calendarEmail: 'private@example.com',
+                createdAt: 123,
+            })
+        ).toEqual({
+            type: 'calendar_availability',
+            timeZone: 'Europe/Berlin',
+            durationMinutes: 30,
+            requestedRange: {
+                start: '2026-06-05T09:00:00+02:00',
+                end: '2026-06-05T17:00:00+02:00',
+            },
+            options: [
+                {
+                    start: '2026-06-05T13:30:00+02:00',
+                    end: '2026-06-05T14:00:00+02:00',
+                },
+            ],
+            createdAt: 123,
         })
     })
 

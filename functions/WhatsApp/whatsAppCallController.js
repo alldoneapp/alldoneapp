@@ -113,7 +113,7 @@ function serializeToolResult(result) {
     }
 }
 
-async function buildCallContext(session) {
+async function buildCallBootstrapContext(session) {
     const [userDoc, assistant, history] = await Promise.all([
         admin.firestore().doc(`users/${session.userId}`).get(),
         getAssistantForChat(session.projectId, session.assistantId, session.userId),
@@ -129,22 +129,7 @@ async function buildCallContext(session) {
         sourceChannel: 'whatsapp_call',
     }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtimeContext)
-    const dynamicTools = await getDynamicToolSchemasWithCache(allowedTools, runtimeContext)
-    const tools = buildRealtimeToolSchemas(allowedTools, dynamicTools)
-    const baseMessages = []
-    await addBaseInstructions(
-        baseMessages,
-        assistant.displayName || assistant.name || 'Assistant',
-        user.language || 'English',
-        assistant.instructions,
-        allowedTools,
-        Number.isFinite(Number(user.timezoneOffset)) ? Number(user.timezoneOffset) : null,
-        {
-            ...runtimeContext,
-            userTimezoneName: user.timezoneName || user.timezone || null,
-        }
-    )
-    baseMessages.push(['system', VOICE_INSTRUCTIONS])
+    const assistantName = assistant.displayName || assistant.name || 'Assistant'
 
     return {
         assistant,
@@ -152,12 +137,47 @@ async function buildCallContext(session) {
         history,
         runtimeContext,
         allowedTools,
+        tools: [],
+        instructions: [
+            `You are ${assistantName}, answering a live WhatsApp phone call.`,
+            assistant.instructions,
+            VOICE_INSTRUCTIONS,
+        ]
+            .filter(Boolean)
+            .join('\n\n'),
+    }
+}
+
+async function completeCallContext(context) {
+    const dynamicTools = await getDynamicToolSchemasWithCache(context.allowedTools, context.runtimeContext)
+    const tools = buildRealtimeToolSchemas(context.allowedTools, dynamicTools)
+    const baseMessages = []
+    await addBaseInstructions(
+        baseMessages,
+        context.assistant.displayName || context.assistant.name || 'Assistant',
+        context.user.language || 'English',
+        context.assistant.instructions,
+        context.allowedTools,
+        Number.isFinite(Number(context.user.timezoneOffset)) ? Number(context.user.timezoneOffset) : null,
+        {
+            ...context.runtimeContext,
+            userTimezoneName: context.user.timezoneName || context.user.timezone || null,
+        }
+    )
+    baseMessages.push(['system', VOICE_INSTRUCTIONS])
+
+    return {
+        ...context,
         tools,
         instructions: baseMessages
             .map(([, text]) => String(text || ''))
             .filter(Boolean)
             .join('\n\n'),
     }
+}
+
+async function buildCallContext(session) {
+    return completeCallContext(await buildCallBootstrapContext(session))
 }
 
 async function hangUpOpenAICall(config, openAiCallId) {
@@ -302,7 +322,7 @@ async function runWhatsAppRealtimeCall(sessionId) {
 
     let context
     try {
-        context = await buildCallContext(session)
+        context = await buildCallBootstrapContext(session)
     } catch (error) {
         console.error('WhatsApp Call: Controller setup failed', {
             sessionId,
@@ -315,6 +335,22 @@ async function runWhatsAppRealtimeCall(sessionId) {
         await finalizeControllerCall(sessionId, 'controller_setup_error', 'failed')
         return
     }
+    const contextEnrichmentStartedAt = Date.now()
+    const contextEnrichmentPromise = completeCallContext(context)
+        .then(fullContext => {
+            context = fullContext
+            return fullContext
+        })
+        .catch(error => {
+            console.warn('WhatsApp Call: Full context enrichment failed; continuing with bootstrap context', {
+                sessionId,
+                error: getSafeCallErrorDetails(error),
+            })
+            updateCallSession(sessionId, {
+                lastError: String(error?.code || error?.name || 'context_enrichment_error'),
+            }).catch(() => {})
+            return null
+        })
     const deadline =
         (Number(session.startedAt) || Date.now()) +
         Math.max(10, config.maxDurationSeconds - CONTROLLER_FINALIZATION_RESERVE_SECONDS) * 1000
@@ -539,7 +575,7 @@ async function runWhatsAppRealtimeCall(sessionId) {
                 assistant: context.assistant,
                 instructions: context.instructions,
                 tools: context.tools,
-                includeVoice: !initialized,
+                includeVoice: false,
             })
         )
         if (!initialized) {
@@ -548,6 +584,27 @@ async function runWhatsAppRealtimeCall(sessionId) {
             initialized = true
         }
     }
+
+    contextEnrichmentPromise.then(fullContext => {
+        if (!fullContext || ending || socket?.readyState !== WebSocket.OPEN) return
+        send(
+            buildRealtimeSessionUpdate({
+                config,
+                assistant: context.assistant,
+                instructions: context.instructions,
+                tools: context.tools,
+                includeVoice: false,
+            })
+        )
+        updateCallSession(sessionId, {
+            contextReadyAt: Date.now(),
+            contextEnrichmentMs: Math.max(0, Date.now() - contextEnrichmentStartedAt),
+        }).catch(() => {})
+        console.log('WhatsApp Call: Full context ready', {
+            sessionId,
+            contextEnrichmentMs: Math.max(0, Date.now() - contextEnrichmentStartedAt),
+        })
+    })
 
     const runSocketAttempt = () =>
         new Promise((resolve, reject) => {
@@ -561,11 +618,13 @@ async function runWhatsAppRealtimeCall(sessionId) {
             )
             socket.once('open', () => {
                 const connectedAt = Date.now()
+                const setupLatencyMs = Math.max(0, connectedAt - Number(session.createdAt || connectedAt))
                 updateCallSession(sessionId, {
                     status: 'controller_running',
                     lastConnectedAt: connectedAt,
-                    setupLatencyMs: Math.max(0, connectedAt - Number(session.createdAt || connectedAt)),
+                    setupLatencyMs,
                 }).catch(() => {})
+                console.log('WhatsApp Call: Sideband connected', { sessionId, setupLatencyMs })
                 initializeSocket()
             })
             socket.on('message', data => {
@@ -666,8 +725,11 @@ async function cleanupStaleWhatsAppCalls() {
 }
 
 module.exports = {
+    buildCallBootstrapContext,
+    buildCallContext,
     buildRealtimeSessionUpdate,
     cleanupStaleWhatsAppCalls,
+    completeCallContext,
     createConversationItem,
     generateCallRecap,
     runWhatsAppRealtimeCall,

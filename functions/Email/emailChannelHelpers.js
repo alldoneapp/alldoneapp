@@ -14,6 +14,7 @@ const EMAIL_UPDATE_NOTE_KEY = 'update_note'
 const EMAIL_UPDATE_HEARTBEAT_SETTINGS_KEY = 'update_heartbeat_settings'
 const EMAIL_CREATE_GMAIL_DRAFT_KEY = 'create_gmail_draft'
 const EMAIL_CREATE_GMAIL_REPLY_DRAFT_KEY = 'create_gmail_reply_draft'
+const EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY = 'calendar_availability'
 const MAX_EMAIL_EXTRACTED_TEXT_LENGTH = 8000
 
 function normalizeEmailAddress(value = '') {
@@ -135,6 +136,49 @@ function buildReplyAllRecipients({ fromEmail, toEmails = [], ccEmails = [], assi
         toEmails: replyToEmails,
         ccEmails: replyCcEmails,
     }
+}
+
+function buildCurrentEmailParticipants({ fromEmail, toEmails = [], ccEmails = [], assistantEmailAddresses = [] } = {}) {
+    const excluded = new Set(
+        normalizeEmailAddressList([...DEFAULT_ASSISTANT_EMAIL_ADDRESSES, ...assistantEmailAddresses])
+    )
+    const normalizedToEmails = normalizeEmailAddressList(toEmails).filter(email => !excluded.has(email))
+    const normalizedCcEmails = normalizeEmailAddressList(ccEmails).filter(
+        email => !excluded.has(email) && !normalizedToEmails.includes(email)
+    )
+
+    return {
+        senderEmail: normalizeEmailAddressList(fromEmail)[0] || '',
+        toEmails: normalizedToEmails,
+        ccEmails: normalizedCcEmails,
+    }
+}
+
+function normalizeSafeEmailActionContext(value = {}) {
+    if (value?.type !== EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY) return null
+
+    const options = (Array.isArray(value.options) ? value.options : [])
+        .map(option => ({
+            start: typeof option?.start === 'string' ? option.start : '',
+            end: typeof option?.end === 'string' ? option.end : '',
+        }))
+        .filter(option => option.start && option.end)
+        .slice(0, 10)
+    if (options.length === 0) return null
+
+    const normalized = {
+        type: EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY,
+        options,
+    }
+    if (typeof value.timeZone === 'string' && value.timeZone.trim()) normalized.timeZone = value.timeZone.trim()
+    if (Number.isFinite(value.durationMinutes)) normalized.durationMinutes = value.durationMinutes
+    if (value.requestedRange && typeof value.requestedRange === 'object') {
+        const start = typeof value.requestedRange.start === 'string' ? value.requestedRange.start : ''
+        const end = typeof value.requestedRange.end === 'string' ? value.requestedRange.end : ''
+        if (start && end) normalized.requestedRange = { start, end }
+    }
+    if (Number.isFinite(value.createdAt)) normalized.createdAt = value.createdAt
+    return normalized
 }
 
 function getEmailSafeAllowedTools(rawTools = []) {
@@ -427,8 +471,10 @@ module.exports = {
     EMAIL_CREATE_TASK_KEY,
     EMAIL_EXTERNAL_TOOLS_KEY,
     EMAIL_FIND_CALENDAR_AVAILABILITY_KEY,
+    EMAIL_SAFE_ACTION_CONTEXT_CALENDAR_AVAILABILITY,
     EMAIL_UPDATE_NOTE_KEY,
     buildAttachmentSummaryForComment,
+    buildCurrentEmailParticipants,
     buildDailyEmailTitle,
     buildEmailCommentText,
     buildReplyAllRecipients,
@@ -437,6 +483,7 @@ module.exports = {
     normalizeEmailAddress,
     normalizeEmailAddressList,
     normalizeEmailDisplayName,
+    normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,
     pickActionableAttachment,
     looksLikeForwardedEmail,

@@ -31,15 +31,24 @@ jest.mock('./whatsAppCallTranscript', () => ({
 }))
 
 const admin = require('firebase-admin')
+const WebSocket = require('ws')
+const {
+    addBaseInstructions,
+    filterAllowedToolsForRuntimeContext,
+    getAssistantForChat,
+    getDynamicToolSchemasWithCache,
+} = require('../Assistant/assistantHelper')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
+const { getConversationHistory } = require('./whatsAppDailyTopic')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
 const { reconcileCallUsage } = require('./whatsAppCallGold')
-const { claimRecap, getCallSession, updateCallSession } = require('./whatsAppCallSessions')
+const { claimRecap, finalizeCallSession, getCallSession, updateCallSession } = require('./whatsAppCallSessions')
 const { getCallTranscript, getCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const {
     buildRealtimeSessionUpdate,
     createConversationItem,
     generateCallRecap,
+    runWhatsAppRealtimeCall,
     sendCallRecap,
 } = require('./whatsAppCallController')
 
@@ -49,6 +58,7 @@ describe('WhatsApp call sideband configuration', () => {
         realtimeModel: 'gpt-realtime-2',
         transcriptionModel: 'gpt-realtime-whisper',
         reasoningEffort: 'medium',
+        maxDurationSeconds: 1800,
     }
 
     beforeEach(() => {
@@ -166,5 +176,93 @@ describe('WhatsApp call sideband configuration', () => {
             suppressSensitiveLogging: true,
         })
         expect(updateCallSession).toHaveBeenCalledWith('call-1', expect.objectContaining({ recapStatus: 'sent' }))
+    })
+
+    test('connects and greets before slow dynamic tool context finishes loading', async () => {
+        let resolveDynamicTools
+        const dynamicToolsPending = new Promise(resolve => {
+            resolveDynamicTools = resolve
+        })
+        let resolveGreetingSent
+        const greetingSent = new Promise(resolve => {
+            resolveGreetingSent = resolve
+        })
+        const socket = {
+            readyState: 1,
+            send: jest.fn(payload => {
+                if (JSON.parse(payload).type === 'response.create') resolveGreetingSent()
+            }),
+            on: jest.fn(),
+            once: jest.fn(),
+            close: jest.fn(),
+        }
+        const eventHandlers = {}
+        socket.on.mockImplementation((event, handler) => {
+            eventHandlers[event] = handler
+            return socket
+        })
+        socket.once.mockImplementation((event, handler) => {
+            eventHandlers[event] = handler
+            return socket
+        })
+        WebSocket.OPEN = 1
+        WebSocket.mockImplementation(() => {
+            setImmediate(() => eventHandlers.open())
+            return socket
+        })
+
+        const now = Date.now()
+        getCallSession.mockResolvedValue({
+            id: 'call-1',
+            status: 'controller_queued',
+            openAiCallId: 'openai-call-1',
+            userId: 'user-1',
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            chatId: 'chat-1',
+            createdAt: now,
+            startedAt: now,
+        })
+        admin.firestore.mockReturnValue({
+            doc: jest.fn(() => ({
+                get: jest.fn(async () => ({
+                    exists: true,
+                    data: () => ({ language: 'English' }),
+                })),
+            })),
+        })
+        getAssistantForChat.mockResolvedValue({
+            name: 'Anna',
+            instructions: 'Help the caller.',
+            allowedTools: [],
+        })
+        getConversationHistory.mockResolvedValue([['user', 'Earlier context']])
+        filterAllowedToolsForRuntimeContext.mockReturnValue([])
+        getDynamicToolSchemasWithCache.mockReturnValue(dynamicToolsPending)
+        addBaseInstructions.mockImplementation(async messages => {
+            messages.push(['system', 'Full instructions'])
+        })
+        updateCallSession.mockResolvedValue()
+        finalizeCallSession.mockResolvedValue()
+        claimRecap.mockResolvedValue(false)
+
+        const callPromise = runWhatsAppRealtimeCall('call-1')
+        await greetingSent
+
+        expect(getDynamicToolSchemasWithCache).toHaveBeenCalled()
+        expect(addBaseInstructions).not.toHaveBeenCalled()
+        const sentEvents = socket.send.mock.calls.map(([payload]) => JSON.parse(payload))
+        expect(sentEvents.map(event => event.type)).toEqual(
+            expect.arrayContaining(['session.update', 'response.create'])
+        )
+        expect(sentEvents.find(event => event.type === 'session.update').session.audio.output).toBeUndefined()
+
+        resolveDynamicTools([])
+        await new Promise(resolve => setImmediate(resolve))
+        expect(addBaseInstructions).toHaveBeenCalled()
+
+        socket.readyState = 3
+        eventHandlers.close(1000)
+        await callPromise
     })
 })
