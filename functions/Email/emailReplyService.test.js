@@ -39,7 +39,26 @@ describe('emailReplyService', () => {
             expect.objectContaining({
                 to: [{ email: 'owner@example.com' }, { email: 'teammate@example.com' }],
                 cc: [{ email: 'observer@example.com' }],
+                htmlContent: expect.stringContaining('Anna Alldone'),
             })
         )
+        const htmlContent = mockSendTransacEmail.mock.calls[0][0].htmlContent
+        expect(htmlContent).toContain('AI Chief of Staff')
+        expect(htmlContent).toContain('<a href="https://alldone.app/"')
+        expect(htmlContent).toContain('https://alldone.app/</a>')
+        expect(htmlContent).toContain('Three options follow.')
+    })
+
+    test('escapes assistant reply text while keeping the fixed signature link intact', async () => {
+        await sendAnnaEmailReply({
+            toEmail: 'owner@example.com',
+            subject: 'Re: Test',
+            replyText: '<script>alert("x")</script>\nDone',
+        })
+
+        const htmlContent = mockSendTransacEmail.mock.calls[0][0].htmlContent
+        expect(htmlContent).not.toContain('<script>')
+        expect(htmlContent).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;<br />Done')
+        expect(htmlContent).toContain('<a href="https://alldone.app/"')
     })
 })

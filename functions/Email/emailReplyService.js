@@ -26,6 +26,12 @@ function buildReplyHtml(replyText = '') {
     return `
         <div style="font-family: Arial, sans-serif; color: #202124; line-height: 1.5;">
             <p>${content}</p>
+            <div style="margin-top: 24px; color: #5f6368;">
+                <div>---</div>
+                <div>Anna Alldone</div>
+                <div>AI Chief of Staff</div>
+                <div><a href="https://alldone.app/" style="color: #1a73e8;">https://alldone.app/</a></div>
+            </div>
         </div>
     `
 }
