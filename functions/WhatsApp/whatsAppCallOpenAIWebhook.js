@@ -27,12 +27,12 @@ function getRunCallTaskId(sessionId) {
     return `whatsapp-call-${crypto.createHash('sha256').update(String(sessionId)).digest('hex').slice(0, 40)}`
 }
 
-function buildInitialRealtimeSession({ config, voice, assistant }) {
+function buildInitialRealtimeSession({ config, voice, assistant, language }) {
     return {
         type: 'realtime',
         model: config.realtimeModel,
         output_modalities: ['audio'],
-        instructions: buildCallBootstrapInstructions(assistant),
+        instructions: buildCallBootstrapInstructions(assistant, language),
         reasoning: { effort: config.reasoningEffort },
         audio: {
             input: {
@@ -130,7 +130,7 @@ async function handleOpenAIRealtimeCallWebhook(req, res) {
                     config,
                     callId,
                     'POST',
-                    buildInitialRealtimeSession({ config, voice, assistant }),
+                    buildInitialRealtimeSession({ config, voice, assistant, language: session.language }),
                     'accept'
                 )
                 await updateCallSession(consumed.sessionId, { acceptCompletedAt: Date.now() })

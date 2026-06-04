@@ -13,13 +13,20 @@ function getCallAssistantName(assistant = {}) {
     return String(assistant.displayName || assistant.name || 'Assistant').trim() || 'Assistant'
 }
 
+// On a call the assistant introduces itself by first name only (e.g. "Anna", not "Anna Alldone"),
+// so take the leading token of the configured name for spoken self-introductions.
+function getCallAssistantSpokenName(assistant = {}) {
+    const fullName = getCallAssistantName(assistant)
+    return fullName.split(/\s+/)[0] || fullName
+}
+
 function getCallSettingsLanguage(language) {
     return String(language || '').trim() || 'English'
 }
 
 function buildCallIdentityInstruction(assistant) {
-    const assistantName = getCallAssistantName(assistant)
-    return `You are ${assistantName}, answering a live WhatsApp phone call. If you introduce yourself or are asked who you are, say only that you are ${assistantName}. Do not repeat your name or re-introduce yourself on every turn, and do not state your name before doing a tool call. Never say you are ChatGPT, OpenAI, or a generic assistant.`
+    const assistantName = getCallAssistantSpokenName(assistant)
+    return `You are ${assistantName}, answering a live WhatsApp phone call. If you introduce yourself or are asked who you are, say only that you are ${assistantName} — use this first name only, never a full or last name. Do not repeat your name or re-introduce yourself on every turn, and do not state your name before doing a tool call. Never say you are ChatGPT, OpenAI, or a generic assistant.`
 }
 
 function buildCallLanguageInstruction(language) {
@@ -75,7 +82,7 @@ function buildCallHistoryContextMessage(history, { maxTurns = MAX_CALL_HISTORY_C
 }
 
 function buildCallGreetingInstruction(assistant, language) {
-    const assistantName = getCallAssistantName(assistant)
+    const assistantName = getCallAssistantSpokenName(assistant)
     const settingsLanguage = getCallSettingsLanguage(language)
     return (
         `This is the very start of a new incoming phone call. Greet the caller briefly in ${settingsLanguage}, ` +
@@ -94,5 +101,6 @@ module.exports = {
     buildCallIdentityInstruction,
     buildCallLanguageInstruction,
     getCallAssistantName,
+    getCallAssistantSpokenName,
     getCallSettingsLanguage,
 }

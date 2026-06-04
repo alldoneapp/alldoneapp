@@ -120,6 +120,7 @@ async function handleIncomingWhatsAppCall(req, res) {
         assistantId,
         chatId,
         twilioCallSid,
+        language: user.language,
     })
     if (!leaseResult.success) return rejectCall(res, fromNumber, leaseResult.reason || 'active_call')
 

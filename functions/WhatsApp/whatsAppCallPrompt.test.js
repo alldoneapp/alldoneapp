@@ -21,8 +21,15 @@ describe('WhatsApp call prompt', () => {
         expect(instructions).toContain('Never say you are ChatGPT')
         expect(instructions).toContain('Do not repeat your name or re-introduce yourself on every turn')
         expect(instructions.indexOf('Be precise and act immediately.')).toBeLessThan(
-            instructions.indexOf('say only that you are Anna Alldone')
+            instructions.indexOf('say only that you are Anna')
         )
+    })
+
+    test('introduces the assistant by first name only, never the full display name', () => {
+        const identity = buildCallIdentityInstruction(assistant)
+        expect(identity).toContain('You are Anna,')
+        expect(identity).toContain('say only that you are Anna — use this first name only')
+        expect(identity).not.toContain('Anna Alldone')
     })
 
     test('instructs the model to emit a short preamble before tool calls', () => {
@@ -53,7 +60,8 @@ describe('WhatsApp call prompt', () => {
     test('greets the caller in the settings language', () => {
         const greeting = buildCallGreetingInstruction(assistant, 'German')
         expect(greeting).toContain('Greet the caller briefly in German')
-        expect(greeting).toContain('introduce yourself only as Anna Alldone')
+        expect(greeting).toContain('introduce yourself only as Anna,')
+        expect(greeting).not.toContain('Anna Alldone')
         expect(greeting).toContain('ask how you can help')
         expect(greeting).toContain('Do not mention ChatGPT or OpenAI.')
     })

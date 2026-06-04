@@ -27,6 +27,7 @@ async function createCallSessionWithLease({
     assistantId,
     chatId,
     twilioCallSid,
+    language,
 }) {
     const now = Date.now()
     const routeId = hashRoutingToken(routingToken, routingSecret)
@@ -64,6 +65,7 @@ async function createCallSessionWithLease({
             assistantId,
             chatId,
             twilioCallSid,
+            language: String(language || '').trim() || null,
             routingId: routeId,
             openAiCallId: null,
             status: 'routing',
