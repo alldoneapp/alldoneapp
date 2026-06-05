@@ -39,6 +39,15 @@ describe('WhatsApp call prompt', () => {
         expect(instructions).toContain('Do not use generic fillers like "please wait while I process."')
     })
 
+    test('does not proactively speak human-readable task IDs during calls', () => {
+        const instructions = buildCallBootstrapInstructions(assistant)
+
+        expect(instructions).toContain('When talking about tasks')
+        expect(instructions).toContain('do not proactively say human-readable task IDs')
+        expect(instructions).toContain('Refer to tasks by their name and project instead')
+        expect(instructions).toContain('Only say a human-readable task ID if the caller explicitly asks')
+    })
+
     test('omits the language directive from bootstrap instructions when no language is provided', () => {
         expect(buildCallBootstrapInstructions(assistant)).not.toContain('Start the call in')
     })
