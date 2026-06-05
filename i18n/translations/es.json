@@ -1931,5 +1931,12 @@
     "Realtime call voice": "Voz para llamadas en tiempo real",
     "Select the voice used for WhatsApp assistant calls": "Selecciona la voz para las llamadas del asistente por WhatsApp",
     "WhatsApp assistant call": "Llamada del asistente por WhatsApp",
+    "Call Anna": "Llamar a Anna",
+    "Calling": "Llamando",
+    "Browser voice calls are not supported here": "Las llamadas de voz en el navegador no son compatibles aquí",
+    "Could not start assistant call": "No se pudo iniciar la llamada del asistente",
+    "Mute assistant call": "Silenciar llamada del asistente",
+    "Unmute assistant call": "Activar sonido de la llamada del asistente",
+    "End assistant call": "Finalizar llamada del asistente",
     "onboarding_whatsapp_call_disclosure": "Los usuarios premium también pueden llamar al asistente por WhatsApp. Las llamadas se guardan como transcripciones de texto en Alldone; el audio no se graba."
 }

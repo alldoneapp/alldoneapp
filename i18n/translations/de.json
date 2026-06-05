@@ -1497,5 +1497,12 @@
     "Realtime call voice": "Stimme für Echtzeitanrufe",
     "Select the voice used for WhatsApp assistant calls": "Wähle die Stimme für WhatsApp-Assistentenanrufe",
     "WhatsApp assistant call": "WhatsApp-Assistentenanruf",
+    "Call Anna": "Anna anrufen",
+    "Calling": "Rufe an",
+    "Browser voice calls are not supported here": "Browser-Sprachanrufe werden hier nicht unterstützt",
+    "Could not start assistant call": "Der Assistentenanruf konnte nicht gestartet werden",
+    "Mute assistant call": "Assistentenanruf stummschalten",
+    "Unmute assistant call": "Stummschaltung des Assistentenanrufs aufheben",
+    "End assistant call": "Assistentenanruf beenden",
     "onboarding_whatsapp_call_disclosure": "Premium-Nutzer können den Assistenten auch über WhatsApp anrufen. Anrufe werden als Texttranskripte in Alldone gespeichert; Audio wird nicht aufgezeichnet."
 }

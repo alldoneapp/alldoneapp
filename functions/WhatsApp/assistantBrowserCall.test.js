@@ -30,7 +30,6 @@ jest.mock('./whatsAppCallConfig', () => ({
     normalizeRealtimeVoice: jest.fn(value => value || 'marin'),
 }))
 jest.mock('./whatsAppCallOpenAIWebhook', () => ({
-    buildInitialRealtimeSession: jest.fn(() => ({ type: 'realtime', model: 'gpt-realtime-2' })),
     getRunCallQueueResource: jest.fn(() => 'locations/europe-west1/functions/runWhatsAppRealtimeCall'),
     getRunCallTaskId: jest.fn(sessionId => `task-${sessionId}`),
 }))
@@ -47,7 +46,7 @@ const { getDefaultAssistantId } = require('./whatsAppIncomingHandler')
 const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
 const { createDirectCallSessionWithLease, updateCallSession } = require('./whatsAppCallSessions')
-const { startAssistantBrowserCall } = require('./assistantBrowserCall')
+const { buildInitialBrowserRealtimeSession, startAssistantBrowserCall } = require('./assistantBrowserCall')
 
 describe('assistant browser calls', () => {
     beforeEach(() => {
@@ -128,5 +127,18 @@ describe('assistant browser calls', () => {
             expect.objectContaining({ openAiCallId: 'rtc_123', status: 'accepted' })
         )
         expect(mockEnqueue).toHaveBeenCalled()
+    })
+
+    test('uses a minimal initial session and leaves full configuration to the sideband', () => {
+        expect(
+            buildInitialBrowserRealtimeSession({
+                config: { realtimeModel: 'gpt-realtime-2' },
+                voice: 'marin',
+            })
+        ).toEqual({
+            type: 'realtime',
+            model: 'gpt-realtime-2',
+            audio: { output: { voice: 'marin' } },
+        })
     })
 })

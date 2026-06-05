@@ -117,7 +117,7 @@ export default function AssistantVoiceCallButton({ compact = false, buttonStyle 
                     icon={muted ? 'mic-off' : 'mic'}
                     onPress={toggleMute}
                     buttonStyle={[localStyles.iconButton, buttonStyle]}
-                    accessibilityLabel={muted ? 'Unmute assistant call' : 'Mute assistant call'}
+                    accessibilityLabel={muted ? translate('Unmute assistant call') : translate('Mute assistant call')}
                     accessible
                 />
                 <Button
@@ -125,7 +125,7 @@ export default function AssistantVoiceCallButton({ compact = false, buttonStyle 
                     icon="phone-call"
                     onPress={cleanup}
                     buttonStyle={[localStyles.iconButton, buttonStyle]}
-                    accessibilityLabel="End assistant call"
+                    accessibilityLabel={translate('End assistant call')}
                     accessible
                 />
             </View>
@@ -144,7 +144,7 @@ export default function AssistantVoiceCallButton({ compact = false, buttonStyle 
                 onPress={startCall}
                 buttonStyle={[compact ? localStyles.iconButton : localStyles.callButton, buttonStyle]}
                 titleStyle={localStyles.callTitle}
-                accessibilityLabel="Call Anna"
+                accessibilityLabel={translate('Call Anna')}
                 accessible
             />
             {!!error && !compact && <Text style={localStyles.error}>{error}</Text>}

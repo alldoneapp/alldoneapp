@@ -8,11 +8,7 @@ const { getOrCreateWhatsAppDailyTopic } = require('./whatsAppDailyTopic')
 const { getDefaultAssistantId } = require('./whatsAppIncomingHandler')
 const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
-const {
-    buildInitialRealtimeSession,
-    getRunCallQueueResource,
-    getRunCallTaskId,
-} = require('./whatsAppCallOpenAIWebhook')
+const { getRunCallQueueResource, getRunCallTaskId } = require('./whatsAppCallOpenAIWebhook')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
 const { createDirectCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 
@@ -46,11 +42,36 @@ function getLocationCallId(location) {
     return normalized.split('/').filter(Boolean).pop() || ''
 }
 
+function buildInitialBrowserRealtimeSession({ config, voice }) {
+    return {
+        type: 'realtime',
+        model: config.realtimeModel,
+        audio: {
+            output: { voice },
+        },
+    }
+}
+
+function getOpenAICallErrorCode(responseBody) {
+    try {
+        const parsed = JSON.parse(responseBody)
+        return String(parsed?.error?.code || parsed?.error?.type || '').slice(0, 120)
+    } catch (_) {
+        return ''
+    }
+}
+
+function createMissingOpenAICallIdError() {
+    const error = new Error('OpenAI WebRTC call did not return a call id')
+    error.code = 'missing_openai_call_id'
+    return error
+}
+
 async function createOpenAIWebRTCSession({ config, offerSdp, assistant, language, userId }) {
     const voice = normalizeRealtimeVoice(assistant?.realtimeVoice)
     const form = new FormData()
     form.set('sdp', offerSdp)
-    form.set('session', JSON.stringify(buildInitialRealtimeSession({ config, voice, assistant, language })))
+    form.set('session', JSON.stringify(buildInitialBrowserRealtimeSession({ config, voice, language })))
 
     const response = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
@@ -62,7 +83,10 @@ async function createOpenAIWebRTCSession({ config, offerSdp, assistant, language
     })
     const answerSdp = await response.text()
     if (!response.ok) {
-        throw new Error(`OpenAI WebRTC call failed with HTTP ${response.status}: ${answerSdp.slice(0, 240)}`)
+        const error = new Error(`OpenAI WebRTC call failed with HTTP ${response.status}`)
+        error.status = response.status
+        error.code = getOpenAICallErrorCode(answerSdp)
+        throw error
     }
 
     return {
@@ -130,7 +154,7 @@ async function startAssistantBrowserCall(data, auth) {
             language: user.language,
             userId,
         })
-        if (!openAiCallId) throw new Error('OpenAI WebRTC call did not return a call id')
+        if (!openAiCallId) throw createMissingOpenAICallIdError()
 
         await updateCallSession(sessionId, {
             openAiCallId,
@@ -162,6 +186,8 @@ async function startAssistantBrowserCall(data, auth) {
 }
 
 module.exports = {
+    buildInitialBrowserRealtimeSession,
+    createMissingOpenAICallIdError,
     createOpenAIWebRTCSession,
     startAssistantBrowserCall,
 }
