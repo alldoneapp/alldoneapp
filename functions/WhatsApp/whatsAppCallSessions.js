@@ -28,6 +28,7 @@ async function createCallSessionWithLease({
     chatId,
     twilioCallSid,
     language,
+    channel = 'whatsapp_call',
 }) {
     const now = Date.now()
     const routeId = hashRoutingToken(routingToken, routingSecret)
@@ -64,6 +65,7 @@ async function createCallSessionWithLease({
             projectId,
             assistantId,
             chatId,
+            channel,
             twilioCallSid,
             language: String(language || '').trim() || null,
             routingId: routeId,
@@ -81,6 +83,66 @@ async function createCallSessionWithLease({
             recapStatus: 'pending',
         })
         result = { success: true, duplicate: false, routeId }
+    })
+
+    return result
+}
+
+async function createDirectCallSessionWithLease({
+    sessionId,
+    leaseExpiresAt,
+    sessionExpiresAt = leaseExpiresAt,
+    userId,
+    projectId,
+    assistantId,
+    chatId,
+    language,
+    channel,
+}) {
+    const now = Date.now()
+    const sessionRef = getSessionRef(sessionId)
+    const lockRef = getLockRef(userId)
+    let result = { success: false, reason: 'active_call' }
+
+    await admin.firestore().runTransaction(async transaction => {
+        const [lockDoc, sessionDoc] = await Promise.all([transaction.get(lockRef), transaction.get(sessionRef)])
+        const lockData = lockDoc.exists ? lockDoc.data() || {} : {}
+        if (lockDoc.exists && Number(lockData.expiresAt || 0) > now && lockData.sessionId !== sessionId) return
+
+        if (sessionDoc.exists) {
+            const session = sessionDoc.data() || {}
+            result =
+                session.status === 'browser_connecting' && lockData.sessionId === sessionId
+                    ? { success: true, duplicate: true }
+                    : { success: false, reason: 'active_call' }
+            return
+        }
+
+        transaction.set(lockRef, { userId, sessionId, createdAt: now, updatedAt: now, expiresAt: leaseExpiresAt })
+        transaction.set(sessionRef, {
+            id: sessionId,
+            userId,
+            projectId,
+            assistantId,
+            chatId,
+            channel,
+            twilioCallSid: null,
+            language: String(language || '').trim() || null,
+            routingId: null,
+            openAiCallId: null,
+            status: 'browser_connecting',
+            createdAt: now,
+            updatedAt: now,
+            startedAt: null,
+            endedAt: null,
+            expiresAt: sessionExpiresAt,
+            totalTokens: 0,
+            billedGold: 0,
+            transcriptTurnCount: 0,
+            completionReason: null,
+            recapStatus: 'pending',
+        })
+        result = { success: true, duplicate: false }
     })
 
     return result
@@ -231,6 +293,7 @@ module.exports = {
     cleanupExpiredCallSessions,
     consumeRoutingToken,
     createCallSessionWithLease,
+    createDirectCallSessionWithLease,
     finalizeCallSession,
     getCallSession,
     getSessionRef,

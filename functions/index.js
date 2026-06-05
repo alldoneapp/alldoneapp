@@ -3741,6 +3741,44 @@ exports.whatsAppCallStatusCallback = onRequest(
     }
 )
 
+exports.phoneIncomingCall = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        minInstances: 1,
+    },
+    async (req, res) => {
+        const { handleIncomingPhoneCall } = require('./WhatsApp/whatsAppCallTwilioWebhook')
+        await handleIncomingPhoneCall(req, res)
+    }
+)
+
+exports.phoneCallStatusCallback = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handlePhoneCallStatus } = require('./WhatsApp/whatsAppCallTwilioWebhook')
+        await handlePhoneCallStatus(req, res)
+    }
+)
+
+exports.startAssistantBrowserCallSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { startAssistantBrowserCall } = require('./WhatsApp/assistantBrowserCall')
+        return startAssistantBrowserCall(request.data, request.auth)
+    }
+)
+
 exports.openAIRealtimeCallWebhook = onRequest(
     {
         timeoutSeconds: 60,

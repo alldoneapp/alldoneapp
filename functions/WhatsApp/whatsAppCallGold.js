@@ -4,6 +4,12 @@ const { applyGoldChangeInTransaction } = require('../Gold/goldTransactions')
 
 const TOKENS_PER_GOLD = 100
 
+function getCallGoldSource(channel) {
+    const normalizedChannel = String(channel || '').trim()
+    if (normalizedChannel === 'phone_call' || normalizedChannel === 'browser_call') return normalizedChannel
+    return 'whatsapp_call'
+}
+
 function calculateCallGold(totalTokens) {
     const normalizedTokens = Math.max(0, Number(totalTokens) || 0)
     return normalizedTokens > 0 ? Math.max(1, Math.round(normalizedTokens / TOKENS_PER_GOLD)) : 0
@@ -65,14 +71,17 @@ async function reconcileCallUsage({ sessionId, eventId, totalTokens }) {
                 userData: userDoc.data() || {},
                 delta: -chargedGold,
                 direction: 'spend',
-                source: 'whatsapp_call',
+                source: getCallGoldSource(session.channel),
                 context: {
-                    channel: 'whatsapp',
+                    channel: getCallGoldSource(session.channel),
                     projectId: session.projectId,
                     objectId: session.chatId,
                     objectType: 'topics',
                     callSessionId: sessionId,
-                    note: 'WhatsApp assistant call',
+                    note:
+                        getCallGoldSource(session.channel) === 'whatsapp_call'
+                            ? 'WhatsApp assistant call'
+                            : 'Assistant voice call',
                 },
             })
             if (!goldResult.success) {
@@ -109,5 +118,6 @@ async function reconcileCallUsage({ sessionId, eventId, totalTokens }) {
 module.exports = {
     TOKENS_PER_GOLD,
     calculateCallGold,
+    getCallGoldSource,
     reconcileCallUsage,
 }

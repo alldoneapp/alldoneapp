@@ -10,6 +10,7 @@ import Button from '../../../UIControls/Button'
 import { setUserPhone } from '../../../../utils/backends/Users/usersFirestore'
 import { translate } from '../../../../i18n/TranslationService'
 import { getDisplayPhoneNumber } from '../../../../utils/phoneValidation'
+import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 
 export default function GlobalUserPhone({ userId, phone }) {
     const smallScreen = useSelector(state => state.smallScreen)
@@ -73,6 +74,7 @@ export default function GlobalUserPhone({ userId, phone }) {
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
                 </Popover>
+                <AssistantVoiceCallButton compact buttonStyle={localStyles.callButton} />
             </View>
         </View>
     )
@@ -96,5 +98,8 @@ const localStyles = StyleSheet.create({
     settingRowRight: {
         flex: 1,
         justifyContent: 'flex-end',
+    },
+    callButton: {
+        marginLeft: 8,
     },
 })

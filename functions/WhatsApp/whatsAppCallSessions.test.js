@@ -24,7 +24,12 @@ jest.mock('firebase-admin', () => {
 })
 
 const admin = require('firebase-admin')
-const { consumeRoutingToken, createCallSessionWithLease, finalizeCallSession } = require('./whatsAppCallSessions')
+const {
+    consumeRoutingToken,
+    createCallSessionWithLease,
+    createDirectCallSessionWithLease,
+    finalizeCallSession,
+} = require('./whatsAppCallSessions')
 
 describe('WhatsApp call sessions', () => {
     beforeEach(() => admin.__mock.reset())
@@ -47,6 +52,9 @@ describe('WhatsApp call sessions', () => {
                 routingToken: 'route-1',
             })
         ).toEqual(expect.objectContaining({ success: true }))
+        expect(admin.__mock.get('whatsAppCallSessions/call-1')).toEqual(
+            expect.objectContaining({ channel: 'whatsapp_call' })
+        )
         expect(
             await createCallSessionWithLease({
                 ...base,
@@ -117,5 +125,33 @@ describe('WhatsApp call sessions', () => {
                 openAiCallId: 'openai-1',
             })
         ).toEqual(expect.objectContaining({ success: false, reason: 'expired_route' }))
+    })
+
+    test('creates direct browser sessions under the same per-user lease', async () => {
+        const base = {
+            leaseExpiresAt: Date.now() + 600000,
+            sessionExpiresAt: Date.now() + 600000,
+            userId: 'user-1',
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            chatId: 'chat-1',
+            language: 'English',
+            channel: 'browser_call',
+        }
+
+        expect(await createDirectCallSessionWithLease({ ...base, sessionId: 'browser-1' })).toEqual(
+            expect.objectContaining({ success: true })
+        )
+        expect(admin.__mock.get('whatsAppCallSessions/browser-1')).toEqual(
+            expect.objectContaining({ channel: 'browser_call', status: 'browser_connecting' })
+        )
+        expect(await createDirectCallSessionWithLease({ ...base, sessionId: 'browser-2' })).toEqual(
+            expect.objectContaining({ success: false, reason: 'active_call' })
+        )
+
+        await finalizeCallSession('browser-1', 'completed', 'completed')
+        expect(await createDirectCallSessionWithLease({ ...base, sessionId: 'browser-2' })).toEqual(
+            expect.objectContaining({ success: true })
+        )
     })
 })

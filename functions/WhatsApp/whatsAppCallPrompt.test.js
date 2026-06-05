@@ -59,6 +59,8 @@ describe('WhatsApp call prompt', () => {
     test('starts the call in the settings language but follows the caller afterwards', () => {
         const instruction = buildCallLanguageInstruction('German')
         expect(instruction).toContain('Start the call in German')
+        expect(instruction).toContain('use the informal "Du" form by default')
+        expect(instruction).toContain('unless the caller asks for the formal "Sie" form')
         expect(instruction).toContain('follow them and continue the conversation in the language they are speaking')
     })
 
@@ -69,6 +71,7 @@ describe('WhatsApp call prompt', () => {
     test('greets the caller in the settings language', () => {
         const greeting = buildCallGreetingInstruction(assistant, 'German')
         expect(greeting).toContain('Greet the caller briefly in German')
+        expect(greeting).toContain('using the informal "Du" form if greeting in German')
         expect(greeting).toContain('introduce yourself only as Anna,')
         expect(greeting).not.toContain('Anna Alldone')
         expect(greeting).toContain('ask how you can help')

@@ -156,7 +156,7 @@ async function buildCallBootstrapContext(session) {
         requestUserId: session.userId,
         objectType: 'topics',
         objectId: session.chatId,
-        sourceChannel: 'whatsapp_call',
+        sourceChannel: session.channel || 'whatsapp_call',
     }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtimeContext)
 
@@ -292,7 +292,13 @@ async function sendCallRecap(sessionId) {
             chatId: session.chatId,
             userId: session.userId,
             assistantId: session.assistantId,
+            source: session.channel || 'whatsapp_call',
         })
+    }
+
+    if ((session.channel || 'whatsapp_call') !== 'whatsapp_call') {
+        await updateCallSession(sessionId, { recapStatus: 'stored', recapStoredAt: Date.now() })
+        return { sent: false, stored: true, reason: 'non_whatsapp_channel' }
     }
 
     try {
@@ -321,7 +327,7 @@ async function finalizeControllerCall(sessionId, reason, status = 'completed') {
     await sendCallRecap(sessionId)
 }
 
-async function runWhatsAppRealtimeCall(sessionId) {
+async function runAssistantRealtimeCall(sessionId) {
     const config = getWhatsAppCallConfig()
     const session = await getCallSession(sessionId)
     if (!session) return
@@ -412,6 +418,7 @@ async function runWhatsAppRealtimeCall(sessionId) {
             chatId: session.chatId,
             userId: session.userId,
             assistantId: session.assistantId,
+            source: session.channel || 'whatsapp_call',
         })
     }
 
@@ -711,6 +718,10 @@ async function runWhatsAppRealtimeCall(sessionId) {
     }
 }
 
+async function runWhatsAppRealtimeCall(sessionId) {
+    return runAssistantRealtimeCall(sessionId)
+}
+
 async function cleanupStaleWhatsAppCalls() {
     const sessionIds = await cleanupExpiredCallSessions()
     const pendingRecaps = await admin
@@ -745,6 +756,7 @@ module.exports = {
     completeCallContext,
     createConversationItem,
     generateCallRecap,
+    runAssistantRealtimeCall,
     runWhatsAppRealtimeCall,
     sendCallRecap,
 }

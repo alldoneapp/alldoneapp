@@ -8,9 +8,11 @@ import { translate } from '../../../../i18n/TranslationService'
 import ChangePhoneModal from '../../../UIComponents/FloatModals/ChangePhoneModal'
 import { setUserPhone } from '../../../../utils/backends/Users/usersFirestore'
 import Icon from '../../../Icon'
+import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 
 const WHATSAPP_LINK = 'https://wa.me/4915128061330'
 const WHATSAPP_NUMBER_DISPLAY = '+49 1512 8061330'
+const ASSISTANT_VOICE_NUMBER_DISPLAY = '+49 304 173 5050'
 const ANNA_EMAIL_ADDRESS = 'anna@alldoneapp.com'
 const ANNA_EMAIL_LINK = `mailto:${ANNA_EMAIL_ADDRESS}`
 
@@ -82,6 +84,10 @@ export default function WhatsAppAssistantLine() {
                     </Text>
                 </TouchableOpacity>
             </Popover>
+            <View style={[localStyles.row, localStyles.callRow]}>
+                <AssistantVoiceCallButton />
+                <Text style={[localStyles.text, localStyles.callNumber]}>{ASSISTANT_VOICE_NUMBER_DISPLAY}</Text>
+            </View>
             {assistantEmailEnabled && (
                 <TouchableOpacity
                     style={[localStyles.row, localStyles.emailRow]}
@@ -115,6 +121,13 @@ const localStyles = StyleSheet.create({
     },
     emailRow: {
         marginTop: 10,
+    },
+    callRow: {
+        marginTop: 10,
+        flexWrap: 'wrap',
+    },
+    callNumber: {
+        marginLeft: 12,
     },
     icon: {
         width: 24,

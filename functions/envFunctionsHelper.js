@@ -122,6 +122,8 @@ const getEnvFunctions = () => {
                     OPENAI_REALTIME_TRANSCRIPTION_MODEL: envJson.OPENAI_REALTIME_TRANSCRIPTION_MODEL || '',
                     OPENAI_REALTIME_REASONING_EFFORT: envJson.OPENAI_REALTIME_REASONING_EFFORT || '',
                     WHATSAPP_CALLS_ENABLED: envJson.WHATSAPP_CALLS_ENABLED || '',
+                    PHONE_CALLS_ENABLED: envJson.PHONE_CALLS_ENABLED || '',
+                    BROWSER_CALLS_ENABLED: envJson.BROWSER_CALLS_ENABLED || '',
                     WHATSAPP_CALL_MAX_DURATION_SECONDS: envJson.WHATSAPP_CALL_MAX_DURATION_SECONDS || '',
                 }
 
@@ -267,6 +269,8 @@ const getEnvFunctions = () => {
         'OPENAI_REALTIME_TRANSCRIPTION_MODEL',
         'OPENAI_REALTIME_REASONING_EFFORT',
         'WHATSAPP_CALLS_ENABLED',
+        'PHONE_CALLS_ENABLED',
+        'BROWSER_CALLS_ENABLED',
         'WHATSAPP_CALL_MAX_DURATION_SECONDS',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''

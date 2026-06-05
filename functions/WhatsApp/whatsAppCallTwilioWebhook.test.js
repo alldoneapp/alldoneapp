@@ -30,8 +30,11 @@ const { createCallSessionWithLease, finalizeCallSession } = require('./whatsAppC
 const {
     buildSipTwiML,
     getCallEligibilityReason,
+    getPhoneRejectionMessage,
     getRejectionMessage,
+    handleIncomingPhoneCall,
     handleIncomingWhatsAppCall,
+    handlePhoneCallStatus,
     handleWhatsAppCallStatus,
     validateTwilioRequest,
 } = require('./whatsAppCallTwilioWebhook')
@@ -76,6 +79,7 @@ describe('WhatsApp call Twilio routing', () => {
 
     test('provides a caller-facing reason for active-call rejection', () => {
         expect(getRejectionMessage('active_call')).toContain('active assistant call')
+        expect(getPhoneRejectionMessage('active_call')).toContain('active assistant call')
     })
 
     test('validates Twilio signatures against the exact configured webhook URL', () => {
@@ -167,5 +171,82 @@ describe('WhatsApp call Twilio routing', () => {
             })
         )
         expect(res.send.mock.calls[0][0]).toContain('x-alldone-route=opaque-route')
+    })
+
+    test('routes an eligible phone caller through the shared SIP bridge', async () => {
+        const user = {
+            premium: { status: 'premium' },
+            gold: 3,
+            defaultProjectId: 'project-1',
+        }
+        getWhatsAppCallConfig.mockReturnValue({
+            phoneCallsEnabled: true,
+            openAiApiKey: 'key',
+            openAiProjectId: 'openai-project',
+            openAiWebhookSecret: 'webhook-secret',
+            routingTokenSecret: 'route-secret',
+            routeTokenTtlMs: 120000,
+            callLeaseMs: 2100000,
+            maxDurationSeconds: 1800,
+            phoneIncomingCallUrl: 'https://example.test/phone',
+            phoneStatusCallbackUrl: 'https://example.test/phone-status',
+        })
+        normalizePhoneNumber.mockReturnValue('+1234567890')
+        findUserByPhone.mockResolvedValue('user-1')
+        admin.firestore.mockReturnValue({
+            doc: jest.fn(() => ({
+                get: jest.fn(async () => ({ exists: true, id: 'user-1', data: () => user })),
+            })),
+        })
+        getDefaultAssistantId.mockResolvedValue('assistant-1')
+        getOrCreateWhatsAppDailyTopic.mockResolvedValue({ chatId: 'chat-1' })
+        createRoutingToken.mockReturnValue('phone-route')
+        createCallSessionWithLease.mockResolvedValue({ success: true })
+        const req = {
+            method: 'POST',
+            headers: { 'x-twilio-signature': 'signature' },
+            body: { CallSid: 'call-1', From: '+1234567890' },
+        }
+        const res = {
+            type: jest.fn().mockReturnThis(),
+            status: jest.fn().mockReturnThis(),
+            send: jest.fn().mockReturnThis(),
+        }
+
+        await handleIncomingPhoneCall(req, res)
+
+        expect(createCallSessionWithLease).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sessionId: 'call-1',
+                channel: 'phone_call',
+                routingToken: 'phone-route',
+                userId: 'user-1',
+            })
+        )
+        expect(res.send.mock.calls[0][0]).toContain('statusCallback="https://example.test/phone-status"')
+        expect(res.send.mock.calls[0][0]).toContain('x-alldone-route=phone-route')
+    })
+
+    test('phone status callback uses the configured phone callback URL', async () => {
+        getWhatsAppCallConfig.mockReturnValue({ phoneStatusCallbackUrl: 'https://example.test/phone-status' })
+        const req = {
+            method: 'POST',
+            headers: { 'x-twilio-signature': 'signature' },
+            body: { CallSid: 'call-1', CallStatus: 'completed' },
+        }
+        const res = {
+            type: jest.fn().mockReturnThis(),
+            status: jest.fn().mockReturnThis(),
+            send: jest.fn().mockReturnThis(),
+        }
+
+        await handlePhoneCallStatus(req, res)
+
+        expect(mockValidateWebhookSignature).toHaveBeenCalledWith(
+            'signature',
+            'https://example.test/phone-status',
+            req.body
+        )
+        expect(finalizeCallSession).toHaveBeenCalledWith('call-1', 'twilio_completed', 'completed')
     })
 })

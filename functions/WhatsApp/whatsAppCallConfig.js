@@ -56,6 +56,8 @@ function getWhatsAppCallConfig() {
 
     return {
         enabled: getBoolean(value('WHATSAPP_CALLS_ENABLED'), false),
+        phoneCallsEnabled: getBoolean(value('PHONE_CALLS_ENABLED'), false),
+        browserCallsEnabled: getBoolean(value('BROWSER_CALLS_ENABLED'), false),
         openAiApiKey: value('OPEN_AI_KEY') || value('OPENAI_API_KEY'),
         openAiProjectId: value('OPENAI_PROJECT_ID'),
         openAiWebhookSecret: value('OPENAI_WEBHOOK_SECRET'),
@@ -68,6 +70,8 @@ function getWhatsAppCallConfig() {
         callLeaseMs: maxDurationSeconds * 1000 + CALL_LEASE_GRACE_MS,
         twilioIncomingCallUrl: getFunctionUrl('whatsAppIncomingCall'),
         twilioStatusCallbackUrl: getFunctionUrl('whatsAppCallStatusCallback'),
+        phoneIncomingCallUrl: getFunctionUrl('phoneIncomingCall'),
+        phoneStatusCallbackUrl: getFunctionUrl('phoneCallStatusCallback'),
         openAiWebhookUrl: getFunctionUrl('openAIRealtimeCallWebhook'),
     }
 }

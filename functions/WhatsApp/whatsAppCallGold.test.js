@@ -42,7 +42,7 @@ jest.mock('firebase-admin', () => {
 })
 
 const admin = require('firebase-admin')
-const { calculateCallGold, reconcileCallUsage } = require('./whatsAppCallGold')
+const { calculateCallGold, getCallGoldSource, reconcileCallUsage } = require('./whatsAppCallGold')
 
 describe('WhatsApp call Gold reconciliation', () => {
     beforeEach(() => admin.__mock.reset())
@@ -52,6 +52,9 @@ describe('WhatsApp call Gold reconciliation', () => {
         expect(calculateCallGold(1)).toBe(1)
         expect(calculateCallGold(149)).toBe(1)
         expect(calculateCallGold(150)).toBe(2)
+        expect(getCallGoldSource('browser_call')).toBe('browser_call')
+        expect(getCallGoldSource('phone_call')).toBe('phone_call')
+        expect(getCallGoldSource('')).toBe('whatsapp_call')
     })
 
     test('charges cumulative unique response usage exactly once', async () => {
@@ -60,6 +63,7 @@ describe('WhatsApp call Gold reconciliation', () => {
             userId: 'user-1',
             projectId: 'project-1',
             chatId: 'chat-1',
+            channel: 'browser_call',
             totalTokens: 0,
             billedGold: 0,
         })
@@ -75,7 +79,9 @@ describe('WhatsApp call Gold reconciliation', () => {
         expect(admin.__mock.get('whatsAppCallSessions/call-1')).toEqual(
             expect.objectContaining({ totalTokens: 200, billedGold: 2 })
         )
-        expect(admin.__mock.list('users/user-1/goldTransactions/')).toHaveLength(2)
+        const transactions = admin.__mock.list('users/user-1/goldTransactions/')
+        expect(transactions).toHaveLength(2)
+        expect(transactions[0][1]).toEqual(expect.objectContaining({ source: 'browser_call', channel: 'browser_call' }))
     })
 
     test('deducts the remaining Gold and reports exhaustion', async () => {

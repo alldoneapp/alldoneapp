@@ -32,7 +32,7 @@ function buildCallIdentityInstruction(assistant) {
 
 function buildCallLanguageInstruction(language) {
     const settingsLanguage = getCallSettingsLanguage(language)
-    return `Start the call in ${settingsLanguage} (the caller's preferred language from their Alldone settings). If the caller speaks or switches to another language, follow them and continue the conversation in the language they are speaking.`
+    return `Start the call in ${settingsLanguage} (the caller's preferred language from their Alldone settings). If speaking German, use the informal "Du" form by default unless the caller asks for the formal "Sie" form or another form of address. If the caller speaks or switches to another language, follow them and continue the conversation in the language they are speaking.`
 }
 
 function buildCallBootstrapInstructions(assistant, language) {
@@ -87,6 +87,7 @@ function buildCallGreetingInstruction(assistant, language) {
     const settingsLanguage = getCallSettingsLanguage(language)
     return (
         `This is the very start of a new incoming phone call. Greet the caller briefly in ${settingsLanguage}, ` +
+        `using the informal "Du" form if greeting in German unless the caller asks for another form of address, ` +
         `introduce yourself only as ${assistantName}, and ask how you can help. ` +
         `Earlier messages in this thread are background context only — do not resume, summarize, or act on them, ` +
         `and do not assume there is a pending task or output to work on. Just greet and wait for the caller to say ` +

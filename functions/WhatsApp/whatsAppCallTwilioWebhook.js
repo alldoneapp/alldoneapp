@@ -35,6 +35,20 @@ function getRejectionMessage(reason) {
     return messages[reason] || 'The assistant could not accept this WhatsApp call. Please try again later.'
 }
 
+function getPhoneRejectionMessage(reason) {
+    const messages = {
+        disabled: 'Assistant phone calls are not available right now.',
+        unlinked: 'This phone number is not linked to an Alldone account. Please add it in Alldone settings first.',
+        premium_required: 'Assistant phone calls are available to premium Alldone users.',
+        gold_required: 'You need a positive Gold balance before starting an assistant call.',
+        missing_project: 'Please set a default project in Alldone before calling the assistant.',
+        missing_assistant: 'No default assistant is available for your call.',
+        active_call: 'You already have an active assistant call. Please end it before starting another one.',
+        configuration: 'Assistant phone calls are temporarily unavailable because setup is incomplete.',
+    }
+    return messages[reason] || 'The assistant could not accept this call. Please try again later.'
+}
+
 async function rejectCall(res, fromNumber, reason) {
     const service = new TwilioWhatsAppService()
     await service
@@ -47,6 +61,13 @@ async function rejectCall(res, fromNumber, reason) {
         })
     const response = new twilio.twiml.VoiceResponse()
     response.reject({ reason: 'busy' })
+    res.type('text/xml').status(200).send(response.toString())
+}
+
+function rejectVoiceCall(res, reason) {
+    const response = new twilio.twiml.VoiceResponse()
+    response.say({ voice: 'alice' }, getPhoneRejectionMessage(reason))
+    response.hangup()
     res.type('text/xml').status(200).send(response.toString())
 }
 
@@ -121,6 +142,7 @@ async function handleIncomingWhatsAppCall(req, res) {
         chatId,
         twilioCallSid,
         language: user.language,
+        channel: 'whatsapp_call',
     })
     if (!leaseResult.success) return rejectCall(res, fromNumber, leaseResult.reason || 'active_call')
 
@@ -142,6 +164,74 @@ async function handleIncomingWhatsAppCall(req, res) {
         )
 }
 
+async function handleIncomingPhoneCall(req, res) {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
+
+    const config = getWhatsAppCallConfig()
+    if (!validateTwilioRequest(req, config.phoneIncomingCallUrl)) {
+        console.warn('Phone Call: Invalid Twilio signature')
+        return res.status(403).send('Forbidden')
+    }
+
+    const fromNumber = req.body?.From
+    const twilioCallSid = String(req.body?.CallSid || '').trim()
+    if (!twilioCallSid || !fromNumber) return res.status(400).send('Missing call data')
+
+    const userId = await findUserByPhone(normalizePhoneNumber(fromNumber))
+    const userDoc = userId ? await admin.firestore().doc(`users/${userId}`).get() : null
+    const user = userDoc?.exists ? { ...userDoc.data(), uid: userDoc.id } : null
+    const eligibilityReason = getCallEligibilityReason({
+        config: { ...config, enabled: config.phoneCallsEnabled },
+        user,
+    })
+    if (eligibilityReason) return rejectVoiceCall(res, eligibilityReason)
+
+    if (!config.openAiApiKey || !config.openAiProjectId || !config.routingTokenSecret || !config.openAiWebhookSecret) {
+        return rejectVoiceCall(res, 'configuration')
+    }
+
+    const projectId = user.defaultProjectId
+    const assistantId = await getDefaultAssistantId(user, projectId)
+    if (!assistantId) return rejectVoiceCall(res, 'missing_assistant')
+
+    const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId, user)
+    const routingToken = createRoutingToken(twilioCallSid, config.routingTokenSecret)
+    const now = Date.now()
+    const leaseResult = await createCallSessionWithLease({
+        sessionId: twilioCallSid,
+        routingToken,
+        routingSecret: config.routingTokenSecret,
+        routeExpiresAt: now + config.routeTokenTtlMs,
+        leaseExpiresAt: now + config.callLeaseMs,
+        sessionExpiresAt: now + config.maxDurationSeconds * 1000,
+        userId,
+        projectId,
+        assistantId,
+        chatId,
+        twilioCallSid,
+        language: user.language,
+        channel: 'phone_call',
+    })
+    if (!leaseResult.success) return rejectVoiceCall(res, leaseResult.reason || 'active_call')
+
+    console.log('Phone Call: Routed eligible call', {
+        sessionId: twilioCallSid,
+        userId,
+        projectId,
+        assistantId,
+    })
+    return res
+        .type('text/xml')
+        .status(200)
+        .send(
+            buildSipTwiML({
+                openAiProjectId: config.openAiProjectId,
+                routingToken,
+                statusCallbackUrl: config.phoneStatusCallbackUrl,
+            })
+        )
+}
+
 async function handleWhatsAppCallStatus(req, res) {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
 
@@ -151,6 +241,22 @@ async function handleWhatsAppCallStatus(req, res) {
         return res.status(403).send('Forbidden')
     }
 
+    return handleTwilioCallStatus(req, res)
+}
+
+async function handlePhoneCallStatus(req, res) {
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
+
+    const config = getWhatsAppCallConfig()
+    if (!validateTwilioRequest(req, config.phoneStatusCallbackUrl)) {
+        console.warn('Phone Call Status: Invalid Twilio signature')
+        return res.status(403).send('Forbidden')
+    }
+
+    return handleTwilioCallStatus(req, res)
+}
+
+async function handleTwilioCallStatus(req, res) {
     const sessionId = String(req.body?.ParentCallSid || req.body?.CallSid || '').trim()
     const callStatus = String(req.body?.DialCallStatus || req.body?.CallStatus || '').trim()
     const sendAcknowledgement = () => {
@@ -174,8 +280,11 @@ async function handleWhatsAppCallStatus(req, res) {
 module.exports = {
     buildSipTwiML,
     getCallEligibilityReason,
+    getPhoneRejectionMessage,
     getRejectionMessage,
+    handleIncomingPhoneCall,
     handleIncomingWhatsAppCall,
+    handlePhoneCallStatus,
     handleWhatsAppCallStatus,
     validateTwilioRequest,
 }

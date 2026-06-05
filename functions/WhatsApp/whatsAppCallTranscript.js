@@ -41,7 +41,17 @@ async function updateLastAssistantCommentData({ projectId, chatId, assistantId, 
         })
 }
 
-async function storeCallTranscriptTurn({ sessionId, turnId, role, text, projectId, chatId, userId, assistantId }) {
+async function storeCallTranscriptTurn({
+    sessionId,
+    turnId,
+    role,
+    text,
+    projectId,
+    chatId,
+    userId,
+    assistantId,
+    source = 'whatsapp_call',
+}) {
     const normalizedText = String(text || '').trim()
     if (!normalizedText) return { stored: false, reason: 'empty' }
 
@@ -63,7 +73,7 @@ async function storeCallTranscriptTurn({ sessionId, turnId, role, text, projectI
             created: now,
             creatorId,
             fromAssistant: role === 'assistant',
-            source: 'whatsapp_call',
+            source,
             callSessionId: sessionId,
             realtimeTurnId: String(turnId || ''),
             isCallTranscript: true,

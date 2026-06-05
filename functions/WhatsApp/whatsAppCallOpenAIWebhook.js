@@ -175,6 +175,7 @@ async function handleOpenAIRealtimeCallWebhook(req, res) {
 
 module.exports = {
     buildInitialRealtimeSession,
+    getRunCallQueueResource,
     getRunCallTaskId,
     handleOpenAIRealtimeCallWebhook,
     openAiCallRequest,
