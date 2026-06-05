@@ -143,8 +143,8 @@ async function startAssistantBrowserCall(data, auth) {
     const userId = auth?.uid
     if (!userId) throw new HttpsError('unauthenticated', 'Sign in before calling the assistant.')
 
-    const offerSdp = String(data?.offerSdp || data?.sdp || '').trim()
-    if (!offerSdp || offerSdp.length > MAX_SDP_LENGTH) {
+    const offerSdp = String(data?.offerSdp || data?.sdp || '')
+    if (!offerSdp.trim() || offerSdp.length > MAX_SDP_LENGTH) {
         throw new HttpsError('invalid-argument', 'A valid WebRTC SDP offer is required.')
     }
 

@@ -150,6 +150,17 @@ describe('assistant browser calls', () => {
         expect(mockEnqueue).toHaveBeenCalled()
     })
 
+    test('forwards SDP without trimming protocol line endings', async () => {
+        const offerSdp = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n'
+
+        await startAssistantBrowserCall(
+            { offerSdp, projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
+            { uid: 'user-1' }
+        )
+
+        expect(global.fetch.mock.calls[0][1].body.values.sdp).toBe(offerSdp)
+    })
+
     test('requires an explicit browser call topic', async () => {
         await expect(startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, { uid: 'user-1' })).rejects.toMatchObject({
             code: 'failed-precondition',
