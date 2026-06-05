@@ -14,6 +14,11 @@ const STATUS_CONNECTING = 'connecting'
 const STATUS_CONNECTED = 'connected'
 const ICE_GATHERING_TIMEOUT_MS = 5000
 
+// Delay before treating a 'disconnected' ICE state as terminal.
+// WebRTC frequently reports 'disconnected' transiently when the browser tab
+// goes into the background; it usually recovers within a few seconds.
+const DISCONNECTED_GRACE_MS = 8000
+
 function waitForIceGatheringComplete(pc) {
     if (!pc || pc.iceGatheringState === 'complete') return Promise.resolve()
 
@@ -56,27 +61,83 @@ export default function AssistantVoiceCallButton({
     const localStreamRef = useRef(null)
     const audioElementRef = useRef(null)
     const mountedRef = useRef(true)
+    const wakeLockRef = useRef(null)
+    const disconnectTimerRef = useRef(null)
 
-    const cleanup = useCallback((resetState = true) => {
-        const stream = localStreamRef.current
-        if (stream) stream.getTracks().forEach(track => track.stop())
-        localStreamRef.current = null
-
-        const pc = peerConnectionRef.current
-        if (pc) pc.close()
-        peerConnectionRef.current = null
-
-        const audio = audioElementRef.current
-        if (audio) {
-            audio.srcObject = null
-            audio.remove()
-        }
-        audioElementRef.current = null
-        if (resetState && mountedRef.current) {
-            setMuted(false)
-            setStatus(STATUS_IDLE)
+    // Acquire a Screen Wake Lock so the device does not sleep while a call is
+    // active.  This is best-effort — the API may not be available everywhere.
+    const acquireWakeLock = useCallback(async () => {
+        try {
+            if (navigator?.wakeLock) {
+                wakeLockRef.current = await navigator.wakeLock.request('screen')
+                wakeLockRef.current.addEventListener('release', () => {
+                    wakeLockRef.current = null
+                })
+            }
+        } catch (_) {
+            // Non-critical — ignore if the browser denies the lock.
         }
     }, [])
+
+    const releaseWakeLock = useCallback(() => {
+        if (wakeLockRef.current) {
+            wakeLockRef.current.release().catch(() => {})
+            wakeLockRef.current = null
+        }
+    }, [])
+
+    const cleanup = useCallback(
+        (resetState = true) => {
+            if (disconnectTimerRef.current) {
+                clearTimeout(disconnectTimerRef.current)
+                disconnectTimerRef.current = null
+            }
+            releaseWakeLock()
+
+            const stream = localStreamRef.current
+            if (stream) stream.getTracks().forEach(track => track.stop())
+            localStreamRef.current = null
+
+            const pc = peerConnectionRef.current
+            if (pc) pc.close()
+            peerConnectionRef.current = null
+
+            const audio = audioElementRef.current
+            if (audio) {
+                audio.srcObject = null
+                audio.remove()
+            }
+            audioElementRef.current = null
+            if (resetState && mountedRef.current) {
+                setMuted(false)
+                setStatus(STATUS_IDLE)
+            }
+        },
+        [releaseWakeLock]
+    )
+
+    // When the page becomes visible again after being backgrounded, re-acquire
+    // the wake lock (browsers release it automatically on visibility:hidden) and
+    // make sure the remote audio element is still playing.
+    useEffect(() => {
+        function handleVisibilityChange() {
+            if (document.visibilityState === 'visible') {
+                // Re-acquire wake lock released by the browser on hide.
+                if (peerConnectionRef.current) acquireWakeLock()
+
+                // Nudge the audio element — some browsers pause it in background.
+                const audio = audioElementRef.current
+                if (audio && audio.paused && audio.srcObject) {
+                    audio.play().catch(() => {})
+                }
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
+        }
+    }, [acquireWakeLock])
 
     useEffect(
         () => () => {
@@ -110,8 +171,31 @@ export default function AssistantVoiceCallButton({
             pc.ontrack = event => {
                 audio.srcObject = event.streams[0]
             }
+
+            // Handle connection state changes with a grace period for transient
+            // 'disconnected' states.  Browsers commonly fire 'disconnected'
+            // when the tab moves to the background; the ICE agent usually
+            // recovers within seconds.  Only 'failed' and 'closed' are terminal.
             pc.onconnectionstatechange = () => {
-                if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) cleanup()
+                const state = pc.connectionState
+                if (state === 'connected') {
+                    // Recovered — cancel any pending disconnect timer.
+                    if (disconnectTimerRef.current) {
+                        clearTimeout(disconnectTimerRef.current)
+                        disconnectTimerRef.current = null
+                    }
+                } else if (state === 'disconnected') {
+                    // Start a grace timer; if the connection does not recover
+                    // within DISCONNECTED_GRACE_MS we treat it as terminal.
+                    if (!disconnectTimerRef.current) {
+                        disconnectTimerRef.current = setTimeout(() => {
+                            disconnectTimerRef.current = null
+                            if (pc.connectionState !== 'connected') cleanup()
+                        }, DISCONNECTED_GRACE_MS)
+                    }
+                } else if (state === 'failed' || state === 'closed') {
+                    cleanup()
+                }
             }
 
             const localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -150,13 +234,14 @@ export default function AssistantVoiceCallButton({
             if (!result?.answerSdp) throw new Error('Missing WebRTC answer')
 
             await pc.setRemoteDescription({ type: 'answer', sdp: result.answerSdp })
+            acquireWakeLock()
             setStatus(STATUS_CONNECTED)
         } catch (e) {
             console.error('Assistant browser call failed:', e)
             cleanup()
             setError(e?.message || translate('Could not start assistant call') || 'Could not start assistant call')
         }
-    }, [assistant, cleanup, projectId, skipNavigationOnThreadCreate])
+    }, [assistant, cleanup, acquireWakeLock, projectId, skipNavigationOnThreadCreate])
 
     const toggleMute = useCallback(() => {
         const nextMuted = !muted
