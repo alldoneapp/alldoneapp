@@ -157,6 +157,33 @@ describe('WhatsApp call sideband configuration', () => {
         expect(updateCallSession).toHaveBeenCalledWith('call-1', expect.objectContaining({ recapStatus: 'sent' }))
     })
 
+    test.each(['phone_call', 'browser_call'])('delivers stored %s recaps to WhatsApp', async channel => {
+        claimRecap.mockResolvedValue(true)
+        getCallSession.mockResolvedValue({
+            id: 'call-1',
+            userId: 'user-1',
+            projectId: 'project-1',
+            chatId: 'chat-1',
+            assistantId: 'assistant-1',
+            channel,
+        })
+        getCallTranscriptTurn.mockResolvedValue({ role: 'assistant', text: 'Call recap: Existing recap.' })
+        admin.firestore.mockReturnValue({
+            doc: jest.fn(() => ({
+                get: jest.fn(async () => ({ exists: true, data: () => ({ phone: '+1234567890' }) })),
+            })),
+        })
+        const sendWhatsAppMessage = jest.fn(async () => ({ success: true }))
+        TwilioWhatsAppService.mockImplementation(() => ({ sendWhatsAppMessage }))
+
+        await expect(sendCallRecap('call-1')).resolves.toEqual({ sent: true })
+
+        expect(sendWhatsAppMessage).toHaveBeenCalledWith('+1234567890', 'Call recap: Existing recap.', {
+            suppressSensitiveLogging: true,
+        })
+        expect(updateCallSession).toHaveBeenCalledWith('call-1', expect.objectContaining({ recapStatus: 'sent' }))
+    })
+
     test('connects and greets before slow dynamic tool context finishes loading', async () => {
         let resolveDynamicTools
         const dynamicToolsPending = new Promise(resolve => {

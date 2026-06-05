@@ -296,11 +296,6 @@ async function sendCallRecap(sessionId) {
         })
     }
 
-    if ((session.channel || 'whatsapp_call') !== 'whatsapp_call') {
-        await updateCallSession(sessionId, { recapStatus: 'stored', recapStoredAt: Date.now() })
-        return { sent: false, stored: true, reason: 'non_whatsapp_channel' }
-    }
-
     try {
         const userDoc = await admin.firestore().doc(`users/${session.userId}`).get()
         const phone = userDoc.exists ? userDoc.data()?.phone : null
