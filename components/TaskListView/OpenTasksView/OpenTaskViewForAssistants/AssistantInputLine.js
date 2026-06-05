@@ -8,6 +8,7 @@ import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import Button from '../../../UIControls/Button'
 import Spinner from '../../../UIComponents/Spinner'
 import AssistantAvatarButton from '../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton'
+import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 
 const ASSISTANT_INPUT_MIN_HEIGHT = 40
 const ASSISTANT_INPUT_MAX_HEIGHT = 120
@@ -104,6 +105,12 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     }}
                 />
                 <View style={localStyles.sendButtonWrapper}>
+                    <AssistantVoiceCallButton
+                        compact
+                        assistant={assistant}
+                        projectId={projectId}
+                        buttonStyle={localStyles.voiceButton}
+                    />
                     <Button
                         title={isSending ? null : sendButtonTitle}
                         icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
@@ -160,8 +167,13 @@ const localStyles = StyleSheet.create({
         overflowY: 'hidden',
     },
     sendButtonWrapper: {
+        flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    voiceButton: {
+        marginLeft: 0,
+        marginRight: 8,
     },
     sendButtonDesktop: {
         paddingHorizontal: 16,

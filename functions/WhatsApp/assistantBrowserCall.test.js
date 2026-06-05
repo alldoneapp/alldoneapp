@@ -22,7 +22,6 @@ jest.mock(
     { virtual: true }
 )
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
-jest.mock('./whatsAppDailyTopic', () => ({ getOrCreateWhatsAppDailyTopic: jest.fn() }))
 jest.mock('./whatsAppIncomingHandler', () => ({ getDefaultAssistantId: jest.fn() }))
 jest.mock('./whatsAppCallTwilioWebhook', () => ({ getCallEligibilityReason: jest.fn() }))
 jest.mock('./whatsAppCallConfig', () => ({
@@ -41,12 +40,15 @@ jest.mock('./whatsAppCallSessions', () => ({
 
 const admin = require('firebase-admin')
 const { getAssistantForChat } = require('../Assistant/assistantHelper')
-const { getOrCreateWhatsAppDailyTopic } = require('./whatsAppDailyTopic')
 const { getDefaultAssistantId } = require('./whatsAppIncomingHandler')
 const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
 const { createDirectCallSessionWithLease, updateCallSession } = require('./whatsAppCallSessions')
-const { buildInitialBrowserRealtimeSession, startAssistantBrowserCall } = require('./assistantBrowserCall')
+const {
+    buildInitialBrowserRealtimeSession,
+    resolveBrowserCallTopic,
+    startAssistantBrowserCall,
+} = require('./assistantBrowserCall')
 
 describe('assistant browser calls', () => {
     beforeEach(() => {
@@ -73,21 +75,37 @@ describe('assistant browser calls', () => {
         })
         getCallEligibilityReason.mockReturnValue(null)
         admin.firestore.mockReturnValue({
-            doc: jest.fn(() => ({
-                get: jest.fn(async () => ({
-                    exists: true,
-                    id: 'user-1',
-                    data: () => ({
-                        premium: { status: 'premium' },
-                        gold: 3,
-                        defaultProjectId: 'project-1',
-                        language: 'English',
-                    }),
-                })),
+            doc: jest.fn(path => ({
+                get: jest.fn(async () => {
+                    if (path === 'users/user-1') {
+                        return {
+                            exists: true,
+                            id: 'user-1',
+                            data: () => ({
+                                premium: { status: 'premium' },
+                                gold: 3,
+                                defaultProjectId: 'project-1',
+                                language: 'English',
+                            }),
+                        }
+                    }
+                    if (path === 'chatObjects/project-1/chats/chat-1') {
+                        return {
+                            exists: true,
+                            id: 'chat-1',
+                            data: () => ({
+                                type: 'topics',
+                                assistantId: 'assistant-1',
+                                creatorId: 'user-1',
+                                members: ['user-1'],
+                            }),
+                        }
+                    }
+                    return { exists: false, id: path.split('/').pop(), data: () => null }
+                }),
             })),
         })
         getDefaultAssistantId.mockResolvedValue('assistant-1')
-        getOrCreateWhatsAppDailyTopic.mockResolvedValue({ chatId: 'chat-1' })
         createDirectCallSessionWithLease.mockResolvedValue({ success: true })
         getAssistantForChat.mockResolvedValue({ uid: 'assistant-1', realtimeVoice: 'marin' })
     })
@@ -99,7 +117,10 @@ describe('assistant browser calls', () => {
     })
 
     test('creates a browser call session and queues the sideband controller', async () => {
-        const result = await startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, { uid: 'user-1' })
+        const result = await startAssistantBrowserCall(
+            { offerSdp: 'offer-sdp', projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
+            { uid: 'user-1' }
+        )
 
         expect(result).toEqual(
             expect.objectContaining({
@@ -127,6 +148,22 @@ describe('assistant browser calls', () => {
             expect.objectContaining({ openAiCallId: 'rtc_123', status: 'accepted' })
         )
         expect(mockEnqueue).toHaveBeenCalled()
+    })
+
+    test('requires an explicit browser call topic', async () => {
+        await expect(startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, { uid: 'user-1' })).rejects.toMatchObject({
+            code: 'failed-precondition',
+        })
+    })
+
+    test('resolves an existing browser call topic', async () => {
+        await expect(
+            resolveBrowserCallTopic(
+                { projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
+                { defaultProjectId: 'project-1' },
+                'user-1'
+            )
+        ).resolves.toEqual({ projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' })
     })
 
     test('uses a minimal initial session and leaves full configuration to the sideband', () => {

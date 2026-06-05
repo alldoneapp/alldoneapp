@@ -15,6 +15,8 @@ import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallBu
 export default function GlobalUserPhone({ userId, phone }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const [open, setOpen] = useState(false)
 
     const phoneDisplay = phone
@@ -74,7 +76,12 @@ export default function GlobalUserPhone({ userId, phone }) {
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} />
                 </Popover>
-                <AssistantVoiceCallButton compact buttonStyle={localStyles.callButton} />
+                <AssistantVoiceCallButton
+                    compact
+                    assistant={defaultAssistant}
+                    projectId={defaultProjectId}
+                    buttonStyle={localStyles.callButton}
+                />
             </View>
         </View>
     )

@@ -23,6 +23,7 @@ import Icon from '../../../Icon'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
+import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 
 const ASSISTANT_INPUT_MIN_HEIGHT = 40
 const ASSISTANT_INPUT_MAX_HEIGHT = 120
@@ -268,6 +269,13 @@ export default function AssistantOptions({
                     contentLocation={isMobile ? null : undefined}
                 >
                     <View style={localStyles.sendButtonWrapper}>
+                        <AssistantVoiceCallButton
+                            compact
+                            assistant={assistant}
+                            projectId={assistantProjectId}
+                            skipNavigationOnThreadCreate
+                            buttonStyle={localStyles.voiceButton}
+                        />
                         <Button
                             title={isSending ? null : sendButtonTitle}
                             icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
@@ -352,8 +360,13 @@ const localStyles = StyleSheet.create({
         marginRight: 12,
     },
     sendButtonWrapper: {
+        flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    voiceButton: {
+        marginLeft: 0,
+        marginRight: 8,
     },
     sendButtonDesktop: {
         paddingHorizontal: 16,

@@ -48,7 +48,9 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
                 projectId={projectId}
                 noBottomMargin={currentUser.displayName === 'Anna Alldone'}
             />
-            {currentUser.displayName === 'Anna Alldone' && <WhatsAppAssistantLine />}
+            {currentUser.displayName === 'Anna Alldone' && (
+                <WhatsAppAssistantLine assistant={currentUser} projectId={projectId} />
+            )}
             <Text style={localStyles.header}>{translate('Assistant tasks')}</Text>
             {oneTimeTasks.length > 0 && (
                 <View style={localStyles.section}>

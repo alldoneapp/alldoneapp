@@ -4,7 +4,6 @@ const { getFunctions } = require('firebase-admin/functions')
 const { HttpsError } = require('firebase-functions/v2/https')
 const { v4: uuidv4 } = require('uuid')
 const { getAssistantForChat } = require('../Assistant/assistantHelper')
-const { getOrCreateWhatsAppDailyTopic } = require('./whatsAppDailyTopic')
 const { getDefaultAssistantId } = require('./whatsAppIncomingHandler')
 const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
@@ -30,6 +29,8 @@ function getHttpsErrorForEligibility(reason) {
         gold_required: 'You need a positive Gold balance before starting an assistant call.',
         missing_project: 'Set a default project before calling the assistant.',
         missing_assistant: 'No default assistant is available for your call.',
+        missing_topic: 'Create a voice call topic before calling the assistant.',
+        invalid_topic: 'The selected voice call topic is not available.',
         active_call: 'You already have an active assistant call.',
         configuration: 'Browser assistant calls are temporarily unavailable because setup is incomplete.',
     }
@@ -65,6 +66,38 @@ function createMissingOpenAICallIdError() {
     const error = new Error('OpenAI WebRTC call did not return a call id')
     error.code = 'missing_openai_call_id'
     return error
+}
+
+function safeString(value) {
+    return String(value || '').trim()
+}
+
+function userCanUseChat(userId, chat) {
+    if (!chat) return false
+    if (chat.creatorId === userId || chat.lastEditorId === userId) return true
+    if (Array.isArray(chat.members) && chat.members.includes(userId)) return true
+    if (Array.isArray(chat.usersFollowing) && chat.usersFollowing.includes(userId)) return true
+    return false
+}
+
+async function resolveBrowserCallTopic(data, user, userId) {
+    const projectId = safeString(data?.projectId) || safeString(user.defaultProjectId)
+    const chatId = safeString(data?.chatId)
+    if (!projectId) throw getHttpsErrorForEligibility('missing_project')
+    if (!chatId) throw getHttpsErrorForEligibility('missing_topic')
+
+    const assistantId = safeString(data?.assistantId) || (await getDefaultAssistantId(user, projectId))
+    if (!assistantId) throw getHttpsErrorForEligibility('missing_assistant')
+
+    const chatDoc = await admin.firestore().doc(`chatObjects/${projectId}/chats/${chatId}`).get()
+    if (!chatDoc.exists) throw getHttpsErrorForEligibility('invalid_topic')
+
+    const chat = chatDoc.data() || {}
+    if (chat.type !== 'topics') throw getHttpsErrorForEligibility('invalid_topic')
+    if (chat.assistantId && chat.assistantId !== assistantId) throw getHttpsErrorForEligibility('invalid_topic')
+    if (!userCanUseChat(userId, chat)) throw getHttpsErrorForEligibility('invalid_topic')
+
+    return { projectId, chatId, assistantId }
 }
 
 async function createOpenAIWebRTCSession({ config, offerSdp, assistant, language, userId }) {
@@ -125,11 +158,7 @@ async function startAssistantBrowserCall(data, auth) {
     if (eligibilityReason) throw getHttpsErrorForEligibility(eligibilityReason)
     if (!config.openAiApiKey) throw getHttpsErrorForEligibility('configuration')
 
-    const projectId = user.defaultProjectId
-    const assistantId = await getDefaultAssistantId(user, projectId)
-    if (!assistantId) throw getHttpsErrorForEligibility('missing_assistant')
-
-    const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId, user)
+    const { projectId, chatId, assistantId } = await resolveBrowserCallTopic(data, user, userId)
     const sessionId = `browser-${uuidv4()}`
     const now = Date.now()
     const leaseResult = await createDirectCallSessionWithLease({
@@ -189,5 +218,6 @@ module.exports = {
     buildInitialBrowserRealtimeSession,
     createMissingOpenAICallIdError,
     createOpenAIWebRTCSession,
+    resolveBrowserCallTopic,
     startAssistantBrowserCall,
 }

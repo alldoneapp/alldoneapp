@@ -32,7 +32,7 @@ function openEmailLink() {
     }
 }
 
-export default function WhatsAppAssistantLine() {
+export default function WhatsAppAssistantLine({ assistant, projectId }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const phone = useSelector(state => state.loggedUser.phone)
     const assistantEmailEnabled = useSelector(state => state.loggedUser.assistantEmailEnabled === true)
@@ -84,10 +84,15 @@ export default function WhatsAppAssistantLine() {
                     </Text>
                 </TouchableOpacity>
             </Popover>
-            <View style={[localStyles.row, localStyles.callRow]}>
-                <AssistantVoiceCallButton />
-                <Text style={[localStyles.text, localStyles.callNumber]}>{ASSISTANT_VOICE_NUMBER_DISPLAY}</Text>
-            </View>
+            <AssistantVoiceCallButton
+                variant="link"
+                assistant={assistant}
+                projectId={projectId}
+                title={`${translate('Call Anna')}: ${ASSISTANT_VOICE_NUMBER_DISPLAY}`}
+                buttonStyle={localStyles.callRow}
+                iconStyle={localStyles.icon}
+                textStyle={localStyles.text}
+            />
             {assistantEmailEnabled && (
                 <TouchableOpacity
                     style={[localStyles.row, localStyles.emailRow]}
@@ -124,10 +129,6 @@ const localStyles = StyleSheet.create({
     },
     callRow: {
         marginTop: 10,
-        flexWrap: 'wrap',
-    },
-    callNumber: {
-        marginLeft: 12,
     },
     icon: {
         width: 24,
