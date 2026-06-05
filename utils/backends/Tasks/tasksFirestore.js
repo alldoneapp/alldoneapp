@@ -1369,6 +1369,19 @@ export async function updateFocusedTask(
 
     if (assignee) {
         const batch = externalBatch || new BatchWrapper(getDb())
+        const shouldSetOptimisticFocus = !externalBatch
+
+        if (shouldSetOptimisticFocus) {
+            const optimisticTaskId = taskToSetFocusOn ? taskToSetFocusOn.id : null
+            const optimisticProjectId = taskToSetFocusOn
+                ? projectId
+                : assignee.inFocusTaskProjectId
+                ? assignee.inFocusTaskProjectId
+                : projectId
+            store.dispatch(
+                setOptimisticFocusTask(optimisticTaskId, optimisticProjectId, taskToSetFocusOn?.parentGoalId)
+            )
+        }
 
         if (taskToSetFocusOn) {
             // REMOVE LOGGING HERE
@@ -1449,7 +1462,14 @@ export async function updateFocusedTask(
             inFocusTaskProjectId: taskToSetFocusOn ? projectId : '', // Use projectId of taskToSetFocusOn
         })
 
-        if (!externalBatch) await batch.commit()
+        if (!externalBatch) {
+            try {
+                await batch.commit()
+            } catch (error) {
+                store.dispatch(clearOptimisticFocusTask())
+                throw error
+            }
+        }
 
         if (assignee.inFocusTaskId && (taskToSetFocusOn ? assignee.inFocusTaskId !== taskToSetFocusOn.id : true)) {
             // Avoid feed if unsetting and re-setting same task (though unlikely)

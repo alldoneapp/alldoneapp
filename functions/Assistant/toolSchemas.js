@@ -489,7 +489,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, change focus, rename, update, set reminders/alerts, set time estimations, or move a task to another project. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
+                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set time estimations, or move a task to another project. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
             parameters: {
                 type: 'object',
                 properties: {
@@ -513,11 +513,13 @@ const toolSchemas = {
                     },
                     completed: {
                         type: 'boolean',
-                        description: 'Set to true to mark task as completed, false to mark as open',
+                        description:
+                            'Set to true only when the user explicitly wants the task completed/done/finished, false to mark as open. Do not use this for focus requests.',
                     },
                     focus: {
                         type: 'boolean',
-                        description: 'Set to true to make this the focus task, false to remove focus',
+                        description:
+                            'Set to true to make this the current focus task, false to remove focus. Use this for "set in focus", "make focus task", "focus this task", and German "in den Fokus setzen".',
                     },
                     name: {
                         type: 'string',

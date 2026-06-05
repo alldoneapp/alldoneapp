@@ -28,6 +28,7 @@ import {
     updateUserProject,
     navigateToAllProjectsTasks,
     setChatNotificationsInProject,
+    clearOptimisticFocusTask,
 } from '../../redux/actions'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import SharedHelper, { ANONYMOUS_USER_DATA } from '../SharedHelper'
@@ -121,6 +122,23 @@ export function watchProjectsChatNotifications() {
 }
 
 export function watchLoggedUserData(loggedUser) {
+    const clearConfirmedOptimisticFocus = user => {
+        const { optimisticFocusActive, optimisticFocusTaskId, optimisticFocusTaskProjectId } = store.getState()
+        if (!optimisticFocusActive || !user) return
+
+        const confirmedTaskId = user.inFocusTaskId || ''
+        const confirmedProjectId = user.inFocusTaskProjectId || ''
+        const optimisticTaskId = optimisticFocusTaskId || ''
+        const optimisticProjectId = optimisticFocusTaskProjectId || ''
+        const focusWasCleared = !optimisticTaskId && !confirmedTaskId
+        const focusWasSet =
+            optimisticTaskId && confirmedTaskId === optimisticTaskId && confirmedProjectId === optimisticProjectId
+
+        if (focusWasCleared || focusWasSet) {
+            store.dispatch(clearOptimisticFocusTask())
+        }
+    }
+
     const setAnonymousUser = user => {
         store.dispatch(
             storeLoggedUser({
@@ -132,6 +150,7 @@ export function watchLoggedUserData(loggedUser) {
                 archivedProjectIds: loggedUser.archivedProjectIds,
             })
         )
+        clearConfirmedOptimisticFocus(user)
     }
 
     const setLoggedUser = user => {
@@ -150,6 +169,7 @@ export function watchLoggedUserData(loggedUser) {
                 }
             }
             store.dispatch(storeLoggedUser(user))
+            clearConfirmedOptimisticFocus(user)
         }
     }
 
