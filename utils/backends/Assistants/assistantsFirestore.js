@@ -15,6 +15,7 @@ import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import store from '../../../redux/store'
 import { setAssistantsInProject, setGlobalAssistants, startLoadingData, stopLoadingData } from '../../../redux/actions'
 import {
+    DEFAULT_EMAIL_SIGNATURE,
     GLOBAL_PROJECT_ID,
     TYPE_3RD_PARTY,
     TYPE_PROMPT_BASED,
@@ -724,6 +725,15 @@ export function updateAssistantRealtimeVoice(projectId, assistant, realtimeVoice
     updateAssistantData(projectId, assistant.uid, { realtimeVoice }, null)
 }
 
+export function updateAssistantEmailSignature(projectId, assistant, emailSignature) {
+    updateAssistantData(
+        projectId,
+        assistant.uid,
+        { emailSignature: typeof emailSignature === 'string' ? emailSignature : '' },
+        null
+    )
+}
+
 export function updateAssistantLastVisitedBoardDate(
     projectId,
     assistantId,
@@ -1260,6 +1270,10 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
         photoURL50: globalAssistant.photoURL50,
         photoURL300: globalAssistant.photoURL300,
         instructions: globalAssistant.instructions,
+        emailSignature:
+            typeof globalAssistant.emailSignature === 'string'
+                ? globalAssistant.emailSignature
+                : DEFAULT_EMAIL_SIGNATURE,
         model: globalAssistant.model,
         temperature: globalAssistant.temperature,
         allowedTools: Array.isArray(globalAssistant.allowedTools) ? globalAssistant.allowedTools : [],

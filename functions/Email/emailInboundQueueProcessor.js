@@ -4,6 +4,7 @@ const admin = require('firebase-admin')
 const { v4: uuidv4 } = require('uuid')
 
 const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtraction')
+const { getAssistantForChat } = require('../Assistant/assistantHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
 const {
@@ -108,7 +109,8 @@ async function processQueueItem(userId, item) {
             }
         )
 
-        await sendReplyForQueueItem(data, responseText, replyDelivery)
+        const emailSignature = await getEmailSignatureForQueueItem(userId, projectId, assistantId)
+        await sendReplyForQueueItem(data, responseText, replyDelivery, emailSignature)
         await finalizeQueueItem(item.ref, messageId, {
             status: 'processed',
             replyStatus: 'sent',
@@ -221,7 +223,12 @@ function getReplyDeliveryForQueueItem(data) {
     }
 }
 
-async function sendReplyForQueueItem(data, replyText, replyDelivery = getReplyDeliveryForQueueItem(data)) {
+async function sendReplyForQueueItem(
+    data,
+    replyText,
+    replyDelivery = getReplyDeliveryForQueueItem(data),
+    emailSignature
+) {
     return sendAnnaEmailReply({
         toEmails: replyDelivery.toEmails,
         ccEmails: replyDelivery.ccEmails,
@@ -230,7 +237,13 @@ async function sendReplyForQueueItem(data, replyText, replyDelivery = getReplyDe
         inReplyTo: data.threadHeaders?.inReplyTo || '',
         references: data.threadHeaders?.references || '',
         fromEmail: replyDelivery.fromEmail,
+        emailSignature,
     })
+}
+
+async function getEmailSignatureForQueueItem(userId, projectId, assistantId) {
+    const assistant = await getAssistantForChat(projectId, assistantId, userId)
+    return assistant?.emailSignature
 }
 
 function buildReplySubject(subject = '') {
@@ -323,6 +336,7 @@ module.exports = {
     processAnnaEmailInboundQueueItem,
     hydrateAttachments,
     __private__: {
+        getEmailSignatureForQueueItem,
         processQueueItem,
     },
 }

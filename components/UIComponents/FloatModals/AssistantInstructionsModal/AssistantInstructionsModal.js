@@ -6,7 +6,15 @@ import EditForm from './EditForm'
 import { translate } from '../../../../i18n/TranslationService'
 import ModalHeader from '../ModalHeader'
 
-export default function AssistantInstructionsModal({ disabled, assistant, closeModal, updateInstructions }) {
+export default function AssistantInstructionsModal({
+    disabled,
+    assistant,
+    closeModal,
+    updateInstructions,
+    title = translate('System Message Instructions'),
+    description = translate('Here you can enter the instructions'),
+    placeholder = translate('Type to add instructions'),
+}) {
     const { instructions: initialInstructions } = assistant
     const { width: windowWidth, height: windowHeight } = Dimensions.get('window')
     const isMobile = windowWidth < 600
@@ -22,17 +30,14 @@ export default function AssistantInstructionsModal({ disabled, assistant, closeM
         <View>
             <View style={[localStyles.container, { width: modalWidth }, isMobile && localStyles.mobileContainer]}>
                 <View style={localStyles.innerContainer}>
-                    <ModalHeader
-                        title={translate('System Message Instructions')}
-                        description={translate(`Here you can enter the instructions`)}
-                        closeModal={closeModal}
-                    />
+                    <ModalHeader title={title} description={description} closeModal={closeModal} />
                     <EditForm
                         disabled={disabled}
                         setInstructions={setInstructions}
                         initialInstructions={initialInstructions}
                         maxInputHeight={maxInputHeight}
                         isMobile={isMobile}
+                        placeholder={placeholder}
                     />
                 </View>
             </View>

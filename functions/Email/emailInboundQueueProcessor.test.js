@@ -1,5 +1,9 @@
 'use strict'
 
+const mockGetAssistantForChat = jest.fn().mockResolvedValue({
+    emailSignature: 'Custom signature\nhttps://example.com',
+})
+
 jest.mock('firebase-admin', () => {
     const auditSet = jest.fn().mockResolvedValue(undefined)
     return {
@@ -54,6 +58,10 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     }),
 }))
 
+jest.mock('../Assistant/assistantHelper', () => ({
+    getAssistantForChat: mockGetAssistantForChat,
+}))
+
 jest.mock('./emailReplyService', () => ({
     sendAnnaEmailReply: jest.fn().mockResolvedValue({ success: true }),
 }))
@@ -73,12 +81,16 @@ jest.mock('./emailDailyTopic', () => ({
 
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
 const { sendAnnaEmailReply } = require('./emailReplyService')
+const { getAssistantForChat } = require('../Assistant/assistantHelper')
 const { getOrCreateDailyEmailTopic, storeEmailUserMessageInTopic } = require('./emailDailyTopic')
 const { __private__ } = require('./emailInboundQueueProcessor')
 
 describe('emailInboundQueueProcessor', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        mockGetAssistantForChat.mockResolvedValue({
+            emailSignature: 'Custom signature\nhttps://example.com',
+        })
     })
 
     test('selects the most relevant attachment and passes it to the assistant', async () => {
@@ -142,8 +154,10 @@ describe('emailInboundQueueProcessor', () => {
             expect.objectContaining({
                 toEmails: ['sender@example.com', 'teammate@example.com'],
                 ccEmails: ['observer@example.com'],
+                emailSignature: 'Custom signature\nhttps://example.com',
             })
         )
+        expect(getAssistantForChat).toHaveBeenCalledWith('project-1', 'assistant-1', 'user-1')
     })
 
     test('continues without attachment payload when no supported attachment exists', async () => {

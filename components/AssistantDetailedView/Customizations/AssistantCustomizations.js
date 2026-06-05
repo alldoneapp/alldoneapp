@@ -33,6 +33,7 @@ import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
 import HeartbeatStatusProperty from './Heartbeat/HeartbeatStatusProperty'
+import EmailSignatureProperty from './EmailSignature/EmailSignatureProperty'
 
 export default function AssistantCustomizations({
     projectId,
@@ -70,6 +71,7 @@ export default function AssistantCustomizations({
 
     const hasTalkToAssistantTool =
         Array.isArray(assistant.allowedTools) && assistant.allowedTools.includes('talk_to_assistant')
+    const canConfigureEmailSignature = defaultAssistantId === assistant.uid
 
     const updateIsFromTemplate = templateProject => {
         setIsFromTemplateProject(templateProject ? templateProject.globalAssistantIds.includes(assistant.uid) : false)
@@ -151,6 +153,13 @@ export default function AssistantCustomizations({
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <TemperatureProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <RealtimeVoiceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    {canConfigureEmailSignature && (
+                        <EmailSignatureProperty
+                            disabled={!canEditAssitant}
+                            projectId={projectId}
+                            assistant={assistant}
+                        />
+                    )}
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     {hasTalkToAssistantTool && (
                         <DelegationTargetsAccessProperty

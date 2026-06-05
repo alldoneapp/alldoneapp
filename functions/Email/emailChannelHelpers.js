@@ -4,6 +4,7 @@ const crypto = require('crypto')
 
 const DEFAULT_PUBLIC_EMAIL = 'anna@alldoneapp.com'
 const DEFAULT_ASSISTANT_EMAIL_ADDRESSES = [DEFAULT_PUBLIC_EMAIL, 'anna@alldone.app', 'noreply@alldone.app']
+const DEFAULT_EMAIL_SIGNATURE = '---\nAnna Alldone\nAI Chief of Staff\nhttps://alldone.app/'
 const EMAIL_EXTERNAL_TOOLS_KEY = 'external_tools'
 const EMAIL_CREATE_TASK_KEY = 'create_task'
 const EMAIL_FIND_CALENDAR_AVAILABILITY_KEY = 'find_calendar_availability'
@@ -529,6 +530,7 @@ function verifyInboundEmailSignature(secret, signature = {}, payload) {
 
 module.exports = {
     DEFAULT_ASSISTANT_EMAIL_ADDRESSES,
+    DEFAULT_EMAIL_SIGNATURE,
     DEFAULT_PUBLIC_EMAIL,
     EMAIL_CREATE_CALENDAR_EVENT_KEY,
     EMAIL_CREATE_GMAIL_DRAFT_KEY,

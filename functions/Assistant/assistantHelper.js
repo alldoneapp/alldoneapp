@@ -41,6 +41,7 @@ const { getProject } = require('../Firestore/generalFirestoreCloud')
 const { getChat, copyChatToOtherProject } = require('../Chats/chatsFirestoreCloud')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { DEFAULT_EMAIL_SIGNATURE } = require('../Email/emailChannelHelpers')
 const { ENABLE_DETAILED_LOGGING } = require('./performanceConfig')
 const { getToolSchemasCacheContextVersion } = require('./toolSchemaCacheVersion')
 const { getUserMemoryContextMessage, updateUserMemory } = require('./userMemoryHelper')
@@ -8320,6 +8321,10 @@ const primeDefaultAssistantCache = async () => {
                 model: normalizeModelKey(defaultAssistant.model || 'MODEL_GPT5_5'),
                 temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
                 instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
+                emailSignature:
+                    typeof defaultAssistant.emailSignature === 'string'
+                        ? defaultAssistant.emailSignature
+                        : DEFAULT_EMAIL_SIGNATURE,
                 allowedTools: Array.isArray(defaultAssistant.allowedTools) ? defaultAssistant.allowedTools : [],
                 realtimeVoice: ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES.includes(defaultAssistant.realtimeVoice)
                     ? defaultAssistant.realtimeVoice
@@ -8428,6 +8433,8 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
     assistant.model = normalizeModelKey(assistant?.model || 'MODEL_GPT5_5')
     assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
     assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
+    assistant.emailSignature =
+        typeof assistant?.emailSignature === 'string' ? assistant.emailSignature : DEFAULT_EMAIL_SIGNATURE
     assistant.allowedTools = Array.isArray(assistant?.allowedTools) ? assistant.allowedTools : []
     assistant.realtimeVoice = ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES.includes(assistant?.realtimeVoice)
         ? assistant.realtimeVoice

@@ -28,6 +28,8 @@ export const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
 
 export const GLOBAL_PROJECT_ID = 'globalProject'
 
+export const DEFAULT_EMAIL_SIGNATURE = '---\nAnna Alldone\nAI Chief of Staff\nhttps://alldone.app/'
+
 export function getNewDefaultAssistant() {
     const { loggedUser } = store.getState()
     return {
@@ -47,6 +49,7 @@ export function getNewDefaultAssistant() {
         model: MODEL_GPT5_5,
         temperature: TEMPERATURE_NORMAL,
         realtimeVoice: 'marin',
+        emailSignature: DEFAULT_EMAIL_SIGNATURE,
         allowedTools: [...DEFAULT_ALLOWED_TOOLS],
         delegationToolDescriptionManual: '',
         delegationToolDescriptionGenerated: '',

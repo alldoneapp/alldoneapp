@@ -14,6 +14,7 @@ export default function EditForm({
     initialInstructions,
     maxInputHeight = 500,
     isMobile = false,
+    placeholder = translate('Type to add instructions'),
 }) {
     const [text, setText] = useState(initialInstructions)
 
@@ -32,7 +33,7 @@ export default function EditForm({
             <CustomScrollView style={inputContainerStyle} showsVerticalScrollIndicator={false}>
                 <View style={{ marginBottom: 8, minHeight: 38 }}>
                     <CustomTextInput3
-                        placeholder={translate('Type to add instructions')}
+                        placeholder={placeholder}
                         placeholderTextColor={colors.Text03}
                         onChangeText={setText}
                         multiline={true}

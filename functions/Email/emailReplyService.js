@@ -3,7 +3,7 @@
 const SibApiV3Sdk = require('sib-api-v3-sdk')
 
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { normalizeEmailAddressList } = require('./emailChannelHelpers')
+const { DEFAULT_EMAIL_SIGNATURE, normalizeEmailAddressList } = require('./emailChannelHelpers')
 
 const defaultClient = SibApiV3Sdk.ApiClient.instance
 const apiKey = defaultClient.authentications['api-key']
@@ -21,17 +21,48 @@ function escapeHtml(value = '') {
         .replace(/'/g, '&#39;')
 }
 
-function buildReplyHtml(replyText = '') {
+function escapeHtmlWithLinks(value = '') {
+    const input = String(value || '')
+    const urlRegex = /https?:\/\/[^\s<>"']+/g
+    let result = ''
+    let lastIndex = 0
+    let match
+
+    while ((match = urlRegex.exec(input)) !== null) {
+        const url = match[0]
+        result += escapeHtml(input.slice(lastIndex, match.index))
+        const escapedUrl = escapeHtml(url)
+        result += `<a href="${escapedUrl}" style="color: #1a73e8;">${escapedUrl}</a>`
+        lastIndex = match.index + url.length
+    }
+
+    result += escapeHtml(input.slice(lastIndex))
+    return result
+}
+
+function resolveEmailSignature(emailSignature) {
+    return typeof emailSignature === 'string' ? emailSignature : DEFAULT_EMAIL_SIGNATURE
+}
+
+function buildSignatureHtml(emailSignature) {
+    const signature = resolveEmailSignature(emailSignature)
+    if (!signature.trim()) return ''
+
+    const lines = signature.split('\n').map(line => `<div>${escapeHtmlWithLinks(line)}</div>`)
+    return `
+            <div style="margin-top: 24px; color: #5f6368;">
+                ${lines.join('')}
+            </div>
+    `
+}
+
+function buildReplyHtml(replyText = '', emailSignature) {
     const content = escapeHtml(replyText).replace(/\n/g, '<br />')
+    const signatureHtml = buildSignatureHtml(emailSignature)
     return `
         <div style="font-family: Arial, sans-serif; color: #202124; line-height: 1.5;">
             <p>${content}</p>
-            <div style="margin-top: 24px; color: #5f6368;">
-                <div>---</div>
-                <div>Anna Alldone</div>
-                <div>AI Chief of Staff</div>
-                <div><a href="https://alldone.app/" style="color: #1a73e8;">https://alldone.app/</a></div>
-            </div>
+            ${signatureHtml}
         </div>
     `
 }
@@ -46,6 +77,7 @@ async function sendAnnaEmailReply({
     references = '',
     fromEmail = '',
     fromName = 'Anna at Alldone',
+    emailSignature,
 }) {
     const normalizedToEmails = normalizeEmailAddressList([toEmail, ...toEmails])
     const normalizedCcEmails = normalizeEmailAddressList(ccEmails).filter(email => !normalizedToEmails.includes(email))
@@ -62,7 +94,7 @@ async function sendAnnaEmailReply({
         sender: { email: senderEmail, name: fromName },
         to: normalizedToEmails.map(email => ({ email })),
         subject: String(subject || '').trim() || 'Re: Anna at Alldone',
-        htmlContent: buildReplyHtml(replyText),
+        htmlContent: buildReplyHtml(replyText, emailSignature),
         headers,
     }
     if (normalizedCcEmails.length > 0) message.cc = normalizedCcEmails.map(email => ({ email }))
@@ -72,5 +104,12 @@ async function sendAnnaEmailReply({
 }
 
 module.exports = {
+    DEFAULT_EMAIL_SIGNATURE,
     sendAnnaEmailReply,
+    __private__: {
+        buildReplyHtml,
+        buildSignatureHtml,
+        escapeHtmlWithLinks,
+        resolveEmailSignature,
+    },
 }

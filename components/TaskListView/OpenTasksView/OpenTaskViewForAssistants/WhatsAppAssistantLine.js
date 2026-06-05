@@ -7,9 +7,12 @@ import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import ChangePhoneModal from '../../../UIComponents/FloatModals/ChangePhoneModal'
 import { setUserPhone } from '../../../../utils/backends/Users/usersFirestore'
+import Icon from '../../../Icon'
 
 const WHATSAPP_LINK = 'https://wa.me/4915128061330'
 const WHATSAPP_NUMBER_DISPLAY = '+49 1512 8061330'
+const ANNA_EMAIL_ADDRESS = 'anna@alldoneapp.com'
+const ANNA_EMAIL_LINK = `mailto:${ANNA_EMAIL_ADDRESS}`
 
 function openWhatsAppLink() {
     if (Platform.OS === 'web') {
@@ -19,9 +22,18 @@ function openWhatsAppLink() {
     }
 }
 
+function openEmailLink() {
+    if (Platform.OS === 'web') {
+        window.open(ANNA_EMAIL_LINK, '_blank')
+    } else {
+        Linking.openURL(ANNA_EMAIL_LINK)
+    }
+}
+
 export default function WhatsAppAssistantLine() {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const phone = useSelector(state => state.loggedUser.phone)
+    const assistantEmailEnabled = useSelector(state => state.loggedUser.assistantEmailEnabled === true)
     const smallScreen = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
 
@@ -70,6 +82,19 @@ export default function WhatsAppAssistantLine() {
                     </Text>
                 </TouchableOpacity>
             </Popover>
+            {assistantEmailEnabled && (
+                <TouchableOpacity
+                    style={[localStyles.row, localStyles.emailRow]}
+                    onPress={openEmailLink}
+                    accessible
+                    accessibilityLabel="Reach Anna by email"
+                >
+                    <Icon name="mail" size={24} color={colors.Text03} style={localStyles.icon} />
+                    <Text style={localStyles.text}>
+                        {translate('Reach Anna by email')}: {ANNA_EMAIL_ADDRESS}
+                    </Text>
+                </TouchableOpacity>
+            )}
         </View>
     )
 }
@@ -87,6 +112,9 @@ const localStyles = StyleSheet.create({
     row: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    emailRow: {
+        marginTop: 10,
     },
     icon: {
         width: 24,
