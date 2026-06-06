@@ -1,5 +1,5 @@
 import React from 'react'
-import { Image, StyleSheet, Text, View } from 'react-native'
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
 import { useSelector } from 'react-redux'
 
@@ -9,8 +9,11 @@ import { divideQuotedText } from '../../../ChatsView/ChatDV/EditorView/quotePars
 import QuotedText from '../../../ChatsView/ChatDV/EditorView/QuotedText'
 import CodeText from '../../../ChatsView/ChatDV/EditorView/CodeText'
 import { divideCodeText } from '../../../ChatsView/ChatDV/EditorView/codeParserFunctions'
-import { parseMarkdownLines, parseInlineFormatting } from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
-import MarkdownTable from '../../../ChatsView/ChatDV/EditorView/MarkdownTable'
+import {
+    getMarkdownTableColumnWidths,
+    parseMarkdownLines,
+    parseInlineFormatting,
+} from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
@@ -141,6 +144,60 @@ const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => 
     })
 }
 
+const renderMarkdownTable = (line, key, isLastLine, projectId, getLinkCounter) => {
+    const columnWidths = getMarkdownTableColumnWidths(line.rows)
+
+    return (
+        <ScrollView
+            key={key}
+            horizontal={true}
+            showsHorizontalScrollIndicator={false}
+            style={[localStyles.tableScroller, !isLastLine && { marginBottom: 16 }]}
+            contentContainerStyle={localStyles.tableScrollerContent}
+        >
+            <View style={localStyles.tableContainer}>
+                {line.rows.map((row, rowIndex) => {
+                    const isHeaderRow = rowIndex === 0
+
+                    return (
+                        <View key={`table-row-${rowIndex}`} style={localStyles.tableRow}>
+                            {columnWidths.map((width, cellIndex) => {
+                                const alignment = line.alignments[cellIndex]
+                                const textAlign = alignment || 'left'
+                                const cellTextStyle = [
+                                    localStyles.tableCellText,
+                                    isHeaderRow && localStyles.tableHeaderText,
+                                    { textAlign },
+                                ]
+
+                                return (
+                                    <View
+                                        key={`table-cell-${rowIndex}-${cellIndex}`}
+                                        style={[
+                                            localStyles.tableCell,
+                                            isHeaderRow && localStyles.tableHeaderCell,
+                                            { width },
+                                        ]}
+                                    >
+                                        <Text style={cellTextStyle}>
+                                            {renderFormattedText(
+                                                parseInlineFormatting(row[cellIndex] || ''),
+                                                cellTextStyle,
+                                                projectId,
+                                                getLinkCounter
+                                            )}
+                                        </Text>
+                                    </View>
+                                )
+                            })}
+                        </View>
+                    )
+                })}
+            </View>
+        </ScrollView>
+    )
+}
+
 export default function Comment({ containerStyle, projectId, comment }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
@@ -180,7 +237,9 @@ export default function Comment({ containerStyle, projectId, comment }) {
                     const isLastLine = lastItemInsideItem && lineIndex === processedLines.length - 1
                     const marginStyle = !isLastLine ? { marginBottom: 4 } : null
 
-                    if (line.type === 'hr') {
+                    if (line.type === 'table') {
+                        return renderMarkdownTable(line, `table-${lineIndex}`, isLastLine, projectId, getLinkCounter)
+                    } else if (line.type === 'hr') {
                         return (
                             <View
                                 key={`hr-${lineIndex}`}
@@ -275,15 +334,6 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                     </Text>
                                 </View>
                             </View>
-                        )
-                    } else if (line.type === 'table') {
-                        return (
-                            <MarkdownTable
-                                key={`table-${lineIndex}`}
-                                rows={line.rows}
-                                alignments={line.alignments}
-                                textStyle={localStyles.comment}
-                            />
                         )
                     } else {
                         // For regular text, check if it has inline formatting
@@ -441,5 +491,41 @@ const localStyles = StyleSheet.create({
     },
     inlineElement: {
         marginRight: 6,
+    },
+    tableScroller: {
+        maxWidth: '100%',
+    },
+    tableScrollerContent: {
+        alignItems: 'flex-start',
+    },
+    tableContainer: {
+        alignSelf: 'flex-start',
+        borderLeftWidth: 1,
+        borderTopWidth: 1,
+        borderColor: colors.Gray300,
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    tableRow: {
+        flexDirection: 'row',
+    },
+    tableCell: {
+        borderRightWidth: 1,
+        borderBottomWidth: 1,
+        borderColor: colors.Gray300,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        justifyContent: 'center',
+    },
+    tableHeaderCell: {
+        backgroundColor: colors.Secondary200,
+    },
+    tableCellText: {
+        ...styles.body2,
+        color: colors.Grey400,
+    },
+    tableHeaderText: {
+        color: colors.Text04,
+        fontWeight: '600',
     },
 })
