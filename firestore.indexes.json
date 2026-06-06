@@ -177,6 +177,72 @@
             ]
         },
         {
+            "__comment__": "Tasks - Assistant personal open tasks due today or overdue",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "dueDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Tasks - Assistant personal completed tasks by completion date",
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "done",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "inDone",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "completed",
+                    "order": "DESCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "Goals - visible goals by owner",
             "collectionGroup": "items",
             "queryScope": "COLLECTION",
@@ -327,6 +393,25 @@
                 {
                     "fieldPath": "isPublicFor",
                     "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "lastChangeDate",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Activity feed - current user updates ordered by last activity",
+            "collectionGroup": "all",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "creatorId",
+                    "order": "ASCENDING"
                 },
                 {
                     "fieldPath": "lastChangeDate",

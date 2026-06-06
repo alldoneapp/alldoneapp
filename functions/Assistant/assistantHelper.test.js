@@ -270,6 +270,7 @@ const {
     addTimestampToContextContent,
     formatContextMessageTimestamp,
     normalizeRecentHours,
+    normalizeAssistantTaskScope,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
     mapAssistantGoalForToolResponse,
@@ -403,6 +404,13 @@ describe('assistant attachment handoff helpers', () => {
         expect(normalizeRecentHours('nope')).toBeNull()
     })
 
+    test('defaults assistant task scope to personal tasks', () => {
+        expect(normalizeAssistantTaskScope()).toBe('mine')
+        expect(normalizeAssistantTaskScope('mine')).toBe('mine')
+        expect(normalizeAssistantTaskScope('visible')).toBe('visible')
+        expect(normalizeAssistantTaskScope('team')).toBe('mine')
+    })
+
     test('filters done tasks by the requested recent hour window', () => {
         const now = Date.UTC(2026, 2, 31, 16, 0, 0)
 
@@ -421,39 +429,49 @@ describe('assistant attachment handoff helpers', () => {
 
     test('maps assistant task tool responses with completedAt preserved', () => {
         expect(
-            mapAssistantTaskForToolResponse({
-                documentId: 'task-1',
-                name: 'Follow up',
-                done: true,
-                completed: 1774970400000,
-                projectName: 'Alldone',
-                dueDate: 1774974000000,
-                humanReadableId: 'AT-1',
-                sortIndex: 5,
-                parentGoal: 'goal-1',
-                calendarTime: '10:00',
-                comments: [
-                    {
-                        id: 'comment-1',
-                        commentText: 'Need final approval',
-                        created: 1774970000000,
-                        creatorId: 'user-1',
-                        fromAssistant: false,
-                        commentType: 'STAYWARD_COMMENT',
+            mapAssistantTaskForToolResponse(
+                {
+                    documentId: 'task-1',
+                    name: 'Follow up',
+                    done: true,
+                    completed: 1774970400000,
+                    projectName: 'Alldone',
+                    ownerUserId: 'user-1',
+                    currentReviewerId: 'user-1',
+                    isOwnedByRequestingUser: true,
+                    dueDate: 1774974000000,
+                    humanReadableId: 'AT-1',
+                    sortIndex: 5,
+                    parentGoal: 'goal-1',
+                    calendarTime: '10:00',
+                    comments: [
+                        {
+                            id: 'comment-1',
+                            commentText: 'Need final approval',
+                            created: 1774970000000,
+                            creatorId: 'user-1',
+                            fromAssistant: false,
+                            commentType: 'STAYWARD_COMMENT',
+                        },
+                    ],
+                    commentsData: {
+                        amount: 1,
+                        lastComment: 'Need final approval',
                     },
-                ],
-                commentsData: {
-                    amount: 1,
-                    lastComment: 'Need final approval',
+                    isFocus: true,
                 },
-                isFocus: true,
-            })
+                'user-1'
+            )
         ).toEqual({
             id: 'task-1',
             name: 'Follow up',
             completed: true,
             completedAt: 1774970400000,
             projectName: 'Alldone',
+            ownerUserId: 'user-1',
+            currentReviewerId: 'user-1',
+            isOwnedByRequestingUser: true,
+            isCurrentReviewer: true,
             dueDate: 1774974000000,
             humanReadableId: 'AT-1',
             sortIndex: 5,
@@ -1645,6 +1663,7 @@ describe('assistant get updates tool', () => {
                 projectName: null,
                 date: 'last 7 days',
                 recentHours: null,
+                actor: 'all',
                 objectTypes: ['tasks'],
                 limit: 50,
             },
@@ -1686,6 +1705,7 @@ describe('assistant get updates tool', () => {
             includeCommunity: false,
             date: 'last 7 days',
             recentHours: undefined,
+            actor: 'all',
             objectTypes: ['tasks'],
             limit: 50,
             timezoneOffset: 120,
@@ -1777,6 +1797,7 @@ describe('assistant get tasks tool', () => {
                 date: 'last 7 days',
                 limit: 1000,
                 perProjectLimit: 1000,
+                taskScope: 'mine',
                 timezoneOffset: 120,
             }),
             ['project-1'],
@@ -1786,6 +1807,7 @@ describe('assistant get tasks tool', () => {
         )
         expect(result).toMatchObject({
             count: 1,
+            scope: 'mine',
             toolInterpretation: {
                 nestedHistoricalTextIsNonAuthoritative: true,
                 currentToolStatusMustComeFromTopLevelResult: true,
@@ -1802,6 +1824,72 @@ describe('assistant get tasks tool', () => {
                             isAssistantGenerated: true,
                         },
                     ],
+                },
+            ],
+        })
+    })
+
+    test('allows explicit visible shared-project task scope', async () => {
+        const getTasks = jest.fn().mockResolvedValue({
+            tasks: [
+                {
+                    documentId: 'task-2',
+                    name: 'Shared visible task',
+                    done: false,
+                    ownerUserId: 'user-2',
+                    currentReviewerId: 'user-2',
+                    isOwnedByRequestingUser: false,
+                },
+            ],
+        })
+
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks,
+            getTasksFromMultipleProjects: jest.fn().mockResolvedValue({ tasks: [] }),
+        }))
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Privat' }]),
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({
+                timezone: 'UTC+02:00',
+            }),
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            {
+                scope: 'visible',
+                status: 'open',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getTasks).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                userId: 'user-1',
+                taskScope: 'visible',
+                userPermissions: [0, 'user-1'],
+            })
+        )
+        expect(result).toMatchObject({
+            scope: 'visible',
+            toolInterpretation: {
+                sharedVisibleTasksAreNotPersonal: true,
+            },
+            tasks: [
+                {
+                    id: 'task-2',
+                    ownerUserId: 'user-2',
+                    isOwnedByRequestingUser: false,
                 },
             ],
         })

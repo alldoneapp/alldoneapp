@@ -267,6 +267,18 @@ describe('Project happiness assistant tool schema', () => {
 })
 
 describe('Get tasks assistant tool schema', () => {
+    test('documents personal task scope as the default', () => {
+        const properties = toolSchemas.get_tasks.function.parameters.properties
+
+        expect(properties.scope).toEqual({
+            type: 'string',
+            enum: ['mine', 'visible'],
+            description:
+                'Task ownership scope. Defaults to "mine", returning only tasks whose owner/assignee is the requesting user. Use "visible" only for explicit project/team/shared-task requests; visible tasks can belong to other users, so use ownerUserId/isOwnedByRequestingUser when wording results.',
+        })
+        expect(toolSchemas.get_tasks.function.description).toContain('only tasks owned by the requesting user')
+    })
+
     test('documents hour-based recency filters for done tasks', () => {
         expect(toolSchemas.get_tasks.function.parameters.properties.recentHours).toEqual({
             type: 'number',
@@ -321,6 +333,12 @@ describe('Get updates assistant tool schema', () => {
 
         expect(properties.date.type).toBe('string')
         expect(properties.recentHours.type).toBe('number')
+        expect(properties.actor).toEqual({
+            type: 'string',
+            enum: ['all', 'current_user'],
+            description:
+                'Actor filter. Defaults to "all" for project recaps. Use "current_user" for personal accomplishment/activity questions so only updates created by the requesting user are returned.',
+        })
         expect(properties.projectId.type).toBe('string')
         expect(properties.projectName.type).toBe('string')
         expect(properties.allProjects.type).toBe('boolean')
@@ -337,6 +355,7 @@ describe('Get updates assistant tool schema', () => {
                 'Optional: object types to include in the update feed. Unknown event types are still returned without object title enrichment.',
         })
         expect(toolSchemas.get_updates.function.description).toContain('activity feed')
+        expect(toolSchemas.get_updates.function.description).toContain('creatorIsRequestingUser')
         expect(toolSchemas.get_updates.function.description).toContain('use get_chats')
     })
 })

@@ -280,6 +280,7 @@ describe('UpdateRetrievalService', () => {
                 eventText: 'updated task',
                 creatorId: 'creator-1',
                 creatorName: 'Alice Example',
+                creatorIsRequestingUser: false,
                 updatedAt: Date.UTC(2026, 3, 14, 10, 0, 0),
             },
             {
@@ -293,6 +294,7 @@ describe('UpdateRetrievalService', () => {
                 eventText: 'updated note',
                 creatorId: 'creator-2',
                 creatorName: 'Bob Example',
+                creatorIsRequestingUser: false,
                 updatedAt: Date.UTC(2026, 3, 13, 9, 0, 0),
             },
         ])
@@ -300,9 +302,63 @@ describe('UpdateRetrievalService', () => {
             allProjects: true,
             date: 'last 7 days',
             recentHours: null,
+            actor: 'all',
             limit: 10,
         })
         expect(result.queriedProjects.map(project => project.id)).toEqual(['project-1', 'project-2'])
+    })
+
+    test('filters updates to the requesting actor and flags ownership', async () => {
+        const service = createService({
+            feedsByProject: {
+                'project-1': [
+                    {
+                        id: 'feed-requester',
+                        data: {
+                            type: 'FEED_TASK_UPDATED',
+                            entryText: 'checked task as Done',
+                            objectId: 'task-1',
+                            creatorId: 'user-1',
+                            lastChangeDate: Date.UTC(2026, 3, 14, 11, 0, 0),
+                            isPublicFor: [0, 'user-1'],
+                        },
+                    },
+                    {
+                        id: 'feed-other',
+                        data: {
+                            type: 'FEED_TASK_UPDATED',
+                            entryText: 'checked task as Done',
+                            objectId: 'task-2',
+                            creatorId: 'creator-2',
+                            lastChangeDate: Date.UTC(2026, 3, 14, 10, 0, 0),
+                            isPublicFor: [0, 'user-1'],
+                        },
+                    },
+                ],
+                'project-2': [],
+            },
+            users: {
+                'user-1': { displayName: 'Requester User' },
+            },
+        })
+
+        const result = await service.getUpdates({
+            userId: 'user-1',
+            actor: 'current_user',
+            limit: 10,
+        })
+
+        expect(result.updates).toEqual([
+            expect.objectContaining({
+                id: 'feed-requester',
+                creatorId: 'user-1',
+                creatorName: 'Requester User',
+                creatorIsRequestingUser: true,
+            }),
+        ])
+        expect(result.appliedFilters).toMatchObject({
+            actor: 'current_user',
+        })
     })
 
     test('resolves project name and applies object type filters', async () => {

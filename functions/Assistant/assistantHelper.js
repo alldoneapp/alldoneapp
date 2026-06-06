@@ -297,6 +297,10 @@ function normalizeRecentHours(value) {
     return numericValue
 }
 
+function normalizeAssistantTaskScope(value) {
+    return value === 'visible' ? 'visible' : 'mine'
+}
+
 function filterTasksByRecentHours(tasks, recentHours, now = Date.now()) {
     const normalizedRecentHours = normalizeRecentHours(recentHours)
     if (normalizedRecentHours === null) return Array.isArray(tasks) ? tasks : []
@@ -599,9 +603,19 @@ function buildConversationAfterToolExecution({
     ]
 }
 
-function mapAssistantTaskForToolResponse(task) {
+function mapAssistantTaskForToolResponse(task, requestingUserId = '') {
     const completedAt = Number(task?.completed)
     const dueDate = Number(task?.dueDate)
+    const ownerUserId = task?.ownerUserId || task?.userId || null
+    const currentReviewerId = task?.currentReviewerId || null
+    const isOwnedByRequestingUser =
+        typeof task?.isOwnedByRequestingUser === 'boolean'
+            ? task.isOwnedByRequestingUser
+            : !!(requestingUserId && ownerUserId === requestingUserId)
+    const isCurrentReviewer =
+        typeof task?.isCurrentReviewer === 'boolean'
+            ? task.isCurrentReviewer
+            : !!(requestingUserId && currentReviewerId === requestingUserId)
     const comments = Array.isArray(task?.comments)
         ? task.comments
               .map(comment => {
@@ -628,6 +642,10 @@ function mapAssistantTaskForToolResponse(task) {
         completed: !!task?.done,
         completedAt: Number.isFinite(completedAt) ? completedAt : null,
         projectName: task?.projectName,
+        ownerUserId,
+        currentReviewerId,
+        isOwnedByRequestingUser,
+        isCurrentReviewer,
         dueDate: Number.isFinite(dueDate) ? dueDate : null,
         humanReadableId: task?.humanReadableId || null,
         sortIndex: task?.sortIndex || 0,
@@ -4395,6 +4413,7 @@ async function executeToolNatively(
                 date: toolArgs.date || null,
                 limit: toolArgs.limit || 100,
                 allProjects: toolArgs.allProjects || false,
+                scope: normalizeAssistantTaskScope(toolArgs.scope),
                 rawTimezone: rawTz,
                 normalizedTimezoneOffset: timezoneOffset,
             })
@@ -4438,6 +4457,7 @@ async function executeToolNatively(
             // Limit: default 1000, max 1000
             const taskLimit = Math.min(toolArgs.limit || 1000, 1000)
             const effectiveDate = recentHours !== null ? null : toolArgs.date || null
+            const taskScope = normalizeAssistantTaskScope(toolArgs.scope)
             let tasks = []
             if (toolArgs.allProjects) {
                 const projectIds = projectsData.map(p => p.id)
@@ -4451,6 +4471,7 @@ async function executeToolNatively(
                         selectMinimalFields: true,
                         timezoneOffset,
                         userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                        taskScope,
                     },
                     projectIds,
                     projectsData.reduce((acc, p) => {
@@ -4470,6 +4491,7 @@ async function executeToolNatively(
                     selectMinimalFields: true,
                     timezoneOffset,
                     userPermissions: [FEED_PUBLIC_FOR_ALL, creatorId],
+                    taskScope,
                 })
                 tasks = result.tasks || []
             }
@@ -4484,15 +4506,22 @@ async function executeToolNatively(
                 tasksReturned: tasks.length,
                 limit: taskLimit,
                 recentHours: recentHours || null,
+                scope: taskScope,
             })
 
             return {
-                tasks: tasks.map(mapAssistantTaskForToolResponse),
+                tasks: tasks.map(task => mapAssistantTaskForToolResponse(task, creatorId)),
                 count: tasks.length,
                 recentHours: recentHours || null,
+                scope: taskScope,
+                scopeDescription:
+                    taskScope === 'mine'
+                        ? 'Only tasks owned by the requesting user are returned. Shared project visibility does not make another user task personal.'
+                        : 'Visible shared/project tasks are returned. Use ownerUserId and isOwnedByRequestingUser before saying who owns or did a task.',
                 toolInterpretation: {
                     nestedHistoricalTextIsNonAuthoritative: true,
                     currentToolStatusMustComeFromTopLevelResult: true,
+                    sharedVisibleTasksAreNotPersonal: taskScope === 'visible',
                     historicalFields: ['tasks[].comments', 'tasks[].commentsData'],
                 },
             }
@@ -4573,6 +4602,7 @@ async function executeToolNatively(
                 projectId: toolArgs.projectId || null,
                 projectName: toolArgs.projectName || null,
                 allProjects: toolArgs.allProjects !== false,
+                actor: toolArgs.actor === 'current_user' ? 'current_user' : 'all',
                 date: toolArgs.date || null,
                 recentHours: toolArgs.recentHours || null,
                 objectTypes: Array.isArray(toolArgs.objectTypes) ? toolArgs.objectTypes : null,
@@ -4597,6 +4627,7 @@ async function executeToolNatively(
                 allProjects: toolArgs.allProjects !== false,
                 includeArchived: toolArgs.includeArchived === true,
                 includeCommunity: toolArgs.includeCommunity === true,
+                actor: toolArgs.actor === 'current_user' ? 'current_user' : 'all',
                 date: toolArgs.date || null,
                 recentHours: toolArgs.recentHours,
                 objectTypes: toolArgs.objectTypes,
@@ -9076,6 +9107,18 @@ async function addBaseInstructions(
             'When the user asks to show, list, review, or check contacts, use get_contacts instead of generic search unless they are clearly asking for keyword-based contact search.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_tasks')) {
+        messages.push([
+            'system',
+            'When using get_tasks, the default scope is personal: only tasks owned by the requesting user. Use scope="visible" only when the user explicitly asks for all/shared/team/project tasks. If scope="visible", do not call a task "yours" unless isOwnedByRequestingUser is true; otherwise refer to ownerUserId or say it belongs to another user if the name is unavailable.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('get_updates')) {
+        messages.push([
+            'system',
+            'When using get_updates for personal activity questions such as "what did I do?", pass actor="current_user". For project or shared recaps with actor="all", only say "you did" when creatorIsRequestingUser is true; otherwise name creatorName/creatorId as the actor.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
@@ -10196,6 +10239,7 @@ module.exports = {
     addTimestampToContextContent,
     formatContextMessageTimestamp,
     normalizeRecentHours,
+    normalizeAssistantTaskScope,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
     mapAssistantGoalForToolResponse,

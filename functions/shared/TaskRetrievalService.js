@@ -47,6 +47,10 @@ class TaskRetrievalService {
         return permissions.slice(0, 10)
     }
 
+    static normalizeTaskScope(scope, fallback = 'visible') {
+        return scope === 'mine' || scope === 'visible' ? scope : fallback
+    }
+
     static normalizeTimezoneOffset(value) {
         if (value === null || value === undefined) {
             return null
@@ -371,6 +375,7 @@ class TaskRetrievalService {
             perProjectLimit = undefined,
             userPermissions = null,
             restrictToCurrentReviewer = true,
+            taskScope = 'visible',
             timezoneOffset = null,
         } = params
 
@@ -386,6 +391,10 @@ class TaskRetrievalService {
             query = query.where('isPublicFor', 'array-contains-any', visibilityPermissions)
         } else {
             query = query.where('isPublicFor', 'array-contains', visibilityPermissions[0])
+        }
+
+        if (TaskRetrievalService.normalizeTaskScope(taskScope) === 'mine' && userId) {
+            query = query.where('userId', '==', userId)
         }
 
         // Filter by subtasks
@@ -715,6 +724,7 @@ class TaskRetrievalService {
             selectMinimalFields = false,
             projectName: providedProjectName = undefined,
             restrictToCurrentReviewer = false,
+            taskScope = 'visible',
         } = params
 
         try {
@@ -774,6 +784,10 @@ class TaskRetrievalService {
                     name: task.name,
                     done: !!task.done,
                     completed: task.completed || null,
+                    ownerUserId: task.userId || null,
+                    currentReviewerId: task.currentReviewerId || null,
+                    isOwnedByRequestingUser: !!(userId && task.userId === userId),
+                    isCurrentReviewer: !!(userId && task.currentReviewerId === userId),
                     humanReadableId: task.humanReadableId || task.human_readable_id || null,
                     dueDate: task.dueDate || null,
                     sortIndex: task.sortIndex || 0,
@@ -879,6 +893,7 @@ class TaskRetrievalService {
                     parentId,
                     userPermissions,
                     restrictToCurrentReviewer,
+                    taskScope,
                     timezoneOffset: normalizedTimezoneOffset,
                 }
                 const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })

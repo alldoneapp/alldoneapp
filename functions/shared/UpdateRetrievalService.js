@@ -220,6 +220,10 @@ class UpdateRetrievalService {
         return [...new Set(normalizedTypes)]
     }
 
+    static normalizeActor(actor) {
+        return actor === 'current_user' ? 'current_user' : 'all'
+    }
+
     getObjectTypeForEvent(eventType) {
         return EVENT_TYPE_TO_OBJECT_TYPE.get(eventType) || null
     }
@@ -330,10 +334,14 @@ class UpdateRetrievalService {
         throw new Error(`No project found matching "${normalizedProjectName}".`)
     }
 
-    buildProjectUpdatesQuery(projectId, userId, dateRange, limit) {
+    buildProjectUpdatesQuery(projectId, userId, dateRange, limit, actor = 'all') {
         let query = this.options.database
             .collection(`feedsStore/${projectId}/all`)
             .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, userId])
+
+        if (UpdateRetrievalService.normalizeActor(actor) === 'current_user') {
+            query = query.where('creatorId', '==', userId)
+        }
 
         if (dateRange?.start) {
             query = query.where('lastChangeDate', '>=', dateRange.start)
@@ -346,10 +354,11 @@ class UpdateRetrievalService {
         return query.orderBy('lastChangeDate', 'desc').limit(limit)
     }
 
-    mapUpdate(doc, project) {
+    mapUpdate(doc, project, requestingUserId = '') {
         const feed = doc.data() || {}
         const eventType = feed.type
         const objectType = this.getObjectTypeForEvent(eventType)
+        const creatorId = feed.creatorId || ''
 
         return {
             id: doc.id,
@@ -360,8 +369,9 @@ class UpdateRetrievalService {
             objectTitle: '',
             eventType,
             eventText: typeof feed.entryText === 'string' ? feed.entryText : '',
-            creatorId: feed.creatorId || '',
+            creatorId,
             creatorName: '',
+            creatorIsRequestingUser: !!(requestingUserId && creatorId === requestingUserId),
             updatedAt: Number(feed.lastChangeDate) || 0,
         }
     }
@@ -441,6 +451,7 @@ class UpdateRetrievalService {
 
         const dateRange = recentHoursRange || this.buildDateRange(params.date, params.timezoneOffset)
         const objectTypes = UpdateRetrievalService.normalizeObjectTypes(params.objectTypes)
+        const actor = UpdateRetrievalService.normalizeActor(params.actor)
         const { projects, targetProject } = await this.resolveProjectTarget(
             userId,
             params.projectId || '',
@@ -469,6 +480,7 @@ class UpdateRetrievalService {
                     date: recentHoursRange ? null : params.date || null,
                     recentHours: recentHoursRange?.recentHours || null,
                     objectTypes,
+                    actor,
                     limit,
                     includeArchived: params.includeArchived === true,
                     includeCommunity: params.includeCommunity === true,
@@ -484,9 +496,10 @@ class UpdateRetrievalService {
                     project.id,
                     userId,
                     dateRange,
-                    perProjectLimit
+                    perProjectLimit,
+                    actor
                 ).get()
-                return snapshot.docs.map(doc => this.mapUpdate(doc, project))
+                return snapshot.docs.map(doc => this.mapUpdate(doc, project, userId))
             })
         )
 
@@ -508,6 +521,7 @@ class UpdateRetrievalService {
                 date: recentHoursRange ? null : params.date || null,
                 recentHours: recentHoursRange?.recentHours || null,
                 objectTypes,
+                actor,
                 limit,
                 includeArchived: params.includeArchived === true,
                 includeCommunity: params.includeCommunity === true,

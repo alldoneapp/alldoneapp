@@ -104,10 +104,16 @@ const toolSchemas = {
         function: {
             name: 'get_tasks',
             description:
-                'Retrieves and shows tasks from the current project or across all projects. Use this when the user asks to see, show, list, or check their tasks. Can filter by status (open/done), date (today, yesterday, specific date), recent done hours, and project scope. IMPORTANT: Use this tool (not search) when asking for done/completed tasks from a specific date like "what did I complete yesterday" or "show done tasks from last week". For hour-based recency requests like "what did I do in the last 2 hours", use status "done" together with recentHours. Done task results include completedAt as a Unix timestamp in milliseconds.',
+                'Retrieves and shows tasks from the current project or across all projects. By default it returns only tasks owned by the requesting user, not every visible task in a shared project. Use scope "visible" only when the user explicitly asks for all/shared/team/project tasks. Can filter by status (open/done), date (today, yesterday, specific date), recent done hours, and project scope. IMPORTANT: Use this tool (not search) when asking for done/completed tasks from a specific date like "what did I complete yesterday" or "show done tasks from last week"; keep the default personal scope for those questions. For hour-based recency requests like "what did I do in the last 2 hours", use status "done" together with recentHours. Done task results include completedAt as a Unix timestamp in milliseconds plus ownership fields ownerUserId and isOwnedByRequestingUser.',
             parameters: {
                 type: 'object',
                 properties: {
+                    scope: {
+                        type: 'string',
+                        enum: ['mine', 'visible'],
+                        description:
+                            'Task ownership scope. Defaults to "mine", returning only tasks whose owner/assignee is the requesting user. Use "visible" only for explicit project/team/shared-task requests; visible tasks can belong to other users, so use ownerUserId/isOwnedByRequestingUser when wording results.',
+                    },
                     status: {
                         type: 'string',
                         enum: ['open', 'done', 'all'],
@@ -338,10 +344,16 @@ const toolSchemas = {
         function: {
             name: 'get_updates',
             description:
-                'Retrieves recent object activity updates from the existing activity feed across accessible projects. Use this when the user asks what happened, what changed, what updates occurred, or asks for a project/activity recap across tasks, notes, goals, contacts, projects, users, skills, and assistants. Defaults to all accessible active projects. This does not include chat message history; use get_chats for conversation activity.',
+                'Retrieves recent object activity updates from the existing activity feed across accessible projects. Use this when the user asks what happened, what changed, what updates occurred, or asks for a project/activity recap across tasks, notes, goals, contacts, projects, users, skills, and assistants. Defaults to all accessible active projects and all visible actors. For personal activity questions like "what did I do?", pass actor "current_user". When actor is "all", never describe an update as done by the requesting user unless creatorIsRequestingUser is true; use creatorName/creatorId for other people. This does not include chat message history; use get_chats for conversation activity.',
             parameters: {
                 type: 'object',
                 properties: {
+                    actor: {
+                        type: 'string',
+                        enum: ['all', 'current_user'],
+                        description:
+                            'Actor filter. Defaults to "all" for project recaps. Use "current_user" for personal accomplishment/activity questions so only updates created by the requesting user are returned.',
+                    },
                     date: {
                         type: 'string',
                         description:

@@ -112,6 +112,29 @@ describe('TaskRetrievalService task comments support', () => {
         expect(query.where).toHaveBeenCalledWith('isPublicFor', 'array-contains-any', [0, 'user-1'])
     })
 
+    test('filters personal task scope by task owner', () => {
+        const query = {
+            where: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+        }
+        const database = {
+            collection: jest.fn(() => query),
+        }
+        const service = new TaskRetrievalService({ database })
+
+        service.buildTaskQuery({
+            projectId: 'project-1',
+            userId: 'user-1',
+            status: 'done',
+            userPermissions: [0, 'user-1'],
+            taskScope: 'mine',
+        })
+
+        expect(query.where).toHaveBeenCalledWith('isPublicFor', 'array-contains-any', [0, 'user-1'])
+        expect(query.where).toHaveBeenCalledWith('userId', '==', 'user-1')
+    })
+
     test('maps recent comments into minimal task results', async () => {
         const commentsSnapshot = {
             forEach: callback => {
@@ -145,6 +168,8 @@ describe('TaskRetrievalService task comments support', () => {
                     data: () => ({
                         name: 'Follow up',
                         done: false,
+                        userId: 'user-1',
+                        currentReviewerId: 'user-1',
                         sortIndex: 10,
                         commentsData: {
                             amount: 2,
@@ -204,6 +229,10 @@ describe('TaskRetrievalService task comments support', () => {
                 name: 'Follow up',
                 done: false,
                 completed: null,
+                ownerUserId: 'user-1',
+                currentReviewerId: 'user-1',
+                isOwnedByRequestingUser: true,
+                isCurrentReviewer: true,
                 humanReadableId: null,
                 dueDate: null,
                 sortIndex: 10,
