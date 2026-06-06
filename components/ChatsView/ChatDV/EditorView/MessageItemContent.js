@@ -549,7 +549,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     tableHeaderCell: {
-        backgroundColor: colors.Secondary200,
+        backgroundColor: colors.Grey200,
     },
     tableCellText: {
         ...global.body1,
