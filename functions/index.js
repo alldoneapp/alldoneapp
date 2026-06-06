@@ -1611,21 +1611,60 @@ exports.askToBotSecondGen = onCall(
                 assistantId,
             })
 
-            const askToOpenAIBotStart = Date.now()
-            console.log('🚀 [TIMING] Invoking askToOpenAIBot now...')
-            const result = await askToOpenAIBot(
+            const {
+                acquireAssistantRunLock,
+                completeAssistantRunLock,
+                failAssistantRunLock,
+            } = require('./Assistant/assistantRunIdempotency')
+            const assistantRunLock = await acquireAssistantRunLock(admin.firestore(), {
                 userId,
                 messageId,
                 projectId,
                 objectType,
                 objectId,
-                userIdsToNotify,
-                isPublicFor,
-                language,
                 assistantId,
-                followerIds,
-                functionEntryTime // Pass entry time for time-to-first-token tracking
-            )
+            })
+            if (!assistantRunLock.acquired) {
+                console.warn('askToBotSecondGen: duplicate assistant run skipped', {
+                    userId,
+                    messageId,
+                    projectId,
+                    objectType,
+                    objectId,
+                    assistantId,
+                    lockId: assistantRunLock.lockId,
+                    reason: assistantRunLock.reason,
+                })
+                return {
+                    success: true,
+                    duplicate: true,
+                    status: assistantRunLock.reason,
+                    messageId,
+                }
+            }
+
+            const askToOpenAIBotStart = Date.now()
+            console.log('🚀 [TIMING] Invoking askToOpenAIBot now...')
+            let result
+            try {
+                result = await askToOpenAIBot(
+                    userId,
+                    messageId,
+                    projectId,
+                    objectType,
+                    objectId,
+                    userIdsToNotify,
+                    isPublicFor,
+                    language,
+                    assistantId,
+                    followerIds,
+                    functionEntryTime // Pass entry time for time-to-first-token tracking
+                )
+                await completeAssistantRunLock(assistantRunLock.lockRef)
+            } catch (error) {
+                await failAssistantRunLock(assistantRunLock.lockRef, error)
+                throw error
+            }
 
             const totalFunctionTime = Date.now() - functionEntryTime
             console.log('🎯 [TIMING] askToBotSecondGen COMPLETE', {
