@@ -16,6 +16,8 @@ import { getDateFormat } from './DateFormatPickerModal'
 import { translate } from '../../../i18n/TranslationService'
 import { getIfLoggedUserReachedEmptyInbox } from '../../ContactsView/Utils/ContactsHelper'
 import store from '../../../redux/store'
+import { setShowNewDayNotification, storeLoggedUser } from '../../../redux/actions'
+import UserDataCache from '../../../utils/UserDataCache'
 import {
     ESTIMATION_TYPE_POINTS,
     ESTIMATION_TYPE_TIME,
@@ -72,9 +74,12 @@ export default function EndDayStatisticsModal() {
 
     const isOfflineRef = useRef(false)
     const isLoading = useRef(false)
+    const isSavingStartNewDay = useRef(false)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
     const commentInputRefs = useRef({})
     const pendingCommentFocusProjectIdRef = useRef(null)
+    const dirtyHappinessProjectIdsRef = useRef(new Set())
+    const happinessDraftsRef = useRef({})
 
     const needToShowYesterdayStats = () => {
         const today = moment()
@@ -82,9 +87,7 @@ export default function EndDayStatisticsModal() {
         return today.isAfter(statsDay, 'day')
     }
 
-    const close = e => {
-        e.preventDefault()
-        e.stopPropagation()
+    const resetModalState = () => {
         setDoneTasks(0)
         setXp(0)
         setDonePoints(0)
@@ -97,8 +100,74 @@ export default function EndDayStatisticsModal() {
         setHappinessComments({})
         setVisibleComments({})
         pendingCommentFocusProjectIdRef.current = null
+        dirtyHappinessProjectIdsRef.current.clear()
+        happinessDraftsRef.current = {}
         isOfflineRef.current = false
         isLoading.current = false
+        isSavingStartNewDay.current = false
+    }
+
+    const saveDirtyHappinessEntries = async () => {
+        const dirtyProjectIds = dirtyHappinessProjectIdsRef.current
+        if (dirtyProjectIds.size === 0) return
+
+        const promises = getHappinessProjects().reduce((promises, project) => {
+            if (!dirtyProjectIds.has(project.id)) return promises
+
+            const draft = happinessDraftsRef.current[project.id] || {}
+            const rating = draft.rating || happinessRatings[project.id]
+            if (rating) {
+                promises.push(
+                    Backend.setProjectHappiness(
+                        project.id,
+                        loggedUserId,
+                        statsDate,
+                        rating,
+                        draft.comment != null ? draft.comment : happinessComments[project.id] || '',
+                        project
+                    )
+                )
+            }
+            return promises
+        }, [])
+
+        await Promise.all(promises)
+        dirtyProjectIds.clear()
+    }
+
+    const startNewDay = async e => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (isSavingStartNewDay.current) return
+
+        isSavingStartNewDay.current = true
+
+        try {
+            if (!isOfflineRef.current) {
+                const newStatisticsModalDate = Date.now()
+                const { loggedUser } = store.getState()
+                const updatedLoggedUser = {
+                    ...loggedUser,
+                    statisticsModalDate: newStatisticsModalDate,
+                    previousStatisticsModalDate: statsDate,
+                }
+                await saveDirtyHappinessEntries()
+                await setUserStatisticsModalDate(statsDate, newStatisticsModalDate)
+                store.dispatch(storeLoggedUser(updatedLoggedUser))
+                UserDataCache.setCachedUserData(updatedLoggedUser)
+                store.dispatch(setShowNewDayNotification(false))
+            }
+
+            if (showNewDayNotification) {
+                await deleteCacheAndRefresh()
+            } else {
+                resetModalState()
+                isSavingStartNewDay.current = false
+            }
+        } catch (error) {
+            console.log(error)
+            isSavingStartNewDay.current = false
+        }
     }
 
     const updateStatistics = (projectId, statistics) => {
@@ -120,7 +189,6 @@ export default function EndDayStatisticsModal() {
             setDataLoaded(dataLoaded => {
                 return { ...dataLoaded, [projectId]: true }
             })
-            setUserStatisticsModalDate(statisticsModalDate)
         }
     }
 
@@ -201,6 +269,10 @@ export default function EndDayStatisticsModal() {
                 (projectId, entries) => {
                     const entry = entries[0]
                     if (entry) {
+                        happinessDraftsRef.current[projectId] = {
+                            rating: entry.rating,
+                            comment: entry.comment || '',
+                        }
                         setHappinessRatings(state => ({ ...state, [projectId]: entry.rating }))
                         setHappinessComments(state => ({ ...state, [projectId]: entry.comment || '' }))
                     }
@@ -228,6 +300,12 @@ export default function EndDayStatisticsModal() {
     const getHappinessProjects = () => getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
 
     const updateHappinessRating = (project, rating) => {
+        dirtyHappinessProjectIdsRef.current.add(project.id)
+        happinessDraftsRef.current[project.id] = {
+            ...happinessDraftsRef.current[project.id],
+            rating,
+            comment: happinessComments[project.id] || happinessDraftsRef.current[project.id]?.comment || '',
+        }
         setHappinessRatings(state => ({ ...state, [project.id]: rating }))
         Backend.setProjectHappiness(
             project.id,
@@ -240,6 +318,12 @@ export default function EndDayStatisticsModal() {
     }
 
     const updateHappinessComment = (project, comment) => {
+        dirtyHappinessProjectIdsRef.current.add(project.id)
+        happinessDraftsRef.current[project.id] = {
+            ...happinessDraftsRef.current[project.id],
+            rating: happinessRatings[project.id] || happinessDraftsRef.current[project.id]?.rating,
+            comment,
+        }
         setHappinessComments(state => ({ ...state, [project.id]: comment }))
     }
 
@@ -459,10 +543,7 @@ export default function EndDayStatisticsModal() {
                             </View>
                         )}
                         <View style={localStyles.line} />
-                        <TouchableOpacity
-                            style={localStyles.refresh}
-                            onPress={showNewDayNotification ? deleteCacheAndRefresh : close}
-                        >
+                        <TouchableOpacity style={localStyles.refresh} onPress={startNewDay}>
                             <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
                         </TouchableOpacity>
                     </ScrollView>

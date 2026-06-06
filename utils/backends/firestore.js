@@ -3246,7 +3246,7 @@ export async function setProjectHappiness(projectId, userId, date, rating, comme
         await createProjectHappinessFeed(projectId, feedProject, { cleared: true }, batch)
     }
 
-    batch.commit()
+    await batch.commit()
 }
 
 export function watchProjectHappiness(projectId, userId, watcherKey, callback) {

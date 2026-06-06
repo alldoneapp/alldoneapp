@@ -867,12 +867,12 @@ export function setUserDailyTopicDate(dailyTopicDate) {
         .update({ dailyTopicDate: Date.now(), previousDailyTopicDate: dailyTopicDate })
 }
 
-export function setUserStatisticsModalDate(statisticsModalDate) {
+export function setUserStatisticsModalDate(statisticsModalDate, newStatisticsModalDate = Date.now()) {
     const { loggedUser } = store.getState()
-    firebase
+    return firebase
         .firestore()
         .doc(`users/${loggedUser.uid}`)
-        .update({ statisticsModalDate: Date.now(), previousStatisticsModalDate: statisticsModalDate })
+        .update({ statisticsModalDate: newStatisticsModalDate, previousStatisticsModalDate: statisticsModalDate })
 }
 
 export function updateUserStatisticsFilter(userId, statisticsData) {
