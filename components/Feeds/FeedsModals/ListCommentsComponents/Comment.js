@@ -10,6 +10,7 @@ import QuotedText from '../../../ChatsView/ChatDV/EditorView/QuotedText'
 import CodeText from '../../../ChatsView/ChatDV/EditorView/CodeText'
 import { divideCodeText } from '../../../ChatsView/ChatDV/EditorView/codeParserFunctions'
 import { parseMarkdownLines, parseInlineFormatting } from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
+import MarkdownTable from '../../../ChatsView/ChatDV/EditorView/MarkdownTable'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
@@ -274,6 +275,15 @@ export default function Comment({ containerStyle, projectId, comment }) {
                                     </Text>
                                 </View>
                             </View>
+                        )
+                    } else if (line.type === 'table') {
+                        return (
+                            <MarkdownTable
+                                key={`table-${lineIndex}`}
+                                rows={line.rows}
+                                alignments={line.alignments}
+                                textStyle={localStyles.comment}
+                            />
                         )
                     } else {
                         // For regular text, check if it has inline formatting

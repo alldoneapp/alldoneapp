@@ -13,6 +13,7 @@ import { setActiveChatMessageId } from '../../../../redux/actions'
 import { divideCodeText } from './codeParserFunctions'
 import CodeText from './CodeText'
 import { parseMarkdownLines, parseInlineFormatting } from './markdownParserFunctions'
+import MarkdownTable from './MarkdownTable'
 import Icon from '../../../Icon'
 import {
     parseFeedComment,
@@ -286,6 +287,15 @@ export default function MessageItemContent({
                                     </Text>
                                 </View>
                             </View>
+                        )
+                    } else if (line.type === 'table') {
+                        return (
+                            <MarkdownTable
+                                key={`table-${lineIndex}`}
+                                rows={line.rows}
+                                alignments={line.alignments}
+                                textStyle={localStyles.text}
+                            />
                         )
                     } else {
                         // Check if the line has block or special elements that cannot be rendered inline
