@@ -4058,6 +4058,12 @@ async function executeToolNatively(
             const moment = require('moment-timezone')
             const db = admin.firestore()
             const gmailLabelMatchedProjectId = getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext)
+            const assistantProvidedProjectReasoning = gmailLabelMatchedProjectId
+                ? ''
+                : normalizeCreateTaskProjectRoutingReason(toolArgs.projectRoutingReason)
+            const projectRoutingConfidence = gmailLabelMatchedProjectId
+                ? null
+                : normalizeCreateTaskProjectRoutingConfidence(toolArgs.projectRoutingConfidence)
 
             const createTaskProjectSelection = await resolveCreateTaskTargetProject(db, {
                 creatorId,
@@ -4071,6 +4077,8 @@ async function executeToolNatively(
                     : toolArgs.sourceHint === 'whatsappContextProject'
                     ? 'whatsappContextProject'
                     : '',
+                assistantProjectRoutingReason: assistantProvidedProjectReasoning,
+                assistantProjectRoutingConfidence: projectRoutingConfidence,
             })
             const targetProjectId = createTaskProjectSelection.targetProjectId
             let targetProjectName = createTaskProjectSelection.targetProjectName
@@ -4082,6 +4090,7 @@ async function executeToolNatively(
                 contextProjectId: projectId,
                 selectedProjectId: targetProjectId,
                 source: createTaskProjectSelection.source,
+                routingConsistencyCorrection: createTaskProjectSelection.routingConsistencyCorrection || null,
             })
 
             const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
@@ -4234,14 +4243,8 @@ async function executeToolNatively(
                     }
                 }
 
-                const assistantProvidedProjectReasoning = gmailLabelMatchedProjectId
-                    ? ''
-                    : normalizeCreateTaskProjectRoutingReason(toolArgs.projectRoutingReason)
                 const projectRoutingReasoning =
                     assistantProvidedProjectReasoning || createTaskProjectSelection.reasoning
-                const projectRoutingConfidence = gmailLabelMatchedProjectId
-                    ? null
-                    : normalizeCreateTaskProjectRoutingConfidence(toolArgs.projectRoutingConfidence)
 
                 // When create_task runs inside a Gmail post-label follow-up, the Gmail labeling
                 // pipeline (addRoutingCommentsToCreatedGmailTasks) adds its own routing comment
@@ -4279,6 +4282,8 @@ async function executeToolNatively(
                                 requestedProjectName: toolArgs.projectName || '',
                                 contextProjectId: projectId || '',
                                 assistantId: assistantId || '',
+                                routingConsistencyCorrection:
+                                    createTaskProjectSelection.routingConsistencyCorrection || null,
                             },
                         })
                     } catch (error) {
@@ -4302,6 +4307,7 @@ async function executeToolNatively(
                         reasoning: projectRoutingReasoning,
                         assistantProvidedReasoning: !!assistantProvidedProjectReasoning,
                         confidence: projectRoutingConfidence,
+                        routingConsistencyCorrection: createTaskProjectSelection.routingConsistencyCorrection || null,
                         commentId: projectSelectionComment?.commentId || null,
                     },
                 }

@@ -1372,6 +1372,116 @@ describe('resolveCreateTaskTargetProject', () => {
             reasoning: 'The task creation request named "Client Work", which exactly matched Client Work.',
         })
     })
+
+    test('corrects default-project fallback when low-confidence reason points to current context project', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([
+            { id: 'p-private', name: 'Privat' },
+            { id: 'p-alldone', name: 'Alldone Product' },
+        ])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+
+        const fakeDb = {
+            collection: jest.fn(collectionName => ({
+                doc: jest.fn(docId => ({
+                    get: jest.fn().mockResolvedValue(
+                        collectionName === 'users'
+                            ? {
+                                  exists: true,
+                                  data: () => ({
+                                      defaultProjectId: 'p-private',
+                                      projectIds: ['p-private', 'p-alldone'],
+                                  }),
+                              }
+                            : collectionName === 'projects' && docId === 'p-private'
+                            ? {
+                                  exists: true,
+                                  data: () => ({ name: 'Privat' }),
+                              }
+                            : { exists: false, data: () => ({}) }
+                    ),
+                })),
+            })),
+            doc: jest.fn(path => ({ path })),
+            getAll: jest.fn(async (...refs) =>
+                refs.map(ref => ({
+                    exists: ref.path === 'assistants/p-private/items/a-1',
+                }))
+            ),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-alldone',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectName: 'Made Up Project',
+                assistantProjectRoutingReason:
+                    'Konzeptionelle Alldone-/Agenten-Produktidee mit direktem Bezug zu Heartbeats, Roadmaps und Task-Automation; gehört als Produktidee eher in das aktuelle Alldone-Kontextprojekt als in private Admin.',
+                assistantProjectRoutingConfidence: 0,
+            })
+        ).resolves.toMatchObject({
+            targetProjectId: 'p-alldone',
+            targetProjectName: 'Alldone Product',
+            source: 'routingConsistencyCorrection',
+            routingConsistencyCorrection: {
+                corrected: true,
+                reason: 'assistant_reason_referenced_current_project',
+                originalProjectId: 'p-private',
+                correctedProjectId: 'p-alldone',
+            },
+        })
+    })
+
+    test('corrects explicit project id when reason contradicts it with another project name', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([
+            { id: 'p-private', name: 'Privat' },
+            { id: 'p-alldone', name: 'Alldone Product' },
+        ])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+
+        const fakeDb = {
+            collection: jest.fn(collectionName => ({
+                doc: jest.fn(docId => ({
+                    get: jest.fn().mockResolvedValue(
+                        collectionName === 'projects' && docId === 'p-private'
+                            ? {
+                                  exists: true,
+                                  data: () => ({ name: 'Privat' }),
+                              }
+                            : { exists: false, data: () => ({}) }
+                    ),
+                })),
+            })),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-private',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectId: 'p-private',
+                assistantProjectRoutingReason: 'This belongs in Alldone Product rather than private admin.',
+            })
+        ).resolves.toMatchObject({
+            targetProjectId: 'p-alldone',
+            targetProjectName: 'Alldone Product',
+            source: 'routingConsistencyCorrection',
+            routingConsistencyCorrection: {
+                corrected: true,
+                reason: 'assistant_reason_projectName',
+                originalProjectId: 'p-private',
+                correctedProjectId: 'p-alldone',
+            },
+        })
+    })
 })
 
 describe('assistant create_task project routing comments', () => {
@@ -1461,6 +1571,96 @@ describe('assistant create_task project routing comments', () => {
             assistantProvidedReasoning: true,
             confidence: 0.84,
             commentId: 'routing-comment-1',
+        })
+    })
+
+    test('creates task in corrected project when selected project conflicts with low-confidence reason', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([
+            { id: 'project-private', name: 'Privat' },
+            { id: 'project-alldone', name: 'Alldone Product' },
+        ])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({ name: 'Privat' }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-private',
+                    projectIds: ['project-private', 'project-alldone'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-alldone',
+            projectId: 'project-alldone',
+            message: 'Task created',
+            task: {
+                id: 'task-alldone',
+                name: 'Agents, die sich wie Mitarbeiter benehmen',
+                userId: 'user-1',
+                commentsData: { amount: 0 },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Agents, die sich wie Mitarbeiter benehmen',
+                projectId: 'project-private',
+                projectRoutingReason:
+                    'Konzeptionelle Alldone-/Agenten-Produktidee mit direktem Bezug zu Heartbeats, Roadmaps und Task-Automation; gehört als Produktidee eher in das aktuelle Alldone-Kontextprojekt als in private Admin.',
+                projectRoutingConfidence: 0,
+            },
+            'project-alldone',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'Agents, die sich wie Mitarbeiter benehmen',
+                projectId: 'project-alldone',
+            }),
+            expect.objectContaining({
+                userId: 'user-1',
+                projectId: 'project-alldone',
+            })
+        )
+        expect(addProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-alldone',
+                taskId: 'task-alldone',
+                projectName: 'Alldone Product',
+                confidence: 0,
+                routingData: expect.objectContaining({
+                    selectionSource: 'routingConsistencyCorrection',
+                    requestedProjectId: 'project-private',
+                    contextProjectId: 'project-alldone',
+                    routingConsistencyCorrection: expect.objectContaining({
+                        corrected: true,
+                        originalProjectId: 'project-private',
+                        correctedProjectId: 'project-alldone',
+                    }),
+                }),
+            })
+        )
+        expect(result.projectId).toBe('project-alldone')
+        expect(result.projectSelection).toMatchObject({
+            source: 'routingConsistencyCorrection',
+            confidence: 0,
+            routingConsistencyCorrection: {
+                corrected: true,
+                originalProjectId: 'project-private',
+                correctedProjectId: 'project-alldone',
+            },
         })
     })
 
