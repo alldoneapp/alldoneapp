@@ -544,7 +544,7 @@ export default function EndDayStatisticsModal() {
                                         <Lottie
                                             animationData={goldAnimation}
                                             autoplay={false}
-                                            style={localStyles.goldIcon}
+                                            style={{ width: 24, height: 24 }}
                                         />
                                         <View
                                             style={[
@@ -780,10 +780,6 @@ const localStyles = StyleSheet.create({
         marginLeft: 8,
         marginTop: 4,
         color: colors.Text04,
-    },
-    goldIcon: {
-        width: 24,
-        height: 24,
     },
     date: {
         ...styles.body2,
