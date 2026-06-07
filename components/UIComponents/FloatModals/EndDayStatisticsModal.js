@@ -32,6 +32,7 @@ import {
 import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
 import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { getSafeStatisticNumber } from '../../../utils/StatisticDataHelper'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -170,7 +171,7 @@ export default function EndDayStatisticsModal() {
         }
     }
 
-    const updateStatistics = (projectId, statistics) => {
+    const updateStatistics = (projectId, statistics = {}) => {
         if (!isOfflineRef.current) {
             const estimationType = getEstimationTypeByProjectId(projectId)
             const recheadEmptyInbox = getIfLoggedUserReachedEmptyInbox(statsDate)
@@ -179,13 +180,18 @@ export default function EndDayStatisticsModal() {
                 if (sidebarNumbers[projectId] && sidebarNumbers[projectId][loggedUserId]) setShowEmptyInbox(false)
             }
 
-            const { donePoints, doneTime, doneTasks, gold, xp } = statistics
-            setDoneTasksByProject(state => ({ ...state, [projectId]: doneTasks ? doneTasks : 0 }))
-            setDoneTasks(state => state + (doneTasks ? doneTasks : 0))
-            setDonePoints(state => state + (donePoints && estimationType === ESTIMATION_TYPE_POINTS ? donePoints : 0))
-            setDoneTime(state => state + (doneTime && estimationType === ESTIMATION_TYPE_TIME ? doneTime : 0))
-            setGold(state => state + (gold ? gold : 0))
-            setXp(state => state + (xp ? xp : 0))
+            const doneTasks = getSafeStatisticNumber(statistics.doneTasks)
+            const donePoints = getSafeStatisticNumber(statistics.donePoints)
+            const doneTime = getSafeStatisticNumber(statistics.doneTime)
+            const gold = getSafeStatisticNumber(statistics.gold)
+            const xp = getSafeStatisticNumber(statistics.xp)
+
+            setDoneTasksByProject(state => ({ ...state, [projectId]: doneTasks }))
+            setDoneTasks(state => state + doneTasks)
+            setDonePoints(state => state + (estimationType === ESTIMATION_TYPE_POINTS ? donePoints : 0))
+            setDoneTime(state => state + (estimationType === ESTIMATION_TYPE_TIME ? doneTime : 0))
+            setGold(state => state + gold)
+            setXp(state => state + xp)
             setDataLoaded(dataLoaded => {
                 return { ...dataLoaded, [projectId]: true }
             })
