@@ -32,7 +32,7 @@ import {
 import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
 import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { getSafeStatisticNumber } from '../../../utils/StatisticDataHelper'
+import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -591,14 +591,14 @@ export default function EndDayStatisticsModal() {
                                                     smallScreenNavigation && localStyles.mobileHappinessProjectInfo,
                                                 ]}
                                             >
-                                                <Text style={localStyles.happinessProjectName}>{project.name}</Text>
+                                                <Text style={localStyles.happinessProjectName}>
+                                                    {getSafeTextValue(project.name, translate('Project'))}
+                                                </Text>
                                                 <View style={localStyles.happinessProjectStats}>
                                                     <Icon name="check-square" size={16} color={colors.Text04} />
                                                     <Text style={localStyles.happinessProjectStatsText}>
                                                         {translate('Tasks done:')}{' '}
-                                                        {doneTasksByProject[project.id]
-                                                            ? doneTasksByProject[project.id]
-                                                            : 0}
+                                                        {getSafeStatisticNumber(doneTasksByProject[project.id])}
                                                     </Text>
                                                 </View>
                                             </View>
