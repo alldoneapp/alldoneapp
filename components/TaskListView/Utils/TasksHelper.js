@@ -365,6 +365,8 @@ class TasksHelper {
             subtaskIds: [],
             subtaskNames: [],
             recurrence: RECURRENCE_NEVER,
+            recurrenceOriginalDueDate: null,
+            recurrenceBaseDateOverride: null,
             lastEditorId: loggedUser.uid,
             lastEditionDate: date,
             linkBack: '',

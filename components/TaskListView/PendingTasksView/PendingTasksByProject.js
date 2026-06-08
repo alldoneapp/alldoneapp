@@ -28,15 +28,19 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const isDefaultProject = project.id === defaultProjectId
     const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
     const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
-    const isUsingDefaultProjectAssistant =
+    const useSelectedProjectAssistantLine =
+        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
+    const assistantLineProject = useSelectedProjectAssistantLine ? project : defaultProject
+    const assistantLineAssistantId = useSelectedProjectAssistantLine
+        ? selectedProjectAssistantId
+        : defaultProjectAssistantId
+    const showAssistantSwitch =
         !isDefaultProject &&
+        useSelectedProjectAssistantLine &&
+        !!defaultProject &&
         !!defaultProjectAssistantId &&
-        !!selectedProjectAssistantId &&
-        selectedProjectAssistantId === defaultProjectAssistantId
-    const showAboveHeaderDefaultAssistant =
-        !isAnonymous && inSelectedProject && !isDefaultProject && !!defaultProject && !!defaultProjectAssistantId
-    const showBelowHeaderSelectedAssistant =
-        !isAnonymous && inSelectedProject && (isDefaultProject || !isUsingDefaultProjectAssistant)
+        !!selectedProjectAssistantId
+    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
 
     const updateTasks = (tasksByDateAndStep, estimationValue, amountOfTasksByDate) => {
         setTasksByDateAndStep(tasksByDateAndStep)
@@ -63,26 +67,31 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
 
     return filteredTasksByDateAndStep.length > 0 || inSelectedProject ? (
         <View style={localStyles.container}>
-            {showAboveHeaderDefaultAssistant && (
-                <View style={{ marginTop: 16 }}>
+            <ProjectHeader
+                projectIndex={project.index}
+                projectId={project.id}
+                showWorkflowTag={true}
+                showRootSectionNavigation={inSelectedProject}
+            />
+            {showAssistantLine && (
+                <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
                     <AssistantLine
                         showLastComment={true}
-                        startCollapsed={!isUsingDefaultProjectAssistant}
-                        useGlobalLatestComment={true}
-                        projectOverride={defaultProject}
-                        assistantIdOverride={defaultProjectAssistantId}
+                        useAssistantProjectContext={!useSelectedProjectAssistantLine}
+                        useGlobalLatestComment={!useSelectedProjectAssistantLine}
+                        projectOverride={assistantLineProject}
+                        assistantIdOverride={assistantLineAssistantId}
+                        assistantSwitchOptions={
+                            showAssistantSwitch
+                                ? {
+                                      projectOverride: defaultProject,
+                                      assistantIdOverride: defaultProjectAssistantId,
+                                      useAssistantProjectContext: true,
+                                      useGlobalLatestComment: true,
+                                  }
+                                : null
+                        }
                     />
-                </View>
-            )}
-            <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
-            {showBelowHeaderSelectedAssistant && (
-                <View
-                    style={[
-                        localStyles.lastCommentContainer,
-                        !showAboveHeaderDefaultAssistant && localStyles.lastCommentContainerNoTopMargin,
-                    ]}
-                >
-                    <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
                 </View>
             )}
             {filteredTasksByDateAndStep.map((item, index) => {
@@ -108,7 +117,12 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
         </View>
     ) : showFollowedBubble || showUnfollowedBubble ? (
         <View style={localStyles.container}>
-            <ProjectHeader projectIndex={project.index} projectId={project.id} showWorkflowTag={true} />
+            <ProjectHeader
+                projectIndex={project.index}
+                projectId={project.id}
+                showWorkflowTag={true}
+                showRootSectionNavigation={inSelectedProject}
+            />
         </View>
     ) : null
 }

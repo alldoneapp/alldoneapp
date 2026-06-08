@@ -51,6 +51,8 @@ function buildTaskObject({
     isSubtask = false,
     parentGoalId = null,
     recurrence = 'never',
+    recurrenceOriginalDueDate = null,
+    recurrenceBaseDateOverride = null,
     hasStar = '#FFFFFF',
     estimations = null,
     observersIds = [],
@@ -164,6 +166,8 @@ function buildTaskObject({
 
         // Recurrence and scheduling
         recurrence: recurrence,
+        recurrenceOriginalDueDate: recurrenceOriginalDueDate,
+        recurrenceBaseDateOverride: recurrenceBaseDateOverride,
 
         // Statistics and counters
         timesPostponed: 0,

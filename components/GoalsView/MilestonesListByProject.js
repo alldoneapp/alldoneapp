@@ -147,7 +147,12 @@ export default function MilestonesListByProject({
 
     return canShowProject ? (
         <View>
-            <ProjectHeader projectIndex={project.index} projectId={project.id} showAddGoal={inOpenTab} />
+            <ProjectHeader
+                projectIndex={project.index}
+                projectId={project.id}
+                showAddGoal={inOpenTab}
+                showRootSectionNavigation={!inAllProjects}
+            />
             {loggedUserCanUpdateObject && inOpenTab && !isAnonymous && milestones.length === 0 && (
                 <AddGoals
                     projectId={projectId}
@@ -217,6 +222,7 @@ export default function MilestonesListByProject({
         <MilestonesListEmptyProject
             projectId={projectId}
             projectIndex={projectIndex}
+            showRootSectionNavigation={!inAllProjects}
             setDismissibleRefs={setDismissibleRefs}
             closeEdition={closeEdition}
             openEdition={openEdition}

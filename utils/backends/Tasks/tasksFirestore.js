@@ -301,6 +301,30 @@ const storeLastAddedTaskId = taskId => {
     store.dispatch(setLastTaskAddedId(taskId))
 }
 
+const getTaskRecurrence = task => {
+    const recurrence = task?.recurrence
+    return recurrence && typeof recurrence === 'object' ? recurrence.type : recurrence
+}
+
+const shouldSaveRecurrenceOriginalDueDate = (task, previousDueDate, nextDueDate, isObservedTask = false) => {
+    const recurrence = getTaskRecurrence(task)
+    return (
+        !isObservedTask &&
+        recurrence &&
+        recurrence !== RECURRENCE_NEVER &&
+        !task?.recurrenceOriginalDueDate &&
+        typeof previousDueDate === 'number' &&
+        typeof nextDueDate === 'number' &&
+        nextDueDate > previousDueDate
+    )
+}
+
+const getRecurrenceOriginalDueDateUpdate = (task, previousDueDate, nextDueDate, isObservedTask = false) => {
+    return shouldSaveRecurrenceOriginalDueDate(task, previousDueDate, nextDueDate, isObservedTask)
+        ? { recurrenceOriginalDueDate: previousDueDate }
+        : {}
+}
+
 const scheduleResetLastAddedTaskId = taskId => {
     setTimeout(() => {
         const { lastTaskAddedId } = store.getState()
@@ -348,6 +372,8 @@ export async function uploadNewTask(
         taskCopy.recurrence = taskCopy.recurrence ? taskCopy.recurrence : RECURRENCE_NEVER
         taskCopy.startDate = taskCopy.startDate ? taskCopy.startDate : taskCopy.created
         taskCopy.startTime = taskCopy.startTime ? taskCopy.startTime : moment(taskCopy.created).format('HH:mm')
+        taskCopy.recurrenceOriginalDueDate = taskCopy.recurrenceOriginalDueDate || null
+        taskCopy.recurrenceBaseDateOverride = taskCopy.recurrenceBaseDateOverride || null
         taskCopy.lastEditorId = taskCopy.lastEditorId ? taskCopy.lastEditorId : ''
         taskCopy.lastEditionDate = taskCopy.lastEditionDate ? taskCopy.lastEditionDate : Date.now()
         taskCopy.linkBack = linkBack ? linkBack : ''
@@ -1003,6 +1029,7 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
 
     if (task.dueDate > oldTask.dueDate) {
         taskToStore.timesPostponed = firebase.firestore.FieldValue.increment(1)
+        Object.assign(taskToStore, getRecurrenceOriginalDueDateUpdate(oldTask, oldTask.dueDate, task.dueDate))
         subtasksUpdateData.timesPostponed = firebase.firestore.FieldValue.increment(1)
         logEvent('task_postponed')
     }
@@ -2117,6 +2144,7 @@ export async function setTaskDueDate(
         //     `[setTaskDueDate] Incrementing timesPostponed for task ${taskId}. Old dueDate=${task.dueDate}, New dueDate=${dueDate}`
         // )
         commonFields.timesPostponed = firebase.firestore.FieldValue.increment(1)
+        Object.assign(commonFields, getRecurrenceOriginalDueDateUpdate(task, task.dueDate, dueDate, isObservedTask))
         logEvent('task_postponed')
         // REMOVE LOGGING HERE (else block)
         // } else {
@@ -2577,7 +2605,8 @@ export async function moveTasksFromOpen(
     commentType,
     estimations,
     checkBoxId,
-    explicitAssistantEnabled
+    explicitAssistantEnabled,
+    recurrenceBaseDateOverride = null
 ) {
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
@@ -2673,6 +2702,7 @@ export async function moveTasksFromOpen(
         task.id,
         {
             ...updateData,
+            ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
             done: stepToMoveId === DONE_STEP,
             inDone: stepToMoveId === DONE_STEP,
             sortIndex,
@@ -2847,7 +2877,8 @@ export async function setTaskStatus(
     comment,
     createDoneFeed,
     oldEstimation,
-    newEstimation
+    newEstimation,
+    recurrenceBaseDateOverride = null
 ) {
     const taskBatch = new BatchWrapper(getDb())
     const completedDate = isDone ? Date.now() : null
@@ -2857,6 +2888,7 @@ export async function setTaskStatus(
         done: isDone,
         inDone: task.parentId ? task.inDone : isDone,
         recurrence: task.recurrence,
+        ...(isDone && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
     }
 
     if (!task.parentId) {

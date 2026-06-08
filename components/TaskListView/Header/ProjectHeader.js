@@ -15,6 +15,7 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import store from '../../../redux/store'
 import ProjectAndUserData from './ProjectAndUserData'
+import RootSectionNavigation from '../../RootView/RootSectionNavigation'
 
 export default function ProjectHeader({
     projectIndex,
@@ -25,6 +26,7 @@ export default function ProjectHeader({
     showAddTask,
     showAddGoal,
     setPressedShowMoreMainSection,
+    showRootSectionNavigation = false,
 }) {
     const dispatch = useDispatch()
 
@@ -65,28 +67,31 @@ export default function ProjectHeader({
     const showWorkflow = showWorkflowTag && haveWorkflow()
 
     return (
-        <View style={localStyles.borderContainer}>
-            <View style={localStyles.container}>
-                <ProjectAndUserData
-                    projectIndex={projectIndex}
-                    projectId={projectId}
-                    badge={badge}
-                    userInHeader={userInHeader}
-                />
-                <TagsArea
-                    projectId={projectId}
-                    workflow={workflow}
-                    user={userInHeader}
-                    mobile={mobile || mobileCollapsed}
-                    onClickWorkflowIndicator={onClickWorkflowIndicator}
-                    showWorkflow={showWorkflow}
-                    showAddTask={showAddTask}
-                    showAddGoal={showAddGoal}
-                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                />
-                {customRight}
+        <>
+            <View style={localStyles.borderContainer}>
+                <View style={localStyles.container}>
+                    <ProjectAndUserData
+                        projectIndex={projectIndex}
+                        projectId={projectId}
+                        badge={badge}
+                        userInHeader={userInHeader}
+                    />
+                    <TagsArea
+                        projectId={projectId}
+                        workflow={workflow}
+                        user={userInHeader}
+                        mobile={mobile || mobileCollapsed}
+                        onClickWorkflowIndicator={onClickWorkflowIndicator}
+                        showWorkflow={showWorkflow}
+                        showAddTask={showAddTask}
+                        showAddGoal={showAddGoal}
+                        setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                    />
+                    {customRight}
+                </View>
             </View>
-        </View>
+            {showRootSectionNavigation && <RootSectionNavigation useOuterMargins={false} />}
+        </>
     )
 }
 

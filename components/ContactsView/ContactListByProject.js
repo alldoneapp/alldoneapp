@@ -145,6 +145,7 @@ export default function ContactListByProject({
                         />
                     ) : null
                 }
+                showRootSectionNavigation={inSelectedProject}
             />
             {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
             {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
@@ -211,6 +212,7 @@ export default function ContactListByProject({
             projectIndex={projectIndex}
             newItemRef={newItemRef}
             dismissibleRefs={dismissibleRefs}
+            showRootSectionNavigation={inSelectedProject}
         />
     ) : null
 }

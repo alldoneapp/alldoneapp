@@ -15,12 +15,18 @@ export default function MilestonesListEmptyProject({
     openEdition,
     backlogId,
     goalsActiveTab,
+    showRootSectionNavigation,
 }) {
     const inOpenTab = goalsActiveTab === GOALS_OPEN_TAB_INDEX
 
     return (
         <View>
-            <ProjectHeader projectIndex={projectIndex} projectId={projectId} showAddGoal={inOpenTab} />
+            <ProjectHeader
+                projectIndex={projectIndex}
+                projectId={projectId}
+                showAddGoal={inOpenTab}
+                showRootSectionNavigation={showRootSectionNavigation}
+            />
 
             {inOpenTab ? (
                 <>

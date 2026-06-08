@@ -49,7 +49,7 @@ function ContactsSectionToggle() {
     )
 }
 
-export default function RootSectionNavigation() {
+export default function RootSectionNavigation({ useOuterMargins = true }) {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -82,8 +82,11 @@ export default function RootSectionNavigation() {
     return (
         <View
             style={[
-                localStyles.container,
-                smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
+                useOuterMargins && localStyles.container,
+                useOuterMargins &&
+                    (smallScreenNavigation
+                        ? localStyles.containerMobile
+                        : isMiddleScreen && localStyles.containerTablet),
             ]}
         >
             <MainSectionTabsHeader showSectionToggle={true} renderSectionToggle={renderSectionToggle} />

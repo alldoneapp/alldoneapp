@@ -20,13 +20,16 @@ import CustomScrollView from '../UIControls/CustomScrollView'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import RootSectionNavigation from './RootSectionNavigation'
+import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function MainViewsContainer() {
     const selectedTab = useSelector(state => state.selectedSidebarTab)
+    const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const enableScroll = useSelector(state => !(state.smallScreen && state.showFloatPopup > 0))
     //enableScroll will only work for touch scrolls events
 
     const { overlay } = useCollapsibleSidebar()
+    const showGlobalRootSectionNavigation = checkIfSelectedAllProjects(selectedProjectIndex)
 
     return (
         <CustomScrollView
@@ -34,7 +37,7 @@ export default function MainViewsContainer() {
             scrollEnabled={enableScroll}
         >
             <View>
-                <RootSectionNavigation />
+                {showGlobalRootSectionNavigation && <RootSectionNavigation />}
                 {(() => {
                     switch (selectedTab) {
                         case DV_TAB_ROOT_TASKS:

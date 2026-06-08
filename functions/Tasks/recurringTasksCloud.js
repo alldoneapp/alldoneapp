@@ -117,20 +117,12 @@ async function createRecurringTaskInCloudFunction(projectId, originalTaskId, com
 /**
  * Calculates the next occurrence date based on recurrence pattern
  */
-function calculateNextRecurrenceDate(task) {
-    const startMoment = moment(task.startDate || task.created)
-    const startTime = task.startTime || startMoment.format('HH:mm')
-    const [hours, minutes] = startTime.split(':').map(Number)
-
-    // Use the current moment as the base
-    let baseDate = moment()
-    // Set the time to match the original task's scheduled time
-    baseDate = baseDate.hour(hours).minute(minutes).second(0).millisecond(0)
-
-    const recurrenceMap = {
-        [RECURRENCE_DAILY]: baseDate.clone().add(1, 'days'),
-        [RECURRENCE_EVERY_WORKDAY]: (() => {
-            let date = baseDate.clone()
+function getNextDateFromBaseDate(baseDate, recurrence) {
+    switch (recurrence) {
+        case RECURRENCE_DAILY:
+            return baseDate.clone().add(1, 'days')
+        case RECURRENCE_EVERY_WORKDAY: {
+            const date = baseDate.clone()
             const today = date.isoWeekday()
             console.log('🗓️ CALCULATING EVERY_WORKDAY:', {
                 today: today,
@@ -139,19 +131,15 @@ function calculateNextRecurrenceDate(task) {
             })
 
             if (today === 5) {
-                // Friday: next workday is Monday (add 3 days)
                 date.add(3, 'days')
                 console.log('✅ Friday detected - adding 3 days to get to Monday')
             } else if (today === 6) {
-                // Saturday: next workday is Monday (add 2 days)
                 date.add(2, 'days')
                 console.log('✅ Saturday detected - adding 2 days to get to Monday')
             } else if (today === 7) {
-                // Sunday: next workday is Monday (add 1 day)
                 date.add(1, 'days')
                 console.log('✅ Sunday detected - adding 1 day to get to Monday')
             } else {
-                // Monday-Thursday: next workday is tomorrow (add 1 day)
                 date.add(1, 'days')
                 console.log('✅ Weekday detected - adding 1 day to get to next day')
             }
@@ -164,21 +152,63 @@ function calculateNextRecurrenceDate(task) {
             })
 
             return date
-        })(),
-        [RECURRENCE_WEEKLY]: baseDate.clone().add(1, 'weeks'),
-        [RECURRENCE_EVERY_2_WEEKS]: baseDate.clone().add(2, 'weeks'),
-        [RECURRENCE_EVERY_3_WEEKS]: baseDate.clone().add(3, 'weeks'),
-        [RECURRENCE_MONTHLY]: baseDate.clone().add(1, 'months'),
-        [RECURRENCE_EVERY_3_MONTHS]: baseDate.clone().add(3, 'months'),
-        [RECURRENCE_EVERY_6_MONTHS]: baseDate.clone().add(6, 'months'),
-        [RECURRENCE_ANNUALLY]: baseDate.clone().add(1, 'years'),
+        }
+        case RECURRENCE_WEEKLY:
+            return baseDate.clone().add(1, 'weeks')
+        case RECURRENCE_EVERY_2_WEEKS:
+            return baseDate.clone().add(2, 'weeks')
+        case RECURRENCE_EVERY_3_WEEKS:
+            return baseDate.clone().add(3, 'weeks')
+        case RECURRENCE_MONTHLY:
+            return baseDate.clone().add(1, 'months')
+        case RECURRENCE_EVERY_3_MONTHS:
+            return baseDate.clone().add(3, 'months')
+        case RECURRENCE_EVERY_6_MONTHS:
+            return baseDate.clone().add(6, 'months')
+        case RECURRENCE_ANNUALLY:
+            return baseDate.clone().add(1, 'years')
+        default:
+            console.error('Unknown recurrence pattern:', recurrence)
+            return null
     }
+}
 
-    const nextDate = recurrenceMap[task.recurrence]
+function calculateNextRecurrenceDate(task, now = Date.now()) {
+    const startMoment = moment(task.startDate || task.created)
+    const startTime = task.startTime || startMoment.format('HH:mm')
+    const [hours, minutes] = startTime.split(':').map(Number)
+    const baseDateOverride =
+        typeof task.recurrenceBaseDateOverride === 'number' && Number.isFinite(task.recurrenceBaseDateOverride)
+            ? task.recurrenceBaseDateOverride
+            : null
+
+    // Use the selected recurrence base when present. Otherwise keep the legacy now-based behavior.
+    let baseDate = moment(baseDateOverride || now)
+    // Set the time to match the original task's scheduled time
+    baseDate = baseDate.hour(hours).minute(minutes).second(0).millisecond(0)
+
+    let nextDate = getNextDateFromBaseDate(baseDate, task.recurrence)
 
     if (!nextDate) {
-        console.error('Unknown recurrence pattern:', task.recurrence)
         return null
+    }
+
+    if (baseDateOverride) {
+        const completedMoment = moment(task.completed || now)
+        let safetyCounter = 0
+        while (!nextDate.isAfter(completedMoment) && safetyCounter < 500) {
+            nextDate = getNextDateFromBaseDate(nextDate, task.recurrence)
+            safetyCounter++
+        }
+
+        if (safetyCounter >= 500) {
+            console.error('Failed to advance recurring task date to a future occurrence:', {
+                recurrence: task.recurrence,
+                baseDateOverride,
+                completed: task.completed,
+            })
+            return null
+        }
     }
 
     console.log('Calculated next recurrence date:', {
@@ -187,6 +217,7 @@ function calculateNextRecurrenceDate(task) {
         startTime: startTime,
         nextDate: nextDate.format('YYYY-MM-DD HH:mm:ss'),
         baseDate: baseDate.format('YYYY-MM-DD HH:mm:ss'),
+        baseDateOverride,
     })
 
     return nextDate
@@ -254,6 +285,8 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
     newTaskData.comments = []
     newTaskData.timesPostponed = 0
     newTaskData.lockKey = ''
+    delete newTaskData.recurrenceOriginalDueDate
+    delete newTaskData.recurrenceBaseDateOverride
 
     // Update task completion counters
     const endOfToday = moment().endOf('day').valueOf()
@@ -490,6 +523,7 @@ async function updateOriginalTaskRecurrence(projectId, taskId, originalTask) {
             recurrence: RECURRENCE_NEVER,
             timesDoneInExpectedDay: 0,
             timesDone: 0,
+            recurrenceBaseDateOverride: admin.firestore.FieldValue.delete(),
         })
 
         console.log('✅ Successfully updated original task recurrence settings')
@@ -510,6 +544,7 @@ async function updateOriginalTaskRecurrence(projectId, taskId, originalTask) {
 module.exports = {
     createRecurringTaskInCloudFunction,
     calculateNextRecurrenceDate,
+    getNextDateFromBaseDate,
     createNewRecurringTask,
     updateOriginalTaskRecurrence,
 }

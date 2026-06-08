@@ -34,6 +34,9 @@ import MainButtons from './MainButtons'
 import NextStep from './NextStep'
 import ChangeReviewerEstimation from './ChangeReviewerEstimation'
 import ChangeAssigneeEstimation from './ChangeAssigneeEstimation'
+import RecurringTaskDateBasisModal, {
+    shouldShowRecurringTaskDateBasisModal,
+} from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 
 export const WORKFLOW_FORWARD = 'FORWARD'
 export const WORKFLOW_BACKWARD = 'BACKWARD'
@@ -52,6 +55,7 @@ export default class WorkflowModal extends Component {
             inWorkflowSelection: false,
             inCalendar: false,
             inEstimationReviewer: false,
+            inRecurrenceDateBasis: false,
             comment: '',
             mentions: [],
             files: [],
@@ -68,6 +72,7 @@ export default class WorkflowModal extends Component {
             currentStepId: '',
             estimations: {},
             disabledMainButtons: false,
+            pendingMoveFromOpenData: null,
             currentUser: storeState.currentUser,
             smallScreenNavigation: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
@@ -296,8 +301,6 @@ export default class WorkflowModal extends Component {
 
         this.blockButtons()
 
-        store.dispatch(startLoadingData())
-
         updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
             const { stepHistory } = task
             const stepsIds = getWorkflowStepsIdsSorted(steps)
@@ -309,7 +312,26 @@ export default class WorkflowModal extends Component {
                     ? getCommentDirectionWhenMoveTaskInTheWorklfow(stepToMoveIndex, stepsIds, stepHistory)
                     : STAYWARD_COMMENT
 
+            if (
+                task.userIds.length === 1 &&
+                stepToMoveId === DONE_STEP &&
+                shouldShowRecurringTaskDateBasisModal(task)
+            ) {
+                this.setSafeState({
+                    inRecurrenceDateBasis: true,
+                    pendingMoveFromOpenData: {
+                        stepToMoveId,
+                        commentWithAttachments,
+                        commentType,
+                        estimations,
+                    },
+                    disabledMainButtons: false,
+                })
+                return
+            }
+
             // Show animation if task is being marked as done
+            store.dispatch(startLoadingData())
             if (stepToMoveId === DONE_STEP) {
                 store.dispatch(showTaskCompletionAnimation())
             }
@@ -335,8 +357,28 @@ export default class WorkflowModal extends Component {
                     checkBoxId
                 )
             }
+            this.props.hidePopover()
         })
+    }
 
+    completeWithSelectedRecurrenceDateBasis = recurrenceBaseDateOverride => {
+        const { task, projectId, checkBoxId } = this.props
+        const { pendingMoveFromOpenData } = this.state
+        if (!pendingMoveFromOpenData) return
+
+        store.dispatch(startLoadingData())
+        store.dispatch(showTaskCompletionAnimation())
+        moveTasksFromOpen(
+            projectId,
+            task,
+            pendingMoveFromOpenData.stepToMoveId,
+            pendingMoveFromOpenData.commentWithAttachments,
+            pendingMoveFromOpenData.commentType,
+            pendingMoveFromOpenData.estimations,
+            checkBoxId,
+            undefined,
+            recurrenceBaseDateOverride
+        )
         this.props.hidePopover()
     }
 
@@ -348,10 +390,11 @@ export default class WorkflowModal extends Component {
             inWorkflowSelection,
             inCalendar,
             inEstimationReviewer,
+            inRecurrenceDateBasis,
             disabledMainButtons,
         } = this.state
 
-        if (e.key === 'Enter' && !inComments && !inEstimation && !inEstimationReviewer) {
+        if (e.key === 'Enter' && !inComments && !inEstimation && !inEstimationReviewer && !inRecurrenceDateBasis) {
             if (inWorkflowSelection || inCalendar) {
                 this.setSafeState({
                     inComments: false,
@@ -427,7 +470,14 @@ export default class WorkflowModal extends Component {
         const { nextStepDescription, nextStepPhotoURL } = this.getStepDataForTag(this.taskOwner)
         const ownerId = ownerIsWorkstream ? store.getState().loggedUser.uid : task.userId
 
-        return this.state.inComments ? (
+        return this.state.inRecurrenceDateBasis ? (
+            <RecurringTaskDateBasisModal
+                task={task}
+                projectId={projectId}
+                closePopover={this.props.cancelPopover}
+                selectDateBasis={this.completeWithSelectedRecurrenceDateBasis}
+            />
+        ) : this.state.inComments ? (
             <RichCommentModal
                 projectId={projectId}
                 objectType={'tasks'}

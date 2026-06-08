@@ -16,6 +16,7 @@ export default function AssistantLine({
     useGlobalLatestComment = false,
     projectOverride = null,
     assistantIdOverride = null,
+    assistantSwitchOptions = null,
     startCollapsed = false,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -24,10 +25,26 @@ export default function AssistantLine({
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects?.[selectedProjectIndex])
-    const selectedProject = projectOverride || selectedProjectFromStore
     const [amountOfButtonOptions, setAmountOfButtonOptions] = useState(0)
     const [isCollapsed, setIsCollapsed] = useState(startCollapsed)
-    const assistantId = assistantIdOverride || defaultAssistant?.uid
+    const [showSwitchAssistant, setShowSwitchAssistant] = useState(false)
+    const canSwitchAssistant =
+        !!assistantSwitchOptions?.projectOverride && !!assistantSwitchOptions?.assistantIdOverride
+    const effectiveProjectOverride =
+        showSwitchAssistant && canSwitchAssistant ? assistantSwitchOptions.projectOverride : projectOverride
+    const selectedProject = effectiveProjectOverride || selectedProjectFromStore
+    const assistantId =
+        showSwitchAssistant && canSwitchAssistant
+            ? assistantSwitchOptions.assistantIdOverride
+            : assistantIdOverride || defaultAssistant?.uid
+    const effectiveUseAssistantProjectContext =
+        showSwitchAssistant && canSwitchAssistant
+            ? assistantSwitchOptions.useAssistantProjectContext ?? useAssistantProjectContext
+            : useAssistantProjectContext
+    const effectiveUseGlobalLatestComment =
+        showSwitchAssistant && canSwitchAssistant
+            ? assistantSwitchOptions.useGlobalLatestComment ?? useGlobalLatestComment
+            : useGlobalLatestComment
 
     const { assistant: selectedLineAssistant } = getAssistantLineData(
         selectedProject,
@@ -50,6 +67,21 @@ export default function AssistantLine({
     useEffect(() => {
         setIsCollapsed(startCollapsed)
     }, [startCollapsed, selectedProject?.id, assistantId])
+
+    useEffect(() => {
+        setShowSwitchAssistant(false)
+    }, [
+        projectOverride?.id,
+        selectedProjectFromStore?.id,
+        assistantIdOverride,
+        assistantSwitchOptions?.assistantIdOverride,
+    ])
+
+    const toggleAssistant = e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
+        setShowSwitchAssistant(showSwitchAssistant => !showSwitchAssistant)
+    }
 
     if (!hasRequiredData) {
         return (
@@ -74,14 +106,20 @@ export default function AssistantLine({
                 <CollapsedAssistantRow
                     assistant={selectedAssistant}
                     showLastComment={showLastComment}
-                    useAssistantProjectContext={useAssistantProjectContext}
-                    useGlobalLatestComment={useGlobalLatestComment}
+                    useAssistantProjectContext={effectiveUseAssistantProjectContext}
+                    useGlobalLatestComment={effectiveUseGlobalLatestComment}
                     onPress={() => setIsCollapsed(false)}
                     projectOverride={selectedProject}
                     assistantIdOverride={assistantId}
+                    canSwitchAssistant={canSwitchAssistant}
+                    toggleAssistant={toggleAssistant}
+                    showSwitchAssistant={showSwitchAssistant}
                 />
             ) : (
                 <View>
+                    {canSwitchAssistant && (
+                        <SwitchAssistantButton onPress={toggleAssistant} showSwitchAssistant={showSwitchAssistant} />
+                    )}
                     <AssistantOptions
                         amountOfButtonOptions={amountOfButtonOptions}
                         onCollapse={() => setIsCollapsed(true)}
@@ -91,8 +129,8 @@ export default function AssistantLine({
                     {showLastComment && (
                         <LastCommentArea
                             withTopMargin={true}
-                            useAssistantProjectContext={useAssistantProjectContext}
-                            useGlobalLatestComment={useGlobalLatestComment}
+                            useAssistantProjectContext={effectiveUseAssistantProjectContext}
+                            useGlobalLatestComment={effectiveUseGlobalLatestComment}
                             projectOverride={selectedProject}
                             assistantIdOverride={assistantId}
                         />
@@ -111,6 +149,9 @@ function CollapsedAssistantRow({
     onPress,
     projectOverride,
     assistantIdOverride,
+    canSwitchAssistant,
+    toggleAssistant,
+    showSwitchAssistant,
 }) {
     const isMobile = useSelector(state => state.smallScreenNavigation)
 
@@ -119,6 +160,13 @@ function CollapsedAssistantRow({
             style={[localStyles.collapsedRow, isMobile && localStyles.collapsedRowMobile]}
             onPress={onPress}
         >
+            {canSwitchAssistant && (
+                <SwitchAssistantButton
+                    onPress={toggleAssistant}
+                    collapsed={true}
+                    showSwitchAssistant={showSwitchAssistant}
+                />
+            )}
             <View style={[localStyles.collapsedLeft, isMobile && localStyles.collapsedLeftMobile]}>
                 <AssistantAvatar
                     photoURL={assistant?.photoURL50 || assistant?.photoURL300 || assistant?.photoURL}
@@ -155,6 +203,20 @@ function CollapsedAssistantRow({
     )
 }
 
+function SwitchAssistantButton({ onPress, collapsed = false, showSwitchAssistant = false }) {
+    const accessibilityLabel = showSwitchAssistant ? 'Switch to project assistant' : 'Switch to default assistant'
+
+    return (
+        <TouchableOpacity
+            style={[localStyles.switchButton, collapsed && localStyles.switchButtonCollapsed]}
+            onPress={onPress}
+            accessibilityLabel={accessibilityLabel}
+        >
+            <Icon name={'repeat'} size={16} color={colors.Text03} />
+        </TouchableOpacity>
+    )
+}
+
 const localStyles = StyleSheet.create({
     container: {
         width: '100%',
@@ -175,6 +237,24 @@ const localStyles = StyleSheet.create({
         minHeight: 0,
         paddingTop: 8,
         paddingBottom: 8,
+    },
+    switchButton: {
+        position: 'absolute',
+        left: 10,
+        top: 12,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.Grey300,
+        zIndex: 1,
+    },
+    switchButtonCollapsed: {
+        position: 'relative',
+        left: 0,
+        top: 0,
+        marginRight: 8,
     },
     collapsedRow: {
         flexDirection: 'row',

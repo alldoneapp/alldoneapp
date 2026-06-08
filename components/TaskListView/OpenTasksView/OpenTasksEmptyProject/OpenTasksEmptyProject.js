@@ -5,7 +5,12 @@ import ProjectHeader from '../../Header/ProjectHeader'
 import OpenTasksDateHeaderEmptyProject from './OpenTasksDateHeaderEmptyProject'
 import NewTaskSection from '../NewTaskSection'
 
-export default function OpenTasksEmptyProject({ projectId, projectIndex, setPressedShowMoreMainSection }) {
+export default function OpenTasksEmptyProject({
+    projectId,
+    projectIndex,
+    showRootSectionNavigation,
+    setPressedShowMoreMainSection,
+}) {
     return (
         <View style={{ marginBottom: 25 }}>
             <ProjectHeader
@@ -14,6 +19,7 @@ export default function OpenTasksEmptyProject({ projectId, projectIndex, setPres
                 showWorkflowTag={true}
                 showAddTask={true}
                 setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                showRootSectionNavigation={showRootSectionNavigation}
             />
             <OpenTasksDateHeaderEmptyProject projectId={projectId} />
             <NewTaskSection projectId={projectId} />

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
+import Popover from 'react-tiny-popover'
 
 import TaskEditionMode from './TaskEditionMode'
 import TaskPresentationMode from './TaskPresentationMode'
 import FollowUpModalWrapper from './FollowUpModalWrapper'
 import WorkflowModalWrapper from './WorkflowModalWrapper'
-import { chronoEntriesOrder } from '../../../../utils/HelperFunctions'
+import { chronoEntriesOrder, popoverToSafePosition } from '../../../../utils/HelperFunctions'
 import TasksHelper, {
     DONE_STEP,
     OPEN_STEP,
@@ -16,6 +17,9 @@ import { stopLoadingData } from '../../../../redux/actions'
 import { WORKSTREAM_ID_PREFIX } from '../../../Workstreams/WorkstreamHelper'
 import { checkIsLimitedByXp } from '../../../Premium/PremiumHelper'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../utils/backends/Tasks/tasksFirestore'
+import RecurringTaskDateBasisModal, {
+    shouldShowRecurringTaskDateBasisModal,
+} from '../RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 
 export default function TaskArea({
     projectId,
@@ -34,9 +38,11 @@ export default function TaskArea({
 }) {
     const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [inEditionMode, setInEditionMode] = useState(startInEditionMode)
     const [followUpModalIsOpen, setFollowUpModalIsOpen] = useState(false)
     const [workflowModalIsOpen, setWorkflowModalIsOpen] = useState(false)
+    const [recurrenceDateBasisModalIsOpen, setRecurrenceDateBasisModalIsOpen] = useState(false)
 
     const toggleEditionMode = () => {
         setTaskBeenEdited(inEditionMode ? '' : task.id)
@@ -61,6 +67,8 @@ export default function TaskArea({
     const handleFollowUpTaskWorkflowInteraction = longPress => {
         if (longPress) {
             setFollowUpModalIsOpen(true)
+        } else if (shouldShowRecurringTaskDateBasisModal(task)) {
+            setRecurrenceDateBasisModalIsOpen(true)
         } else {
             moveTasksFromOpen(projectId, task, DONE_STEP, null, null, task.estimations, '')
         }
@@ -124,6 +132,36 @@ export default function TaskArea({
     }
 
     const isAssistant = task && task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+    const presentationMode = (
+        <TaskPresentationMode
+            task={task}
+            projectId={projectId}
+            toggleEditionMode={toggleEditionMode}
+            pressIcon={pressIcon}
+            disabled={followUpModalIsOpen || workflowModalIsOpen || recurrenceDateBasisModalIsOpen}
+            checkBoxMarked={followUpModalIsOpen || workflowModalIsOpen || recurrenceDateBasisModalIsOpen}
+            isSubtask={isSubtask}
+        />
+    )
+
+    const closeRecurrenceDateBasisModal = () => {
+        setRecurrenceDateBasisModalIsOpen(false)
+    }
+
+    const completeWithSelectedRecurrenceDateBasis = recurrenceBaseDateOverride => {
+        setRecurrenceDateBasisModalIsOpen(false)
+        moveTasksFromOpen(
+            projectId,
+            task,
+            DONE_STEP,
+            null,
+            null,
+            task.estimations,
+            '',
+            undefined,
+            recurrenceBaseDateOverride
+        )
+    }
 
     return (
         <View>
@@ -142,16 +180,28 @@ export default function TaskArea({
                     isSubtask={isSubtask}
                     objectUrl={objectUrl}
                 />
+            ) : recurrenceDateBasisModalIsOpen ? (
+                <Popover
+                    content={
+                        <RecurringTaskDateBasisModal
+                            task={task}
+                            projectId={projectId}
+                            closePopover={closeRecurrenceDateBasisModal}
+                            selectDateBasis={completeWithSelectedRecurrenceDateBasis}
+                        />
+                    }
+                    onClickOutside={closeRecurrenceDateBasisModal}
+                    isOpen={recurrenceDateBasisModalIsOpen}
+                    padding={4}
+                    position={['top']}
+                    align={'center'}
+                    contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
+                    disableReposition
+                >
+                    {presentationMode}
+                </Popover>
             ) : (
-                <TaskPresentationMode
-                    task={task}
-                    projectId={projectId}
-                    toggleEditionMode={toggleEditionMode}
-                    pressIcon={pressIcon}
-                    disabled={followUpModalIsOpen || workflowModalIsOpen}
-                    checkBoxMarked={followUpModalIsOpen || workflowModalIsOpen}
-                    isSubtask={isSubtask}
-                />
+                presentationMode
             )}
             {editing && !isSubtask && !isAssistant && (
                 <FollowUpModalWrapper

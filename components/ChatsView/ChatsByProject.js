@@ -122,6 +122,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                         </View>
                     )
                 }
+                showRootSectionNavigation={!isInAllProjects}
             />
 
             <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />

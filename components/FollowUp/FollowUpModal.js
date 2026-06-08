@@ -23,6 +23,9 @@ import { FOLLOW_UP_MODAL_ID, MENTION_MODAL_ID, removeModal, storeModal } from '.
 import { translate } from '../../i18n/TranslationService'
 import { getEstimationIconByValue } from '../../utils/EstimationHelper'
 import { createFollowUpTask, moveTasksFromOpen, setTaskAutoEstimation } from '../../utils/backends/Tasks/tasksFirestore'
+import RecurringTaskDateBasisModal, {
+    shouldShowRecurringTaskDateBasisModal,
+} from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 
 const TODAY = 'Today'
 const TOMORROW = 'Tomorrow'
@@ -34,6 +37,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
     const [inEstimation, setInEstimation] = useState(false)
     const [inDueDate, setInDueDate] = useState(false)
     const [inCalendar, setInCalendar] = useState(false)
+    const [inRecurrenceDateBasis, setInRecurrenceDateBasis] = useState(false)
     const [comment, setComment] = useState('')
     const [commentIsPrivate, setCommentIsPrivate] = useState(false)
     const [hasKarma, setHasKarma] = useState(false)
@@ -153,7 +157,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
     }
 
     const followUpModalOnEnter = e => {
-        if (e.key === 'Enter' && !inComments && !inEstimation) {
+        if (e.key === 'Enter' && !inComments && !inEstimation && !inRecurrenceDateBasis) {
             if (inDueDate || inCalendar) {
                 setInComments(false)
                 setInDueDate(false)
@@ -164,7 +168,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
         }
     }
 
-    const onDonePress = () => {
+    const completeTask = recurrenceBaseDateOverride => {
         hidePopover()
         updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
             const needToCreateFolloUpTask = dateTimestamp
@@ -190,7 +194,8 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
                 needToCreateFolloUpTask ? null : STAYWARD_COMMENT,
                 estimations,
                 checkBoxId,
-                explicitAssistantEnabled
+                explicitAssistantEnabled,
+                recurrenceBaseDateOverride
             )
             if (needToCreateFolloUpTask) {
                 createFollowUpTask(
@@ -203,6 +208,14 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
                 )
             }
         })
+    }
+
+    const onDonePress = () => {
+        if (shouldShowRecurringTaskDateBasisModal(task)) {
+            setInRecurrenceDateBasis(true)
+        } else {
+            completeTask()
+        }
     }
 
     const setAutoEstimation = autoEstimation => {
@@ -223,7 +236,14 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
         }
     }, [])
 
-    return inComments ? (
+    return inRecurrenceDateBasis ? (
+        <RecurringTaskDateBasisModal
+            task={task}
+            projectId={projectId}
+            closePopover={cancelPopover}
+            selectDateBasis={completeTask}
+        />
+    ) : inComments ? (
         <RichCommentModal
             projectId={projectId}
             objectType={'tasks'}

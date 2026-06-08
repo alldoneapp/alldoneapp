@@ -387,6 +387,7 @@ export default class NotesByProject extends PureComponent {
                             />
                         ) : null
                     }
+                    showRootSectionNavigation={inSelectedProject}
                 />
                 {inSelectedProject && <NotesHeader />}
                 <NotesSticky

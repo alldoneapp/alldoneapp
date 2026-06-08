@@ -16,7 +16,11 @@ export default function OpenTasksByProjectForAssistants({ projectIndex }) {
 
     return (
         <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
-            <ProjectHeader projectIndex={projectIndex} projectId={projectId} />
+            <ProjectHeader
+                projectIndex={projectIndex}
+                projectId={projectId}
+                showRootSectionNavigation={inSelectedProject}
+            />
             <OpenTasksDateHeaderForAssistants />
             <View style={{ marginLeft: 11, marginTop: 12 }}>
                 <OpenTasksAssistantData projectId={projectId} />

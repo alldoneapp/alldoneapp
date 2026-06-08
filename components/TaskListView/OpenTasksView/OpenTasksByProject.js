@@ -75,15 +75,19 @@ export default function OpenTasksByProject({
     const isDefaultProject = projectId === defaultProjectId
     const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
     const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
-    const isUsingDefaultProjectAssistant =
+    const useSelectedProjectAssistantLine =
+        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
+    const assistantLineProject = useSelectedProjectAssistantLine ? project : defaultProject
+    const assistantLineAssistantId = useSelectedProjectAssistantLine
+        ? selectedProjectAssistantId
+        : defaultProjectAssistantId
+    const showAssistantSwitch =
         !isDefaultProject &&
+        useSelectedProjectAssistantLine &&
+        !!defaultProject &&
         !!defaultProjectAssistantId &&
-        !!selectedProjectAssistantId &&
-        selectedProjectAssistantId === defaultProjectAssistantId
-    const showAboveHeaderDefaultAssistant =
-        !isAnonymous && inSelectedProject && !isDefaultProject && !!defaultProject && !!defaultProjectAssistantId
-    const showBelowHeaderSelectedAssistant =
-        !isAnonymous && inSelectedProject && (isDefaultProject || !isUsingDefaultProjectAssistant)
+        !!selectedProjectAssistantId
+    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
 
     useEffect(() => {
         const watcherKey = v4()
@@ -135,6 +139,7 @@ export default function OpenTasksByProject({
                 <OpenTasksEmptyProject
                     projectId={projectId}
                     projectIndex={projectIndex}
+                    showRootSectionNavigation={inSelectedProject}
                     setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                 />
             )}
@@ -142,27 +147,33 @@ export default function OpenTasksByProject({
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
                     <NeedShowMoreOpenTasksButton projectId={projectId} />
                     <NeedShowMoreEmptyGoalsButton projectId={projectId} />
-                    {showAboveHeaderDefaultAssistant && (
-                        <View style={{ marginTop: 16 }}>
-                            <AssistantLine
-                                showLastComment={true}
-                                startCollapsed={!isUsingDefaultProjectAssistant}
-                                useGlobalLatestComment={true}
-                                projectOverride={defaultProject}
-                                assistantIdOverride={defaultProjectAssistantId}
-                            />
-                        </View>
-                    )}
                     <ProjectHeader
                         projectIndex={projectIndex}
                         projectId={projectId}
                         showWorkflowTag={!isAssistant}
                         showAddTask={!isAssistant}
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                        showRootSectionNavigation={inSelectedProject}
                     />
-                    {showBelowHeaderSelectedAssistant && (
-                        <View style={{ marginTop: showAboveHeaderDefaultAssistant ? 12 : 0 }}>
-                            <AssistantLine showLastComment={true} useAssistantProjectContext={false} />
+                    {showAssistantLine && (
+                        <View style={{ marginTop: 0 }}>
+                            <AssistantLine
+                                showLastComment={true}
+                                useAssistantProjectContext={!useSelectedProjectAssistantLine}
+                                useGlobalLatestComment={!useSelectedProjectAssistantLine}
+                                projectOverride={assistantLineProject}
+                                assistantIdOverride={assistantLineAssistantId}
+                                assistantSwitchOptions={
+                                    showAssistantSwitch
+                                        ? {
+                                              projectOverride: defaultProject,
+                                              assistantIdOverride: defaultProjectAssistantId,
+                                              useAssistantProjectContext: true,
+                                              useGlobalLatestComment: true,
+                                          }
+                                        : null
+                                }
+                            />
                         </View>
                     )}
                     <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />

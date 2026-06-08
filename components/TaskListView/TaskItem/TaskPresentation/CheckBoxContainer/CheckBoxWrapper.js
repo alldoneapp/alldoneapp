@@ -17,6 +17,9 @@ import CheckBoxContainer from './CheckBoxContainer'
 import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
 import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
+import RecurringTaskDateBasisModal, {
+    shouldShowRecurringTaskDateBasisModal,
+} from '../../../../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 
 function CheckBoxWrapper(
     {
@@ -40,6 +43,7 @@ function CheckBoxWrapper(
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [checked, setChecked] = useState(task.done)
     const [isOpen, setIsOpen] = useState(false)
+    const [recurrenceDateBasisModalIsOpen, setRecurrenceDateBasisModalIsOpen] = useState(false)
     const [showAnimation, setShowAnimation] = useState(false)
     const checkBoxIdRef = useRef(v4())
     const isUnmountedRef = useRef(false)
@@ -89,26 +93,62 @@ function CheckBoxWrapper(
     const ownerIsWorkstream = userId?.startsWith(WORKSTREAM_ID_PREFIX)
     const isLockedGmailTask = isInboxSummaryGmailTask(task)
 
+    const scheduleSetTaskStatus = recurrenceBaseDateOverride => {
+        setShowAnimation(true)
+        const t = setTimeout(() => {
+            setTaskStatus(
+                projectId,
+                taskId,
+                !done,
+                ownerIsWorkstream ? store.getState().loggedUser.uid : userId,
+                task,
+                '',
+                true,
+                estimations[OPEN_STEP],
+                estimations[OPEN_STEP],
+                recurrenceBaseDateOverride
+            )
+        }, ANIMATION_DURATION)
+        timeoutsRef.current.push(t)
+    }
+
+    const scheduleMoveTasksFromOpen = (stepToMoveId, recurrenceBaseDateOverride) => {
+        setShowAnimation(true)
+        const t = setTimeout(() => {
+            moveTasksFromOpen(
+                projectId,
+                task,
+                stepToMoveId,
+                null,
+                null,
+                estimations,
+                checkBoxIdRef.current,
+                undefined,
+                recurrenceBaseDateOverride
+            )
+        }, ANIMATION_DURATION)
+        timeoutsRef.current.push(t)
+    }
+
+    const closeRecurrenceDateBasisModal = () => {
+        setRecurrenceDateBasisModalIsOpen(false)
+        safeSetChecked(false)
+    }
+
+    const completeWithSelectedRecurrenceDateBasis = recurrenceBaseDateOverride => {
+        setRecurrenceDateBasisModalIsOpen(false)
+        scheduleMoveTasksFromOpen(DONE_STEP, recurrenceBaseDateOverride)
+    }
+
+    const shouldAskForRecurrenceDateBasis = stepToMoveId => {
+        return stepToMoveId === DONE_STEP && shouldShowRecurringTaskDateBasisModal(task)
+    }
+
     const toggleCheckAction = isLongPress => {
         const { loggedUser } = store.getState()
         if (isSubtask) {
             if (!done) {
-                setShowAnimation(true)
-                // Delay task completion until animation finishes
-                const t = setTimeout(() => {
-                    setTaskStatus(
-                        projectId,
-                        taskId,
-                        !done,
-                        ownerIsWorkstream ? loggedUser.uid : userId,
-                        task,
-                        '',
-                        true,
-                        estimations[OPEN_STEP],
-                        estimations[OPEN_STEP]
-                    )
-                }, ANIMATION_DURATION)
-                timeoutsRef.current.push(t)
+                scheduleSetTaskStatus()
             } else {
                 setTaskStatus(
                     projectId,
@@ -125,29 +165,16 @@ function CheckBoxWrapper(
         } else if (done) {
             moveTasksFromDone(projectId, task, OPEN_STEP)
         } else if (genericData || (isPrivate && !isLongPress) || calendarData || isLockedGmailTask) {
-            setShowAnimation(true)
-            // Delay task completion until animation finishes
-            const t = setTimeout(() => {
-                moveTasksFromOpen(projectId, task, DONE_STEP, null, null, estimations, checkBoxIdRef.current)
-            }, ANIMATION_DURATION)
-            timeoutsRef.current.push(t)
+            shouldAskForRecurrenceDateBasis(DONE_STEP)
+                ? setRecurrenceDateBasisModalIsOpen(true)
+                : scheduleMoveTasksFromOpen(DONE_STEP)
         } else if (userIds.length === 1 && !isLongPress) {
-            setShowAnimation(true)
             const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId)
             const workflowStepsIds = workflow ? Object.keys(workflow).sort(chronoKeysOrder) : []
-            // Delay task completion until animation finishes
-            const t = setTimeout(() => {
-                moveTasksFromOpen(
-                    projectId,
-                    task,
-                    workflowStepsIds[0] ? workflowStepsIds[0] : DONE_STEP,
-                    null,
-                    null,
-                    estimations,
-                    checkBoxIdRef.current
-                )
-            }, ANIMATION_DURATION)
-            timeoutsRef.current.push(t)
+            const stepToMoveId = workflowStepsIds[0] ? workflowStepsIds[0] : DONE_STEP
+            shouldAskForRecurrenceDateBasis(stepToMoveId)
+                ? setRecurrenceDateBasisModalIsOpen(true)
+                : scheduleMoveTasksFromOpen(stepToMoveId)
         } else {
             const taskOwner = TasksHelper.getTaskOwner(userId, projectId)
             dispatch(setAssignee(ownerIsWorkstream ? loggedUser : taskOwner))
@@ -189,7 +216,42 @@ function CheckBoxWrapper(
 
     return (
         <>
-            {isOpen ? (
+            {recurrenceDateBasisModalIsOpen ? (
+                <Popover
+                    content={
+                        <RecurringTaskDateBasisModal
+                            task={task}
+                            projectId={projectId}
+                            closePopover={closeRecurrenceDateBasisModal}
+                            selectDateBasis={completeWithSelectedRecurrenceDateBasis}
+                        />
+                    }
+                    onClickOutside={closeRecurrenceDateBasisModal}
+                    isOpen={recurrenceDateBasisModalIsOpen}
+                    padding={4}
+                    position={['top']}
+                    align={'center'}
+                    contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
+                    disableReposition
+                >
+                    <CheckBoxContainer
+                        isSubtask={isSubtask}
+                        isObservedTask={isObservedTask}
+                        isToReviewTask={isToReviewTask}
+                        isSuggested={isSuggested}
+                        isActiveOrganizeMode={isActiveOrganizeMode}
+                        checkOnDrag={checkOnDrag}
+                        highlightColor={highlightColor}
+                        accessGranted={accessGranted}
+                        pending={pending}
+                        showWorkflowIndicator={showWorkflowIndicator}
+                        onCheckboxPress={onCheckboxPress}
+                        checkBoxIdRef={checkBoxIdRef}
+                        checked={checked}
+                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                    />
+                </Popover>
+            ) : isOpen ? (
                 <Popover
                     content={
                         <TaskFlowModal

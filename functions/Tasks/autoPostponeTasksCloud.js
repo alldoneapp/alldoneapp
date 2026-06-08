@@ -20,6 +20,7 @@ const AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT = 3
 const AUTO_POSTPONE_AFTER_DAYS_OVERDUE_NEVER = 0
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const ALLOWED_AUTO_POSTPONE_VALUES = new Set([0, 1, 2, 3, 5, 7, 14, 30])
+const RECURRENCE_NEVER = 'never'
 
 function normalizeAutoPostponeAfterDaysOverdue(value) {
     const parsedValue = Number(value)
@@ -28,6 +29,24 @@ function normalizeAutoPostponeAfterDaysOverdue(value) {
 
 function getUserAutoPostponeAfterDaysOverdue(userData = {}) {
     return normalizeAutoPostponeAfterDaysOverdue(userData.autoPostponeAfterDaysOverdue)
+}
+
+function getTaskRecurrence(task) {
+    const recurrence = task?.recurrence
+    return recurrence && typeof recurrence === 'object' ? recurrence.type : recurrence
+}
+
+function shouldSaveRecurrenceOriginalDueDate(task, previousDueDate, nextDueDate, isObservedTask = false) {
+    const recurrence = getTaskRecurrence(task)
+    return (
+        !isObservedTask &&
+        recurrence &&
+        recurrence !== RECURRENCE_NEVER &&
+        !task?.recurrenceOriginalDueDate &&
+        typeof previousDueDate === 'number' &&
+        typeof nextDueDate === 'number' &&
+        nextDueDate > previousDueDate
+    )
 }
 
 function resolveTimezoneContext(userData = {}) {
@@ -322,6 +341,9 @@ async function autoPostponeTaskCloud({
         updateData.dueDate = newDueDate
         if (newDueDate > task.dueDate) {
             updateData.timesPostponed = admin.firestore.FieldValue.increment(1)
+            if (shouldSaveRecurrenceOriginalDueDate(task, task.dueDate, newDueDate)) {
+                updateData.recurrenceOriginalDueDate = task.dueDate
+            }
         }
     }
 
