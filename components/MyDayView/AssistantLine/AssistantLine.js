@@ -240,8 +240,8 @@ const localStyles = StyleSheet.create({
     },
     switchButton: {
         position: 'absolute',
-        left: 10,
-        top: 12,
+        left: 0,
+        top: -4,
         width: 28,
         height: 28,
         borderRadius: 14,
