@@ -173,7 +173,7 @@ async function buildCallBootstrapContext(session) {
         historyContextMessage,
         runtimeContext,
         allowedTools,
-        tools: [],
+        tools: buildRealtimeToolSchemas(allowedTools),
         instructions: [buildCallBootstrapInstructions(assistant, user.language), historyContextMessage]
             .filter(Boolean)
             .join('\n\n'),
@@ -478,7 +478,12 @@ async function runAssistantRealtimeCall(sessionId) {
             try {
                 const result = await executeAllowedTool(approvedAction.toolName, approvedAction.toolArgs)
                 sendFunctionOutput(callId, result)
-            } catch (_) {
+            } catch (error) {
+                console.warn('WhatsApp Call: Tool execution failed', {
+                    sessionId,
+                    toolName: approvedAction.toolName,
+                    error: getSafeCallErrorDetails(error),
+                })
                 sendFunctionOutput(callId, { success: false, error: 'Tool execution failed.' })
             }
             requestResponse()
@@ -515,7 +520,12 @@ async function runAssistantRealtimeCall(sessionId) {
 
         try {
             sendFunctionOutput(callId, await executeAllowedTool(toolName, toolArgs))
-        } catch (_) {
+        } catch (error) {
+            console.warn('WhatsApp Call: Tool execution failed', {
+                sessionId,
+                toolName,
+                error: getSafeCallErrorDetails(error),
+            })
             sendFunctionOutput(callId, { success: false, error: 'Tool execution failed.' })
         }
         requestResponse()

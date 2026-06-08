@@ -240,10 +240,10 @@ describe('WhatsApp call sideband configuration', () => {
         getAssistantForChat.mockResolvedValue({
             name: 'Anna',
             instructions: 'Help the caller.',
-            allowedTools: [],
+            allowedTools: ['get_tasks'],
         })
         getConversationHistory.mockResolvedValue([['user', 'Earlier context']])
-        filterAllowedToolsForRuntimeContext.mockReturnValue([])
+        filterAllowedToolsForRuntimeContext.mockReturnValue(['get_tasks'])
         getDynamicToolSchemasWithCache.mockReturnValue(dynamicToolsPending)
         addBaseInstructions.mockImplementation(async messages => {
             messages.push(['system', 'Full instructions'])
@@ -267,6 +267,14 @@ describe('WhatsApp call sideband configuration', () => {
             expect.arrayContaining(['session.update', 'response.create'])
         )
         expect(sentEvents.find(event => event.type === 'session.update').session.audio.output).toBeUndefined()
+        expect(sentEvents.find(event => event.type === 'session.update').session.tools).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'function',
+                    name: 'get_tasks',
+                }),
+            ])
+        )
         expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
             'Never say you are ChatGPT'
         )
