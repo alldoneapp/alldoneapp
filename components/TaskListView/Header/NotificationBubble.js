@@ -14,11 +14,11 @@ import {
     setSelectedTypeOfProject,
     storeCurrentUser,
     switchProject,
-    switchShortcutProject,
 } from '../../../redux/actions'
-import { DV_TAB_ROOT_CHATS } from '../../../utils/TabNavigationConstants'
+import { DV_TAB_ROOT_CHATS, ROOT_ROUTES } from '../../../utils/TabNavigationConstants'
 import { ALL_TAB, FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import NavigationService from '../../../utils/NavigationService'
 
 export default function NotificationBubble({ amount, isFollowedNotification, containerStyle, projectId }) {
     const dispatch = useDispatch()
@@ -28,11 +28,13 @@ export default function NotificationBubble({ amount, isFollowedNotification, con
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.ProjectList.ProjectItem.ProjectItemIcon')
 
     const navigateToChats = () => {
-        const { smallScreenNavigation, loggedUser } = store.getState()
+        const { smallScreenNavigation, loggedUser, route } = store.getState()
 
         const tab = isFollowedNotification ? FOLLOWED_TAB : ALL_TAB
         const projectIndex = ProjectHelper.getProjectById(projectId)?.index
         const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
+
+        if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
 
         const actionsToDispatch = [
             setChatsActiveTab(tab),
@@ -41,7 +43,6 @@ export default function NotificationBubble({ amount, isFollowedNotification, con
             storeCurrentUser(loggedUser),
             setSelectedTypeOfProject(projectType),
             switchProject(projectIndex),
-            switchShortcutProject(projectIndex),
         ]
 
         if (smallScreenNavigation) actionsToDispatch.push(hideWebSideBar())
