@@ -20,6 +20,7 @@ import {
     DV_TAB_PROJECT_ASSISTANTS,
     DV_TAB_PROJECT_CONTACT_STATUSES,
     DV_TAB_PROJECT_HAPPINESS,
+    DV_TAB_PROJECT_OKRS,
 } from '../../utils/TabNavigationConstants'
 import { LINKED_OBJECT_TYPE_PROJECT } from '../../utils/LinkingHelper'
 import BacklinksView from '../BacklinksView/BacklinksView'
@@ -33,6 +34,7 @@ import ContactStatusSettings from './ProjectProperties/ContactStatusSettings/Con
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import ProjectHappinessView from './Happiness/ProjectHappinessView'
+import ProjectOKRsView from './OKRs/ProjectOKRsView'
 
 const ProjectDetailedView = ({ navigation }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -58,6 +60,7 @@ const ProjectDetailedView = ({ navigation }) => {
         DV_TAB_PROJECT_PROPERTIES,
         DV_TAB_PROJECT_STATISTICS,
         DV_TAB_PROJECT_HAPPINESS,
+        DV_TAB_PROJECT_OKRS,
         DV_TAB_PROJECT_BACKLINKS,
         DV_TAB_PROJECT_TEAM_MEMBERS,
         DV_TAB_PROJECT_WORKSTREAMS,
@@ -72,6 +75,8 @@ const ProjectDetailedView = ({ navigation }) => {
         navigationTabs.splice(indexST, 1)
         const indexHP = navigationTabs.indexOf(DV_TAB_PROJECT_HAPPINESS)
         navigationTabs.splice(indexHP, 1)
+        const indexOKR = navigationTabs.indexOf(DV_TAB_PROJECT_OKRS)
+        navigationTabs.splice(indexOKR, 1)
         const indexBL = navigationTabs.indexOf(DV_TAB_PROJECT_BACKLINKS)
         navigationTabs.splice(indexBL, 1)
         const indexTM = navigationTabs.indexOf(DV_TAB_PROJECT_TEAM_MEMBERS)
@@ -140,6 +145,8 @@ const ProjectDetailedView = ({ navigation }) => {
                                         )
                                     case DV_TAB_PROJECT_HAPPINESS:
                                         return <ProjectHappinessView project={project} userId={loggedUser.uid} />
+                                    case DV_TAB_PROJECT_OKRS:
+                                        return <ProjectOKRsView project={project} userId={loggedUser.uid} />
                                     case DV_TAB_PROJECT_BACKLINKS:
                                         return (
                                             <BacklinksView

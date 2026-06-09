@@ -5,6 +5,7 @@ import {
     OKR_TYPE_MANUAL,
     OKR_TYPE_TIME_LOGGED_REVENUE,
     OKR_STATUS_ACTIVE,
+    buildOkrRecapChatId,
     canUserSeeOkr,
     calculateOkrProgress,
     getOkrIsPublicFor,
@@ -13,6 +14,7 @@ import {
     normalizeOkrType,
     normalizeOkrNumber,
 } from '../../../components/TaskListView/OKRs/okrHelper'
+import { getChatMeta } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 
 export const OKRS_COLLECTION = 'projectOkrs'
@@ -67,6 +69,35 @@ export function watchProjectOKRs(projectId, ownerId, watcherKey) {
             })
             store.dispatch(setOKRsInProjectInTasks(projectId, okrs))
         })
+}
+
+// One-time fetch of every OKR (active + closed) the user owns in a project, for the
+// OKR history tab. Filters by ownerId only (single-field index) and sorts client-side
+// by periodEnd to avoid needing a composite Firestore index.
+export async function fetchProjectOKRsHistory(projectId, ownerId) {
+    if (!projectId || !ownerId) return []
+
+    const snapshot = await getDb()
+        .collection(`okrs/${projectId}/${OKRS_COLLECTION}`)
+        .where('ownerId', '==', ownerId)
+        .get()
+
+    const okrs = []
+    const { loggedUser } = store.getState()
+    snapshot.forEach(doc => {
+        const okr = mapOKRData(doc.id, doc.data())
+        if (canUserSeeOkr(okr, loggedUser.uid)) okrs.push(okr)
+    })
+    okrs.sort((a, b) => b.periodEnd - a.periodEnd)
+    return okrs
+}
+
+// Resolves the auto-generated recap chat topic for a closed OKR period (created by
+// renewExpiredOKRsSecondGen). Returns the chat meta or null when no recap exists.
+export async function getOKRRecapChat(projectId, ownerId, periodStart, periodEnd) {
+    const chatId = buildOkrRecapChatId(projectId, ownerId, periodStart, periodEnd)
+    if (!chatId) return null
+    return getChatMeta(projectId, chatId)
 }
 
 export async function createOKR(projectId, data) {

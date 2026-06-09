@@ -249,3 +249,18 @@ export function formatOkrValue(value, unit) {
     const cleanUnit = typeof unit === 'string' ? unit.trim() : ''
     return cleanUnit ? `${formattedNumber} ${cleanUnit}` : formattedNumber
 }
+
+export function formatOkrPeriodRange(periodStart, periodEnd) {
+    const start = moment(normalizeOkrNumber(periodStart))
+    const end = moment(normalizeOkrNumber(periodEnd))
+    if (!start.isValid() || !end.isValid()) return ''
+    const startFormat = start.year() === end.year() ? 'MMM D' : 'MMM D, YYYY'
+    return `${start.format(startFormat)} – ${end.format('MMM D, YYYY')}`
+}
+
+// Must stay in sync with buildRecapChatId in functions/OKRs/okrRenewal.js so the
+// client can deep-link a closed OKR back to its auto-generated recap chat topic.
+export function buildOkrRecapChatId(projectId, ownerId, periodStart, periodEnd) {
+    if (!projectId || !ownerId) return ''
+    return `OKRRecap_${projectId}_${ownerId}_${periodStart}_${periodEnd}`.replace(/[^A-Za-z0-9_-]/g, '_')
+}

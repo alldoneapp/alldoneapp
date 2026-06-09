@@ -20,6 +20,7 @@ import ProjectsInvitations from './Invitations/ProjectsInvitations'
 import ProjectInvitationPopup from '../UIComponents/ProjectInvitation/ProjectInvitationPopup'
 import UserStatistics from './Statistics/UserStatistics'
 import UserHappiness from './Happiness/UserHappiness'
+import UserOKRs from './OKRs/UserOKRs'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import ShortcutsSection from './Shortcuts/ShortcutsSection'
 import {
@@ -33,6 +34,7 @@ import {
     DV_TAB_SETTINGS_PROFILE,
     DV_TAB_SETTINGS_EXPORT,
     DV_TAB_SETTINGS_HAPPINESS,
+    DV_TAB_SETTINGS_OKRS,
 } from '../../utils/TabNavigationConstants'
 import StripePremiumTab from '../Premium/PremiumTab/StripePremiumTab'
 import ExportTab from './Export/ExportTab'
@@ -61,6 +63,7 @@ const SettingsView = ({ navigation }) => {
         DV_TAB_SETTINGS_INVITATIONS,
         DV_TAB_SETTINGS_STATISTICS,
         DV_TAB_SETTINGS_HAPPINESS,
+        DV_TAB_SETTINGS_OKRS,
         DV_TAB_SETTINGS_SHORTCUTS,
         DV_TAB_SETTINGS_EXPORT,
         DV_TAB_SETTINGS_PREMIUM,
@@ -131,6 +134,8 @@ const SettingsView = ({ navigation }) => {
                                     return <UserStatistics />
                                 case DV_TAB_SETTINGS_HAPPINESS:
                                     return <UserHappiness />
+                                case DV_TAB_SETTINGS_OKRS:
+                                    return <UserOKRs />
                                 case DV_TAB_SETTINGS_SHORTCUTS:
                                     return <ShortcutsSection />
                                 case DV_TAB_SETTINGS_PREMIUM:
