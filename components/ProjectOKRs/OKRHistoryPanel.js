@@ -114,6 +114,7 @@ export default function OKRHistoryPanel({ projects, ownerId, showProjectName }) 
         <OKRHistoryRow
             key={itemKey(item)}
             okr={item.okr}
+            projectId={item.projectId}
             projectName={showProjectName ? item.projectName : ''}
             recapChatId={recapByKey[itemKey(item)]}
             onOpenRecap={openRecap}

@@ -15,7 +15,10 @@ import {
     formatOkrValue,
     getOkrTimeLeftParts,
     isOkrPrivate,
+    isRevenueOkr,
+    normalizeOkrNumber,
 } from '../TaskListView/OKRs/okrHelper'
+import useOkrRevenueValue from '../TaskListView/OKRs/useOkrRevenueValue'
 
 const SEGMENTS = [0, 1, 2, 3, 4]
 
@@ -33,19 +36,36 @@ function getPaceColor(status) {
 // Read-only OKR row used by the OKR history tab. Mirrors the visual language of
 // OKRItem (status accent, segmented progress, pace label) but never edits the OKR;
 // closed OKRs render their stored final value and an optional recap link.
-export default function OKRHistoryRow({ okr, projectName, recapChatId, onOpenRecap }) {
+export default function OKRHistoryRow({ okr, projectId, projectName, recapChatId, onOpenRecap }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const privateOkr = isOkrPrivate(okr)
     const isClosed = okr.status === OKR_STATUS_CLOSED
-    const pace = calculateOkrPace(okr)
+    const revenueOkr = isRevenueOkr(okr)
+    const resolvedProjectId = projectId || okr.projectId
+    const storedCurrentValue = normalizeOkrNumber(okr.currentValue)
+    // Closed OKRs keep the value finalized at renewal time; recompute from logged time
+    // only for active revenue OKRs (and legacy closed docs that were finalized at 0).
+    const usesLiveRevenue = revenueOkr && (!isClosed || storedCurrentValue <= 0)
+    const revenueValue = useOkrRevenueValue({
+        projectId: resolvedProjectId,
+        ownerId: usesLiveRevenue ? okr.ownerId : null,
+        periodStart: okr.periodStart,
+        periodEnd: okr.periodEnd,
+    })
+    const currentValue = usesLiveRevenue ? revenueValue.currentValue : storedCurrentValue
+    const resolvedOkr = { ...okr, currentValue, resolvedCurrentValue: currentValue }
+    // Closed OKRs show the standing at the end of their period, not "ended" as of today.
+    const pace = calculateOkrPace(resolvedOkr, isClosed ? okr.periodEnd - 1 : Date.now())
     const progress = pace.actualPercent
     const paceColor = getPaceColor(pace.status)
     const timeLeft = getOkrTimeLeftParts(okr.periodEnd)
 
-    const metaText = `${formatOkrValue(okr.currentValue, okr.unit)} / ${formatOkrValue(
+    const metaText = `${formatOkrValue(currentValue, okr.unit)} / ${formatOkrValue(
         okr.targetValue,
         okr.unit
-    )} · ${translate(`OKR cadence ${okr.cadence}`)} · ${formatOkrPeriodRange(okr.periodStart, okr.periodEnd)}`
+    )} · ${translate(`OKR cadence ${okr.cadence}`)} · ${formatOkrPeriodRange(okr.periodStart, okr.periodEnd)}${
+        usesLiveRevenue && revenueValue.missingHourlyRate ? ` · ${translate('OKR hourly rate missing')}` : ''
+    }`
 
     return (
         <View style={[localStyles.container, mobile && localStyles.containerMobile]}>
@@ -71,7 +91,7 @@ export default function OKRHistoryRow({ okr, projectName, recapChatId, onOpenRec
                 {isClosed && !!recapChatId && (
                     <TouchableOpacity
                         style={localStyles.recapLink}
-                        onPress={() => onOpenRecap(okr.projectId, recapChatId)}
+                        onPress={() => onOpenRecap(resolvedProjectId, recapChatId)}
                         accessibilityLabel={translate('View recap')}
                     >
                         <Icon name="comments-thread" size={12} color={colors.Primary100} />
