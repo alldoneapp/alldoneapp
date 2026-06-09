@@ -6,6 +6,8 @@ import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import SharedHelper from '../../../utils/SharedHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import NavigationService from '../../../utils/NavigationService'
+import { DV_TAB_PROJECT_OKRS } from '../../../utils/TabNavigationConstants'
 import { translate } from '../../../i18n/TranslationService'
 import {
     clearUserOKRsHiddenInAllProjectsToday,
@@ -33,6 +35,10 @@ export default function OKRSection({ projectId, inAllProjects }) {
 
     const togglePrivacyMode = () => {
         setUserOKRPrivacyMode(loggedUser.uid, !okrPrivacyMode)
+    }
+
+    const openOKRsTab = () => {
+        ProjectHelper.processURLProjectDetailsTab(NavigationService, DV_TAB_PROJECT_OKRS, projectId)
     }
 
     const undoAllOKRsForToday = () => {
@@ -71,6 +77,16 @@ export default function OKRSection({ projectId, inAllProjects }) {
                             >
                                 {translate(okrPrivacyMode ? 'Show all' : 'Hide all')}
                             </Text>
+                        )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={localStyles.privacyButton}
+                        onPress={openOKRsTab}
+                        accessibilityLabel={translate('History')}
+                    >
+                        <Icon name="external-link" size={14} color={colors.Text03} />
+                        {!smallScreenNavigation && (
+                            <Text style={[styles.caption1, localStyles.privacyText]}>{translate('History')}</Text>
                         )}
                     </TouchableOpacity>
                     {showUndoAllToday && (

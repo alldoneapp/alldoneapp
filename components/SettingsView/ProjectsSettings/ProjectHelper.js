@@ -27,6 +27,7 @@ import URLsProjects, {
     URL_PROJECT_DETAILS_BACKLINKS_TASKS,
     URL_PROJECT_DETAILS_FEED,
     URL_PROJECT_DETAILS_HAPPINESS,
+    URL_PROJECT_DETAILS_OKRS,
     URL_PROJECT_DETAILS_MEMBERS,
     URL_PROJECT_DETAILS_PROPERTIES,
     URL_PROJECT_DETAILS_STATISTICS,
@@ -40,6 +41,7 @@ import {
     DV_TAB_PROJECT_STATISTICS,
     DV_TAB_PROJECT_ASSISTANTS,
     DV_TAB_PROJECT_HAPPINESS,
+    DV_TAB_PROJECT_OKRS,
 } from '../../../utils/TabNavigationConstants'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
@@ -596,6 +598,9 @@ class ProjectHelper {
                 break
             case DV_TAB_PROJECT_HAPPINESS:
                 urlConstant = URL_PROJECT_DETAILS_HAPPINESS
+                break
+            case DV_TAB_PROJECT_OKRS:
+                urlConstant = URL_PROJECT_DETAILS_OKRS
                 break
             case DV_TAB_PROJECT_ASSISTANTS:
                 urlConstant = URL_PROJECT_DETAILS_ASSISTANTS
