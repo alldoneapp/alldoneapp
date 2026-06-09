@@ -159,6 +159,7 @@ export default function MessageItem({
                         objectType={objectType}
                         setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
                         isLoading={effectiveIsLoading}
+                        assistantRun={message.assistantRun}
                     />
                 </Animated.View>
             </Swipeable>

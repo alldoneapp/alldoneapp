@@ -285,6 +285,44 @@ describe('VM runner runtime Gold monitor', () => {
     })
 })
 
+describe('VM runner cancellation monitor', () => {
+    test('kills the active command and rejects when cancellation is requested', async () => {
+        const pendingRef = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ status: 'cancel_requested' }),
+            })),
+        }
+        const commandHandle = { kill: jest.fn(async () => true) }
+
+        const monitor = __private__.startVmCancellationMonitor({
+            pendingRef,
+            commandHandle,
+            getRuntimeGoldCharged: () => 3,
+            intervalMs: 60000,
+            correlationId: 'correlation-1',
+        })
+
+        await expect(monitor.promise).rejects.toMatchObject({
+            code: 'vm_job_cancelled',
+            runtimeGoldCharged: 3,
+        })
+        expect(commandHandle.kill).toHaveBeenCalled()
+        monitor.stop()
+    })
+
+    test('detects cancellation status from pending webhook data', async () => {
+        await expect(
+            __private__.isVmJobCancellationRequested({
+                get: jest.fn(async () => ({
+                    exists: true,
+                    data: () => ({ status: 'cancel_requested' }),
+                })),
+            })
+        ).resolves.toBe(true)
+    })
+})
+
 describe('VM runner artifact presentation', () => {
     test('places generated artifact links before the VM answer', () => {
         const finalText = __private__.buildVmFinalCommentText('Here is the summary.', [

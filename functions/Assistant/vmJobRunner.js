@@ -39,6 +39,9 @@ const VM_GOLD_MONITOR_INTERVAL_MS = 30 * 1000
 const VM_GOLD_EXHAUSTED_FAILURE_REASON = 'insufficient_gold'
 const VM_GOLD_EXHAUSTED_TEXT =
     '🛑 VM task stopped because you ran out of Gold. Add Gold and start a new VM task to continue.'
+const VM_JOB_CANCELLED_STATUS = 'cancelled'
+const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
+const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -487,12 +490,18 @@ async function setupRepoDependencies(sandbox, correlationId) {
  * Update the single live status comment in place (created when the job started).
  * Falls back to creating a new comment if no commentId was recorded.
  */
-async function writeStatusComment(pendingWebhook, text, { isFinal = false, output = null, mediaContext = null } = {}) {
+async function writeStatusComment(
+    pendingWebhook,
+    text,
+    { isFinal = false, output = null, mediaContext = null, assistantRunStatus = null } = {}
+) {
     const { projectId, objectType = 'tasks', objectId, assistantId, statusCommentId } = pendingWebhook
     const db = admin.firestore()
     const commentPathBase = `chatComments/${projectId}/${objectType}/${objectId}/comments`
 
     const commentId = statusCommentId || Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+    const runStatus = assistantRunStatus || (isFinal ? 'completed' : 'running')
+    const runIsActive = runStatus === 'running' || runStatus === VM_JOB_CANCEL_REQUESTED_STATUS
     const commentPayload = {
         creatorId: assistantId,
         commentText: text,
@@ -500,7 +509,18 @@ async function writeStatusComment(pendingWebhook, text, { isFinal = false, outpu
         commentType: 'STAYWARD_COMMENT',
         lastChangeDate: admin.firestore.Timestamp.now(),
         fromAssistant: true,
+        isLoading: runIsActive,
+        isThinking: false,
+        assistantRun: {
+            kind: 'vm_job',
+            runId: pendingWebhook.correlationId,
+            requestUserId: pendingWebhook.userId,
+            status: runStatus,
+        },
     }
+    if (runStatus === VM_JOB_CANCELLED_STATUS) commentPayload.assistantRun.cancelledAt = Date.now()
+    if (runStatus === 'failed') commentPayload.assistantRun.failedAt = Date.now()
+    if (runStatus === 'completed') commentPayload.assistantRun.completedAt = Date.now()
     if (Array.isArray(mediaContext) && mediaContext.length) {
         commentPayload.mediaContext = mediaContext
     }
@@ -965,6 +985,37 @@ function isVmGoldExhaustedError(error) {
     return error && error.code === VM_GOLD_EXHAUSTED_FAILURE_REASON
 }
 
+class VmJobCancelledError extends Error {
+    constructor(message = VM_JOB_CANCELLED_TEXT, runtimeGoldCharged = 0) {
+        super(message)
+        this.name = 'VmJobCancelledError'
+        this.code = 'vm_job_cancelled'
+        this.runtimeGoldCharged = runtimeGoldCharged
+    }
+}
+
+function isVmJobCancelledError(error) {
+    return error && error.code === 'vm_job_cancelled'
+}
+
+async function isVmJobCancellationRequested(pendingRef) {
+    if (!pendingRef) return false
+    try {
+        const snap = await pendingRef.get()
+        const data = snap.exists ? snap.data() || {} : {}
+        return data.status === VM_JOB_CANCEL_REQUESTED_STATUS || data.status === VM_JOB_CANCELLED_STATUS
+    } catch (error) {
+        console.warn('🖥️ VM JOB: failed checking cancellation', { error: error.message })
+        return false
+    }
+}
+
+async function throwIfVmJobCancelled(pendingRef, runtimeGoldCharged = 0) {
+    if (await isVmJobCancellationRequested(pendingRef)) {
+        throw new VmJobCancelledError(VM_JOB_CANCELLED_TEXT, runtimeGoldCharged)
+    }
+}
+
 function calculateAccruedRuntimeGold(runtimeMs) {
     const elapsedMinutes = Math.floor(Math.max(0, Number(runtimeMs) || 0) / 60000)
     return elapsedMinutes * VM_GOLD_PER_MINUTE
@@ -1177,6 +1228,61 @@ function startVmRuntimeGoldMonitor({
     }
 }
 
+function startVmCancellationMonitor({
+    pendingRef,
+    commandHandle,
+    getRuntimeGoldCharged,
+    intervalMs = 2000,
+    correlationId = '',
+}) {
+    let stopped = false
+    let checking = false
+    let timer = null
+    let rejectMonitor
+    const promise = new Promise((_, reject) => {
+        rejectMonitor = reject
+    })
+
+    const tick = async () => {
+        if (stopped || checking) return
+        checking = true
+        try {
+            if (await isVmJobCancellationRequested(pendingRef)) {
+                stopped = true
+                if (timer) clearInterval(timer)
+                const runtimeGoldCharged = typeof getRuntimeGoldCharged === 'function' ? getRuntimeGoldCharged() : 0
+                if (commandHandle && typeof commandHandle.kill === 'function') {
+                    await commandHandle.kill().catch(error => {
+                        console.warn('🖥️ VM JOB: failed killing command after cancellation', {
+                            correlationId,
+                            error: error.message,
+                        })
+                    })
+                }
+                rejectMonitor(new VmJobCancelledError(VM_JOB_CANCELLED_TEXT, runtimeGoldCharged))
+            }
+        } catch (error) {
+            if (!stopped) {
+                stopped = true
+                if (timer) clearInterval(timer)
+                rejectMonitor(error)
+            }
+        } finally {
+            checking = false
+        }
+    }
+
+    timer = setInterval(tick, intervalMs)
+    tick().catch(() => {})
+    return {
+        promise,
+        stop: () => {
+            stopped = true
+            if (timer) clearInterval(timer)
+        },
+    }
+}
+
 // One persistent VM session per chat thread.
 function vmSessionDocId(vmJob) {
     return `${vmJob.projectId}__${vmJob.objectId}`
@@ -1371,10 +1477,12 @@ async function runAgentInSandbox(
     })
 
     try {
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         const prompt = buildAgentPrompt(vmJob, gitContext)
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
         await sandbox.files.write('/home/user/context.md', contextFileContent)
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
         // Clone/refresh the connected GitLab repo and configure auth before the agent runs.
         if (gitContext && gitContext.enabled) {
@@ -1386,6 +1494,7 @@ async function runAgentInSandbox(
                 )
             }
             await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
+            await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
             if (typeof onActivity === 'function') {
                 onActivity(
                     `${renderVmWorkingHeader(
@@ -1395,6 +1504,7 @@ async function runAgentInSandbox(
                 )
             }
             await setupRepoDependencies(sandbox, vmJob.correlationId)
+            await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         }
 
         const state = { activity: [], finalResult: '', assistantText: '', usage: null }
@@ -1488,11 +1598,24 @@ async function runAgentInSandbox(
                           initialRuntimeGoldCharged: runtimeGoldCharged,
                       })
                     : null
+            const cancellationMonitor =
+                pendingRef
+                    ? startVmCancellationMonitor({
+                          pendingRef,
+                          commandHandle,
+                          getRuntimeGoldCharged: () => (monitor ? monitor.getRuntimeGoldCharged() : runtimeGoldCharged),
+                          correlationId: vmJob.correlationId,
+                      })
+                    : null
 
             try {
-                result = await Promise.race([commandPromise, monitor ? monitor.promise : new Promise(() => {})])
+                result = await Promise.race([
+                    commandPromise,
+                    monitor ? monitor.promise : new Promise(() => {}),
+                    cancellationMonitor ? cancellationMonitor.promise : new Promise(() => {}),
+                ])
             } catch (error) {
-                if (isVmGoldExhaustedError(error)) {
+                if (isVmGoldExhaustedError(error) || isVmJobCancelledError(error)) {
                     runtimeGoldCharged = error.runtimeGoldCharged || runtimeGoldCharged
                     await commandPromise.catch(() => {})
                 }
@@ -1502,6 +1625,7 @@ async function runAgentInSandbox(
                     monitor.stop()
                     runtimeGoldCharged = monitor.getRuntimeGoldCharged()
                 }
+                if (cancellationMonitor) cancellationMonitor.stop()
             }
         } catch (runError) {
             // The command was killed (e.g. timeout) before returning — log whatever it
@@ -1521,6 +1645,7 @@ async function runAgentInSandbox(
             throw runError
         }
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
             agent: config.label,
@@ -1775,8 +1900,20 @@ async function runVmJobByCorrelationId(correlationId) {
     const vmJob = jobDoc.data()
 
     // Idempotency: don't re-run a job that already settled.
-    if (pendingWebhook.status === 'completed' || pendingWebhook.status === 'failed') {
+    if (pendingWebhook.status === 'completed' || pendingWebhook.status === 'failed' || pendingWebhook.status === 'cancelled') {
         console.warn('🖥️ VM JOB RUNNER: Already settled, skipping', { correlationId, status: pendingWebhook.status })
+        return
+    }
+
+    if (pendingWebhook.status === VM_JOB_CANCEL_REQUESTED_STATUS) {
+        await writeStatusComment(pendingWebhook, VM_JOB_CANCELLED_TEXT, { assistantRunStatus: VM_JOB_CANCELLED_STATUS })
+        await pendingRef
+            .update({
+                status: VM_JOB_CANCELLED_STATUS,
+                cancelledAt: Date.now(),
+            })
+            .catch(() => {})
+        await refundVmJob(pendingWebhook, 'VM task stopped before execution')
         return
     }
 
@@ -1792,7 +1929,7 @@ async function runVmJobByCorrelationId(correlationId) {
     if (!apiKey || !e2bApiKey) {
         const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
-        await writeStatusComment(pendingWebhook, failureText)
+        await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await sendWhatsAppVmResultNotification(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',
@@ -1831,6 +1968,7 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     try {
+        await throwIfVmJobCancelled(pendingRef)
         await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails))
         const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
             vmJob,
@@ -1919,7 +2057,7 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
         if (isVmGoldExhaustedError(error) || latestPendingData.failureReason === VM_GOLD_EXHAUSTED_FAILURE_REASON) {
-            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT)
+            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, { assistantRunStatus: 'failed' })
             await sendWhatsAppVmResultNotification(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
                 pendingRef,
                 notificationType: 'failed',
@@ -1937,9 +2075,29 @@ async function runVmJobByCorrelationId(correlationId) {
             return
         }
 
+        if (isVmJobCancelledError(error) || latestPendingData.status === VM_JOB_CANCEL_REQUESTED_STATUS) {
+            await writeStatusComment(pendingWebhook, VM_JOB_CANCELLED_TEXT, {
+                assistantRunStatus: VM_JOB_CANCELLED_STATUS,
+            })
+            await sendWhatsAppVmResultNotification(pendingWebhook, VM_JOB_CANCELLED_TEXT, {
+                pendingRef,
+                notificationType: 'failed',
+            })
+            await pendingRef
+                .update({
+                    status: VM_JOB_CANCELLED_STATUS,
+                    cancelledAt: Date.now(),
+                    runtimeGoldCharged,
+                    proxyTokenGoldCharged,
+                })
+                .catch(() => {})
+            await refundVmJob(pendingWebhook, 'VM task stopped')
+            return
+        }
+
         const message = `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
-        await writeStatusComment(pendingWebhook, failureText)
+        await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await sendWhatsAppVmResultNotification(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',
@@ -1973,6 +2131,10 @@ module.exports = {
         refundVmJob,
         VmGoldExhaustedError,
         isVmGoldExhaustedError,
+        VmJobCancelledError,
+        isVmJobCancelledError,
+        isVmJobCancellationRequested,
+        startVmCancellationMonitor,
         buildWhatsAppVmResultMessage,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,

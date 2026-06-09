@@ -2,8 +2,11 @@ const {
     ASSISTANT_RUN_LOCK_LEASE_MS,
     acquireAssistantRunLock,
     buildAssistantRunLockId,
+    cancelAssistantRunLock,
     completeAssistantRunLock,
     failAssistantRunLock,
+    requestCancelAssistantRunLock,
+    shouldSkipExistingRun,
 } = require('./assistantRunIdempotency')
 
 function clone(value) {
@@ -25,16 +28,7 @@ function createFakeDb(initialDocs = {}) {
         docs.set(path, options.merge ? { ...previous, ...clone(data) } : clone(data))
     }
 
-    function doc(path) {
-        return {
-            path,
-            set: jest.fn(async (data, options) => applyWrite(path, data, options)),
-            update: jest.fn(async data => applyWrite(path, data, { merge: true })),
-            get: jest.fn(async () => snapshot(path)),
-        }
-    }
-
-    return {
+    const db = {
         doc,
         docs,
         runTransaction: jest.fn(async callback => {
@@ -45,6 +39,18 @@ function createFakeDb(initialDocs = {}) {
             return callback(transaction)
         }),
     }
+
+    function doc(path) {
+        return {
+            path,
+            firestore: db,
+            set: jest.fn(async (data, options) => applyWrite(path, data, options)),
+            update: jest.fn(async data => applyWrite(path, data, { merge: true })),
+            get: jest.fn(async () => snapshot(path)),
+        }
+    }
+
+    return db
 }
 
 const baseParams = {
@@ -140,6 +146,50 @@ describe('assistant run idempotency', () => {
         expect(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1')).toMatchObject({
             status: 'running',
             previousStatus: 'failed',
+        })
+    })
+
+    test('requests cancellation for a running lock and treats it as active until observed', async () => {
+        const db = createFakeDb()
+        const first = await acquireAssistantRunLock(db, baseParams, () => 1000)
+
+        const result = await requestCancelAssistantRunLock(first.lockRef, 'user-1', () => 2000)
+
+        expect(result.success).toBe(true)
+        expect(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1')).toMatchObject({
+            status: 'cancel_requested',
+            cancelRequestedAt: 2000,
+            cancelRequestedBy: 'user-1',
+        })
+        expect(
+            shouldSkipExistingRun(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1'), 2500)
+        ).toBe(true)
+    })
+
+    test('does not let another user cancel a running lock', async () => {
+        const db = createFakeDb()
+        const first = await acquireAssistantRunLock(db, baseParams, () => 1000)
+
+        const result = await requestCancelAssistantRunLock(first.lockRef, 'user-2', () => 2000)
+
+        expect(result).toMatchObject({ success: false, reason: 'permission_denied' })
+        expect(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1')).toMatchObject({
+            status: 'running',
+        })
+    })
+
+    test('marks cancel requested locks as cancelled and allows a manual retry later', async () => {
+        const db = createFakeDb()
+        const first = await acquireAssistantRunLock(db, baseParams, () => 1000)
+        await requestCancelAssistantRunLock(first.lockRef, 'user-1', () => 2000)
+        await cancelAssistantRunLock(first.lockRef, {}, () => 3000)
+
+        const retry = await acquireAssistantRunLock(db, baseParams, () => 4000)
+
+        expect(retry.acquired).toBe(true)
+        expect(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1')).toMatchObject({
+            status: 'running',
+            previousStatus: 'cancelled',
         })
     })
 })

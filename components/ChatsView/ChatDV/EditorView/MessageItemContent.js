@@ -1,5 +1,5 @@
-import React from 'react'
-import { Platform, ScrollView, StyleSheet, View, ActivityIndicator, Text } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { Platform, ScrollView, StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 
 import global, { colors } from '../../../styles/global'
 import CommentElementsParser from '../../../Feeds/TextParser/CommentElementsParser'
@@ -7,7 +7,6 @@ import { divideQuotedText } from './quoteParserFunctions'
 import QuotedText from './QuotedText'
 import ChatInput from './ChatInput'
 import DismissibleItem from '../../../UIComponents/DismissibleItem'
-import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { setActiveChatMessageId } from '../../../../redux/actions'
 import { divideCodeText } from './codeParserFunctions'
@@ -27,6 +26,7 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
+import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assistantRuns'
 
 export default function MessageItemContent({
     messageId,
@@ -41,9 +41,12 @@ export default function MessageItemContent({
     objectType,
     setAmountOfNewCommentsToHighligth,
     isLoading,
+    assistantRun,
 }) {
     const dispatch = useDispatch()
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
+    const loggedUserId = useSelector(state => state.loggedUser?.uid)
+    const [cancellingRun, setCancellingRun] = useState(false)
 
     // Helper to check if a comment contains block/special elements that cannot be rendered inline
     const containsBlockOrSpecialElements = text => {
@@ -59,6 +62,32 @@ export default function MessageItemContent({
 
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
+    const canStopAssistantRun =
+        isLoadingState &&
+        assistantRun?.status === 'running' &&
+        assistantRun?.runId &&
+        assistantRun?.kind &&
+        chat?.id &&
+        (!assistantRun.requestUserId || assistantRun.requestUserId === loggedUserId)
+
+    const stopAssistantRun = async () => {
+        if (!canStopAssistantRun || cancellingRun) return
+        setCancellingRun(true)
+        try {
+            await cancelAssistantRun({
+                projectId,
+                objectType,
+                objectId: chat?.id,
+                commentId: messageId,
+                runKind: assistantRun.kind,
+                runId: assistantRun.runId,
+            })
+        } catch (error) {
+            setCancellingRun(false)
+            console.error('Failed to stop assistant run', error)
+            alert(`Could not stop assistant: ${error.message}`)
+        }
+    }
 
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
@@ -388,6 +417,22 @@ export default function MessageItemContent({
                             )}
                             <View style={localStyles.loadingIndicator}>
                                 <ActivityIndicator size="small" color={colors.PrimaryBlue} />
+                                {canStopAssistantRun && (
+                                    <TouchableOpacity
+                                        style={[
+                                            localStyles.stopRunButton,
+                                            cancellingRun && localStyles.stopRunButtonDisabled,
+                                        ]}
+                                        onPress={stopAssistantRun}
+                                        disabled={cancellingRun}
+                                        accessibilityLabel="Stop assistant"
+                                    >
+                                        <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
+                                        <Text style={localStyles.stopRunButtonText}>
+                                            {cancellingRun ? 'Stopping...' : 'Stop'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </View>
                     ) : (
@@ -518,7 +563,26 @@ const localStyles = StyleSheet.create({
     },
     loadingIndicator: {
         marginTop: 8,
+        flexDirection: 'row',
         alignItems: 'flex-start',
+    },
+    stopRunButton: {
+        marginLeft: 12,
+        minHeight: 24,
+        paddingHorizontal: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.UtilityRed200,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    stopRunButtonDisabled: {
+        opacity: 0.6,
+    },
+    stopRunButtonText: {
+        ...global.caption2,
+        color: colors.UtilityRed200,
+        marginLeft: 4,
     },
     inlineElement: {
         marginRight: 6,

@@ -1613,8 +1613,10 @@ exports.askToBotSecondGen = onCall(
 
             const {
                 acquireAssistantRunLock,
+                cancelAssistantRunLock,
                 completeAssistantRunLock,
                 failAssistantRunLock,
+                isAssistantRunCancelledError,
             } = require('./Assistant/assistantRunIdempotency')
             const assistantRunLock = await acquireAssistantRunLock(admin.firestore(), {
                 userId,
@@ -1658,10 +1660,19 @@ exports.askToBotSecondGen = onCall(
                     language,
                     assistantId,
                     followerIds,
-                    functionEntryTime // Pass entry time for time-to-first-token tracking
+                    functionEntryTime, // Pass entry time for time-to-first-token tracking
+                    assistantRunLock.lockId
                 )
                 await completeAssistantRunLock(assistantRunLock.lockRef)
             } catch (error) {
+                if (isAssistantRunCancelledError(error)) {
+                    await cancelAssistantRunLock(assistantRunLock.lockRef)
+                    return {
+                        success: true,
+                        cancelled: true,
+                        messageId,
+                    }
+                }
                 await failAssistantRunLock(assistantRunLock.lockRef, error)
                 throw error
             }
@@ -1678,6 +1689,118 @@ exports.askToBotSecondGen = onCall(
             return result
         } else {
             throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+    }
+)
+
+exports.cancelAssistantRunSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const userId = auth.uid
+        const { projectId, objectType = 'tasks', objectId, commentId, runKind, runId } = data || {}
+        if (!projectId || !objectId || !commentId || !runKind || !runId) {
+            throw new HttpsError('invalid-argument', 'Missing assistant run cancellation fields')
+        }
+        if (!['chat', 'vm_job'].includes(runKind)) {
+            throw new HttpsError('invalid-argument', 'Unsupported assistant run type')
+        }
+
+        try {
+            await assertObjectAccess(admin.firestore(), userId, projectId, objectType, objectId)
+        } catch (error) {
+            console.warn('cancelAssistantRunSecondGen: access denied', {
+                userId,
+                projectId,
+                objectType,
+                objectId,
+                error: error.message,
+            })
+            throw new HttpsError('permission-denied', 'No access to requested chat context')
+        }
+
+        const db = admin.firestore()
+        const now = Date.now()
+        let cancellationResult = null
+
+        if (runKind === 'chat') {
+            const { requestCancelAssistantRunLock } = require('./Assistant/assistantRunIdempotency')
+            cancellationResult = await requestCancelAssistantRunLock(db.doc(`assistantRunLocks/${runId}`), userId)
+        } else {
+            const pendingRef = db.doc(`pendingWebhooks/${runId}`)
+            cancellationResult = await db.runTransaction(async transaction => {
+                const snapshot = await transaction.get(pendingRef)
+                if (!snapshot.exists) return { success: false, reason: 'not_found' }
+                const pending = snapshot.data() || {}
+                if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
+                if (pending.userId !== userId) return { success: false, reason: 'permission_denied' }
+                if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
+                    return { success: false, reason: 'already_settled', status: pending.status }
+                }
+                transaction.set(
+                    pendingRef,
+                    {
+                        status: 'cancel_requested',
+                        cancelRequestedAt: now,
+                        cancelRequestedBy: userId,
+                    },
+                    { merge: true }
+                )
+                return { success: true, status: 'cancel_requested', data: pending }
+            })
+        }
+
+        if (!cancellationResult?.success) {
+            if (cancellationResult?.reason === 'permission_denied') {
+                throw new HttpsError('permission-denied', 'Only the user who started the assistant run can stop it')
+            }
+            if (cancellationResult?.reason === 'already_settled') {
+                return {
+                    success: true,
+                    status: cancellationResult.status,
+                    alreadySettled: true,
+                }
+            }
+            throw new HttpsError('not-found', 'Assistant run was not found')
+        }
+
+        const commentRef = db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+        await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(commentRef)
+            const comment = snapshot.exists ? snapshot.data() || {} : {}
+            const assistantRun = comment.assistantRun || {}
+            if (assistantRun.requestUserId && assistantRun.requestUserId !== userId) {
+                throw new HttpsError('permission-denied', 'Only the user who started the assistant run can stop it')
+            }
+            transaction.set(
+                commentRef,
+                {
+                    assistantRun: {
+                        ...assistantRun,
+                        kind: runKind,
+                        runId,
+                        requestUserId: assistantRun.requestUserId || userId,
+                        status: 'cancel_requested',
+                        cancelRequestedAt: now,
+                        cancelRequestedBy: userId,
+                    },
+                },
+                { merge: true }
+            )
+        })
+
+        return {
+            success: true,
+            status: 'cancel_requested',
+            runKind,
+            runId,
         }
     }
 )

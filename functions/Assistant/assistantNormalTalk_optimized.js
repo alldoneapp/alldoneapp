@@ -47,7 +47,8 @@ async function askToOpenAIBotOptimized(
     language,
     assistantId,
     followerIds,
-    functionEntryTime = null // Optional entry time from HTTP function entry point
+    functionEntryTime = null, // Optional entry time from HTTP function entry point
+    assistantRunLockId = null
 ) {
     const functionStartTime = Date.now()
     // Use entry time if provided, otherwise use function start time
@@ -66,6 +67,12 @@ async function askToOpenAIBotOptimized(
     })
 
     try {
+        const assistantRunLockRef = assistantRunLockId
+            ? admin.firestore().doc(`assistantRunLocks/${assistantRunLockId}`)
+            : null
+        const { throwIfAssistantRunCancelled } = require('./assistantRunIdempotency')
+        await throwIfAssistantRunCancelled(assistantRunLockRef)
+
         // Step 1: Fetch user and assistant data in parallel
         const step1Start = Date.now()
         const [user, assistant] = await Promise.all([
@@ -90,6 +97,7 @@ async function askToOpenAIBotOptimized(
             })
             return
         }
+        await throwIfAssistantRunCancelled(assistantRunLockRef)
 
         const { model, temperature, instructions, displayName } = assistant
 
@@ -125,6 +133,7 @@ async function askToOpenAIBotOptimized(
             hasCommonData: !!commonData,
             elapsed: `${Date.now() - functionStartTime}ms`,
         })
+        await throwIfAssistantRunCancelled(assistantRunLockRef)
 
         // Step 3: Generate optimized context
         const step3Start = Date.now()
@@ -177,6 +186,7 @@ async function askToOpenAIBotOptimized(
             allowedToolsCount: allowedTools.length,
             elapsed: `${Date.now() - functionStartTime}ms`,
         })
+        await throwIfAssistantRunCancelled(assistantRunLockRef)
 
         // Step 5: Process stream with pre-fetched data
         const step5Start = Date.now()
@@ -199,7 +209,14 @@ async function askToOpenAIBotOptimized(
             allowedTools,
             commonData, // Pass pre-fetched data
             timeToFirstTokenStart, // Pass entry time for accurate time-to-first-token tracking
-            toolRuntimeContext
+            toolRuntimeContext,
+            {
+                kind: 'chat',
+                runId: assistantRunLockId,
+                triggerMessageId: messageId,
+                requestUserId: userId,
+                status: 'running',
+            }
         )
         const step5Duration = Date.now() - step5Start
 
@@ -213,6 +230,7 @@ async function askToOpenAIBotOptimized(
         // Step 6: Handle gold reduction (reuse encoder for efficiency)
         let step6Duration = null
         if (aiCommentText) {
+            await throwIfAssistantRunCancelled(assistantRunLockRef)
             const step6Start = Date.now()
             const encoder = getEncoder() // Reuse pre-initialized encoder
             await reduceGoldWhenChatWithAI(userId, user.gold, model, aiCommentText, contextMessages, encoder, {
@@ -325,7 +343,8 @@ async function storeBotAnswerStreamOptimized(
     allowedTools,
     commonData, // Pre-fetched data
     functionStartTime = null, // Function start time for time-to-first-token tracking
-    toolRuntimeContext = null
+    toolRuntimeContext = null,
+    assistantRunMetadata = null
 ) {
     const { project, chat, chatLink } = commonData || (await getCommonDataOptimized(projectId, objectType, objectId))
 
@@ -352,7 +371,10 @@ async function storeBotAnswerStreamOptimized(
         allowedTools,
         commonData, // Pass pre-fetched common data to reduce time-to-first-token
         functionStartTime, // Pass function start time for time-to-first-token tracking
-        toolRuntimeContext
+        toolRuntimeContext,
+        null,
+        null,
+        assistantRunMetadata
     )
 }
 

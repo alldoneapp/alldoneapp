@@ -302,6 +302,21 @@ async function startVmJob({
             isPublicFor,
             [requestUserId]
         )
+        await admin
+            .firestore()
+            .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
+            .set(
+                {
+                    isLoading: true,
+                    assistantRun: {
+                        kind: 'vm_job',
+                        runId: correlationId,
+                        requestUserId,
+                        status: 'running',
+                    },
+                },
+                { merge: true }
+            )
     } catch (error) {
         console.warn('🖥️ VM JOB: Failed posting initial status comment', { correlationId, error: error.message })
     }

@@ -7313,7 +7313,8 @@ async function storeChunks(
     allowedTools = [],
     toolRuntimeContext = null,
     streamOutput = null,
-    silentModeMarker = null
+    silentModeMarker = null,
+    assistantRunMetadata = null
 ) {
     const chunksStartTime = Date.now()
     let chunkCount = 0
@@ -7326,11 +7327,22 @@ async function storeChunks(
         assistantId,
     })
 
+    let finalizeCancelledComment = null
+    let finalizeFailedAssistantRunComment = null
+
     try {
         // Step 1: Create initial comment
         const step1Start = Date.now()
         const initialStatusMessage = buildInitialAssistantRunStatusMessage()
         const { commentId, comment } = formatMessage(objectType, initialStatusMessage, assistantId)
+        const assistantRun =
+            assistantRunMetadata && assistantRunMetadata.runId
+                ? {
+                      ...assistantRunMetadata,
+                      status: 'running',
+                  }
+                : null
+        if (assistantRun) comment.assistantRun = assistantRun
         comment.isLoading = true
         comment.isThinking = false
 
@@ -7359,6 +7371,25 @@ async function storeChunks(
         const commentRef = admin
             .firestore()
             .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+        const assistantRunLockRef =
+            assistantRun && assistantRun.kind === 'chat'
+                ? admin.firestore().doc(`assistantRunLocks/${assistantRun.runId}`)
+                : null
+        const {
+            AssistantRunCancelledError,
+            isAssistantRunCancellationRequested,
+        } = require('./assistantRunIdempotency')
+
+        let lastCancellationCheckAt = 0
+        const throwIfCancelled = async (force = false) => {
+            if (!assistantRunLockRef) return
+            const now = Date.now()
+            if (!force && now - lastCancellationCheckAt < 1000) return
+            lastCancellationCheckAt = now
+            if (await isAssistantRunCancellationRequested(assistantRunLockRef)) {
+                throw new AssistantRunCancelledError()
+            }
+        }
 
         // In silent mode we defer creating the Firestore doc until we know the reply
         // is not the silent marker. ensureCommitted() writes the deferred comment on demand.
@@ -7475,6 +7506,62 @@ async function storeChunks(
             await commentRefRawUpdate(updateData)
         }
 
+        finalizeCancelledComment = async () => {
+            if (updateTimeout) {
+                clearTimeout(updateTimeout)
+                updateTimeout = null
+            }
+            pendingUpdate = null
+            commentText = 'Stopped.'
+            await ensureCommitted()
+            await commentRefRawUpdate({
+                commentText,
+                isLoading: false,
+                isThinking: false,
+                assistantRun: assistantRun
+                    ? {
+                          ...assistantRun,
+                          status: 'cancelled',
+                          cancelledAt: Date.now(),
+                      }
+                    : null,
+            })
+            await Promise.all([
+                updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId),
+                admin
+                    .firestore()
+                    .doc(`chatObjects/${projectId}/chats/${objectId}`)
+                    .update({
+                        members: [userIdsToNotify[0], assistantId],
+                        lastEditionDate: Date.now(),
+                        [`commentsData.lastCommentOwnerId`]: assistantId,
+                        [`commentsData.lastComment`]: commentText,
+                        [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+                        [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                    }),
+                updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, commentText, STAYWARD_COMMENT),
+            ])
+        }
+
+        finalizeFailedAssistantRunComment = async () => {
+            if (!assistantRun) return
+            if (updateTimeout) {
+                clearTimeout(updateTimeout)
+                updateTimeout = null
+            }
+            pendingUpdate = null
+            await ensureCommitted()
+            await commentRefRawUpdate({
+                isLoading: false,
+                isThinking: false,
+                assistantRun: {
+                    ...assistantRun,
+                    status: 'failed',
+                    failedAt: Date.now(),
+                },
+            }).catch(() => {})
+        }
+
         const scheduleUpdate = async (updateData, immediate = false) => {
             // Merge with pending update
             pendingUpdate = { ...pendingUpdate, ...updateData }
@@ -7507,7 +7594,9 @@ async function storeChunks(
         const timeToFirstTokenStart = globalFunctionStartTime || streamProcessStart
 
         console.log('🚀 [TIMING] About to enter stream loop in storeChunks')
+        await throwIfCancelled(true)
         for await (const chunk of stream) {
+            await throwIfCancelled()
             chunkCount++
             const chunkTime = Date.now()
 
@@ -7599,6 +7688,7 @@ async function storeChunks(
                     }
 
                     // Process first tool call (OpenAI typically sends one at a time)
+                    await throwIfCancelled(true)
                     const toolCall = currentToolCalls[0]
                     const toolName = toolCall.function.name
                     const toolCallId = toolCall.id
@@ -7634,6 +7724,7 @@ async function storeChunks(
                     toolArgs = createTaskImageArgs.toolArgs
 
                     // Check permissions
+                    await throwIfCancelled(true)
                     const assistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
                         forceRefresh: true,
                     })
@@ -7701,6 +7792,7 @@ async function storeChunks(
                     // Execute tool and get result
                     let toolResult
                     try {
+                        await throwIfCancelled(true)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
                         }
@@ -7713,6 +7805,7 @@ async function storeChunks(
                             userContext,
                             runtimeContextForTools
                         )
+                        await throwIfCancelled(true)
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
@@ -7827,6 +7920,7 @@ async function storeChunks(
                     let resumedChunksSinceLastUpdate = 0
 
                     for await (const newChunk of newStream) {
+                        await throwIfCancelled()
                         resumedChunkCount++
 
                         const logData = {
@@ -7906,6 +8000,7 @@ async function storeChunks(
                     }
 
                     // Check if we need to execute more tool calls
+                    await throwIfCancelled(true)
                     if (nextToolCalls && nextToolCalls.length > 0) {
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Continuing to next iteration with new tool calls', {
@@ -8088,6 +8183,13 @@ async function storeChunks(
             await commentRefRawUpdate({
                 isLoading: false,
                 isThinking: false,
+                assistantRun: assistantRun
+                    ? {
+                          ...assistantRun,
+                          status: 'completed',
+                          completedAt: Date.now(),
+                      }
+                    : null,
             })
         }
 
@@ -8195,6 +8297,21 @@ async function storeChunks(
 
         return commentText
     } catch (error) {
+        const { isAssistantRunCancelledError } = require('./assistantRunIdempotency')
+        if (isAssistantRunCancelledError(error)) {
+            console.log('🛑 Assistant run cancelled while storing chunks', {
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                chunksProcessed: chunkCount,
+            })
+            if (typeof finalizeCancelledComment === 'function') {
+                await finalizeCancelledComment()
+            }
+        } else if (typeof finalizeFailedAssistantRunComment === 'function') {
+            await finalizeFailedAssistantRunComment()
+        }
         console.error('❌ [TIMING] Error in storeChunks:', {
             error: error.message,
             duration: `${Date.now() - chunksStartTime}ms`,
@@ -8244,7 +8361,8 @@ async function storeBotAnswerStream(
     functionStartTime = null, // Optional function start time for time-to-first-token tracking
     toolRuntimeContext = null,
     streamOutput = null,
-    silentModeMarker = null
+    silentModeMarker = null,
+    assistantRunMetadata = null
 ) {
     const streamProcessStart = Date.now()
     // Store function start time globally for time-to-first-token tracking
@@ -8301,7 +8419,8 @@ async function storeBotAnswerStream(
                   allowedTools,
                   toolRuntimeContext,
                   streamOutput,
-                  silentModeMarker
+                  silentModeMarker,
+                  assistantRunMetadata
               )
             : ''
         const storeChunksDuration = Date.now() - storeChunksStart
