@@ -1,5 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import {
+    ActivityIndicator,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native'
 import { useSelector } from 'react-redux'
 import Lottie from 'lottie-react'
 import moment from 'moment'
@@ -55,6 +64,7 @@ export default function EndDayStatisticsModal() {
     const projectIdsAmount = useSelector(state => state.loggedUser.projectIds.length)
     const showNewDayNotification = useSelector(state => state.showNewDayNotification)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const showNewVersionMandtoryNotifcation = useSelector(state => state.showNewVersionMandtoryNotifcation)
     const templateProjectIdsAmount = useSelector(state => state.loggedUser.templateProjectIds.length)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
@@ -72,6 +82,7 @@ export default function EndDayStatisticsModal() {
     const [happinessRatings, setHappinessRatings] = useState({})
     const [happinessComments, setHappinessComments] = useState({})
     const [visibleComments, setVisibleComments] = useState({})
+    const [startNewDayIsLoading, setStartNewDayIsLoading] = useState(false)
 
     const isOfflineRef = useRef(false)
     const isLoading = useRef(false)
@@ -106,6 +117,7 @@ export default function EndDayStatisticsModal() {
         isOfflineRef.current = false
         isLoading.current = false
         isSavingStartNewDay.current = false
+        setStartNewDayIsLoading(false)
     }
 
     const saveDirtyHappinessEntries = async () => {
@@ -142,6 +154,7 @@ export default function EndDayStatisticsModal() {
         if (isSavingStartNewDay.current) return
 
         isSavingStartNewDay.current = true
+        setStartNewDayIsLoading(true)
 
         try {
             if (!isOfflineRef.current) {
@@ -164,10 +177,12 @@ export default function EndDayStatisticsModal() {
             } else {
                 resetModalState()
                 isSavingStartNewDay.current = false
+                setStartNewDayIsLoading(false)
             }
         } catch (error) {
             console.log(error)
             isSavingStartNewDay.current = false
+            setStartNewDayIsLoading(false)
         }
     }
 
@@ -420,6 +435,17 @@ export default function EndDayStatisticsModal() {
     const { dayName, dateFormated } = getDate()
     const { rewardTitle, rewardDescription } = getRewardTexts()
     const happinessProjects = getHappinessProjects()
+    const compactModalLayout = smallScreenNavigation || isMiddleScreen
+    const getProjectDoneTasks = projectId => getSafeStatisticNumber(doneTasksByProject[projectId])
+    const maxProjectDoneTasks = happinessProjects.reduce(
+        (maxDoneTasks, project) => Math.max(maxDoneTasks, getProjectDoneTasks(project.id)),
+        0
+    )
+    const getProjectActivityWidth = projectId => {
+        const projectDoneTasks = getProjectDoneTasks(projectId)
+        if (projectDoneTasks <= 0 || maxProjectDoneTasks <= 0) return 0
+        return `${Math.max(8, Math.round((projectDoneTasks / maxProjectDoneTasks) * 100))}%`
+    }
 
     return (
         !showNewVersionMandtoryNotifcation &&
@@ -428,16 +454,16 @@ export default function EndDayStatisticsModal() {
                 <View
                     style={[
                         localStyles.container,
-                        smallScreenNavigation && localStyles.mobileContainer,
+                        compactModalLayout && localStyles.mobileContainer,
                         !smallScreenNavigation && { marginLeft: 263 },
                         applyPopoverWidth(),
                     ]}
                 >
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        <Text style={[localStyles.title, smallScreenNavigation && localStyles.mobileTitle]}>
+                        <Text style={[localStyles.title, compactModalLayout && localStyles.mobileTitle]}>
                             {translate('A new day has begun')}
                         </Text>
-                        <Text style={[localStyles.description, smallScreenNavigation && localStyles.mobileDescription]}>
+                        <Text style={[localStyles.description, compactModalLayout && localStyles.mobileDescription]}>
                             {translate('Here a quick summary of how you have been doing')}
                         </Text>
                         <View style={localStyles.animationContainer}>
@@ -456,14 +482,14 @@ export default function EndDayStatisticsModal() {
                         </View>
 
                         {!isOfflineRef.current && (
-                            <View style={[localStyles.statsGrid, smallScreenNavigation && localStyles.mobileStatsGrid]}>
-                                <View style={[localStyles.statsColumn, !smallScreenNavigation && { marginRight: 8 }]}>
+                            <View style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}>
+                                <View style={[localStyles.statsColumn, !compactModalLayout && { marginRight: 8 }]}>
                                     <View style={localStyles.statRow}>
                                         <Icon name="check-square" size={24} color="#ffffff" />
                                         <View
                                             style={[
                                                 localStyles.statTextBlock,
-                                                smallScreenNavigation && localStyles.mobileStatTextBlock,
+                                                compactModalLayout && localStyles.mobileStatTextBlock,
                                             ]}
                                         >
                                             <Text style={localStyles.text}>{translate('Tasks done:')}</Text>
@@ -471,7 +497,7 @@ export default function EndDayStatisticsModal() {
                                                 style={[
                                                     localStyles.text,
                                                     localStyles.value,
-                                                    smallScreenNavigation && localStyles.mobileValue,
+                                                    compactModalLayout && localStyles.mobileValue,
                                                 ]}
                                             >
                                                 {doneTasks}
@@ -483,7 +509,7 @@ export default function EndDayStatisticsModal() {
                                         <View
                                             style={[
                                                 localStyles.statTextBlock,
-                                                smallScreenNavigation && localStyles.mobileStatTextBlock,
+                                                compactModalLayout && localStyles.mobileStatTextBlock,
                                             ]}
                                         >
                                             <Text style={localStyles.text}>{translate('Points earned:')}</Text>
@@ -491,7 +517,7 @@ export default function EndDayStatisticsModal() {
                                                 style={[
                                                     localStyles.text,
                                                     localStyles.value,
-                                                    smallScreenNavigation && localStyles.mobileValue,
+                                                    compactModalLayout && localStyles.mobileValue,
                                                 ]}
                                             >
                                                 {donePoints}
@@ -503,7 +529,7 @@ export default function EndDayStatisticsModal() {
                                         <View
                                             style={[
                                                 localStyles.statTextBlock,
-                                                smallScreenNavigation && localStyles.mobileStatTextBlock,
+                                                compactModalLayout && localStyles.mobileStatTextBlock,
                                             ]}
                                         >
                                             <Text style={localStyles.text}>{`${translate('Time logged')}:`}</Text>
@@ -511,7 +537,7 @@ export default function EndDayStatisticsModal() {
                                                 style={[
                                                     localStyles.text,
                                                     localStyles.value,
-                                                    smallScreenNavigation && localStyles.mobileValue,
+                                                    compactModalLayout && localStyles.mobileValue,
                                                 ]}
                                             >
                                                 {getDoneTimeValue(doneTime)}
@@ -519,13 +545,13 @@ export default function EndDayStatisticsModal() {
                                         </View>
                                     </View>
                                 </View>
-                                <View style={[localStyles.statsColumn, !smallScreenNavigation && { marginLeft: 8 }]}>
+                                <View style={[localStyles.statsColumn, !compactModalLayout && { marginLeft: 8 }]}>
                                     <View style={localStyles.statRow}>
                                         <Icon name="trending-up" size={24} color="#ffffff" />
                                         <View
                                             style={[
                                                 localStyles.statTextBlock,
-                                                smallScreenNavigation && localStyles.mobileStatTextBlock,
+                                                compactModalLayout && localStyles.mobileStatTextBlock,
                                             ]}
                                         >
                                             <Text style={localStyles.text}>{translate('XP earned:')}</Text>
@@ -533,7 +559,7 @@ export default function EndDayStatisticsModal() {
                                                 style={[
                                                     localStyles.text,
                                                     localStyles.value,
-                                                    smallScreenNavigation && localStyles.mobileValue,
+                                                    compactModalLayout && localStyles.mobileValue,
                                                 ]}
                                             >
                                                 {xp}
@@ -549,7 +575,7 @@ export default function EndDayStatisticsModal() {
                                         <View
                                             style={[
                                                 localStyles.statTextBlock,
-                                                smallScreenNavigation && localStyles.mobileStatTextBlock,
+                                                compactModalLayout && localStyles.mobileStatTextBlock,
                                             ]}
                                         >
                                             <Text style={localStyles.text}>{translate('Gold earned:')}</Text>
@@ -557,7 +583,7 @@ export default function EndDayStatisticsModal() {
                                                 style={[
                                                     localStyles.text,
                                                     localStyles.value,
-                                                    smallScreenNavigation && localStyles.mobileValue,
+                                                    compactModalLayout && localStyles.mobileValue,
                                                 ]}
                                             >
                                                 {Math.floor(gold)}
@@ -574,21 +600,18 @@ export default function EndDayStatisticsModal() {
                                 {happinessProjects.map(project => (
                                     <View
                                         key={project.id}
-                                        style={[
-                                            localStyles.happinessProject,
-                                            smallScreenNavigation && localStyles.mobileHappinessProject,
-                                        ]}
+                                        style={[localStyles.happinessProject, localStyles.mobileHappinessProject]}
                                     >
                                         <View
                                             style={[
                                                 localStyles.happinessProjectHeader,
-                                                smallScreenNavigation && localStyles.mobileHappinessProjectHeader,
+                                                localStyles.mobileHappinessProjectHeader,
                                             ]}
                                         >
                                             <View
                                                 style={[
                                                     localStyles.happinessProjectInfo,
-                                                    smallScreenNavigation && localStyles.mobileHappinessProjectInfo,
+                                                    localStyles.mobileHappinessProjectInfo,
                                                 ]}
                                             >
                                                 <Text style={localStyles.happinessProjectName}>
@@ -597,15 +620,24 @@ export default function EndDayStatisticsModal() {
                                                 <View style={localStyles.happinessProjectStats}>
                                                     <Icon name="check-square" size={16} color={colors.Text04} />
                                                     <Text style={localStyles.happinessProjectStatsText}>
-                                                        {translate('Tasks done:')}{' '}
-                                                        {getSafeStatisticNumber(doneTasksByProject[project.id])}
+                                                        {translate('Tasks done:')} {getProjectDoneTasks(project.id)}
                                                     </Text>
+                                                </View>
+                                                <View style={localStyles.projectActivityTrack}>
+                                                    <View
+                                                        style={[
+                                                            localStyles.projectActivityFill,
+                                                            { width: getProjectActivityWidth(project.id) },
+                                                            getProjectDoneTasks(project.id) === 0 &&
+                                                                localStyles.projectActivityFillEmpty,
+                                                        ]}
+                                                    />
                                                 </View>
                                             </View>
                                             <View
                                                 style={[
                                                     localStyles.happinessActions,
-                                                    smallScreenNavigation && localStyles.mobileHappinessActions,
+                                                    localStyles.mobileHappinessActions,
                                                 ]}
                                             >
                                                 <TouchableOpacity
@@ -646,10 +678,24 @@ export default function EndDayStatisticsModal() {
                         )}
                         <View style={localStyles.line} />
                         <TouchableOpacity
-                            style={[localStyles.refresh, smallScreenNavigation && localStyles.mobileRefresh]}
+                            style={[
+                                localStyles.refresh,
+                                compactModalLayout && localStyles.mobileRefresh,
+                                startNewDayIsLoading && localStyles.refreshDisabled,
+                            ]}
                             onPress={startNewDay}
+                            disabled={startNewDayIsLoading}
                         >
-                            <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
+                            <View style={localStyles.refreshContent}>
+                                {startNewDayIsLoading && (
+                                    <ActivityIndicator
+                                        size="small"
+                                        color="#FFFFFF"
+                                        style={localStyles.refreshSpinner}
+                                    />
+                                )}
+                                <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
+                            </View>
                         </TouchableOpacity>
                     </ScrollView>
                 </View>
@@ -731,6 +777,17 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 16,
         alignSelf: 'center',
+    },
+    refreshDisabled: {
+        opacity: 0.72,
+    },
+    refreshContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    refreshSpinner: {
+        marginRight: 8,
     },
     mobileRefresh: {
         alignSelf: 'stretch',
@@ -840,6 +897,21 @@ const localStyles = StyleSheet.create({
         ...styles.caption2,
         color: colors.Text04,
         marginLeft: 4,
+    },
+    projectActivityTrack: {
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        marginTop: 8,
+        overflow: 'hidden',
+    },
+    projectActivityFill: {
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: colors.Primary300,
+    },
+    projectActivityFillEmpty: {
+        width: 0,
     },
     happinessActions: {
         flexDirection: 'row',
