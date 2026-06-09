@@ -13,6 +13,52 @@ export const HAPPINESS_SCALE = [1, 2, 3, 4, 5]
 
 export const HAPPINESS_PRIVACY_TEXT = 'Only you can see these ratings and notes.'
 
+export const HAPPINESS_RANGE_LAST_30_DAYS = 'Last 30 days'
+export const HAPPINESS_RANGE_LAST_3_MONTHS = 'Last 3 months'
+export const HAPPINESS_RANGE_LAST_12_MONTHS = 'Last 12 months'
+export const HAPPINESS_RANGE_LAST_YEAR = 'Last year'
+export const HAPPINESS_RANGE_CURRENT_YEAR = 'Current year'
+// Custom range reuses the shared 'Custom' filter value produced by CustomDateRangeModal
+export const HAPPINESS_RANGE_CUSTOM = 'Custom'
+
+export const getHappinessRangeTimestamps = filterData => {
+    const { filter, customDateRange } = filterData
+    let startDay, endDay
+
+    switch (filter) {
+        case HAPPINESS_RANGE_LAST_3_MONTHS:
+            startDay = moment().subtract(3, 'months')
+            endDay = moment()
+            break
+        case HAPPINESS_RANGE_LAST_12_MONTHS:
+            startDay = moment().subtract(12, 'months')
+            endDay = moment()
+            break
+        case HAPPINESS_RANGE_LAST_YEAR:
+            startDay = moment().subtract(1, 'year').startOf('year')
+            endDay = startDay.clone().endOf('year')
+            break
+        case HAPPINESS_RANGE_CURRENT_YEAR:
+            startDay = moment().startOf('year')
+            endDay = moment().endOf('year')
+            break
+        case HAPPINESS_RANGE_CUSTOM:
+            startDay = moment(customDateRange[0])
+            endDay = moment(customDateRange[customDateRange.length - 1])
+            break
+        case HAPPINESS_RANGE_LAST_30_DAYS:
+        default:
+            startDay = moment().subtract(30, 'days')
+            endDay = moment()
+            break
+    }
+
+    return {
+        timestamp1: startDay.startOf('day').valueOf(),
+        timestamp2: endDay.endOf('day').valueOf(),
+    }
+}
+
 export const getHappinessDateKey = date => moment(date).format('YYYYMMDD')
 
 export const getHappinessDay = date => parseInt(moment(date).format('YYYYMMDD'))

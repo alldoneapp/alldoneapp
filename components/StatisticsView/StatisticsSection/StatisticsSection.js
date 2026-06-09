@@ -17,12 +17,14 @@ import StackedBarChart from '../../SettingsView/Statistics/StackedBarChart'
 import { translate } from '../../../i18n/TranslationService'
 import {
     getDataForOneProjectCharts,
+    getHappinessDataForOneProjectChart,
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
     STATISTIC_CHART_MONEY_EARNED,
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
+    STATISTIC_CHART_HAPPINESS,
 } from '../../../utils/StatisticChartsHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import ChartsOptionsButton from '../../SettingsView/Statistics/ChartsOptionsButton'
@@ -45,6 +47,7 @@ export default function StatisticsSection({
     statisticsFilter,
     filterData,
     moneyEarned = 0,
+    happinessEntries = [],
 }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -244,6 +247,18 @@ export default function StatisticsSection({
                                     <StackedBarChart
                                         title={translate('XP')}
                                         statisticData={getDataForOneProjectCharts(allXp, timestamp1, timestamp2)}
+                                        project={project}
+                                    />
+                                )
+                            case STATISTIC_CHART_HAPPINESS:
+                                return (
+                                    <StackedBarChart
+                                        title={translate('Happiness')}
+                                        statisticData={getHappinessDataForOneProjectChart(
+                                            happinessEntries,
+                                            timestamp1,
+                                            timestamp2
+                                        )}
                                         project={project}
                                     />
                                 )

@@ -15,9 +15,13 @@ import styles, { colors, hexColorToRGBa } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import {
     getHappinessDateText,
+    getHappinessRangeTimestamps,
     getHappinessRatingText,
     HAPPINESS_PRIVACY_TEXT,
+    HAPPINESS_RANGE_LAST_30_DAYS,
 } from '../../../utils/ProjectHappinessHelper'
+import { getStatisticsFilterData, getFilterOption } from '../../StatisticsView/statisticsHelper'
+import HappinessFilterBy from '../../ProjectHappiness/HappinessFilterBy'
 import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
 import { locales } from '../../StatisticsView/StatisticsSection/CalendarLocales'
 import Icon from '../../Icon'
@@ -75,6 +79,7 @@ export default function ProjectHappinessView({ project, userId }) {
     const mondayFirstInCalendar = useSelector(state => state.loggedUser.mondayFirstInCalendar)
     const smallScreen = useSelector(state => state.smallScreen)
     const [entries, setEntries] = useState([])
+    const [filterData, setFilterData] = useState(() => getStatisticsFilterData(HAPPINESS_RANGE_LAST_30_DAYS))
     const [selectedDate, setSelectedDate] = useState(moment().subtract(1, 'day').startOf('day').valueOf())
     const [showDatePicker, setShowDatePicker] = useState(false)
     const [showAddForm, setShowAddForm] = useState(false)
@@ -83,13 +88,28 @@ export default function ProjectHappinessView({ project, userId }) {
     const watcherKeyRef = useRef(`project_happiness_${v4()}`)
     LocaleConfig.defaultLocale = language
 
+    const updateRange = (filterOption, customDateRange) => {
+        setFilterData(getStatisticsFilterData(filterOption, customDateRange))
+    }
+
     useEffect(() => {
         URLsProjects.push(URL_PROJECT_DETAILS_HAPPINESS, { projectId: project.id, userId }, project.id)
-        Backend.watchProjectHappiness(project.id, userId, watcherKeyRef.current, (projectId, entries) => {
-            setEntries(entries)
-        })
-        return () => Backend.unwatch(watcherKeyRef.current)
     }, [project.id, userId])
+
+    useEffect(() => {
+        const { timestamp1, timestamp2 } = getHappinessRangeTimestamps(filterData)
+        Backend.watchProjectHappinessByRange(
+            project.id,
+            userId,
+            timestamp1,
+            timestamp2,
+            watcherKeyRef.current,
+            (projectId, entries) => {
+                setEntries(entries)
+            }
+        )
+        return () => Backend.unwatch(watcherKeyRef.current)
+    }, [project.id, userId, JSON.stringify(filterData)])
 
     const date = moment(selectedDate)
     const selectedDateString = date.format('YYYY-MM-DD')
@@ -108,9 +128,20 @@ export default function ProjectHappinessView({ project, userId }) {
         setShowDatePicker(false)
     }
 
+    const rangeLabel = translate(getFilterOption(filterData))
+
     return (
         <View style={localStyles.container}>
-            <Text style={localStyles.title}>{translate('Happiness')}</Text>
+            <View style={localStyles.titleRow}>
+                <Text style={localStyles.title}>{translate('Happiness')}</Text>
+                <View style={localStyles.filterContainer}>
+                    <HappinessFilterBy
+                        updateFilterData={updateRange}
+                        happinessFilter={filterData.filter}
+                        rangeLabel={rangeLabel}
+                    />
+                </View>
+            </View>
             <Text style={localStyles.privacy}>{translate(HAPPINESS_PRIVACY_TEXT)}</Text>
 
             <HappinessStatsPanel entries={entries} showRecentComments={false} />
@@ -212,9 +243,17 @@ const localStyles = StyleSheet.create({
         flex: 1,
         paddingTop: 24,
     },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+    },
     title: {
         ...styles.title4,
         color: colors.Text01,
+    },
+    filterContainer: {
+        marginLeft: 'auto',
     },
     privacy: {
         ...styles.body2,

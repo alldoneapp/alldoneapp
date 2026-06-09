@@ -175,6 +175,32 @@ export const getDataForHappinessCharts = (entries = [], format, dateList = []) =
     })
 }
 
+export const getHappinessDataForOneProjectChart = (entries = [], momentDate1, momentDate2) => {
+    const { format, unit } = getTimeScaleFromDateRange(momentDate1, momentDate2)
+    const grouped = {}
+
+    entries.forEach(entry => {
+        if (!entry.rating) return
+
+        const formattedDate = moment(entry.timestamp).format(format)
+        if (!grouped[formattedDate]) {
+            grouped[formattedDate] = { x: entry.timestamp, ratings: [] }
+        }
+        grouped[formattedDate].ratings.push(entry.rating)
+        // Keep the earliest timestamp of the bucket as its representative x value
+        if (entry.timestamp < grouped[formattedDate].x) grouped[formattedDate].x = entry.timestamp
+    })
+
+    const data = Object.values(grouped)
+        .map(({ x, ratings }) => ({
+            x,
+            y: Number((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(2)),
+        }))
+        .sort((a, b) => a.x - b.x)
+
+    return { data, unit }
+}
+
 export const getAllProjectsHappinessChartDateLabels = (happinessByProject, format) => {
     let tempDateList = []
 

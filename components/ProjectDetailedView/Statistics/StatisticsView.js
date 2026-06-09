@@ -16,7 +16,6 @@ import Backend from '../../../utils/BackendBridge'
 import StatisticsSection from '../../StatisticsView/StatisticsSection/StatisticsSection'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../redux/store'
-import HappinessStatsPanel from '../../ProjectHappiness/HappinessStatsPanel'
 
 export default function StatisticsView({ projectId, userId, initialFilterData }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -203,8 +202,8 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
                 statisticsFilter={filter}
                 filterData={filterData}
                 moneyEarned={moneyEarned}
+                happinessEntries={happinessEntries}
             />
-            <HappinessStatsPanel entries={happinessEntries} />
         </View>
     )
 }
