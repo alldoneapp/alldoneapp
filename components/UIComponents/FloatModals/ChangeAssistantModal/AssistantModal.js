@@ -9,7 +9,14 @@ import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantsArea from './AssistantsArea'
 
-export default function AssistantModal({ closeModal, projectId, updateAssistant, currentAssistantId }) {
+export default function AssistantModal({
+    closeModal,
+    projectId,
+    updateAssistant,
+    currentAssistantId,
+    includeDefaultProjectAssistant = true,
+    alwaysUpdateOnSelect = false,
+}) {
     const [width, height] = useWindowSize()
 
     return (
@@ -26,6 +33,8 @@ export default function AssistantModal({ closeModal, projectId, updateAssistant,
                         projectId={projectId}
                         updateAssistant={updateAssistant}
                         currentAssistantId={currentAssistantId}
+                        includeDefaultProjectAssistant={includeDefaultProjectAssistant}
+                        alwaysUpdateOnSelect={alwaysUpdateOnSelect}
                     />
                 </CustomScrollView>
             </View>

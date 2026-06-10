@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import Icon from '../../Icon'
 import { colors } from '../../styles/global'
 import TaskCheckbox from './TaskCheckbox'
+import TaskAssistantButton from './TaskAssistantButton'
 
 export default function CheckboxAndIcon({
     tmpTask,
@@ -16,6 +17,7 @@ export default function CheckboxAndIcon({
     isAssistant,
     projectId,
     editModeCheckOff,
+    dismissEditMode,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
 
@@ -26,6 +28,7 @@ export default function CheckboxAndIcon({
         !isMiddleScreen ||
         !showArrowInAnonymous ||
         isAssistant
+    const showAssistantButton = !adding && !isSubtask && loggedUserCanUpdateObject
 
     return (
         <View
@@ -39,7 +42,14 @@ export default function CheckboxAndIcon({
                 addingSubtask && isMiddleScreen && localStyles.subtaskIconNewMobile,
             ]}
         >
-            {adding ? (
+            {showAssistantButton ? (
+                <TaskAssistantButton
+                    projectId={projectId}
+                    task={tmpTask}
+                    disabled={!accessGranted}
+                    dismissEditMode={dismissEditMode}
+                />
+            ) : adding ? (
                 <Icon name={'plus-square'} size={24} color={colors.Primary100} />
             ) : showCheckbox ? (
                 <TaskCheckbox

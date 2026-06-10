@@ -822,6 +822,7 @@
     "Suggested by description": "By accepting, this task will be added to the selected assignee open board and by moving it to Done, it will go to the selected assignee Done section.",
     "Accept": "Accept",
     "Subtask": "Subtask",
+    "Create subtask": "Create subtask",
     "Point": "Point",
     "Points": "Points",
     "Backlink": "Backlink",

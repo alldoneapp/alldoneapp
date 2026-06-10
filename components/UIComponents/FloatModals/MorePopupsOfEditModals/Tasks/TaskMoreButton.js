@@ -43,6 +43,7 @@ import {
 import HighlightColorModal from '../../HighlightColorModal/HighlightColorModal'
 import { translate } from '../../../../../i18n/TranslationService'
 import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
+import ModalItem from '../Common/ModalItem'
 
 export default function TaskMoreButton({
     formType,
@@ -62,6 +63,7 @@ export default function TaskMoreButton({
     isAssistant,
     editing,
     setTempAutoEstimation,
+    createSubtask,
 }) {
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -159,6 +161,14 @@ export default function TaskMoreButton({
         }
     }
 
+    const startCreatingSubtask = e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
+        dismissModal()
+        dismissEditMode?.()
+        setTimeout(() => createSubtask?.(), 10)
+    }
+
     const onCloseMainModal = () => {
         if (showDescription) {
             setShowDescription(false)
@@ -206,6 +216,20 @@ export default function TaskMoreButton({
                         link={link}
                         shortcut={shortcut}
                         onPress={hideNoModalsProperties}
+                    />
+                )
+            })
+        }
+
+        if (editing && !task.isSubtask && !isAssistant && createSubtask) {
+            list.push(shortcut => {
+                return (
+                    <ModalItem
+                        key={'mbtn-create-subtask'}
+                        icon={'plus-square'}
+                        text={'Create subtask'}
+                        shortcut={shortcut}
+                        onPress={startCreatingSubtask}
                     />
                 )
             })

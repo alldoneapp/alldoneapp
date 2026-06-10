@@ -22,6 +22,7 @@ export default function SubTasksView({
     isObservedTask,
     isToReviewTask,
     isPending,
+    createSubtaskRequest,
 }) {
     const dispatch = useDispatch()
     const checkTaskItem = useSelector(state => state.checkTaskItem)
@@ -62,9 +63,13 @@ export default function SubTasksView({
     }
 
     useEffect(() => {
-        if (subtaskList.length === 0) newItemRef.current.toggleModal()
+        if (subtaskList.length === 0 && !createSubtaskRequest) newItemRef.current.toggleModal()
         setFirstLoadedEnded(true)
     }, [])
+
+    useEffect(() => {
+        if (createSubtaskRequest > 0) newItemRef.current?.openModal()
+    }, [createSubtaskRequest])
 
     useEffect(() => {
         if (firstLoadedEnded && subtaskList.length === 0) hideSubtaskList()

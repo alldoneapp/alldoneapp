@@ -27,6 +27,7 @@ export default function TaskItem({
     subtaskList,
     inParentGoal,
     isPending,
+    createSubtask,
 }) {
     const dispatch = useDispatch()
     const isCheckedTaskItem = useSelector(
@@ -111,6 +112,7 @@ export default function TaskItem({
                     isObservedTask={isObservedTask}
                     isToReviewTask={isToReviewTask}
                     isPending={isPending}
+                    createSubtask={createSubtask}
                 />
             }
             onToggleModal={onToggleModal}

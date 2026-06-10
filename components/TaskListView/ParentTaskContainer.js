@@ -34,6 +34,7 @@ export default function ParentTaskContainer({
     const [inEditMode, setInEditMode] = useState(false)
     const [showSubTaskList, setShowSubTaskList] = useState(false)
     const [showSubTaskIndicator, setShowSubTaskIndicator] = useState(false)
+    const [createSubtaskRequest, setCreateSubtaskRequest] = useState(0)
     const parentRef = useRef(null)
     const dismissibleRef = useRef(null)
     const taskItemRef = useRef(null)
@@ -56,6 +57,11 @@ export default function ParentTaskContainer({
         if (expandOrContractSubtasks) expandOrContractSubtasks(task.id, false)
         setShowSubTaskList(false)
         if (subtaskList.length === 0) setShowSubTaskIndicator(false)
+    }
+
+    const createSubtask = () => {
+        showSubtaskList()
+        setCreateSubtaskRequest(request => request + 1)
     }
 
     useEffect(() => {
@@ -133,6 +139,7 @@ export default function ParentTaskContainer({
                 setShowSubTaskIndicator={setShowSubTaskIndicator}
                 inParentGoal={inParentGoal}
                 isPending={isPending}
+                createSubtask={createSubtask}
             />
 
             {(!isActiveOrganizeMode && showSubTaskList) ||
@@ -147,6 +154,7 @@ export default function ParentTaskContainer({
                     isObservedTask={isObservedTask}
                     isToReviewTask={isToReviewTask}
                     isPending={isPending}
+                    createSubtaskRequest={createSubtaskRequest}
                 />
             ) : null}
         </View>

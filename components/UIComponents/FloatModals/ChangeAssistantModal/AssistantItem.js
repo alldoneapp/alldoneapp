@@ -16,6 +16,7 @@ export default function AssistantItem({
     currentAssistantId,
     closeModal,
     isDefaultProjectOption,
+    alwaysUpdateOnSelect,
 }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -39,7 +40,11 @@ export default function AssistantItem({
     const selectOption = () => {
         // If it's the default project option, resolve the actual assistant ID from default project
         const assistantIdToSet = isDefaultProjectOption ? assistant.uid : uid
-        const shouldUpdate = isDefaultProjectOption || !currentAssistantId || assistant.uid !== currentAssistantId
+        const shouldUpdate =
+            alwaysUpdateOnSelect ||
+            isDefaultProjectOption ||
+            !currentAssistantId ||
+            assistant.uid !== currentAssistantId
 
         console.log('[AssistantItem] Selecting assistant:', {
             isDefaultProjectOption,

@@ -814,6 +814,7 @@
     "Suggested by description": "Al aceptar, esta tarea se agregará al tablero abierto del responsable seleccionado y al moverla a Realizada, irá a la sección Realizadas del responsable seleccionado.",
     "Accept": "Aceptar",
     "Subtask": "Subtarea",
+    "Create subtask": "Crear subtarea",
     "Point": "Punto",
     "Points": "Puntos",
     "Backlink": "Objeto vinculado",

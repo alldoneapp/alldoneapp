@@ -61,6 +61,7 @@ export const SKILL_POINTS_MODAL_ID = generateKey()
 export const SKILL_NOT_ENOUGH_MODAL_ID = generateKey()
 export const SKILL_COMPLETION_MODAL_ID = generateKey()
 export const BOT_OPTION_MODAL_ID = generateKey()
+export const TASK_ASSISTANT_MODAL_ID = generateKey()
 export const RUN_OUT_OF_GOLD_MODAL_ID = generateKey()
 export const BOT_WARNING_MODAL_ID = generateKey()
 

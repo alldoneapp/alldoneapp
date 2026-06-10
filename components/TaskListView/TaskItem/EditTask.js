@@ -53,7 +53,6 @@ import MainButtonsArea from './MainButtonsArea'
 import SecondaryButtonsArea from './SecondaryButtonsArea'
 import TaskInput from './TaskInput'
 import CheckboxAndIcon from './CheckboxAndIcon'
-import SubtasksIndicator from './SubtasksIndicator'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
@@ -100,12 +99,11 @@ export default function EditTask({
     tryExpandTasksListInGoalWhenAddTask,
     dateFormated,
     onCancelAction,
-    toggleSubTaskList,
     linkedParentObject,
-    showSubTaskList,
     editModeCheckOff,
     isPending,
     parentInTaskOutOfOpen,
+    createSubtask,
 }) {
     const dispatch = useDispatch()
     let currentUserId = useSelector(state => state.currentUser.uid)
@@ -157,14 +155,6 @@ export default function EditTask({
     const isSubtaskInGuide = isSubtask && !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
 
     const isAssistant = tmpTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
-
-    const showSubtaskIndicator =
-        (loggedUserCanUpdateObject || tmpTask.subtaskIds.length > 0) &&
-        !adding &&
-        !isSubtask &&
-        isMiddleScreen &&
-        showArrowInAnonymous &&
-        !isAssistant
 
     const setEstimationBeforeSave = estimation => {
         let finalTask
@@ -594,11 +584,6 @@ export default function EditTask({
         }
     }
 
-    const onPressSubTaskIndicator = () => {
-        setTimeout(toggleSubTaskList, 10)
-        dismissEditMode()
-    }
-
     const getInitialText = () => {
         if (adding) {
             const { tmpInputTextTask } = store.getState()
@@ -691,12 +676,6 @@ export default function EditTask({
                 isMiddleScreen ? localStyles.containerUnderBreakpoint : undefined,
             ]}
         >
-            {showSubtaskIndicator && (
-                <SubtasksIndicator
-                    showSubTaskList={showSubTaskList}
-                    onPressSubTaskIndicator={onPressSubTaskIndicator}
-                />
-            )}
             <View style={[localStyles.inputContainer, isSubtask ? localStyles.subtaskInputContainer : undefined]}>
                 <CheckboxAndIcon
                     tmpTask={tmpTask}
@@ -708,6 +687,7 @@ export default function EditTask({
                     isAssistant={isAssistant}
                     projectId={projectId}
                     editModeCheckOff={editModeCheckOff}
+                    dismissEditMode={dismissEditMode}
                 />
                 <TaskInput
                     isSubtask={isSubtask}
@@ -767,6 +747,7 @@ export default function EditTask({
                     setTempAutoEstimation={setTempAutoEstimation}
                     isPending={isPending}
                     parentInTaskOutOfOpen={parentInTaskOutOfOpen}
+                    createSubtask={createSubtask}
                 />
                 <MainButtonsArea
                     hasName={hasName}

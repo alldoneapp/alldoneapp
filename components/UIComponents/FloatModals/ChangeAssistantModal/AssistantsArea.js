@@ -7,7 +7,14 @@ import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDefaultAssistantInProjectById } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function AssistantsArea({ closeModal, projectId, updateAssistant, currentAssistantId }) {
+export default function AssistantsArea({
+    closeModal,
+    projectId,
+    updateAssistant,
+    currentAssistantId,
+    includeDefaultProjectAssistant = true,
+    alwaysUpdateOnSelect = false,
+}) {
     const globalAssistants = useSelector(state => state.globalAssistants)
     const assistants = useSelector(state => state.projectAssistants[projectId])
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
@@ -25,7 +32,7 @@ export default function AssistantsArea({ closeModal, projectId, updateAssistant,
     // 3. The default project has an assistant
     const isNotDefaultProject = defaultProjectId && projectId !== defaultProjectId
     const defaultProjectAssistant = isNotDefaultProject ? getDefaultAssistantInProjectById(defaultProjectId) : null
-    const showDefaultProjectOption = isNotDefaultProject && defaultProjectAssistant
+    const showDefaultProjectOption = includeDefaultProjectAssistant && isNotDefaultProject && defaultProjectAssistant
 
     return (
         <View style={{ marginHorizontal: -8 }}>
@@ -43,6 +50,7 @@ export default function AssistantsArea({ closeModal, projectId, updateAssistant,
                     closeModal={closeModal}
                     currentAssistantId={currentAssistantId}
                     isDefaultProjectOption={true}
+                    alwaysUpdateOnSelect={alwaysUpdateOnSelect}
                 />
             )}
             {assistantToShow.map(assistant => (
@@ -53,6 +61,7 @@ export default function AssistantsArea({ closeModal, projectId, updateAssistant,
                     updateAssistant={updateAssistant}
                     closeModal={closeModal}
                     currentAssistantId={currentAssistantId}
+                    alwaysUpdateOnSelect={alwaysUpdateOnSelect}
                 />
             ))}
         </View>
