@@ -15,6 +15,7 @@ import {
     DV_TAB_ROOT_TASKS,
     DV_TAB_ADMIN_PANEL_USER,
     DV_TAB_ADMIN_PANEL_ASSISTANTS,
+    DV_TAB_ADMIN_PANEL_SKILLS,
 } from '../../utils/TabNavigationConstants'
 import LoadingData from '../UIComponents/LoadingData'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
@@ -24,6 +25,7 @@ import UserCustomizations from './UserCustomizations/UserCustomizations'
 import SettingsHeader from './Header/SettingsHeader'
 import BackButton from './Header/BackButton'
 import Assistants from './Assistants/Assistants'
+import AssistantSkills from './AssistantSkills/AssistantSkills'
 import { GLOBAL_PROJECT_ID } from './Assistants/assistantsHelper'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
@@ -35,7 +37,7 @@ export default function AdminPanelView({ navigation }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
-    const navigationTabs = [DV_TAB_ADMIN_PANEL_ASSISTANTS, DV_TAB_ADMIN_PANEL_USER]
+    const navigationTabs = [DV_TAB_ADMIN_PANEL_ASSISTANTS, DV_TAB_ADMIN_PANEL_SKILLS, DV_TAB_ADMIN_PANEL_USER]
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -90,6 +92,8 @@ export default function AdminPanelView({ navigation }) {
                                     return <UserCustomizations />
                                 case DV_TAB_ADMIN_PANEL_ASSISTANTS:
                                     return <Assistants />
+                                case DV_TAB_ADMIN_PANEL_SKILLS:
+                                    return <AssistantSkills />
                             }
                         })()}
                     </View>

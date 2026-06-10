@@ -147,6 +147,19 @@ service cloud.firestore {
       allow write: if isProjectMember(projectId);
     }
 
+    function isAdministrator() {
+      return signedIn() && get(/databases/$(database)/documents/roles/administrator).data.userId == request.auth.uid;
+    }
+
+    match /assistantSkills/{projectId}/items/{skillId} {
+      allow read: if signedIn();
+      allow write: if isAdministrator();
+    }
+
+    match /assistantSkillImports/{importId} {
+      allow read, write: if isAdministrator();
+    }
+
     match /assistantTasks/{projectId}/{assistantId}/{taskId} {
       allow read, write: if projectId == 'globalProject' || isProjectMember(projectId);
     }

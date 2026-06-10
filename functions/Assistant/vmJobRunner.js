@@ -1484,6 +1484,20 @@ async function runAgentInSandbox(
         await sandbox.files.write('/home/user/context.md', contextFileContent)
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
+        // Mount the assistant's enabled skills so the agent's native skill discovery
+        // (Claude: ~/.claude/skills, Codex: ~/.agents/skills) picks them up. The mount
+        // dir is wiped first so a resumed session drops skills disabled since last run.
+        const { loadEnabledSkillsForAssistant, mountSkillsInSandbox } = require('./assistantSkills')
+        const enabledSkills = await loadEnabledSkillsForAssistant(vmJob.projectId, vmJob.assistantId).catch(error => {
+            console.warn('🖥️ VM JOB: loading skills failed — continuing without skills', {
+                correlationId: vmJob.correlationId,
+                error: error.message,
+            })
+            return []
+        })
+        await mountSkillsInSandbox(sandbox, enabledSkills, vmJob.agent || DEFAULT_AGENT, vmJob.correlationId)
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+
         // Clone/refresh the connected GitLab repo and configure auth before the agent runs.
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
@@ -1598,15 +1612,14 @@ async function runAgentInSandbox(
                           initialRuntimeGoldCharged: runtimeGoldCharged,
                       })
                     : null
-            const cancellationMonitor =
-                pendingRef
-                    ? startVmCancellationMonitor({
-                          pendingRef,
-                          commandHandle,
-                          getRuntimeGoldCharged: () => (monitor ? monitor.getRuntimeGoldCharged() : runtimeGoldCharged),
-                          correlationId: vmJob.correlationId,
-                      })
-                    : null
+            const cancellationMonitor = pendingRef
+                ? startVmCancellationMonitor({
+                      pendingRef,
+                      commandHandle,
+                      getRuntimeGoldCharged: () => (monitor ? monitor.getRuntimeGoldCharged() : runtimeGoldCharged),
+                      correlationId: vmJob.correlationId,
+                  })
+                : null
 
             try {
                 result = await Promise.race([
@@ -1900,7 +1913,11 @@ async function runVmJobByCorrelationId(correlationId) {
     const vmJob = jobDoc.data()
 
     // Idempotency: don't re-run a job that already settled.
-    if (pendingWebhook.status === 'completed' || pendingWebhook.status === 'failed' || pendingWebhook.status === 'cancelled') {
+    if (
+        pendingWebhook.status === 'completed' ||
+        pendingWebhook.status === 'failed' ||
+        pendingWebhook.status === 'cancelled'
+    ) {
         console.warn('🖥️ VM JOB RUNNER: Already settled, skipping', { correlationId, status: pendingWebhook.status })
         return
     }

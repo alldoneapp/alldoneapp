@@ -725,6 +725,15 @@ export function updateAssistantRealtimeVoice(projectId, assistant, realtimeVoice
     updateAssistantData(projectId, assistant.uid, { realtimeVoice }, null)
 }
 
+export function updateAssistantEnabledSkills(projectId, assistant, enabledSkillIds) {
+    updateAssistantData(
+        projectId,
+        assistant.uid,
+        { enabledSkillIds: Array.isArray(enabledSkillIds) ? enabledSkillIds : [] },
+        null
+    )
+}
+
 export function updateAssistantEmailSignature(projectId, assistant, emailSignature) {
     updateAssistantData(
         projectId,

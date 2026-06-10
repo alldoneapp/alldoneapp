@@ -1,6 +1,10 @@
 import { URL_NOT_MATCH } from '../URLSystemTrigger'
-import { DV_TAB_ADMIN_PANEL_ASSISTANTS, DV_TAB_ADMIN_PANEL_USER } from '../../utils/TabNavigationConstants'
-import { URL_ADMIN_PANEL_ASSISTANTS, URL_ADMIN_PANEL_USER } from './URLsAdminPanel'
+import {
+    DV_TAB_ADMIN_PANEL_ASSISTANTS,
+    DV_TAB_ADMIN_PANEL_SKILLS,
+    DV_TAB_ADMIN_PANEL_USER,
+} from '../../utils/TabNavigationConstants'
+import { URL_ADMIN_PANEL_ASSISTANTS, URL_ADMIN_PANEL_SKILLS, URL_ADMIN_PANEL_USER } from './URLsAdminPanel'
 import { processURLAdminPanelTab } from '../../components/AdminPanel/AdminPanelHelper'
 
 class URLsAdminPanelTrigger {
@@ -8,6 +12,7 @@ class URLsAdminPanelTrigger {
         return {
             [URL_ADMIN_PANEL_USER]: new RegExp('^/admin/user$'),
             [URL_ADMIN_PANEL_ASSISTANTS]: new RegExp('^/admin/assistants$'),
+            [URL_ADMIN_PANEL_SKILLS]: new RegExp('^/admin/skills$'),
             URL_ADMIN_PANEL_DEFAULT: new RegExp('^/admin$'),
         }
     }
@@ -34,6 +39,8 @@ class URLsAdminPanelTrigger {
                 return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_USER)
             case URL_ADMIN_PANEL_ASSISTANTS:
                 return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_ASSISTANTS)
+            case URL_ADMIN_PANEL_SKILLS:
+                return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_SKILLS)
             case 'URL_ADMIN_PANEL_DEFAULT':
                 return processURLAdminPanelTab(navigation, DV_TAB_ADMIN_PANEL_ASSISTANTS)
         }

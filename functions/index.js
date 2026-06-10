@@ -781,6 +781,30 @@ exports.connectGitlabRepo = onCall(
     }
 )
 
+exports.importAssistantSkillsFromRepo = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { importAssistantSkillsFromRepo } = require('./Assistant/assistantSkillsImport')
+        try {
+            return await importAssistantSkillsFromRepo({
+                userId: auth.uid,
+                repoUrl: data && data.repoUrl,
+                ref: data && data.ref,
+            })
+        } catch (error) {
+            if (error.code === 'permission-denied') throw new HttpsError('permission-denied', error.message)
+            throw new HttpsError('invalid-argument', error.message)
+        }
+    }
+)
+
 exports.disconnectGitlabRepo = onCall(
     {
         timeoutSeconds: 30,

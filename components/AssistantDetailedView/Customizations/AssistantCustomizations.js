@@ -13,6 +13,7 @@ import ModelProperty from './Model/ModelProperty'
 import TemperatureProperty from './Temperature/TemperatureProperty'
 import RealtimeVoiceProperty from './RealtimeVoice/RealtimeVoiceProperty'
 import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
+import SkillsAccessProperty from './SkillsAccess/SkillsAccessProperty'
 import DelegationDescriptionProperty from './DelegationDescription/DelegationDescriptionProperty'
 import DelegationTargetsAccessProperty from './DelegationTargetsAccess/DelegationTargetsAccessProperty'
 import AddPreConfigTask from './PreConfigTasks/AddPreConfigTask'
@@ -161,6 +162,7 @@ export default function AssistantCustomizations({
                         />
                     )}
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <SkillsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     {hasTalkToAssistantTool && (
                         <DelegationTargetsAccessProperty
                             disabled={!canEditAssitant}

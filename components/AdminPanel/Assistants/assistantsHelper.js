@@ -51,6 +51,7 @@ export function getNewDefaultAssistant() {
         realtimeVoice: 'marin',
         emailSignature: DEFAULT_EMAIL_SIGNATURE,
         allowedTools: [...DEFAULT_ALLOWED_TOOLS],
+        enabledSkillIds: [],
         delegationToolDescriptionManual: '',
         delegationToolDescriptionGenerated: '',
         delegationToolDescriptionGeneratedAt: null,

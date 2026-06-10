@@ -11,6 +11,11 @@ export const URL_ADMIN_PANEL_USER = 'ADMIN_PANEL_USER'
 export const URL_ADMIN_PANEL_ASSISTANTS = 'URL_ADMIN_PANEL_ASSISTANTS'
 
 /**
+ * /admin/skills
+ */
+export const URL_ADMIN_PANEL_SKILLS = 'URL_ADMIN_PANEL_SKILLS'
+
+/**
  * URL System for Admin Panel
  */
 class URLsAdminPanel {
@@ -52,6 +57,8 @@ class URLsAdminPanel {
                 return `admin/user`
             case URL_ADMIN_PANEL_ASSISTANTS:
                 return `admin/assistants`
+            case URL_ADMIN_PANEL_SKILLS:
+                return `admin/skills`
         }
     }
 
@@ -62,6 +69,9 @@ class URLsAdminPanel {
                 break
             case URL_ADMIN_PANEL_ASSISTANTS:
                 document.title = `Alldone.app - Admin Panel - Assistants`
+                break
+            case URL_ADMIN_PANEL_SKILLS:
+                document.title = `Alldone.app - Admin Panel - Skills`
                 break
         }
     }

@@ -137,6 +137,7 @@ export const DV_TAB_SKILL_NOTE = 'DV_TAB_SKILL_NOTE'
 
 export const DV_TAB_ADMIN_PANEL_USER = 'ADMIN_PANEL_USER'
 export const DV_TAB_ADMIN_PANEL_ASSISTANTS = 'DV_TAB_ADMIN_PANEL_ASSISTANTS'
+export const DV_TAB_ADMIN_PANEL_SKILLS = 'DV_TAB_ADMIN_PANEL_SKILLS'
 
 /**
  * Settings Detailed View
@@ -233,6 +234,7 @@ export const NAVBAR_ITEM_MAP = {
     // AdminPanel
     [DV_TAB_ADMIN_PANEL_USER]: 'User',
     [DV_TAB_ADMIN_PANEL_ASSISTANTS]: 'AI Assistants',
+    [DV_TAB_ADMIN_PANEL_SKILLS]: 'AI Skills',
     // Settings
     [DV_TAB_SETTINGS_CUSTOMIZATIONS]: 'Customizations',
     [DV_TAB_SETTINGS_PROFILE]: 'Profile',

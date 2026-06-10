@@ -1963,6 +1963,13 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     if (toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY) {
         return assistantAllowedTools.includes(toolName) && hasValidCompactThreadRuntimeContext(toolRuntimeContext)
     }
+    // load_skill has no per-assistant toggle — it is allowed exactly when the
+    // assistant has chat-usable skills enabled (mirrors interactWithChatStream).
+    if (toolName === 'load_skill') {
+        if (!toolRuntimeContext?.projectId || !toolRuntimeContext?.assistantId) return false
+        const { hasChatSkillsEnabled } = require('./assistantSkills')
+        return await hasChatSkillsEnabled(toolRuntimeContext.projectId, toolRuntimeContext.assistantId)
+    }
     if (assistantAllowedTools.includes(toolName)) {
         return toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
     }
@@ -2262,6 +2269,22 @@ async function interactWithChatStream(
 ) {
     const streamStartTime = Date.now()
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
+    // load_skill is implicit (no per-assistant toggle): it becomes available whenever the
+    // assistant has chat-usable skills enabled. The skill list itself is the access control.
+    if (
+        toolRuntimeContext?.projectId &&
+        toolRuntimeContext?.assistantId &&
+        !runtimeAllowedTools.includes('load_skill')
+    ) {
+        try {
+            const { hasChatSkillsEnabled } = require('./assistantSkills')
+            if (await hasChatSkillsEnabled(toolRuntimeContext.projectId, toolRuntimeContext.assistantId)) {
+                runtimeAllowedTools.push('load_skill')
+            }
+        } catch (error) {
+            console.warn('🧩 SKILLS: load_skill availability check failed', { error: error.message })
+        }
+    }
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
         modelKey,
@@ -6511,6 +6534,30 @@ async function executeToolNatively(
             }
         }
 
+        case 'load_skill': {
+            console.log('🧩 LOAD_SKILL TOOL: Loading skill', {
+                skillName: toolArgs.name,
+                projectId,
+                assistantId,
+            })
+            const { loadChatSkillByName } = require('./assistantSkills')
+            const { skill, availableSkillNames } = await loadChatSkillByName(projectId, assistantId, toolArgs.name)
+            if (!skill) {
+                return {
+                    success: false,
+                    error: `Unknown skill "${toolArgs.name}".`,
+                    availableSkills: availableSkillNames,
+                }
+            }
+            return {
+                success: true,
+                name: skill.name,
+                instructions: skill.body || '',
+                note:
+                    'Follow these skill instructions while completing the current request. They complement (do not replace) your assistant instructions.',
+            }
+        }
+
         case 'web_search': {
             console.log('🌐 WEB_SEARCH TOOL: Starting internet search', {
                 query: toolArgs.query,
@@ -7375,10 +7422,7 @@ async function storeChunks(
             assistantRun && assistantRun.kind === 'chat'
                 ? admin.firestore().doc(`assistantRunLocks/${assistantRun.runId}`)
                 : null
-        const {
-            AssistantRunCancelledError,
-            isAssistantRunCancellationRequested,
-        } = require('./assistantRunIdempotency')
+        const { AssistantRunCancelledError, isAssistantRunCancellationRequested } = require('./assistantRunIdempotency')
 
         let lastCancellationCheckAt = 0
         const throwIfCancelled = async (force = false) => {
@@ -9325,6 +9369,32 @@ async function addBaseInstructions(
             includedTasks: preConfiguredTasksContext.includedCount,
             totalRelevantTasks: preConfiguredTasksContext.totalCount,
         })
+    }
+
+    // Skills index (progressive disclosure level 1): one line per enabled skill.
+    // The full skill body only enters context when the model calls load_skill.
+    if (assistantContext?.projectId && assistantContext?.assistantId) {
+        try {
+            const { loadChatSkillsForAssistant, buildSkillsIndexBlock } = require('./assistantSkills')
+            const chatSkills = await loadChatSkillsForAssistant(
+                assistantContext.projectId,
+                assistantContext.assistantId
+            )
+            if (chatSkills.length > 0) {
+                messages.push(['system', parseTextForUseLiKePrompt(buildSkillsIndexBlock(chatSkills))])
+                console.log('🧩 SKILLS CONTEXT: Added skills index', {
+                    projectId: assistantContext.projectId,
+                    assistantId: assistantContext.assistantId,
+                    skillCount: chatSkills.length,
+                })
+            }
+        } catch (error) {
+            console.warn('🧩 SKILLS CONTEXT: Failed to load skills index', {
+                projectId: assistantContext?.projectId || null,
+                assistantId: assistantContext?.assistantId || null,
+                error: error.message,
+            })
+        }
     }
     messages.push([
         'system',

@@ -1052,6 +1052,25 @@ const toolSchemas = {
         },
     },
 
+    load_skill: {
+        type: 'function',
+        function: {
+            name: 'load_skill',
+            description:
+                'Load the full instructions of one of your available skills (listed in your system prompt as "name: when to use it"). Call this FIRST whenever the user request matches a skill, then follow the returned instructions while doing the work. Do not answer from the one-line skill description alone.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    name: {
+                        type: 'string',
+                        description: 'The exact skill name from your skills list, e.g. "frontend-design".',
+                    },
+                },
+                required: ['name'],
+            },
+        },
+    },
+
     web_search: {
         type: 'function',
         function: {

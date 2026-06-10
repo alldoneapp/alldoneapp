@@ -2,6 +2,7 @@ import { navigateToAdmin, navigateToAllProjectsTasks, setSelectedNavItem } from 
 import store from '../../redux/store'
 import URLsAdminPanel, {
     URL_ADMIN_PANEL_ASSISTANTS,
+    URL_ADMIN_PANEL_SKILLS,
     URL_ADMIN_PANEL_USER,
 } from '../../URLSystem/AdminPanel/URLsAdminPanel'
 
@@ -15,6 +16,9 @@ export const processURLAdminPanelTab = (navigation, tab) => {
                 break
             case URL_ADMIN_PANEL_ASSISTANTS:
                 URLsAdminPanel.replace(URL_ADMIN_PANEL_ASSISTANTS)
+                break
+            case URL_ADMIN_PANEL_SKILLS:
+                URLsAdminPanel.replace(URL_ADMIN_PANEL_SKILLS)
                 break
         }
         navigation.navigate('AdminPanelView')
