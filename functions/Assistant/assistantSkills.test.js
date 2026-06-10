@@ -5,7 +5,7 @@ const {
     buildSkillsIndexBlock,
     getSandboxSkillsDir,
 } = require('./assistantSkills')
-const { parseRepoUrl, parseSkillFrontmatter } = require('./assistantSkillsImport')
+const { parseRepoUrl, parseSkillFrontmatter, selectSkillManifests } = require('./assistantSkillsImport')
 
 describe('isValidSkillName', () => {
     it('accepts spec-compliant slugs', () => {
@@ -76,13 +76,44 @@ describe('parseRepoUrl', () => {
             repo: 'skills',
         })
         expect(parseRepoUrl('https://github.com/openai/skills.git')).toEqual({ owner: 'openai', repo: 'skills' })
-        expect(parseRepoUrl('https://github.com/owner/repo/tree/main/sub')).toEqual({ owner: 'owner', repo: 'repo' })
+        expect(parseRepoUrl('https://github.com/owner/repo/tree/main/sub/folder')).toEqual({
+            owner: 'owner',
+            repo: 'repo',
+            ref: 'main',
+            subdirectory: 'sub/folder',
+        })
     })
 
     it('rejects non-github inputs', () => {
         expect(parseRepoUrl('https://gitlab.com/owner/repo')).toBe(null)
         expect(parseRepoUrl('not a repo')).toBe(null)
         expect(parseRepoUrl(undefined)).toBe(null)
+    })
+})
+
+describe('selectSkillManifests', () => {
+    const manifest = path => ({ path, type: 'blob' })
+
+    it('filters to the requested subdirectory before applying the import limit', () => {
+        const blobs = [
+            ...Array.from({ length: 100 }, (_, index) => manifest(`earlier/skill-${index}/SKILL.md`)),
+            ...Array.from({ length: 105 }, (_, index) => manifest(`product-management/skills/skill-${index}/SKILL.md`)),
+        ]
+
+        const selected = selectSkillManifests(blobs, 'product-management')
+
+        expect(selected).toHaveLength(100)
+        expect(selected.every(node => node.path.startsWith('product-management/'))).toBe(true)
+        expect(selected[0].path).toBe('product-management/skills/skill-0/SKILL.md')
+    })
+
+    it('selects skills across the repository when no subdirectory is provided', () => {
+        const selected = selectSkillManifests(
+            [manifest('one/SKILL.md'), manifest('two/not-a-skill.md'), manifest('three/SKILL.md')],
+            ''
+        )
+
+        expect(selected.map(node => node.path)).toEqual(['one/SKILL.md', 'three/SKILL.md'])
     })
 })
 

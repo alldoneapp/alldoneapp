@@ -107,6 +107,42 @@ export function watchGoalsInDateRange(projectId, date1, date2, watcherKey, callb
         })
 }
 
+export function watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2, watcherKey, callback) {
+    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
+    const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+
+    globalWatcherUnsub[watcherKey] = getDb()
+        .collection(`goals/${projectId}/items`)
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .onSnapshot(goalsDocs => {
+            const entries = []
+
+            goalsDocs.forEach(doc => {
+                const goal = mapGoalData(doc.id, doc.data())
+
+                Object.values(goal.progressByDoneMilestone).forEach(snapshot => {
+                    if (
+                        !snapshot ||
+                        !Number.isFinite(snapshot.progress) ||
+                        !snapshot.doneDate ||
+                        snapshot.doneDate < timestamp1 ||
+                        snapshot.doneDate > timestamp2
+                    ) {
+                        return
+                    }
+
+                    entries.push({
+                        goalId: goal.id,
+                        progress: snapshot.progress,
+                        timestamp: snapshot.doneDate,
+                    })
+                })
+            })
+
+            callback(projectId, entries)
+        })
+}
+
 export function watchAllGoals(projectId, watcherKey, ownerId) {
     const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]

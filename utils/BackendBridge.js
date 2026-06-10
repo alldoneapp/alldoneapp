@@ -693,6 +693,10 @@ export default class Backend {
         return goalsBridge.watchGoalsInDateRange(projectId, date1, date2, watcherKey, callback, ownerId)
     }
 
+    static watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2, watcherKey, callback) {
+        return goalsBridge.watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2, watcherKey, callback)
+    }
+
     static watchGoal(projectId, goalId, watcherKey, callback) {
         return goalsBridge.watchGoal(projectId, goalId, watcherKey, callback)
     }

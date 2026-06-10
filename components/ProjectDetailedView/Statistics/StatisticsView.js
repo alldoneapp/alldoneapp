@@ -29,6 +29,7 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
     const [statisticsData, setStatisticsData] = useState({})
     const [allStatisticsData, setAllStatisticsData] = useState({})
     const [happinessEntries, setHappinessEntries] = useState([])
+    const [okrEntries, setOkrEntries] = useState([])
 
     const usersToShow = statisticsSelectedUsersIds ? statisticsSelectedUsersIds : [loggedUserId]
     const project = ProjectHelper.getProjectById(projectId)
@@ -101,19 +102,27 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
 
     useEffect(() => {
         const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData)
-        const watcherKey = `project_happiness_stats_${projectId}_${v4()}`
+        const watcherId = v4()
+        const happinessWatcherKey = `project_happiness_stats_${projectId}_${watcherId}`
+        const okrWatcherKey = `project_okr_stats_${projectId}_${watcherId}`
         Backend.watchProjectHappinessByRange(
             projectId,
             loggedUserId,
             timestamp1,
             timestamp2,
-            watcherKey,
+            happinessWatcherKey,
             (id, entries) => {
                 setHappinessEntries(entries)
             }
         )
+        Backend.watchProjectOKRProgressByRange(projectId, timestamp1, timestamp2, okrWatcherKey, (id, entries) => {
+            setOkrEntries(entries)
+        })
 
-        return () => Backend.unwatch(watcherKey)
+        return () => {
+            Backend.unwatch(happinessWatcherKey)
+            Backend.unwatch(okrWatcherKey)
+        }
     }, [JSON.stringify(filterData), projectId, loggedUserId])
 
     const filter = getFilterOption(filterData)
@@ -203,6 +212,7 @@ export default function StatisticsView({ projectId, userId, initialFilterData })
                 filterData={filterData}
                 moneyEarned={moneyEarned}
                 happinessEntries={happinessEntries}
+                okrEntries={okrEntries}
             />
         </View>
     )

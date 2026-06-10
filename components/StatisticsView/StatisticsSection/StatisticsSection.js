@@ -18,6 +18,7 @@ import { translate } from '../../../i18n/TranslationService'
 import {
     getDataForOneProjectCharts,
     getHappinessDataForOneProjectChart,
+    getOKRDataForOneProjectChart,
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
@@ -25,6 +26,7 @@ import {
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
     STATISTIC_CHART_HAPPINESS,
+    STATISTIC_CHART_OKRS,
 } from '../../../utils/StatisticChartsHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import ChartsOptionsButton from '../../SettingsView/Statistics/ChartsOptionsButton'
@@ -48,6 +50,7 @@ export default function StatisticsSection({
     filterData,
     moneyEarned = 0,
     happinessEntries = [],
+    okrEntries = [],
 }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -260,6 +263,17 @@ export default function StatisticsSection({
                                             timestamp2
                                         )}
                                         project={project}
+                                    />
+                                )
+                            case STATISTIC_CHART_OKRS:
+                                return (
+                                    <StackedBarChart
+                                        title={translate('OKRs')}
+                                        statisticData={getOKRDataForOneProjectChart(okrEntries, timestamp1, timestamp2)}
+                                        project={project}
+                                        stacked={false}
+                                        showDataLabels={false}
+                                        maxY={100}
                                     />
                                 )
                         }

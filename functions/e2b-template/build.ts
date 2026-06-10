@@ -42,15 +42,25 @@ const template = Template()
         'curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && apt-get update && apt-get install -y gh',
         asRoot
     )
-    .runCmd('pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || true', asRoot)
+    // Debian bookworm pip may refuse system-wide installs (externally-managed-environment),
+    // so fall back to --break-system-packages. The import check below fails the build if
+    // the libraries still did not land (a silent miss here caused per-run pip installs that
+    // got OOM-killed on the 1 GB prebuilt template).
+    .runCmd(
+        'pip3 install --no-cache-dir pandas openpyxl python-docx python-pptx || pip3 install --no-cache-dir --break-system-packages pandas openpyxl python-docx python-pptx',
+        asRoot
+    )
+    .runCmd('python3 -c "import pandas, openpyxl, docx, pptx"')
     // Fail the build if the CLI didn't install (runs as the default user, like the worker)
     .runCmd('claude --version')
 
 console.log(`🏗️  Building E2B template "${TEMPLATE_NAME}" (Docker-free, remote build)…`)
 
+// 4 vCPU / 4 GB — within E2B Hobby-tier limits (max 8 vCPU / 8 GB per build).
+// The prebuilt `claude` template's 1 GB OOM-killed pip installs during PPT jobs.
 const info = await Template.build(template, TEMPLATE_NAME, {
-    cpuCount: 2,
-    memoryMB: 1024,
+    cpuCount: 4,
+    memoryMB: 4096,
     onBuildLogs: (entry: any) => console.log(entry?.message ?? entry),
 })
 

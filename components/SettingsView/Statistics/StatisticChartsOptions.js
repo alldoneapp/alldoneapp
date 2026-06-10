@@ -17,6 +17,7 @@ import {
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
     STATISTIC_CHART_HAPPINESS,
+    STATISTIC_CHART_OKRS,
 } from '../../../utils/StatisticChartsHelper'
 import { ESTIMATION_TYPE_BOTH, ESTIMATION_TYPE_POINTS, ESTIMATION_TYPE_TIME } from '../../../utils/EstimationHelper'
 
@@ -30,6 +31,7 @@ const StatisticChartsOptions = ({ chart, setChart, hidePopover, estimationTypeTo
         STATISTIC_CHART_GOLD,
         STATISTIC_CHART_XP,
         STATISTIC_CHART_HAPPINESS,
+        STATISTIC_CHART_OKRS,
     ]
 
     if (estimationTypeToUse !== ESTIMATION_TYPE_POINTS && estimationTypeToUse !== ESTIMATION_TYPE_BOTH) {

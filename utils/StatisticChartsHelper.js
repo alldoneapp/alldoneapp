@@ -23,6 +23,7 @@ export const STATISTIC_CHART_MONEY_EARNED = 'CHART_MONEY_EARNED'
 export const STATISTIC_CHART_GOLD = 'CHART_GOLD'
 export const STATISTIC_CHART_XP = 'CHART_XP'
 export const STATISTIC_CHART_HAPPINESS = 'CHART_HAPPINESS'
+export const STATISTIC_CHART_OKRS = 'CHART_OKRS'
 
 export const getDataForCharts = (data, format, unit, dateList) => {
     const dataArray = transformObjectToArray(data)
@@ -156,6 +157,20 @@ export const getDataForAllProjectsHappinessCharts = (happinessByProject, momentD
     return { data: finalData, unit }
 }
 
+export const getDataForAllProjectsOKRCharts = (okrsByProject, momentDate1, momentDate2) => {
+    let { format, unit } = getTimeScaleFromDateRange(momentDate1, momentDate2)
+    let chartDateLabels = getAllProjectsOKRChartDateLabels(okrsByProject, format)
+
+    const loggedUserProjects = store.getState().loggedUserProjects
+    const finalData = loggedUserProjects.map(project => ({
+        name: project.name,
+        color: project.color,
+        data: getDataForOKRCharts(okrsByProject[project.id], format, chartDateLabels),
+    }))
+
+    return { data: finalData, unit }
+}
+
 export const getDataForHappinessCharts = (entries = [], format, dateList = []) => {
     const groupedEntries = {}
 
@@ -201,6 +216,52 @@ export const getHappinessDataForOneProjectChart = (entries = [], momentDate1, mo
     return { data, unit }
 }
 
+export const getDataForOKRCharts = (entries = [], format, dateList = []) => {
+    const groupedEntries = {}
+
+    entries.forEach(entry => {
+        if (!Number.isFinite(entry.progress)) return
+
+        const formattedDate = moment(entry.timestamp).format(format)
+        if (!groupedEntries[formattedDate]) groupedEntries[formattedDate] = []
+        groupedEntries[formattedDate].push(entry.progress)
+    })
+
+    return dateList.map(date => {
+        const progressValues = groupedEntries[date] || []
+        const average = progressValues.length
+            ? progressValues.reduce((sum, progress) => sum + progress, 0) / progressValues.length
+            : 0
+
+        return { x: date, y: Number(average.toFixed(2)) }
+    })
+}
+
+export const getOKRDataForOneProjectChart = (entries = [], momentDate1, momentDate2) => {
+    const { format, unit } = getTimeScaleFromDateRange(momentDate1, momentDate2)
+    const grouped = {}
+
+    entries.forEach(entry => {
+        if (!Number.isFinite(entry.progress)) return
+
+        const formattedDate = moment(entry.timestamp).format(format)
+        if (!grouped[formattedDate]) {
+            grouped[formattedDate] = { x: entry.timestamp, progressValues: [] }
+        }
+        grouped[formattedDate].progressValues.push(entry.progress)
+        if (entry.timestamp < grouped[formattedDate].x) grouped[formattedDate].x = entry.timestamp
+    })
+
+    const data = Object.values(grouped)
+        .map(({ x, progressValues }) => ({
+            x,
+            y: Number((progressValues.reduce((sum, progress) => sum + progress, 0) / progressValues.length).toFixed(2)),
+        }))
+        .sort((a, b) => a.x - b.x)
+
+    return { data, unit }
+}
+
 export const getAllProjectsHappinessChartDateLabels = (happinessByProject, format) => {
     let tempDateList = []
 
@@ -217,6 +278,24 @@ export const getAllProjectsHappinessChartDateLabels = (happinessByProject, forma
             if (!tempDateList.includes(formattedDate)) {
                 tempDateList.push(formattedDate)
             }
+        })
+    }
+
+    return tempDateList.sort((dateA, dateB) => moment(dateA, format).valueOf() - moment(dateB, format).valueOf())
+}
+
+export const getAllProjectsOKRChartDateLabels = (okrsByProject, format) => {
+    let tempDateList = []
+    const loggedUserProjects = store.getState().loggedUserProjects
+
+    for (let project of loggedUserProjects) {
+        const entries = okrsByProject[project.id] || []
+
+        entries.forEach(entry => {
+            if (!Number.isFinite(entry.progress)) return
+
+            const formattedDate = moment(entry.timestamp).format(format)
+            if (!tempDateList.includes(formattedDate)) tempDateList.push(formattedDate)
         })
     }
 
@@ -298,5 +377,7 @@ export const getChartName = selectedChart => {
             return 'XP'
         case STATISTIC_CHART_HAPPINESS:
             return 'Happiness'
+        case STATISTIC_CHART_OKRS:
+            return 'OKRs'
     }
 }

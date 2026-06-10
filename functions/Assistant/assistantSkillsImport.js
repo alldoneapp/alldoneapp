@@ -2,20 +2,59 @@ const admin = require('firebase-admin')
 
 const { isValidSkillName } = require('./assistantSkills')
 
-const MAX_SKILLS_PER_IMPORT = 60
+const MAX_SKILLS_PER_IMPORT = 100
 const MAX_BODY_BYTES = 256 * 1024 // SKILL.md body cap per spec recommendation (<5k tokens) with headroom
 const MAX_BUNDLED_FILE_BYTES = 5 * 1024 * 1024
 const MAX_BUNDLED_TOTAL_BYTES_PER_SKILL = 20 * 1024 * 1024
 
 function parseRepoUrl(repoUrl) {
     if (typeof repoUrl !== 'string') return null
-    const trimmed = repoUrl.trim().replace(/\.git$/, '')
+    const trimmed = repoUrl.trim()
     // Accept "owner/repo" shorthand or a full github.com URL.
-    const shorthand = trimmed.match(/^([\w.-]+)\/([\w.-]+)$/)
+    const shorthand = trimmed.replace(/\.git$/, '').match(/^([\w.-]+)\/([\w.-]+)$/)
     if (shorthand) return { owner: shorthand[1], repo: shorthand[2] }
-    const url = trimmed.match(/^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)/)
-    if (url) return { owner: url[1], repo: url[2] }
-    return null
+
+    try {
+        const url = new URL(trimmed)
+        if (!/^https?:$/.test(url.protocol) || !/^(?:www\.)?github\.com$/i.test(url.hostname)) return null
+
+        const segments = url.pathname
+            .split('/')
+            .filter(Boolean)
+            .map(segment => decodeURIComponent(segment))
+        if (segments.length < 2 || !/^[\w.-]+$/.test(segments[0])) return null
+
+        const owner = segments[0]
+        const repo = segments[1].replace(/\.git$/, '')
+        if (!/^[\w.-]+$/.test(repo)) return null
+
+        if (segments[2] !== 'tree' || !segments[3]) return { owner, repo }
+
+        const parsed = { owner, repo, ref: segments[3] }
+        const subdirectory = segments
+            .slice(4)
+            .join('/')
+            .replace(/^\/+|\/+$/g, '')
+        if (subdirectory) parsed.subdirectory = subdirectory
+        return parsed
+    } catch (error) {
+        return null
+    }
+}
+
+function selectSkillManifests(blobs, subdirectory) {
+    const normalizedSubdirectory = (subdirectory || '').replace(/^\/+|\/+$/g, '')
+    const prefix = normalizedSubdirectory ? `${normalizedSubdirectory}/` : ''
+    return blobs
+        .filter(node => /(^|\/)SKILL\.md$/.test(node.path) && (!prefix || node.path.startsWith(prefix)))
+        .slice(0, MAX_SKILLS_PER_IMPORT)
+}
+
+function buildSourceRepoUrl(owner, repo, ref, subdirectory) {
+    const baseUrl = `https://github.com/${owner}/${repo}`
+    if (!subdirectory) return baseUrl
+    const encodedPath = subdirectory.split('/').map(encodeURIComponent).join('/')
+    return `${baseUrl}/tree/${encodeURIComponent(ref)}/${encodedPath}`
 }
 
 async function githubJson(path, githubToken) {
@@ -115,11 +154,12 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
 
         const parsed = parseRepoUrl(repoUrl)
         if (!parsed) throw new Error('Could not parse the repository URL. Use "owner/repo" or a github.com URL.')
-        const { owner, repo } = parsed
+        const { owner, repo, subdirectory } = parsed
+        const sourceRepoUrl = buildSourceRepoUrl(owner, repo, ref || parsed.ref, subdirectory)
 
         await updateJob({
             status: 'running',
-            repoUrl: `https://github.com/${owner}/${repo}`,
+            repoUrl: sourceRepoUrl,
             createdBy: userId,
             startedAt: Date.now(),
             processed: 0,
@@ -130,7 +170,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
         })
 
         const repoInfo = await githubJson(`/repos/${owner}/${repo}`, githubToken)
-        const resolvedRef = (typeof ref === 'string' && ref.trim()) || repoInfo.default_branch
+        const resolvedRef = (typeof ref === 'string' && ref.trim()) || parsed.ref || repoInfo.default_branch
         const commit = await githubJson(
             `/repos/${owner}/${repo}/commits/${encodeURIComponent(resolvedRef)}`,
             githubToken
@@ -139,7 +179,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
 
         const tree = await githubJson(`/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`, githubToken)
         const blobs = (tree.tree || []).filter(node => node.type === 'blob')
-        const skillManifests = blobs.filter(node => /(^|\/)SKILL\.md$/.test(node.path)).slice(0, MAX_SKILLS_PER_IMPORT)
+        const skillManifests = selectSkillManifests(blobs, subdirectory)
 
         if (skillManifests.length === 0) throw new Error('No SKILL.md files found in this repository.')
 
@@ -216,7 +256,7 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
                     files,
                     source: {
                         type: 'import',
-                        repoUrl: `https://github.com/${owner}/${repo}`,
+                        repoUrl: buildSourceRepoUrl(owner, repo, resolvedRef, subdirectory),
                         ref: resolvedRef,
                         sha,
                         path: manifest.path,
@@ -273,4 +313,4 @@ async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken
     }
 }
 
-module.exports = { importAssistantSkillsFromRepo, parseRepoUrl, parseSkillFrontmatter }
+module.exports = { importAssistantSkillsFromRepo, parseRepoUrl, parseSkillFrontmatter, selectSkillManifests }

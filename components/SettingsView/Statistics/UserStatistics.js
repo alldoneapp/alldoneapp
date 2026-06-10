@@ -17,6 +17,7 @@ import StackedBarChart from './StackedBarChart'
 import {
     getDataForAllProjectsCharts,
     getDataForAllProjectsHappinessCharts,
+    getDataForAllProjectsOKRCharts,
     STATISTIC_CHART_DONE_POINTS,
     STATISTIC_CHART_DONE_TASKS,
     STATISTIC_CHART_DONE_TIME,
@@ -24,6 +25,7 @@ import {
     STATISTIC_CHART_GOLD,
     STATISTIC_CHART_XP,
     STATISTIC_CHART_HAPPINESS,
+    STATISTIC_CHART_OKRS,
 } from '../../../utils/StatisticChartsHelper'
 import { translate } from '../../../i18n/TranslationService'
 import ChartsOptionsButton from './ChartsOptionsButton'
@@ -52,6 +54,7 @@ export default function UserStatistics() {
     const [allXpByProject, setAllXpByProject] = useState({ total: null })
     const [allGoldByProject, setAllGoldByProject] = useState({ total: null })
     const [happinessByProject, setHappinessByProject] = useState({})
+    const [okrsByProject, setOkrsByProject] = useState({})
 
     const [selectedChart, setSelectedChart] = useState(STATISTIC_CHART_DONE_TASKS)
     const estimationTypeToUse = getEstimationTypeToUse()
@@ -151,9 +154,13 @@ export default function UserStatistics() {
 
     useEffect(() => {
         const watcherKey = v4()
-        const watcherKeys = loggedUserProjects.map(project => `settings_happiness_chart_${project.id}_${watcherKey}`)
+        const happinessWatcherKeys = loggedUserProjects.map(
+            project => `settings_happiness_chart_${project.id}_${watcherKey}`
+        )
+        const okrWatcherKeys = loggedUserProjects.map(project => `settings_okr_chart_${project.id}_${watcherKey}`)
 
         setHappinessByProject({})
+        setOkrsByProject({})
 
         loggedUserProjects.forEach(project => {
             Backend.watchProjectHappinessByRange(
@@ -166,9 +173,18 @@ export default function UserStatistics() {
                     setHappinessByProject(state => ({ ...state, [projectId]: entries }))
                 }
             )
+            Backend.watchProjectOKRProgressByRange(
+                project.id,
+                timestamp1,
+                timestamp2,
+                `settings_okr_chart_${project.id}_${watcherKey}`,
+                (projectId, entries) => {
+                    setOkrsByProject(state => ({ ...state, [projectId]: entries }))
+                }
+            )
         })
 
-        return () => watcherKeys.forEach(key => Backend.unwatch(key))
+        return () => [...happinessWatcherKeys, ...okrWatcherKeys].forEach(key => Backend.unwatch(key))
     }, [JSON.stringify(filterData), JSON.stringify(loggedUserProjects.map(project => project.id)), loggedUser.uid])
 
     return (
@@ -373,6 +389,20 @@ export default function UserStatistics() {
                                         stacked={false}
                                         showDataLabels={false}
                                         maxY={5}
+                                    />
+                                )
+                            case STATISTIC_CHART_OKRS:
+                                return (
+                                    <StackedBarChart
+                                        title={translate('OKRs')}
+                                        statisticData={getDataForAllProjectsOKRCharts(
+                                            okrsByProject,
+                                            timestamp1,
+                                            timestamp2
+                                        )}
+                                        stacked={false}
+                                        showDataLabels={false}
+                                        maxY={100}
                                     />
                                 )
                         }
