@@ -1548,5 +1548,7 @@
     "Enabled skills": "Aktivierte Skills",
     "Select which skills the assistant can use": "Wähle aus, welche Skills der Assistent nutzen darf",
     "No skills in the catalog yet": "Noch keine Skills im Katalog",
-    "No skills enabled": "Keine Skills aktiviert"
+    "No skills enabled": "Keine Skills aktiviert",
+    "Contacting repository": "Repository wird kontaktiert…",
+    "Processing skill %{current} of %{total}": "Verarbeite Skill %{current} von %{total}"
 }

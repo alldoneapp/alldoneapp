@@ -797,6 +797,7 @@ exports.importAssistantSkillsFromRepo = onCall(
                 userId: auth.uid,
                 repoUrl: data && data.repoUrl,
                 ref: data && data.ref,
+                jobId: data && data.jobId,
             })
         } catch (error) {
             if (error.code === 'permission-denied') throw new HttpsError('permission-denied', error.message)

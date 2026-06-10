@@ -82,13 +82,23 @@ export async function deleteAssistantSkill(skillId) {
 
 //MARKETPLACE IMPORT
 
-export async function importAssistantSkillsFromRepo(repoUrl, ref) {
+export async function importAssistantSkillsFromRepo(repoUrl, ref, jobId) {
     const result = await runHttpsCallableFunction(
         'importAssistantSkillsFromRepo',
-        { repoUrl, ref: ref || null },
+        { repoUrl, ref: ref || null, jobId: jobId || null },
         { timeout: 300000 }
     )
     return result?.data || result
+}
+
+// Live progress of a running import (doc written server-side while the
+// callable works). Callback receives null until the first server write lands.
+export function watchSkillImportJob(jobId, watcherKey, callback) {
+    globalWatcherUnsub[watcherKey] = getDb()
+        .doc(`assistantSkillImportJobs/${jobId}`)
+        .onSnapshot(doc => {
+            callback(doc.exists ? doc.data() : null)
+        })
 }
 
 export function watchPendingSkillImports(watcherKey, callback) {

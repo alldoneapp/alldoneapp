@@ -2001,5 +2001,7 @@
     "Enabled skills": "Enabled skills",
     "Select which skills the assistant can use": "Select which skills the assistant can use",
     "No skills in the catalog yet": "No skills in the catalog yet",
-    "No skills enabled": "No skills enabled"
+    "No skills enabled": "No skills enabled",
+    "Contacting repository": "Contacting repository…",
+    "Processing skill %{current} of %{total}": "Processing skill %{current} of %{total}"
 }

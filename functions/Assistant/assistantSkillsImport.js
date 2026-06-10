@@ -85,103 +85,192 @@ async function requireAdministrator(userId) {
 // one assistantSkillImports doc per skill for admin review. Bundled files are
 // uploaded to Storage immediately under the proposed skill id so approving is
 // a pure Firestore write.
-async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken }) {
-    await requireAdministrator(userId)
+// Skills are processed in parallel (and bundled files within a skill too) —
+// the import is network-bound on GitHub fetches, so this is the main speedup.
+const SKILL_CONCURRENCY = 5
+const FILE_CONCURRENCY = 4
 
-    const parsed = parseRepoUrl(repoUrl)
-    if (!parsed) throw new Error('Could not parse the repository URL. Use "owner/repo" or a github.com URL.')
-    const { owner, repo } = parsed
+const JOB_ID_REGEX = /^[A-Za-z0-9_-]{6,64}$/
 
-    const repoInfo = await githubJson(`/repos/${owner}/${repo}`, githubToken)
-    const resolvedRef = (typeof ref === 'string' && ref.trim()) || repoInfo.default_branch
-    const commit = await githubJson(`/repos/${owner}/${repo}/commits/${encodeURIComponent(resolvedRef)}`, githubToken)
-    const sha = commit.sha
+// Live progress for the admin UI: one doc per import run that the client
+// watches while the callable is still running. Server-only writes.
+function getImportJobRef(jobId) {
+    if (typeof jobId !== 'string' || !JOB_ID_REGEX.test(jobId)) return null
+    return admin.firestore().doc(`assistantSkillImportJobs/${jobId}`)
+}
 
-    const tree = await githubJson(`/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`, githubToken)
-    const blobs = (tree.tree || []).filter(node => node.type === 'blob')
-    const skillManifests = blobs.filter(node => /(^|\/)SKILL\.md$/.test(node.path)).slice(0, MAX_SKILLS_PER_IMPORT)
-
-    if (skillManifests.length === 0) throw new Error('No SKILL.md files found in this repository.')
-
-    const db = admin.firestore()
-    const bucket = admin.storage().bucket()
-    const batchId = db.collection('assistantSkillImports').doc().id
-    const importedAt = Date.now()
-    const staged = []
-    const skipped = []
-
-    for (const manifest of skillManifests) {
-        const dirPath = manifest.path.replace(/SKILL\.md$/, '').replace(/\/$/, '')
+async function importAssistantSkillsFromRepo({ userId, repoUrl, ref, githubToken, jobId }) {
+    const jobRef = getImportJobRef(jobId)
+    const updateJob = async data => {
+        if (!jobRef) return
         try {
-            const markdown = (await fetchRaw(owner, repo, sha, manifest.path)).toString('utf8')
-            if (Buffer.byteLength(markdown) > MAX_BODY_BYTES) {
-                skipped.push({ path: manifest.path, reason: 'SKILL.md too large' })
-                continue
-            }
-            const { frontmatter, body } = parseSkillFrontmatter(markdown)
-            const name = frontmatter?.name
-            const description = frontmatter?.description
-            if (!isValidSkillName(name) || !description) {
-                skipped.push({ path: manifest.path, reason: 'Missing or invalid name/description frontmatter' })
-                continue
-            }
-
-            const proposedSkillId = db.collection(`assistantSkills/globalProject/items`).doc().id
-            const bundledBlobs = dirPath
-                ? blobs.filter(node => node.path.startsWith(`${dirPath}/`) && node.path !== manifest.path)
-                : []
-
-            const files = []
-            let totalBytes = 0
-            for (const blob of bundledBlobs) {
-                const relativePath = blob.path.slice(dirPath.length + 1)
-                const size = Number(blob.size) || 0
-                if (size > MAX_BUNDLED_FILE_BYTES || totalBytes + size > MAX_BUNDLED_TOTAL_BYTES_PER_SKILL) {
-                    skipped.push({ path: blob.path, reason: 'Bundled file over size cap' })
-                    continue
-                }
-                const content = await fetchRaw(owner, repo, sha, blob.path)
-                totalBytes += content.length
-                const storagePath = `assistantSkills/${proposedSkillId}/1/${relativePath}`
-                await bucket.file(storagePath).save(content)
-                files.push({ relativePath, storagePath, size: content.length })
-            }
-
-            const stagedDoc = {
-                batchId,
-                status: 'pendingReview',
-                proposedSkillId,
-                name,
-                displayName: toDisplayName(name),
-                description: String(description).slice(0, 1024),
-                body,
-                files,
-                source: {
-                    type: 'import',
-                    repoUrl: `https://github.com/${owner}/${repo}`,
-                    ref: resolvedRef,
-                    sha,
-                    path: manifest.path,
-                    importedAt,
-                },
-                importedBy: userId,
-                importedAt,
-            }
-            await db.collection('assistantSkillImports').add(stagedDoc)
-            staged.push({ name, fileCount: files.length })
+            await jobRef.set({ ...data, updatedAt: Date.now() }, { merge: true })
         } catch (error) {
-            console.warn('🧩 SKILL IMPORT: failed for manifest', { path: manifest.path, error: error.message })
-            skipped.push({ path: manifest.path, reason: error.message })
+            console.warn('🧩 SKILL IMPORT: progress update failed', { jobId, error: error.message })
         }
     }
 
-    console.log('🧩 SKILL IMPORT: completed', {
-        repo: `${owner}/${repo}`,
-        sha,
-        stagedCount: staged.length,
-        skippedCount: skipped.length,
-    })
-    return { batchId, sha, ref: resolvedRef, staged, skipped }
+    try {
+        await requireAdministrator(userId)
+
+        const parsed = parseRepoUrl(repoUrl)
+        if (!parsed) throw new Error('Could not parse the repository URL. Use "owner/repo" or a github.com URL.')
+        const { owner, repo } = parsed
+
+        await updateJob({
+            status: 'running',
+            repoUrl: `https://github.com/${owner}/${repo}`,
+            createdBy: userId,
+            startedAt: Date.now(),
+            processed: 0,
+            total: null,
+            stagedCount: 0,
+            skippedCount: 0,
+            currentSkill: '',
+        })
+
+        const repoInfo = await githubJson(`/repos/${owner}/${repo}`, githubToken)
+        const resolvedRef = (typeof ref === 'string' && ref.trim()) || repoInfo.default_branch
+        const commit = await githubJson(
+            `/repos/${owner}/${repo}/commits/${encodeURIComponent(resolvedRef)}`,
+            githubToken
+        )
+        const sha = commit.sha
+
+        const tree = await githubJson(`/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`, githubToken)
+        const blobs = (tree.tree || []).filter(node => node.type === 'blob')
+        const skillManifests = blobs.filter(node => /(^|\/)SKILL\.md$/.test(node.path)).slice(0, MAX_SKILLS_PER_IMPORT)
+
+        if (skillManifests.length === 0) throw new Error('No SKILL.md files found in this repository.')
+
+        await updateJob({ total: skillManifests.length, sha, ref: resolvedRef })
+
+        const db = admin.firestore()
+        const bucket = admin.storage().bucket()
+        const batchId = db.collection('assistantSkillImports').doc().id
+        const importedAt = Date.now()
+        const staged = []
+        const skipped = []
+        let processed = 0
+
+        const processManifest = async manifest => {
+            const dirPath = manifest.path.replace(/SKILL\.md$/, '').replace(/\/$/, '')
+            try {
+                const markdown = (await fetchRaw(owner, repo, sha, manifest.path)).toString('utf8')
+                if (Buffer.byteLength(markdown) > MAX_BODY_BYTES) {
+                    skipped.push({ path: manifest.path, reason: 'SKILL.md too large' })
+                    return dirPath
+                }
+                const { frontmatter, body } = parseSkillFrontmatter(markdown)
+                const name = frontmatter?.name
+                const description = frontmatter?.description
+                if (!isValidSkillName(name) || !description) {
+                    skipped.push({ path: manifest.path, reason: 'Missing or invalid name/description frontmatter' })
+                    return dirPath
+                }
+
+                const proposedSkillId = db.collection(`assistantSkills/globalProject/items`).doc().id
+                const bundledBlobs = dirPath
+                    ? blobs.filter(node => node.path.startsWith(`${dirPath}/`) && node.path !== manifest.path)
+                    : []
+
+                // Sizes come from the git tree, so caps are applied before any
+                // download — that keeps them deterministic with parallel fetches.
+                const eligibleFiles = []
+                let totalBytes = 0
+                for (const blob of bundledBlobs) {
+                    const relativePath = blob.path.slice(dirPath.length + 1)
+                    const size = Number(blob.size) || 0
+                    if (size > MAX_BUNDLED_FILE_BYTES || totalBytes + size > MAX_BUNDLED_TOTAL_BYTES_PER_SKILL) {
+                        skipped.push({ path: blob.path, reason: 'Bundled file over size cap' })
+                        continue
+                    }
+                    totalBytes += size
+                    eligibleFiles.push({ blobPath: blob.path, relativePath })
+                }
+
+                const files = []
+                let nextFileIndex = 0
+                const fileWorkers = Array.from(
+                    { length: Math.min(FILE_CONCURRENCY, eligibleFiles.length) },
+                    async () => {
+                        while (nextFileIndex < eligibleFiles.length) {
+                            const { blobPath, relativePath } = eligibleFiles[nextFileIndex++]
+                            const content = await fetchRaw(owner, repo, sha, blobPath)
+                            const storagePath = `assistantSkills/${proposedSkillId}/1/${relativePath}`
+                            await bucket.file(storagePath).save(content)
+                            files.push({ relativePath, storagePath, size: content.length })
+                        }
+                    }
+                )
+                await Promise.all(fileWorkers)
+
+                const stagedDoc = {
+                    batchId,
+                    status: 'pendingReview',
+                    proposedSkillId,
+                    name,
+                    displayName: toDisplayName(name),
+                    description: String(description).slice(0, 1024),
+                    body,
+                    files,
+                    source: {
+                        type: 'import',
+                        repoUrl: `https://github.com/${owner}/${repo}`,
+                        ref: resolvedRef,
+                        sha,
+                        path: manifest.path,
+                        importedAt,
+                    },
+                    importedBy: userId,
+                    importedAt,
+                }
+                await db.collection('assistantSkillImports').add(stagedDoc)
+                staged.push({ name, fileCount: files.length })
+                return name
+            } catch (error) {
+                console.warn('🧩 SKILL IMPORT: failed for manifest', { path: manifest.path, error: error.message })
+                skipped.push({ path: manifest.path, reason: error.message })
+                return dirPath
+            }
+        }
+
+        let nextManifestIndex = 0
+        const skillWorkers = Array.from({ length: Math.min(SKILL_CONCURRENCY, skillManifests.length) }, async () => {
+            while (nextManifestIndex < skillManifests.length) {
+                const manifest = skillManifests[nextManifestIndex++]
+                const skillName = await processManifest(manifest)
+                processed++
+                await updateJob({
+                    processed,
+                    currentSkill: skillName || manifest.path,
+                    stagedCount: staged.length,
+                    skippedCount: skipped.length,
+                })
+            }
+        })
+        await Promise.all(skillWorkers)
+
+        await updateJob({
+            status: 'done',
+            finishedAt: Date.now(),
+            processed,
+            stagedCount: staged.length,
+            skippedCount: skipped.length,
+            currentSkill: '',
+        })
+
+        console.log('🧩 SKILL IMPORT: completed', {
+            repo: `${owner}/${repo}`,
+            sha,
+            stagedCount: staged.length,
+            skippedCount: skipped.length,
+        })
+        return { batchId, sha, ref: resolvedRef, staged, skipped }
+    } catch (error) {
+        await updateJob({ status: 'error', error: error.message, finishedAt: Date.now() })
+        throw error
+    }
 }
 
 module.exports = { importAssistantSkillsFromRepo, parseRepoUrl, parseSkillFrontmatter }

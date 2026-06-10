@@ -1,13 +1,16 @@
-import React, { useState } from 'react'
-import { StyleSheet, View, Text, TextInput } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, StyleSheet, View, Text, TextInput } from 'react-native'
+import v4 from 'uuid/v4'
 
 import styles, { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
 import { translate } from '../../../i18n/TranslationService'
+import { unwatch } from '../../../utils/backends/firestore'
 import {
     approveAssistantSkillImport,
     dismissAssistantSkillImport,
     importAssistantSkillsFromRepo,
+    watchSkillImportJob,
 } from '../../../utils/backends/AssistantSkills/assistantSkillsFirestore'
 
 export default function ImportSkillsPanel({ skills, pendingImports }) {
@@ -15,13 +18,37 @@ export default function ImportSkillsPanel({ skills, pendingImports }) {
     const [importing, setImporting] = useState(false)
     const [resultText, setResultText] = useState('')
     const [processingImportId, setProcessingImportId] = useState('')
+    const [jobProgress, setJobProgress] = useState(null)
+    const jobWatcherKeyRef = useRef(null)
+
+    const stopWatchingJob = () => {
+        if (jobWatcherKeyRef.current) {
+            unwatch(jobWatcherKeyRef.current)
+            jobWatcherKeyRef.current = null
+        }
+    }
+
+    useEffect(() => {
+        return () => {
+            stopWatchingJob()
+        }
+    }, [])
 
     const startImport = async () => {
         if (!repoUrl.trim() || importing) return
         setImporting(true)
         setResultText('')
+        setJobProgress(null)
+
+        // The callable reports live progress into assistantSkillImportJobs/{jobId}
+        // while it runs — watch it to drive the spinner + progress bar.
+        const jobId = v4()
+        const watcherKey = v4()
+        jobWatcherKeyRef.current = watcherKey
+        watchSkillImportJob(jobId, watcherKey, setJobProgress)
+
         try {
-            const result = await importAssistantSkillsFromRepo(repoUrl.trim())
+            const result = await importAssistantSkillsFromRepo(repoUrl.trim(), null, jobId)
             const stagedCount = result?.staged?.length || 0
             const skippedCount = result?.skipped?.length || 0
             setResultText(
@@ -32,6 +59,8 @@ export default function ImportSkillsPanel({ skills, pendingImports }) {
         } catch (error) {
             setResultText(`${translate('Import failed')}: ${error.message}`)
         } finally {
+            stopWatchingJob()
+            setJobProgress(null)
             setImporting(false)
         }
     }
@@ -76,6 +105,36 @@ export default function ImportSkillsPanel({ skills, pendingImports }) {
                     disabled={importing || !repoUrl.trim()}
                 />
             </View>
+            {importing && (
+                <View style={localStyles.progressContainer}>
+                    <View style={localStyles.progressHeader}>
+                        <ActivityIndicator color={colors.Primary300} size="small" />
+                        <Text style={[styles.caption2, localStyles.progressText]} numberOfLines={1}>
+                            {jobProgress?.total
+                                ? `${translate('Processing skill %{current} of %{total}', {
+                                      current: Math.min((jobProgress.processed || 0) + 1, jobProgress.total),
+                                      total: jobProgress.total,
+                                  })}${jobProgress.currentSkill ? ` · ${jobProgress.currentSkill}` : ''}`
+                                : translate('Contacting repository')}
+                        </Text>
+                    </View>
+                    {!!jobProgress?.total && (
+                        <View style={localStyles.progressTrack}>
+                            <View
+                                style={[
+                                    localStyles.progressFill,
+                                    {
+                                        width: `${Math.min(
+                                            100,
+                                            Math.round(((jobProgress.processed || 0) / jobProgress.total) * 100)
+                                        )}%`,
+                                    },
+                                ]}
+                            />
+                        </View>
+                    )}
+                </View>
+            )}
             {!!resultText && (
                 <Text style={[styles.caption2, { color: colors.Text02, marginTop: 8 }]}>{resultText}</Text>
             )}
@@ -166,6 +225,30 @@ const localStyles = StyleSheet.create({
         flexGrow: 1,
         marginRight: 10,
         backgroundColor: '#ffffff',
+    },
+    progressContainer: {
+        marginTop: 12,
+    },
+    progressHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    progressText: {
+        color: colors.Text02,
+        marginLeft: 8,
+        flexShrink: 1,
+    },
+    progressTrack: {
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: colors.Grey300,
+        marginTop: 8,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: colors.Primary300,
     },
     pendingSection: {
         marginTop: 16,

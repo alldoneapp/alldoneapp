@@ -160,6 +160,11 @@ service cloud.firestore {
       allow read, write: if isAdministrator();
     }
 
+    match /assistantSkillImportJobs/{jobId} {
+      allow read: if isAdministrator();
+      allow write: if false;
+    }
+
     match /assistantTasks/{projectId}/{assistantId}/{taskId} {
       allow read, write: if projectId == 'globalProject' || isProjectMember(projectId);
     }
