@@ -90,11 +90,17 @@
             },
             {
                 "source": "/api/menubar/session",
-                "function": "menubarSession"
+                "function": {
+                    "functionId": "menubarSession",
+                    "region": "europe-west1"
+                }
             },
             {
                 "source": "/api/menubar/gold",
-                "function": "menubarGoldWebhook"
+                "function": {
+                    "functionId": "menubarGoldWebhook",
+                    "region": "europe-west1"
+                }
             },
             {
                 "source": "**",

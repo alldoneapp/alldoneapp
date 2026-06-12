@@ -70,6 +70,7 @@ const getEnvFunctions = () => {
             VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
             VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
             MENUBAR_APP_WEBHOOK_SECRET: process.env.MENUBAR_APP_WEBHOOK_SECRET || '',
+            EXTERNAL_TOOLS_SIGNING_SECRET: process.env.EXTERNAL_TOOLS_SIGNING_SECRET || '',
         }
     } else {
         // In production/staging, try to load from env_functions.json first
@@ -117,6 +118,7 @@ const getEnvFunctions = () => {
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
                     MENUBAR_APP_WEBHOOK_SECRET: envJson.MENUBAR_APP_WEBHOOK_SECRET || '',
+                    EXTERNAL_TOOLS_SIGNING_SECRET: envJson.EXTERNAL_TOOLS_SIGNING_SECRET || '',
                     OPENAI_PROJECT_ID: envJson.OPENAI_PROJECT_ID || '',
                     OPENAI_WEBHOOK_SECRET: envJson.OPENAI_WEBHOOK_SECRET || '',
                     WHATSAPP_CALL_ROUTING_SECRET: envJson.WHATSAPP_CALL_ROUTING_SECRET || '',
@@ -265,6 +267,7 @@ const getEnvFunctions = () => {
     // Runtime environment variables/secrets can override missing realtime calling values.
     ;[
         'MENUBAR_APP_WEBHOOK_SECRET',
+        'EXTERNAL_TOOLS_SIGNING_SECRET',
         'OPENAI_PROJECT_ID',
         'OPENAI_WEBHOOK_SECRET',
         'WHATSAPP_CALL_ROUTING_SECRET',

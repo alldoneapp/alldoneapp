@@ -284,14 +284,16 @@ async function handleMenubarGoldWebhook(req, res) {
         return
     }
 
-    const { MENUBAR_APP_WEBHOOK_SECRET } = getEnvFunctions()
-    if (!MENUBAR_APP_WEBHOOK_SECRET) {
-        console.error('menubarGoldWebhook: MENUBAR_APP_WEBHOOK_SECRET is not configured')
+    const { MENUBAR_APP_WEBHOOK_SECRET, EXTERNAL_TOOLS_SIGNING_SECRET } = getEnvFunctions()
+    // Fall back to the secret shared with alldone.team for embed-tool call signing
+    const webhookSecret = MENUBAR_APP_WEBHOOK_SECRET || EXTERNAL_TOOLS_SIGNING_SECRET
+    if (!webhookSecret) {
+        console.error('menubarGoldWebhook: no webhook secret configured')
         res.status(500).json({ success: false, error: 'Webhook secret not configured' })
         return
     }
 
-    const signatureCheck = verifyWebhookSignature(req, MENUBAR_APP_WEBHOOK_SECRET)
+    const signatureCheck = verifyWebhookSignature(req, webhookSecret)
     if (!signatureCheck.valid) {
         console.warn('menubarGoldWebhook: signature rejected', { reason: signatureCheck.error })
         res.status(401).json({ success: false, error: signatureCheck.error })
