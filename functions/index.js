@@ -1583,6 +1583,30 @@ exports.menubarGoldWebhook = onRequest(
     }
 )
 
+exports.menubarProjects = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarProjects } = require('./MenubarApp/menubarApp')
+        return await handleMenubarProjects(req, res)
+    }
+)
+
+exports.menubarPushNote = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarPushNote } = require('./MenubarApp/menubarApp')
+        return await handleMenubarPushNote(req, res)
+    }
+)
+
 // "Every Day at 00:00."
 exports.resetDailyGoldLimitSecondGen = onSchedule(
     {

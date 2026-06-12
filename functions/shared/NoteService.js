@@ -970,6 +970,29 @@ class NoteService {
      * Get the correct notes storage bucket name using the same logic as other Firebase Functions
      */
     async getBucketName() {
+        if (this.options.authoritativeStorageBucket && this.options.storageBucket) {
+            return this.options.storageBucket
+        }
+
+        let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+        if (!projectId) {
+            try {
+                const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
+                if (cfg && cfg.projectId) projectId = cfg.projectId
+            } catch (_) {}
+        }
+        if (!projectId && typeof require !== 'undefined') {
+            try {
+                const admin = require('firebase-admin')
+                projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
+            } catch (_) {}
+        }
+
+        // Deployed project identity is authoritative. A developer's local .env
+        // must never redirect production note content into a staging bucket.
+        if (projectId === 'alldonealeph') return 'notescontentprod'
+        if (projectId === 'alldonestaging') return 'notescontentstaging'
+
         let bucketName =
             this.options.storageBucket ||
             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
@@ -979,20 +1002,6 @@ class NoteService {
             console.log('NoteService: Got bucket name from options/env:', bucketName)
 
             // Validate bucket name matches current project environment
-            let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
-            if (!projectId) {
-                try {
-                    const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
-                    if (cfg && cfg.projectId) projectId = cfg.projectId
-                } catch (_) {}
-            }
-            if (!projectId && typeof require !== 'undefined') {
-                try {
-                    const admin = require('firebase-admin')
-                    projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
-                } catch (_) {}
-            }
-
             // Validate bucket matches project
             const expectedBucket =
                 projectId === 'alldonealeph'
@@ -1035,23 +1044,6 @@ class NoteService {
 
         if (!bucketName) {
             // Smart fallback based on project ID with robust detection
-            let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
-
-            if (!projectId) {
-                try {
-                    const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null
-                    if (cfg && cfg.projectId) projectId = cfg.projectId
-                } catch (_) {}
-            }
-
-            // Try to get from admin app if available
-            if (!projectId && typeof require !== 'undefined') {
-                try {
-                    const admin = require('firebase-admin')
-                    projectId = (admin.app() && admin.app().options && admin.app().options.projectId) || undefined
-                } catch (_) {}
-            }
-
             console.log('NoteService: Detected project ID for fallback:', projectId)
 
             if (projectId === 'alldonealeph') {

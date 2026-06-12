@@ -417,6 +417,18 @@ async function getNoteService() {
         const moment = require('moment')
         const { NoteService } = require('../shared/NoteService')
         const db = admin.firestore()
+        let projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT
+        if (!projectId) {
+            try {
+                projectId = JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId
+            } catch (_) {}
+        }
+        const storageBucket =
+            projectId === 'alldonealeph'
+                ? 'notescontentprod'
+                : projectId === 'alldonestaging'
+                ? 'notescontentstaging'
+                : null
         cachedNoteService = new NoteService({
             database: db,
             moment,
@@ -424,6 +436,8 @@ async function getNoteService() {
             enableFeeds: true,
             enableValidation: true,
             isCloudFunction: true,
+            storageBucket,
+            authoritativeStorageBucket: !!storageBucket,
         })
         await cachedNoteService.initialize()
     }
@@ -657,7 +671,9 @@ async function handleMenubarPushNote(req, res) {
         })
     } catch (error) {
         console.error('menubarPushNote: error', error)
-        res.status(500).json({ success: false, error: 'Internal error' })
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: 'Internal error' })
+        }
     }
 }
 

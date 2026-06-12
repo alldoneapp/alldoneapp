@@ -103,6 +103,20 @@
                 }
             },
             {
+                "source": "/api/menubar/projects",
+                "function": {
+                    "functionId": "menubarProjects",
+                    "region": "europe-west1"
+                }
+            },
+            {
+                "source": "/api/menubar/notes",
+                "function": {
+                    "functionId": "menubarPushNote",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "**",
                 "destination": "/index.html"
             }
