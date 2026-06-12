@@ -13,6 +13,7 @@ import ProjectDetailedView from './components/ProjectDetailedView/ProjectDetaile
 import GoalDetailedView from './components/GoalDetailedView/GoalDetailedView'
 import PrivateResourcePage from './components/PrivateResource/PrivateResourcePage'
 import PaymentSuccessPage from './components/PaymentSuccess/PaymentSuccessPage'
+import AppAuthPage from './components/AppAuth/AppAuthPage'
 import OnboardingView from './components/Onboarding/OnboardingView'
 import WhatsAppOnboarding from './components/Onboarding/WhatsAppOnboarding'
 import NoteMaxLengthModal from './components/UIComponents/FloatModals/NoteMaxLengthModal'
@@ -207,6 +208,7 @@ const AppStack = createStackNavigator(
         LoginScreen: LoginScreen,
         PrivateResource: PrivateResourcePage,
         PaymentSuccess: PaymentSuccessPage,
+        AppAuth: AppAuthPage,
         Onboarding: {
             screen: props => (
                 <View

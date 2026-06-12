@@ -1,4 +1,5 @@
 import {
+    URL_APP_AUTH,
     URL_FEEDS_FOLLOWED,
     URL_FEEDS_NOT_FOLLOWED,
     URL_LOGIN,
@@ -33,6 +34,7 @@ class URLSystemTrigger {
             [URL_ONBOARDING]: /^\/onboarding$/,
             [URL_START_TRIAL]: /^\/starttrial(?:\?(.*))?$/,
             [URL_PAYMENT_SUCCESS]: /^\/paymentsuccess$/,
+            [URL_APP_AUTH]: /^\/app-auth$/,
         }
     }
 
@@ -94,6 +96,8 @@ class URLSystemTrigger {
                 return URLSystemTrigger.processStartTrial(navigation, pathname)
             case URL_PAYMENT_SUCCESS:
                 return SettingsHelper.processURLPaymentSuccess(navigation)
+            case URL_APP_AUTH:
+                return navigation.navigate('AppAuth')
         }
     }
 

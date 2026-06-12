@@ -1506,6 +1506,83 @@ exports.adjustUserGoldSecondGen = onCall(
     }
 )
 
+// MENUBAR APP (Anna Alldone macOS menubar assistant)
+
+exports.mintMenubarAppToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+        const { mintMenubarAppToken } = require('./MenubarApp/menubarApp')
+        return await mintMenubarAppToken(auth.uid)
+    }
+)
+
+exports.listMenubarAppTokens = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+        const { listMenubarAppTokens } = require('./MenubarApp/menubarApp')
+        return await listMenubarAppTokens(auth.uid)
+    }
+)
+
+exports.revokeMenubarAppToken = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) {
+            throw new HttpsError('permission-denied', 'You cannot do that ;)')
+        }
+        const { revokeMenubarAppToken } = require('./MenubarApp/menubarApp')
+        return await revokeMenubarAppToken(auth.uid, data?.tokenId)
+    }
+)
+
+exports.menubarSession = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarSession } = require('./MenubarApp/menubarApp')
+        return await handleMenubarSession(req, res)
+    }
+)
+
+exports.menubarGoldWebhook = onRequest(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarGoldWebhook } = require('./MenubarApp/menubarApp')
+        return await handleMenubarGoldWebhook(req, res)
+    }
+)
+
 // "Every Day at 00:00."
 exports.resetDailyGoldLimitSecondGen = onSchedule(
     {

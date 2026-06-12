@@ -59,6 +59,11 @@ export const URL_PAYMENT_SUCCESS = 'PAYMENT_SUCCESS'
  */
 export const URL_ONBOARDING = 'ONBOARDING'
 
+/**
+ * /app-auth
+ */
+export const URL_APP_AUTH = 'APP_AUTH'
+
 class URLSystem {
     /**
      * Replace the history url
@@ -112,6 +117,8 @@ class URLSystem {
                 return `starttrial`
             case URL_PAYMENT_SUCCESS:
                 return `paymentsuccess`
+            case URL_APP_AUTH:
+                return `app-auth`
         }
     }
 
@@ -151,6 +158,10 @@ class URLSystem {
             }
             case URL_PAYMENT_SUCCESS: {
                 document.title = `Alldone.app - Payment Success`
+                break
+            }
+            case URL_APP_AUTH: {
+                document.title = `Alldone.app - App Sign-in`
                 break
             }
         }

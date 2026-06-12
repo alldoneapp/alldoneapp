@@ -5419,6 +5419,21 @@ export async function generateNTSToken() {
     return generateNTSToken()
 }
 
+export async function mintMenubarAppToken() {
+    const mintToken = functions.httpsCallable('mintMenubarAppToken')
+    return mintToken()
+}
+
+export async function listMenubarAppTokens() {
+    const listTokens = functions.httpsCallable('listMenubarAppTokens')
+    return listTokens()
+}
+
+export async function revokeMenubarAppToken(tokenId) {
+    const revokeToken = functions.httpsCallable('revokeMenubarAppToken')
+    return revokeToken({ tokenId })
+}
+
 export function connectToConverter(data, callback) {
     const convertVideos = functions.httpsCallable('convertVideosSecondGen')
     return convertVideos(data, callback)

@@ -89,6 +89,14 @@
                 "function": "googleOAuthCallback"
             },
             {
+                "source": "/api/menubar/session",
+                "function": "menubarSession"
+            },
+            {
+                "source": "/api/menubar/gold",
+                "function": "menubarGoldWebhook"
+            },
+            {
                 "source": "**",
                 "destination": "/index.html"
             }

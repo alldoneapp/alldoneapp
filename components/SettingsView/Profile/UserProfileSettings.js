@@ -7,6 +7,7 @@ import SkillsArea from './Skills/SkillsArea'
 import ProfileHeader from './ProfileHeader'
 import ProfileProperties from './Properties/ProfileProperties'
 import LogoutAndRemoveSection from './Properties/LogoutAndRemoveSection'
+import ConnectedAppsSection from './Properties/ConnectedAppsSection'
 import UserData from './Properties/UserData'
 
 export default function UserProfileSettings() {
@@ -27,6 +28,7 @@ export default function UserProfileSettings() {
             <ProfileProperties user={loggedUser}>
                 <SkillsArea userId={loggedUser.uid} />
             </ProfileProperties>
+            <ConnectedAppsSection />
             <LogoutAndRemoveSection />
         </View>
     )
