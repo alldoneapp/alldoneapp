@@ -13,6 +13,7 @@ const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
 const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
 const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
 const REGEX_TABLE_SEPARATOR_CELL = /^:?-{3,}:?$/
+const REGEX_IMAGE = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/
 
 /**
  * Check if text contains markdown syntax that should be converted
@@ -41,14 +42,20 @@ function containsMarkdown(text) {
             REGEX_NUMBERED_LIST.test(trimmed) ||
             REGEX_HORIZONTAL_RULE.test(trimmed) ||
             REGEX_CHECKBOX_UNCHECKED.test(trimmed) ||
-            REGEX_CHECKBOX_CHECKED.test(trimmed)
+            REGEX_CHECKBOX_CHECKED.test(trimmed) ||
+            REGEX_IMAGE.test(trimmed)
         ) {
             return true
         }
     }
 
     // Check inline markdown
-    if (/\*\*\*.+?\*\*\*/.test(text) || /\*\*.+?\*\*/.test(text) || /~~.+?~~/.test(text)) {
+    if (
+        /\*\*\*.+?\*\*\*/.test(text) ||
+        /\*\*.+?\*\*/.test(text) ||
+        /(?<!\w)_.+?_(?!\w)/.test(text) ||
+        /~~.+?~~/.test(text)
+    ) {
         return true
     }
 
@@ -258,6 +265,19 @@ function parseInlineFormatting(text) {
             })
         }
 
+        // Italic syntax emitted by the meeting transcript writer.
+        const italicMatch = /(?<!\w)_([^_\n]+?)_(?!\w)/.exec(str)
+        if (italicMatch) {
+            matches.push({
+                index: italicMatch.index,
+                length: italicMatch[0].length,
+                text: italicMatch[1],
+                bold: false,
+                italic: true,
+                strike: false,
+            })
+        }
+
         if (matches.length === 0) return null
         return matches.reduce((earliest, current) => (current.index < earliest.index ? current : earliest))
     }
@@ -319,6 +339,12 @@ function parseLineType(line) {
         return { type: 'hr', text: '', indent: 0 }
     }
 
+    const imageMatch = trimmed.match(REGEX_IMAGE)
+    const imageUrl = imageMatch && (imageMatch[2] || imageMatch[3])
+    if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+        return { type: 'image', text: imageMatch[1], url: imageUrl, indent: 0 }
+    }
+
     // Headers
     const h3Match = trimmed.match(REGEX_HEADER_3)
     if (h3Match) {
@@ -368,7 +394,7 @@ function parseLineType(line) {
  * @param {string} markdownContent - Markdown text to convert and insert
  * @returns {number} - The new position after all insertions
  */
-function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
+function insertMarkdownToYjs(ytext, startPosition, markdownContent, options = {}) {
     console.log('[markdownToYjs] ========== START ==========')
     console.log('[markdownToYjs] Input content:', JSON.stringify(markdownContent))
     console.log('[markdownToYjs] Start position:', startPosition)
@@ -452,6 +478,31 @@ function insertMarkdownToYjs(ytext, startPosition, markdownContent) {
                     console.log(`[markdownToYjs]   -> HR newline (plain) at pos ${currentPosition}`)
                     ytext.insert(currentPosition, '\n')
                 }
+                currentPosition += 1
+            }
+            previousWasList = false
+            previousWasHeader = false
+        } else if (parsed.type === 'image') {
+            const crypto = require('crypto')
+            const externalId = crypto
+                .createHash('sha256')
+                .update(`${options.editorId || ''}:${parsed.url}`)
+                .digest('hex')
+                .slice(0, 24)
+            ytext.insert(currentPosition, {
+                customImageFormat: {
+                    text: parsed.text || 'Meeting screenshot',
+                    uri: parsed.url,
+                    resizedUri: parsed.url,
+                    isNew: '0',
+                    externalId,
+                    isLoading: '1',
+                    editorId: options.editorId || '',
+                },
+            })
+            currentPosition += 1
+            if (!isLastLine) {
+                ytext.insert(currentPosition, '\n')
                 currentPosition += 1
             }
             previousWasList = false

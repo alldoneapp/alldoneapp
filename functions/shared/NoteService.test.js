@@ -35,6 +35,27 @@ const decodeContent = buffer => {
     return doc.getText('quill').toString()
 }
 
+const decodeDelta = buffer => {
+    const doc = new Y.Doc()
+    Y.applyUpdate(doc, new Uint8Array(buffer))
+    return doc.getText('quill').toDelta()
+}
+
+describe('NoteService note creation formatting', () => {
+    test('stores new note Markdown as Quill formatting', () => {
+        const service = createService()
+        const content = service.createNoteContent('Meeting', '# Meeting\n\n**Speaker 1**', { editorId: 'note-1' })
+        const delta = decodeDelta(content)
+
+        expect(delta).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ insert: '\n', attributes: { header: 1 } }),
+                expect.objectContaining({ insert: 'Speaker 1', attributes: expect.objectContaining({ bold: true }) }),
+            ])
+        )
+    })
+})
+
 describe('NoteService patch planning', () => {
     test('replaces exact text when it appears once', () => {
         const service = createService()

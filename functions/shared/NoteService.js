@@ -164,7 +164,7 @@ class NoteService {
      * @param {string} content - Note content (optional)
      * @returns {Uint8Array} Encoded Yjs state
      */
-    createNoteContent(title, content) {
+    createNoteContent(title, content, options = {}) {
         try {
             // Dynamic require for Yjs (only available in Node.js/Cloud Functions)
             const Y = require('yjs')
@@ -175,8 +175,13 @@ class NoteService {
             // Create default content if none provided
             const noteContent = content || `# ${title}\n\nNote created via assistant.`
 
-            // Insert the content into the Yjs document
-            type.insert(0, noteContent)
+            // Store Markdown as Quill-compatible Yjs formatting so created
+            // notes behave the same as notes authored in the regular editor.
+            if (insertMarkdownToYjs) {
+                insertMarkdownToYjs(type, 0, noteContent, options)
+            } else {
+                type.insert(0, noteContent)
+            }
 
             // Encode as binary for storage
             return Y.encodeStateAsUpdate(ydoc)
@@ -515,7 +520,7 @@ class NoteService {
         const note = await this.buildNote(noteParams)
 
         // Step 3: Create note content using Yjs
-        const noteContent = this.createNoteContent(note.extendedTitle, content)
+        const noteContent = this.createNoteContent(note.extendedTitle, content, { editorId: note.id })
 
         // Step 4: Create feed data (if enabled)
         let feedData = null
@@ -598,51 +603,10 @@ class NoteService {
             if (this.options.isCloudFunction && noteContent && noteContent.length > 0) {
                 try {
                     const admin = require('firebase-admin')
-                    const { defineString } = require('firebase-functions/params')
-
-                    // Use MCP config (same pattern as other environment variables)
-                    let notesBucketName
-
-                    // First try MCP config
-                    try {
-                        const { getEnvironmentConfig } = require('../MCP/config/environments')
-                        const config = getEnvironmentConfig()
-                        notesBucketName = config.noteStorageBucket
-                        console.log('NoteService: Got bucket name from MCP config:', notesBucketName)
-                    } catch (mcpConfigError) {
-                        console.log('NoteService: Failed to get from MCP config:', mcpConfigError.message)
-                    }
-
-                    // Fallback to envFunctionsHelper if MCP config fails
-                    if (!notesBucketName) {
-                        try {
-                            const envHelper = require('../envFunctionsHelper')
-                            const envFunctions = envHelper.getEnvFunctions()
-                            notesBucketName = envFunctions.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET
-                            console.log('NoteService: Got bucket name from envFunctionsHelper:', notesBucketName)
-                        } catch (envHelperError) {
-                            console.log('NoteService: Failed to get from envFunctionsHelper:', envHelperError.message)
-                        }
-                    }
+                    const notesBucketName = await this.getBucketName()
 
                     if (!notesBucketName) {
-                        // Last resort: try Firebase Functions parameter
-                        try {
-                            const { defineString } = require('firebase-functions/params')
-                            notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
-                            console.log(
-                                'NoteService: Got bucket name from Firebase Functions parameter:',
-                                notesBucketName
-                            )
-                        } catch (paramError) {
-                            console.log('NoteService: Firebase Functions parameter failed:', paramError.message)
-                        }
-                    }
-
-                    if (!notesBucketName) {
-                        throw new Error(
-                            'GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET not found in MCP config or envFunctionsHelper'
-                        )
+                        throw new Error('Notes storage bucket could not be resolved')
                     }
 
                     console.log('NoteService: Final bucket name:', notesBucketName)
@@ -653,7 +617,9 @@ class NoteService {
                         'NoteService: Storing content to Firebase Storage:',
                         `notesData/${finalProjectId}/${noteId}`
                     )
-                    storagePromises.push(storageRef.save(noteContent))
+                    const storagePromise = storageRef.save(noteContent)
+                    storagePromise.catch(() => {})
+                    storagePromises.push(storagePromise)
                 } catch (storageError) {
                     console.error('NoteService: Failed to store note content:', storageError)
                 }

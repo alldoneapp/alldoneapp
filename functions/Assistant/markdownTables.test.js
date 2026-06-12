@@ -69,3 +69,36 @@ describe('assistant markdown table conversion', () => {
         expect(markdown).toBe(['| Name | Status |', '| :--- | :---: |', '| Alpha | Done |'].join('\n'))
     })
 })
+
+describe('meeting transcript markdown conversion', () => {
+    test('converts headers, underscore italics, and uploaded screenshots', () => {
+        const ytext = new MockYText()
+        const imageUrl = 'https://firebasestorage.googleapis.com/example.jpg?token=abc'
+
+        insertMarkdownToYjs(ytext, 0, `# Meeting Notes\n\n_Duration: 1 min_\n\n![Screenshot at 0:04](<${imageUrl}>)`, {
+            editorId: 'note-1',
+        })
+
+        expect(ytext.ops).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ insert: '\n', attributes: { header: 1 } }),
+                expect.objectContaining({
+                    insert: 'Duration: 1 min',
+                    attributes: expect.objectContaining({ italic: true }),
+                }),
+                expect.objectContaining({
+                    insert: {
+                        customImageFormat: expect.objectContaining({
+                            text: 'Screenshot at 0:04',
+                            uri: imageUrl,
+                            resizedUri: imageUrl,
+                            isNew: '0',
+                            isLoading: '1',
+                            editorId: 'note-1',
+                        }),
+                    },
+                }),
+            ])
+        )
+    })
+})

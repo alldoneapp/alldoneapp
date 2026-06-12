@@ -398,7 +398,119 @@ async function handleMenubarGoldWebhook(req, res) {
 const NOTE_PUSHES_COLLECTION = 'menubarNotePushes'
 const MAX_NOTE_TITLE_LENGTH = 300
 const MAX_NOTE_CONTENT_LENGTH = 300000
+const MAX_NOTE_ATTACHMENT_COUNT = 12
+const MAX_NOTE_ATTACHMENT_BYTES = 5000000
+const MAX_NOTE_ATTACHMENTS_TOTAL_BYTES = 20000000
+const ALLOWED_NOTE_ATTACHMENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const NOTE_PUSH_PENDING_TIMEOUT_MS = 2 * 60 * 1000
+
+function decodeNoteAttachments(rawAttachments, content) {
+    if (rawAttachments === undefined || rawAttachments === null) return []
+    if (!Array.isArray(rawAttachments)) throw new Error('attachments must be an array')
+    if (rawAttachments.length > MAX_NOTE_ATTACHMENT_COUNT) {
+        throw new Error(`attachments exceeds ${MAX_NOTE_ATTACHMENT_COUNT} files`)
+    }
+
+    const referencedImages = new Set()
+    const imageRegex = /!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))\)/g
+    let imageMatch
+    while ((imageMatch = imageRegex.exec(content))) {
+        referencedImages.add(imageMatch[1] || imageMatch[2])
+    }
+
+    const references = new Set()
+    let totalBytes = 0
+    return rawAttachments.map(rawAttachment => {
+        const attachment = rawAttachment && typeof rawAttachment === 'object' ? rawAttachment : {}
+        const reference = typeof attachment.reference === 'string' ? attachment.reference.trim() : ''
+        const fileName = typeof attachment.fileName === 'string' ? attachment.fileName.trim() : ''
+        const mimeType = typeof attachment.mimeType === 'string' ? attachment.mimeType.toLowerCase().trim() : ''
+        const dataBase64 = typeof attachment.dataBase64 === 'string' ? attachment.dataBase64.trim() : ''
+
+        if (!reference || reference.length > 300 || reference.includes('/') || reference.includes('\\')) {
+            throw new Error('attachment reference is invalid')
+        }
+        if (!referencedImages.has(reference)) throw new Error(`attachment is not referenced by content: ${reference}`)
+        if (references.has(reference)) throw new Error(`duplicate attachment reference: ${reference}`)
+        if (!fileName || fileName.length > 200 || fileName.includes('/') || fileName.includes('\\')) {
+            throw new Error('attachment fileName is invalid')
+        }
+        if (!ALLOWED_NOTE_ATTACHMENT_TYPES.has(mimeType)) throw new Error('attachment mimeType is not supported')
+        if (!dataBase64 || dataBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) {
+            throw new Error('attachment dataBase64 is invalid')
+        }
+
+        const data = Buffer.from(dataBase64, 'base64')
+        if (!data.length || data.length > MAX_NOTE_ATTACHMENT_BYTES) {
+            throw new Error(`attachment exceeds ${MAX_NOTE_ATTACHMENT_BYTES} bytes`)
+        }
+        if (data.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) {
+            throw new Error('attachment dataBase64 is invalid')
+        }
+        totalBytes += data.length
+        if (totalBytes > MAX_NOTE_ATTACHMENTS_TOTAL_BYTES) {
+            throw new Error(`attachments exceed ${MAX_NOTE_ATTACHMENTS_TOTAL_BYTES} total bytes`)
+        }
+
+        references.add(reference)
+        return { reference, fileName, mimeType, data }
+    })
+}
+
+function rewriteMarkdownAttachmentUrls(content, uploadedAttachments) {
+    const urlsByReference = new Map(uploadedAttachments.map(attachment => [attachment.reference, attachment.url]))
+    return content.replace(/!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)/g, (match, alt, angleTarget, target) => {
+        const url = urlsByReference.get(angleTarget || target)
+        return url ? `![${alt}](<${url}>)` : match
+    })
+}
+
+async function uploadNoteAttachments(attachments) {
+    if (!attachments.length) return []
+
+    const moment = require('moment')
+    const bucket = admin.storage().bucket()
+    const uploaded = []
+    try {
+        for (const attachment of attachments) {
+            const randomHash = crypto.randomUUID().replace(/-/g, '')
+            const filePath = `notesAttachments/${moment().format('DDMMYYYY')}/${randomHash}/${attachment.fileName}`
+            const downloadToken = crypto.randomUUID()
+            const file = bucket.file(filePath)
+            await file.save(attachment.data, {
+                metadata: {
+                    contentType: attachment.mimeType,
+                    cacheControl: 'public,max-age=31536000',
+                    metadata: { firebaseStorageDownloadTokens: downloadToken },
+                },
+            })
+            uploaded.push({
+                reference: attachment.reference,
+                file,
+                url: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
+                    filePath
+                )}?alt=media&token=${downloadToken}`,
+            })
+        }
+        return uploaded
+    } catch (error) {
+        await cleanupUploadedNoteAttachments(uploaded)
+        throw error
+    }
+}
+
+async function cleanupUploadedNoteAttachments(uploadedAttachments) {
+    await Promise.all(
+        uploadedAttachments.map(attachment =>
+            attachment.file.delete().catch(error =>
+                console.warn('menubarPushNote: attachment cleanup failed', {
+                    reference: attachment.reference,
+                    error: error.message,
+                })
+            )
+        )
+    )
+}
 
 function getAppBaseUrl() {
     try {
@@ -496,12 +608,104 @@ async function handleMenubarProjects(req, res) {
     }
 }
 
-function buildNotePushDocId(userId, externalId) {
+function buildNotePushDocId(userId, externalId, projectId) {
+    return hashToken(`${userId}__${externalId}__${projectId}`)
+}
+
+function buildLegacyNotePushDocId(userId, externalId) {
     return hashToken(`${userId}__${externalId}`)
 }
 
+function completedPushResponse(pushData) {
+    return {
+        success: true,
+        deduplicated: true,
+        noteId: pushData.noteId,
+        projectId: pushData.projectId || null,
+        projectName: pushData.projectName || null,
+        url: pushData.projectId
+            ? `${getAppBaseUrl()}/projects/${pushData.projectId}/notes/${pushData.noteId}/editor`
+            : null,
+        resolution: pushData.resolution || null,
+    }
+}
+
+function isActivePush(pushData) {
+    const pendingAge = Date.now() - (pushData.createdAt || 0)
+    return pushData.status === 'pending' && pendingAge < NOTE_PUSH_PENDING_TIMEOUT_MS
+}
+
+async function getMenubarAssistantActor(db, projectId) {
+    const projectDoc = await db.doc(`projects/${projectId}`).get()
+    const project = projectDoc.exists ? projectDoc.data() || {} : {}
+    let assistantId = typeof project.assistantId === 'string' ? project.assistantId.trim() : ''
+    let assistant = null
+
+    if (assistantId) {
+        const [projectAssistantDoc, globalAssistantDoc] = await db.getAll(
+            db.doc(`assistants/${projectId}/items/${assistantId}`),
+            db.doc(`assistants/globalProject/items/${assistantId}`)
+        )
+        const assistantDoc = projectAssistantDoc.exists ? projectAssistantDoc : globalAssistantDoc
+        assistant = assistantDoc.exists ? assistantDoc.data() || {} : null
+    } else {
+        const defaultAssistantSnapshot = await db
+            .collection('assistants/globalProject/items')
+            .where('isDefault', '==', true)
+            .limit(1)
+            .get()
+        const defaultAssistantDoc = defaultAssistantSnapshot.docs[0]
+        if (defaultAssistantDoc) {
+            assistantId = defaultAssistantDoc.id
+            assistant = defaultAssistantDoc.data() || {}
+        }
+    }
+
+    if (!assistantId) {
+        return {
+            assistantId: null,
+            feedUser: {
+                uid: 'anna-menubar',
+                id: 'anna-menubar',
+                creatorId: 'anna-menubar',
+                name: 'Anna Alldone',
+                displayName: 'Anna Alldone',
+                photoURL: '',
+                noteCreatedEntryText: 'has created the note',
+            },
+        }
+    }
+
+    assistant = assistant || {}
+    const displayName = assistant.displayName || assistant.name || 'Anna Alldone'
+    return {
+        assistantId,
+        feedUser: {
+            uid: assistantId,
+            id: assistantId,
+            creatorId: assistantId,
+            name: displayName,
+            displayName,
+            email: assistant.email || '',
+            photoURL: assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL || '',
+            noteCreatedEntryText: 'has created the note',
+        },
+    }
+}
+
+function normalizeNoteMove(rawMove) {
+    if (rawMove === undefined || rawMove === null) return null
+    if (!rawMove || typeof rawMove !== 'object') throw new Error('move must be an object')
+
+    const noteId = typeof rawMove.noteId === 'string' ? rawMove.noteId.trim() : ''
+    const sourceProjectId = typeof rawMove.sourceProjectId === 'string' ? rawMove.sourceProjectId.trim() : ''
+    if (!noteId || noteId.length > 200) throw new Error('move noteId is invalid')
+    if (!sourceProjectId || sourceProjectId.length > 200) throw new Error('move sourceProjectId is invalid')
+    return { noteId, sourceProjectId }
+}
+
 // POST /api/menubar/notes  ->
-//   { token, title, content, projectId?, projectName?,
+//   { token, title, content, attachments?, projectId?, projectName?, move?,
 //     meeting?: { externalId?, recurringKey?, title?, attendeeEmails? } }
 //   200 { success: true, noteId, projectId, projectName, url, resolution, deduplicated }
 async function handleMenubarPushNote(req, res) {
@@ -546,49 +750,25 @@ async function handleMenubarPushNote(req, res) {
             res.status(400).json({ success: false, error: `content exceeds ${MAX_NOTE_CONTENT_LENGTH} characters` })
             return
         }
+        let attachments
+        try {
+            attachments = decodeNoteAttachments(req.body?.attachments, content)
+        } catch (attachmentError) {
+            res.status(400).json({ success: false, error: attachmentError.message })
+            return
+        }
+        let noteMove
+        try {
+            noteMove = normalizeNoteMove(req.body?.move)
+        } catch (moveError) {
+            res.status(400).json({ success: false, error: moveError.message })
+            return
+        }
 
         const meeting = req.body?.meeting && typeof req.body.meeting === 'object' ? req.body.meeting : {}
         const externalId = typeof meeting.externalId === 'string' ? meeting.externalId.trim() : ''
 
         const db = admin.firestore()
-
-        // Idempotency: a retried push for the same meeting must not create a duplicate note
-        let pushRef = null
-        if (externalId) {
-            pushRef = db.collection(NOTE_PUSHES_COLLECTION).doc(buildNotePushDocId(userId, externalId))
-            const existingPush = await pushRef.get()
-            if (existingPush.exists) {
-                const pushData = existingPush.data() || {}
-                if (pushData.status === 'completed' && pushData.noteId) {
-                    res.status(200).json({
-                        success: true,
-                        deduplicated: true,
-                        noteId: pushData.noteId,
-                        projectId: pushData.projectId || null,
-                        projectName: pushData.projectName || null,
-                        url: pushData.projectId
-                            ? `${getAppBaseUrl()}/projects/${pushData.projectId}/notes/${pushData.noteId}/editor`
-                            : null,
-                        resolution: pushData.resolution || null,
-                    })
-                    return
-                }
-                const pendingAge = Date.now() - (pushData.createdAt || 0)
-                if (pushData.status === 'pending' && pendingAge < NOTE_PUSH_PENDING_TIMEOUT_MS) {
-                    res.status(409).json({ success: false, error: 'A push for this meeting is already in progress' })
-                    return
-                }
-            }
-            await pushRef.set({ userId, externalId, status: 'pending', createdAt: Date.now() })
-        }
-
-        const failPush = () => {
-            if (pushRef) {
-                pushRef
-                    .set({ status: 'failed', updatedAt: Date.now() }, { merge: true })
-                    .catch(error => console.warn('menubarPushNote: marking push failed errored', error))
-            }
-        }
 
         // Resolve the target project
         const { resolveMenubarNoteProject, saveMeetingMapping } = require('./menubarNoteProjectResolver')
@@ -604,24 +784,235 @@ async function handleMenubarPushNote(req, res) {
                 attendeeEmails: meeting.attendeeEmails,
             })
         } catch (resolveError) {
-            failPush()
             const statusCode = resolveError.code === 'PROJECT_NOT_ACCESSIBLE' ? 403 : 400
             res.status(statusCode).json({ success: false, error: resolveError.message })
             return
         }
 
-        const { UserHelper } = require('../shared/UserHelper')
-        const feedUser = await UserHelper.getFeedUserData(db, userId)
+        if (noteMove) {
+            if (noteMove.sourceProjectId === resolution.projectId) {
+                res.status(400).json({ success: false, error: 'Note is already in the selected project' })
+                return
+            }
+
+            let sourceResolution
+            try {
+                sourceResolution = await resolveMenubarNoteProject(db, {
+                    userId,
+                    userData,
+                    requestedProjectId: noteMove.sourceProjectId,
+                    meetingTitle: typeof meeting.title === 'string' ? meeting.title : title,
+                })
+            } catch (sourceAccessError) {
+                const statusCode = sourceAccessError.code === 'PROJECT_NOT_ACCESSIBLE' ? 403 : 400
+                res.status(statusCode).json({ success: false, error: sourceAccessError.message })
+                return
+            }
+
+            const targetPushRef = externalId
+                ? db
+                      .collection(NOTE_PUSHES_COLLECTION)
+                      .doc(buildNotePushDocId(userId, externalId, resolution.projectId))
+                : null
+            if (targetPushRef) {
+                const targetPush = await targetPushRef.get()
+                if (targetPush.exists) {
+                    const pushData = targetPush.data() || {}
+                    if (pushData.status === 'completed' && pushData.noteId) {
+                        if (pushData.noteId === noteMove.noteId) {
+                            res.status(200).json(completedPushResponse(pushData))
+                            return
+                        }
+                        res.status(409).json({
+                            success: false,
+                            error: 'This meeting already has a note in the selected project',
+                        })
+                        return
+                    }
+                    if (isActivePush(pushData)) {
+                        res.status(409).json({
+                            success: false,
+                            error: 'A move for this meeting is already in progress',
+                        })
+                        return
+                    }
+                }
+                await targetPushRef.set({
+                    userId,
+                    externalId,
+                    projectId: resolution.projectId,
+                    noteId: noteMove.noteId,
+                    status: 'pending',
+                    createdAt: Date.now(),
+                })
+            }
+
+            try {
+                const noteService = await getNoteService()
+                const notesBucketName = await noteService.getBucketName()
+                const assistantActor = await getMenubarAssistantActor(db, resolution.projectId)
+                const sourceProjectDoc = await db.doc(`projects/${noteMove.sourceProjectId}`).get()
+                const sourceProject = sourceProjectDoc.exists ? sourceProjectDoc.data() || {} : {}
+                const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
+                await moveNoteToDifferentProject({
+                    database: db,
+                    sourceProjectId: noteMove.sourceProjectId,
+                    targetProjectId: resolution.projectId,
+                    noteId: noteMove.noteId,
+                    editorId: assistantActor.feedUser.uid,
+                    editorName: assistantActor.feedUser.displayName,
+                    notesBucketName,
+                    feedUser: assistantActor.feedUser,
+                    sourceProjectName: sourceResolution.projectName || '',
+                    sourceProjectColor: sourceProject.color || '',
+                })
+            } catch (moveError) {
+                console.error('menubarPushNote: note move failed', moveError)
+                if (targetPushRef) {
+                    await targetPushRef.set({ status: 'failed', updatedAt: Date.now() }, { merge: true })
+                }
+                res.status(500).json({ success: false, error: 'Failed to move note' })
+                return
+            }
+
+            const responseResolution = { source: resolution.source, reasoning: resolution.reasoning }
+            if (targetPushRef) {
+                const batch = db.batch()
+                batch.set(
+                    targetPushRef,
+                    {
+                        status: 'completed',
+                        noteId: noteMove.noteId,
+                        projectId: resolution.projectId,
+                        projectName: resolution.projectName || null,
+                        resolution: responseResolution,
+                        updatedAt: Date.now(),
+                    },
+                    { merge: true }
+                )
+                batch.delete(
+                    db
+                        .collection(NOTE_PUSHES_COLLECTION)
+                        .doc(buildNotePushDocId(userId, externalId, noteMove.sourceProjectId))
+                )
+                batch.set(
+                    db.collection(NOTE_PUSHES_COLLECTION).doc(buildLegacyNotePushDocId(userId, externalId)),
+                    {
+                        userId,
+                        externalId,
+                        status: 'completed',
+                        noteId: noteMove.noteId,
+                        projectId: resolution.projectId,
+                        projectName: resolution.projectName || null,
+                        resolution: responseResolution,
+                        updatedAt: Date.now(),
+                    },
+                    { merge: true }
+                )
+                await batch.commit()
+            }
+
+            try {
+                await saveMeetingMapping(db, {
+                    userId,
+                    meetingKey: resolution.meetingKey,
+                    projectId: resolution.projectId,
+                    meetingTitle: typeof meeting.title === 'string' ? meeting.title : title,
+                    source: resolution.source,
+                })
+            } catch (mappingError) {
+                console.warn('menubarPushNote: saving moved meeting mapping failed', mappingError)
+            }
+
+            res.status(200).json({
+                success: true,
+                deduplicated: false,
+                moved: true,
+                noteId: noteMove.noteId,
+                projectId: resolution.projectId,
+                projectName: resolution.projectName || null,
+                url: `${getAppBaseUrl()}/projects/${resolution.projectId}/notes/${noteMove.noteId}/editor`,
+                resolution: responseResolution,
+            })
+            return
+        }
+
+        // Repeated saves return the single existing note. Project changes use
+        // the explicit move path above and keep that note's identity.
+        let pushRef = null
+        if (externalId) {
+            pushRef = db
+                .collection(NOTE_PUSHES_COLLECTION)
+                .doc(buildNotePushDocId(userId, externalId, resolution.projectId))
+            const existingPush = await pushRef.get()
+            if (existingPush.exists) {
+                const pushData = existingPush.data() || {}
+                if (pushData.status === 'completed' && pushData.noteId) {
+                    res.status(200).json(completedPushResponse(pushData))
+                    return
+                }
+                if (isActivePush(pushData)) {
+                    res.status(409).json({ success: false, error: 'A push for this meeting is already in progress' })
+                    return
+                }
+            } else {
+                // Before project-scoped idempotency, records were keyed only by
+                // meeting. Honor them only when they point at this destination.
+                const legacyRef = db
+                    .collection(NOTE_PUSHES_COLLECTION)
+                    .doc(buildLegacyNotePushDocId(userId, externalId))
+                const legacyPush = await legacyRef.get()
+                if (legacyPush.exists) {
+                    const pushData = legacyPush.data() || {}
+                    if (pushData.status === 'completed' && pushData.noteId) {
+                        res.status(200).json(completedPushResponse(pushData))
+                        return
+                    }
+                    const sameProject = !pushData.projectId || pushData.projectId === resolution.projectId
+                    if (sameProject && isActivePush(pushData)) {
+                        res.status(409).json({
+                            success: false,
+                            error: 'A push for this meeting is already in progress',
+                        })
+                        return
+                    }
+                }
+            }
+            await pushRef.set({
+                userId,
+                externalId,
+                projectId: resolution.projectId,
+                status: 'pending',
+                createdAt: Date.now(),
+            })
+        }
+
+        const failPush = () => {
+            if (pushRef) {
+                pushRef
+                    .set({ status: 'failed', updatedAt: Date.now() }, { merge: true })
+                    .catch(error => console.warn('menubarPushNote: marking push failed errored', error))
+            }
+        }
+
+        const assistantActor = await getMenubarAssistantActor(db, resolution.projectId)
+        const feedUser = assistantActor.feedUser
 
         let noteResult
+        let uploadedAttachments = []
         try {
             const noteService = await getNoteService()
+            const noteId = db.collection('_').doc().id
+            uploadedAttachments = await uploadNoteAttachments(attachments)
+            const noteContent = rewriteMarkdownAttachmentUrls(content, uploadedAttachments)
             noteResult = await noteService.createAndPersistNote(
                 {
+                    noteId,
                     title,
-                    content,
+                    content: noteContent,
                     userId,
                     projectId: resolution.projectId,
+                    assistantId: assistantActor.assistantId,
                     isPrivate: false,
                     feedUser,
                 },
@@ -629,6 +1020,7 @@ async function handleMenubarPushNote(req, res) {
             )
         } catch (noteError) {
             console.error('menubarPushNote: note creation failed', noteError)
+            await cleanupUploadedNoteAttachments(uploadedAttachments)
             failPush()
             res.status(500).json({ success: false, error: 'Failed to create note' })
             return
@@ -636,28 +1028,42 @@ async function handleMenubarPushNote(req, res) {
 
         const responseResolution = { source: resolution.source, reasoning: resolution.reasoning }
 
-        // Remember the meeting → project choice so the next push of this meeting
-        // lands in the same project without any signals
-        await saveMeetingMapping(db, {
-            userId,
-            meetingKey: resolution.meetingKey,
-            projectId: resolution.projectId,
-            meetingTitle: typeof meeting.title === 'string' ? meeting.title : title,
-            source: resolution.source,
-        })
-
+        // Finalize idempotency before non-critical preference learning. If the
+        // response is lost after this point, retrying returns this exact note.
         if (pushRef) {
-            await pushRef.set(
-                {
-                    status: 'completed',
-                    noteId: noteResult.noteId,
-                    projectId: resolution.projectId,
-                    projectName: resolution.projectName || null,
-                    resolution: responseResolution,
-                    updatedAt: Date.now(),
-                },
+            const completedPush = {
+                userId,
+                externalId,
+                status: 'completed',
+                noteId: noteResult.noteId,
+                projectId: resolution.projectId,
+                projectName: resolution.projectName || null,
+                resolution: responseResolution,
+                updatedAt: Date.now(),
+            }
+            const batch = db.batch()
+            batch.set(pushRef, completedPush, { merge: true })
+            batch.set(
+                db.collection(NOTE_PUSHES_COLLECTION).doc(buildLegacyNotePushDocId(userId, externalId)),
+                completedPush,
                 { merge: true }
             )
+            await batch.commit()
+        }
+
+        // Remember the meeting → project choice so future instances land in
+        // the selected project. The note is already safely persisted, so a
+        // mapping failure must not turn a successful save into a retry.
+        try {
+            await saveMeetingMapping(db, {
+                userId,
+                meetingKey: resolution.meetingKey,
+                projectId: resolution.projectId,
+                meetingTitle: typeof meeting.title === 'string' ? meeting.title : title,
+                source: resolution.source,
+            })
+        } catch (mappingError) {
+            console.warn('menubarPushNote: saving meeting mapping failed', mappingError)
         }
 
         res.status(200).json({
@@ -685,4 +1091,12 @@ module.exports = {
     handleMenubarGoldWebhook,
     handleMenubarProjects,
     handleMenubarPushNote,
+    __private__: {
+        buildNotePushDocId,
+        buildLegacyNotePushDocId,
+        normalizeNoteMove,
+        getMenubarAssistantActor,
+        decodeNoteAttachments,
+        rewriteMarkdownAttachmentUrls,
+    },
 }

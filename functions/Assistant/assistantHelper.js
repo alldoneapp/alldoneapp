@@ -39,6 +39,7 @@ const {
 const { getObjectFollowersIds, copyInnerFeedsToOtherProject } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
 const { getChat, copyChatToOtherProject } = require('../Chats/chatsFirestoreCloud')
+const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { DEFAULT_EMAIL_SIGNATURE } = require('../Email/emailChannelHelpers')
@@ -3508,100 +3509,6 @@ async function moveTaskToDifferentProject(params) {
         targetProjectId,
         taskId,
         movedTaskCount: taskIdsToMove.length,
-    }
-}
-
-async function moveNoteToDifferentProject(params) {
-    const { database, sourceProjectId, targetProjectId, noteId, editorId, editorName, notesBucketName } = params
-
-    if (!sourceProjectId || !targetProjectId || !noteId) {
-        throw new Error('sourceProjectId, targetProjectId and noteId are required for note move')
-    }
-    if (sourceProjectId === targetProjectId) {
-        return {
-            moved: false,
-            reason: 'already_in_target_project',
-            sourceProjectId,
-            targetProjectId,
-            noteId,
-        }
-    }
-
-    const sourceNoteRef = database.doc(`noteItems/${sourceProjectId}/notes/${noteId}`)
-    const sourceNoteDoc = await sourceNoteRef.get()
-    if (!sourceNoteDoc.exists) {
-        throw new Error(`Note ${noteId} not found in source project ${sourceProjectId}`)
-    }
-
-    const targetNoteRef = database.doc(`noteItems/${targetProjectId}/notes/${noteId}`)
-    const targetNoteDoc = await targetNoteRef.get()
-    if (targetNoteDoc.exists) {
-        throw new Error(`Cannot move note ${noteId}: target project already contains this note ID.`)
-    }
-
-    const timestamp = Date.now()
-    const sourceNote = sourceNoteDoc.data() || {}
-    const movedNote = {
-        ...sourceNote,
-        lastEditionDate: timestamp,
-    }
-    if (editorId) movedNote.lastEditorId = editorId
-    if (editorName) movedNote.lastEditorName = editorName
-    delete movedNote.movingToOtherProjectId
-
-    if (!notesBucketName) {
-        throw new Error('Could not resolve notes storage bucket for note move.')
-    }
-
-    const notesBucket = admin.storage().bucket(notesBucketName)
-    const sourceFile = notesBucket.file(`notesData/${sourceProjectId}/${noteId}`)
-    const [exists] = await sourceFile.exists()
-    if (exists) {
-        await sourceFile.copy(`gs://${notesBucketName}/notesData/${targetProjectId}/${noteId}`)
-    }
-
-    await targetNoteRef.set(movedNote)
-
-    const sourceMoveMarkerUpdate = {
-        movingToOtherProjectId: targetProjectId,
-        lastEditionDate: timestamp,
-    }
-    if (editorId) sourceMoveMarkerUpdate.lastEditorId = editorId
-    if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
-
-    await sourceNoteRef.update(sourceMoveMarkerUpdate)
-
-    // Copy the note's chat (conversation + comments) and Updates feed (activity history) into the target
-    // project before deleting the source, otherwise the source delete cascade wipes the chat and the moved
-    // note loses both its chat and its update history.
-    try {
-        await copyChatToOtherProject(admin, sourceProjectId, targetProjectId, 'notes', noteId)
-    } catch (error) {
-        console.warn('Note move: failed to copy chat to target project', {
-            noteId,
-            sourceProjectId,
-            targetProjectId,
-            error: error.message,
-        })
-    }
-    try {
-        await copyInnerFeedsToOtherProject(admin, sourceProjectId, targetProjectId, 'notes', noteId)
-    } catch (error) {
-        console.warn('Note move: failed to copy updates feed to target project', {
-            noteId,
-            sourceProjectId,
-            targetProjectId,
-            error: error.message,
-        })
-    }
-
-    await sourceNoteRef.delete()
-
-    return {
-        moved: true,
-        sourceProjectId,
-        targetProjectId,
-        noteId,
     }
 }
 

@@ -26,7 +26,7 @@ async function createNoteCreatedFeed(projectId, note, noteId, batch, feedUser, n
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_NOTE_CREATED,
         lastChangeDate: currentMilliseconds,
-        entryText: 'created note',
+        entryText: feedUser.noteCreatedEntryText || 'created note',
         feedUser,
         objectId: noteId,
         isPublicFor: noteFeedObject.isPublicFor,
