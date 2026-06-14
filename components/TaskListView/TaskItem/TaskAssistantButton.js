@@ -90,7 +90,7 @@ export default function TaskAssistantButton({ projectId, task, disabled, dismiss
                         projectId={projectId}
                         updateAssistant={selectAssistant}
                         currentAssistantId={task.assistantId}
-                        includeDefaultProjectAssistant={false}
+                        defaultProjectAssistantAtEnd={true}
                         alwaysUpdateOnSelect={true}
                     />
                 }

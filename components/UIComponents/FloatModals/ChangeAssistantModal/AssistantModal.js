@@ -15,6 +15,7 @@ export default function AssistantModal({
     updateAssistant,
     currentAssistantId,
     includeDefaultProjectAssistant = true,
+    defaultProjectAssistantAtEnd = false,
     alwaysUpdateOnSelect = false,
 }) {
     const [width, height] = useWindowSize()
@@ -34,6 +35,7 @@ export default function AssistantModal({
                         updateAssistant={updateAssistant}
                         currentAssistantId={currentAssistantId}
                         includeDefaultProjectAssistant={includeDefaultProjectAssistant}
+                        defaultProjectAssistantAtEnd={defaultProjectAssistantAtEnd}
                         alwaysUpdateOnSelect={alwaysUpdateOnSelect}
                     />
                 </CustomScrollView>
