@@ -2959,6 +2959,58 @@ const projectNamesMatch = (projectNameA, projectNameB) => {
     return !!a && !!b && (a === b || a.includes(b) || b.includes(a))
 }
 
+function resolveAssistantTaskProject(projects, contextProjectId, requestedProjectId, requestedProjectName) {
+    const normalizedProjectId = typeof requestedProjectId === 'string' ? requestedProjectId.trim() : ''
+    const normalizedProjectName = typeof requestedProjectName === 'string' ? requestedProjectName.trim() : ''
+    const accessibleProjects = Array.isArray(projects) ? projects : []
+
+    if (normalizedProjectId) {
+        const projectFromId = accessibleProjects.find(project => project.id === normalizedProjectId)
+        if (!projectFromId) {
+            throw new Error(`Target project not found or not accessible: "${normalizedProjectId}"`)
+        }
+        if (normalizedProjectName && !projectNamesMatch(projectFromId.name, normalizedProjectName)) {
+            throw new Error(
+                `Target project mismatch: projectId "${normalizedProjectId}" does not match projectName "${normalizedProjectName}".`
+            )
+        }
+        return projectFromId
+    }
+
+    if (normalizedProjectName) {
+        const exactMatches = accessibleProjects.filter(
+            project => normalizeProjectNameForLookup(project.name) === normalizedProjectName.toLowerCase()
+        )
+        if (exactMatches.length === 1) return exactMatches[0]
+        if (exactMatches.length > 1) {
+            throw new Error(`Multiple projects match "${normalizedProjectName}". Please use projectId.`)
+        }
+
+        const partialMatches = accessibleProjects.filter(project =>
+            projectNamesMatch(project.name, normalizedProjectName)
+        )
+        if (partialMatches.length === 1) return partialMatches[0]
+        if (partialMatches.length > 1) {
+            const options = partialMatches
+                .slice(0, 5)
+                .map(project => `"${project.name}" (${project.id})`)
+                .join(', ')
+            throw new Error(
+                `Multiple projects partially match "${normalizedProjectName}": ${options}. Please use projectId.`
+            )
+        }
+
+        throw new Error(`No project found matching "${normalizedProjectName}".`)
+    }
+
+    return (
+        accessibleProjects.find(project => project.id === contextProjectId) || {
+            id: contextProjectId,
+            name: null,
+        }
+    )
+}
+
 async function resolveMoveTargetProject(database, userId, moveToProjectId, moveToProjectName) {
     const requestedProjectId = typeof moveToProjectId === 'string' ? moveToProjectId.trim() : ''
     const requestedProjectName = typeof moveToProjectName === 'string' ? moveToProjectName.trim() : ''
@@ -4345,6 +4397,8 @@ async function executeToolNatively(
 
             console.log('📋 GET_TASKS TOOL: Request params', {
                 userId: creatorId,
+                projectId: toolArgs.projectId || null,
+                projectName: toolArgs.projectName || null,
                 status: toolArgs.status || 'open',
                 date: toolArgs.date || null,
                 limit: toolArgs.limit || 100,
@@ -4417,9 +4471,16 @@ async function executeToolNatively(
                 )
                 tasks = result.tasks || []
             } else {
+                const targetProject = resolveAssistantTaskProject(
+                    projectsData,
+                    projectId,
+                    toolArgs.projectId,
+                    toolArgs.projectName
+                )
                 // Get tasks from single project
                 const result = await retrievalService.getTasks({
-                    projectId: projectId,
+                    projectId: targetProject.id,
+                    projectName: targetProject.name || undefined,
                     userId: creatorId,
                     status: effectiveStatus,
                     date: effectiveDate,
@@ -10342,6 +10403,7 @@ module.exports = {
     formatContextMessageTimestamp,
     normalizeRecentHours,
     normalizeAssistantTaskScope,
+    resolveAssistantTaskProject,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
     mapAssistantGoalForToolResponse,

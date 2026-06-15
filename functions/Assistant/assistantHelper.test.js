@@ -272,6 +272,7 @@ const {
     normalizeRecentHours,
     normalizeAssistantTaskScope,
     filterTasksByRecentHours,
+    resolveAssistantTaskProject,
     mapAssistantTaskForToolResponse,
     mapAssistantGoalForToolResponse,
     getToolResultFollowUpPrompt,
@@ -2093,6 +2094,65 @@ describe('assistant get tasks tool', () => {
                 },
             ],
         })
+    })
+
+    test('resolves a requested project name instead of querying the current chat project', async () => {
+        const getTasks = jest.fn().mockResolvedValue({ tasks: [] })
+
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks,
+            getTasksFromMultipleProjects: jest.fn().mockResolvedValue({ tasks: [] }),
+        }))
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-private', name: 'Privat' },
+                { id: 'project-steercom', name: 'Steercom' },
+            ]),
+        }))
+
+        mockDocGet.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({ timezone: 'UTC+02:00' }),
+        })
+
+        await executeToolNatively(
+            'get_tasks',
+            {
+                projectName: 'Steercom',
+                status: 'open',
+                date: 'today',
+            },
+            'project-private',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(getTasks).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-steercom',
+                projectName: 'Steercom',
+                userId: 'user-1',
+                status: 'open',
+                date: 'today',
+            })
+        )
+    })
+
+    test('rejects ambiguous partial project names', () => {
+        expect(() =>
+            resolveAssistantTaskProject(
+                [
+                    { id: 'project-steercom', name: 'Steercom' },
+                    { id: 'project-steercom-testo', name: 'Steercom - Testo' },
+                ],
+                'project-private',
+                '',
+                'Steer'
+            )
+        ).toThrow('Multiple projects partially match "Steer"')
     })
 
     test('uses the shared follow-up prompt contract for historical nested text', () => {

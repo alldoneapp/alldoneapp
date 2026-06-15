@@ -135,6 +135,16 @@ const toolSchemas = {
                         description:
                             'If true, retrieves tasks from all accessible projects instead of just the current one',
                     },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: limit tasks to a specific accessible project ID. If both projectId and projectName are provided, they must refer to the same project.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional: limit tasks to a specific accessible project by exact or partial project name. If multiple projects match, the tool will return an ambiguity error.',
+                    },
                     includeArchived: {
                         type: 'boolean',
                         description:
