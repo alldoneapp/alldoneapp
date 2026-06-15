@@ -71,7 +71,7 @@ export default function PreConfigTaskGeneratorModal({
     const justPaste = async () => {
         closeModal()
         if (processPromp) {
-            processPromp(generatedPrompt)
+            processPromp(generatedPrompt, { pasteOnly: true })
             return
         }
 

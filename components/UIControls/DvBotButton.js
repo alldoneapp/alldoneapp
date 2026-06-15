@@ -8,6 +8,7 @@ import {
     setSelectedNavItem,
     setShowNotificationAboutTheBotBehavior,
     setTriggerChatSubmit,
+    setTriggerChatDraft,
 } from '../../redux/actions'
 import { colors } from '../styles/global'
 import { getAssistantInProjectObject } from '../AdminPanel/Assistants/assistantsHelper'
@@ -57,7 +58,7 @@ export default function DvBotButton({
         dispatch(setSelectedNavItem(navItem))
     }
 
-    const onSelectBotOption = async optionText => {
+    const onSelectBotOption = async (optionText, name, aiSettings, options) => {
         const selectedAssistantId = latestAssistantIdRef.current || effectiveAssistantId
 
         await setObjectAssistantEnabled(projectId, objectId, objectType, true)
@@ -73,7 +74,11 @@ export default function DvBotButton({
         setTimeout(() => {
             dispatch(setAssistantEnabled(true))
             if (optionText) {
-                dispatch(setTriggerChatSubmit({ text: optionText }))
+                if (options?.pasteOnly) {
+                    dispatch(setTriggerChatDraft({ text: optionText }))
+                } else {
+                    dispatch(setTriggerChatSubmit({ text: optionText }))
+                }
             } else {
                 if (mainChatEditor) {
                     mainChatEditor.getSelection(true)

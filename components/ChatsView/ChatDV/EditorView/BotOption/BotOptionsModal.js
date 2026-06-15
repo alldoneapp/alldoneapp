@@ -201,11 +201,11 @@ export default function BotOptionsModal({
                     }}
                     task={selectedTask}
                     assistant={assistant}
-                    processPromp={prompt => {
+                    processPromp={(prompt, options) => {
                         if (inChatTab) {
                             setAssistantEnabledForObject(true)
                         }
-                        onSelectBotOption(prompt, selectedTask.name)
+                        onSelectBotOption(prompt, selectedTask.name, undefined, options)
                         if (!inMyDay) dispatch(setAssistantEnabled(true))
                     }}
                     defaultContext={
