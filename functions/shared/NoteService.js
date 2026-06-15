@@ -1448,7 +1448,19 @@ class NoteService {
     }
 
     insertPatchContent(ytext, index, content) {
-        if (!content) return
+        if (!content) return 0
+
+        // When the replacement text contains markdown, convert it to Quill-compatible
+        // Yjs formatting (headers, lists, bold/italic/strike) just like the prepend and
+        // create-note paths do. Without this, patch edits insert raw markdown that renders
+        // as literal "##"/"_..._"/"- " characters in the note.
+        if (insertMarkdownToYjs && containsMarkdown && containsMarkdown(content)) {
+            const endPosition = insertMarkdownToYjs(ytext, index, content)
+            return endPosition - index
+        }
+
+        // Plain text: clear all formatting attributes so the inserted text does not
+        // inherit formatting from adjacent characters at the insertion boundary.
         ytext.insert(index, content, {
             header: null,
             list: null,
@@ -1456,14 +1468,22 @@ class NoteService {
             italic: null,
             strike: null,
         })
+        return content.length
     }
 
     applyPatchOperationsToYText(ytext, operations) {
+        // Operation indices are computed against a working string that splices in the raw
+        // insertText. Markdown conversion changes the inserted length (e.g. "## Summary\n"
+        // becomes "Summary\n" with a header attribute), so track the cumulative divergence
+        // between what we actually inserted and the raw insertText to keep later indices aligned.
+        let offset = 0
         operations.forEach(operation => {
+            const index = operation.index + offset
             if (operation.deleteLength > 0) {
-                ytext.delete(operation.index, operation.deleteLength)
+                ytext.delete(index, operation.deleteLength)
             }
-            this.insertPatchContent(ytext, operation.index, operation.insertText)
+            const insertedLength = this.insertPatchContent(ytext, index, operation.insertText)
+            offset += insertedLength - operation.insertText.length
         })
     }
 

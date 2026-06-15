@@ -184,6 +184,84 @@ describe('NoteService patch storage updates', () => {
         )
     })
 
+    test('converts markdown in patch replacement to Quill formatting', async () => {
+        let savedBuffer = null
+        const file = {
+            exists: jest.fn(async () => [true]),
+            download: jest.fn(async () => [encodePlainContent('Meeting Notes\nplaceholder')]),
+            save: jest.fn(async buffer => {
+                savedBuffer = buffer
+            }),
+        }
+        const update = jest.fn(async () => {})
+        const service = createService({
+            storage: {
+                bucket: jest.fn(() => ({
+                    file: jest.fn(() => file),
+                })),
+            },
+            database: {
+                doc: jest.fn(() => ({ update })),
+            },
+        })
+
+        const markdown = '## Summary\n\n_Duration: 63 min_\n\n- First point\n- Second point'
+        const result = await service.applyPatchEditsToStorage(
+            'project-1',
+            'note-1',
+            [{ type: 'replace_text', find: 'placeholder', replaceWith: markdown }],
+            { uid: 'user-1', displayName: 'Ada' }
+        )
+
+        expect(result.success).toBe(true)
+        const delta = decodeDelta(savedBuffer)
+        expect(delta).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ insert: '\n', attributes: { header: 2 } }),
+                expect.objectContaining({ attributes: expect.objectContaining({ italic: true }) }),
+                expect.objectContaining({ insert: '\n', attributes: expect.objectContaining({ list: 'bullet' }) }),
+            ])
+        )
+        // Literal markdown markers must not survive in the rendered text.
+        expect(decodeContent(savedBuffer)).not.toContain('## Summary')
+        expect(decodeContent(savedBuffer)).not.toContain('- First point')
+    })
+
+    test('keeps later patch edits aligned when markdown conversion changes length', async () => {
+        let savedBuffer = null
+        const file = {
+            exists: jest.fn(async () => [true]),
+            download: jest.fn(async () => [encodePlainContent('AAA\nBBB')]),
+            save: jest.fn(async buffer => {
+                savedBuffer = buffer
+            }),
+        }
+        const update = jest.fn(async () => {})
+        const service = createService({
+            storage: {
+                bucket: jest.fn(() => ({
+                    file: jest.fn(() => file),
+                })),
+            },
+            database: {
+                doc: jest.fn(() => ({ update })),
+            },
+        })
+
+        const result = await service.applyPatchEditsToStorage('project-1', 'note-1', [
+            { type: 'replace_text', find: 'AAA', replaceWith: '## Heading' },
+            { type: 'replace_text', find: 'BBB', replaceWith: 'CCC' },
+        ])
+
+        expect(result.success).toBe(true)
+        // The second (plain) edit still lands on BBB even though the first edit's
+        // markdown conversion shortened the inserted text relative to the raw markdown.
+        expect(decodeContent(savedBuffer)).toBe('Heading\n\nCCC')
+        expect(decodeDelta(savedBuffer)).toEqual(
+            expect.arrayContaining([expect.objectContaining({ insert: '\n', attributes: { header: 2 } })])
+        )
+    })
+
     test('does not save storage or metadata when a patch is ambiguous', async () => {
         const file = {
             exists: jest.fn(async () => [true]),
