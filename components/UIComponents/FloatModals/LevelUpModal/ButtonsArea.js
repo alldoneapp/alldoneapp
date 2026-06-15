@@ -30,21 +30,39 @@ export default function ButtonsArea({ closeModal }) {
             <Button
                 title={translate(secondaryTitle)}
                 iconSize={22}
-                buttonStyle={localStyles.button}
+                buttonStyle={[localStyles.button, localStyles.secondaryButton]}
+                titleStyle={localStyles.buttonTitle}
+                numberTitleLines={2}
                 onPress={secondaryAction}
                 type={'secondary'}
             />
-            <Button title={translate(primaryTitle)} iconSize={22} onPress={primaryAction} />
+            <Button
+                title={translate(primaryTitle)}
+                iconSize={22}
+                buttonStyle={localStyles.button}
+                titleStyle={localStyles.buttonTitle}
+                numberTitleLines={2}
+                onPress={primaryAction}
+            />
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
     button: {
-        marginRight: 16,
+        alignSelf: 'stretch',
+        width: '100%',
+        height: 56,
+        maxHeight: 56,
+    },
+    buttonTitle: {
+        flexShrink: 1,
+        textAlign: 'center',
+    },
+    secondaryButton: {
+        marginBottom: 8,
     },
     buttonsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
+        width: '100%',
     },
 })

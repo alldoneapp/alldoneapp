@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
-import { getPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import CloseButton from '../../../FollowUp/CloseButton'
 import { translate } from '../../../../i18n/TranslationService'
 import Line from '../GoalMilestoneModal/Line'
@@ -28,7 +28,7 @@ export default function LevelUpModal({ setShowLevelUpModal }) {
 
     return (
         <View style={localStyles.parent}>
-            <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
+            <View style={[localStyles.container, applyPopoverWidth()]}>
                 <Header />
                 <LevelAndPoints />
                 <Text style={localStyles.text}>{translate('Earned skill points description')}</Text>
