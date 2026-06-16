@@ -446,6 +446,42 @@ export default function EndDayStatisticsModal() {
         if (projectDoneTasks <= 0 || maxProjectDoneTasks <= 0) return 0
         return `${Math.max(8, Math.round((projectDoneTasks / maxProjectDoneTasks) * 100))}%`
     }
+    const renderStatItem = (key, icon, label, value) => (
+        <View style={[localStyles.statItem, compactModalLayout && localStyles.mobileStatItem]} key={key}>
+            <View style={localStyles.statIcon}>{icon}</View>
+            <View style={localStyles.statTextBlock}>
+                <Text style={localStyles.statLabel}>{label}</Text>
+                <Text style={localStyles.statValue}>{value}</Text>
+            </View>
+        </View>
+    )
+    const statItems = [
+        renderStatItem(
+            'tasks',
+            <Icon name="check-square" size={24} color="#ffffff" />,
+            translate('Tasks done:'),
+            doneTasks
+        ),
+        renderStatItem(
+            'points',
+            <Icon name="story-point" size={24} color="#ffffff" />,
+            translate('Points earned:'),
+            donePoints
+        ),
+        renderStatItem(
+            'time',
+            <Icon name="clock" size={24} color="#ffffff" />,
+            `${translate('Time logged')}:`,
+            getDoneTimeValue(doneTime)
+        ),
+        renderStatItem('xp', <Icon name="trending-up" size={24} color="#ffffff" />, translate('XP earned:'), xp),
+        renderStatItem(
+            'gold',
+            <Lottie animationData={goldAnimation} autoplay={false} style={{ width: 24, height: 24 }} />,
+            translate('Gold earned:'),
+            Math.floor(gold)
+        ),
+    ]
 
     return (
         !showNewVersionMandtoryNotifcation &&
@@ -460,22 +496,23 @@ export default function EndDayStatisticsModal() {
                     ]}
                 >
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        <Text style={[localStyles.title, compactModalLayout && localStyles.mobileTitle]}>
-                            {translate('A new day has begun')}
-                        </Text>
-                        <Text style={[localStyles.description, compactModalLayout && localStyles.mobileDescription]}>
-                            {translate('Here a quick summary of how you have been doing')}
-                        </Text>
-                        <View style={localStyles.animationContainer}>
-                            <Lottie
-                                animationData={isOfflineRef.current ? cloudAnimation : starsAnimation}
-                                autoplay={true}
-                                initialSegment={isOfflineRef.current ? [0, 144] : getAnimationSegment()}
-                                style={{ width: 156, height: 101 }}
-                            />
-                        </View>
-
-                        <View style={[localStyles.emptyInboxContainer, isOfflineRef.current && { marginBottom: 16 }]}>
+                        <View style={localStyles.header}>
+                            <Text style={[localStyles.title, compactModalLayout && localStyles.mobileTitle]}>
+                                {translate('A new day has begun')}
+                            </Text>
+                            <Text
+                                style={[localStyles.description, compactModalLayout && localStyles.mobileDescription]}
+                            >
+                                {translate('Here a quick summary of how you have been doing')}
+                            </Text>
+                            <View style={localStyles.animationContainer}>
+                                <Lottie
+                                    animationData={isOfflineRef.current ? cloudAnimation : starsAnimation}
+                                    autoplay={true}
+                                    initialSegment={isOfflineRef.current ? [0, 144] : getAnimationSegment()}
+                                    style={{ width: 132, height: 86 }}
+                                />
+                            </View>
                             <Text style={localStyles.emptyInboxTitle}>{rewardTitle}</Text>
                             <Text style={localStyles.emptyInboxDescription}>{rewardDescription}</Text>
                             <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
@@ -483,114 +520,7 @@ export default function EndDayStatisticsModal() {
 
                         {!isOfflineRef.current && (
                             <View style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}>
-                                <View style={[localStyles.statsColumn, !compactModalLayout && { marginRight: 8 }]}>
-                                    <View style={localStyles.statRow}>
-                                        <Icon name="check-square" size={24} color="#ffffff" />
-                                        <View
-                                            style={[
-                                                localStyles.statTextBlock,
-                                                compactModalLayout && localStyles.mobileStatTextBlock,
-                                            ]}
-                                        >
-                                            <Text style={localStyles.text}>{translate('Tasks done:')}</Text>
-                                            <Text
-                                                style={[
-                                                    localStyles.text,
-                                                    localStyles.value,
-                                                    compactModalLayout && localStyles.mobileValue,
-                                                ]}
-                                            >
-                                                {doneTasks}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <View style={localStyles.statRow}>
-                                        <Icon name="story-point" size={24} color="#ffffff" />
-                                        <View
-                                            style={[
-                                                localStyles.statTextBlock,
-                                                compactModalLayout && localStyles.mobileStatTextBlock,
-                                            ]}
-                                        >
-                                            <Text style={localStyles.text}>{translate('Points earned:')}</Text>
-                                            <Text
-                                                style={[
-                                                    localStyles.text,
-                                                    localStyles.value,
-                                                    compactModalLayout && localStyles.mobileValue,
-                                                ]}
-                                            >
-                                                {donePoints}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <View style={localStyles.statRow}>
-                                        <Icon name="clock" size={24} color="#ffffff" />
-                                        <View
-                                            style={[
-                                                localStyles.statTextBlock,
-                                                compactModalLayout && localStyles.mobileStatTextBlock,
-                                            ]}
-                                        >
-                                            <Text style={localStyles.text}>{`${translate('Time logged')}:`}</Text>
-                                            <Text
-                                                style={[
-                                                    localStyles.text,
-                                                    localStyles.value,
-                                                    compactModalLayout && localStyles.mobileValue,
-                                                ]}
-                                            >
-                                                {getDoneTimeValue(doneTime)}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                </View>
-                                <View style={[localStyles.statsColumn, !compactModalLayout && { marginLeft: 8 }]}>
-                                    <View style={localStyles.statRow}>
-                                        <Icon name="trending-up" size={24} color="#ffffff" />
-                                        <View
-                                            style={[
-                                                localStyles.statTextBlock,
-                                                compactModalLayout && localStyles.mobileStatTextBlock,
-                                            ]}
-                                        >
-                                            <Text style={localStyles.text}>{translate('XP earned:')}</Text>
-                                            <Text
-                                                style={[
-                                                    localStyles.text,
-                                                    localStyles.value,
-                                                    compactModalLayout && localStyles.mobileValue,
-                                                ]}
-                                            >
-                                                {xp}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <View style={localStyles.statRow}>
-                                        <Lottie
-                                            animationData={goldAnimation}
-                                            autoplay={false}
-                                            style={{ width: 24, height: 24 }}
-                                        />
-                                        <View
-                                            style={[
-                                                localStyles.statTextBlock,
-                                                compactModalLayout && localStyles.mobileStatTextBlock,
-                                            ]}
-                                        >
-                                            <Text style={localStyles.text}>{translate('Gold earned:')}</Text>
-                                            <Text
-                                                style={[
-                                                    localStyles.text,
-                                                    localStyles.value,
-                                                    compactModalLayout && localStyles.mobileValue,
-                                                ]}
-                                            >
-                                                {Math.floor(gold)}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                </View>
+                                {statItems}
                             </View>
                         )}
                         {!isOfflineRef.current && happinessProjects.length > 0 && (
@@ -600,21 +530,24 @@ export default function EndDayStatisticsModal() {
                                 {happinessProjects.map(project => (
                                     <View
                                         key={project.id}
-                                        style={[localStyles.happinessProject, localStyles.mobileHappinessProject]}
+                                        style={[
+                                            localStyles.happinessProject,
+                                            compactModalLayout && localStyles.mobileHappinessProject,
+                                        ]}
                                     >
                                         <View
                                             style={[
                                                 localStyles.happinessProjectHeader,
-                                                localStyles.mobileHappinessProjectHeader,
+                                                compactModalLayout && localStyles.mobileHappinessProjectHeader,
                                             ]}
                                         >
                                             <View
                                                 style={[
                                                     localStyles.happinessProjectInfo,
-                                                    localStyles.mobileHappinessProjectInfo,
+                                                    compactModalLayout && localStyles.mobileHappinessProjectInfo,
                                                 ]}
                                             >
-                                                <Text style={localStyles.happinessProjectName}>
+                                                <Text style={localStyles.happinessProjectName} numberOfLines={1}>
                                                     {getSafeTextValue(project.name, translate('Project'))}
                                                 </Text>
                                                 <View style={localStyles.happinessProjectStats}>
@@ -637,7 +570,7 @@ export default function EndDayStatisticsModal() {
                                             <View
                                                 style={[
                                                     localStyles.happinessActions,
-                                                    localStyles.mobileHappinessActions,
+                                                    compactModalLayout && localStyles.mobileHappinessActions,
                                                 ]}
                                             >
                                                 <TouchableOpacity
@@ -718,8 +651,8 @@ const localStyles = StyleSheet.create({
     },
     container: {
         backgroundColor: colors.Secondary400,
-        padding: 16,
-        borderRadius: 4,
+        padding: 24,
+        borderRadius: 8,
         maxHeight: '90%',
         ...Platform.select({
             web: {
@@ -731,13 +664,20 @@ const localStyles = StyleSheet.create({
         padding: 20,
         maxHeight: '94%',
     },
+    header: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
     animationContainer: {
         alignSelf: 'center',
+        marginTop: 12,
+        marginBottom: 6,
     },
     title: {
         ...styles.title7,
         color: '#FFFFFF',
         fontWeight: '500',
+        textAlign: 'center',
     },
     mobileTitle: {
         textAlign: 'center',
@@ -745,31 +685,29 @@ const localStyles = StyleSheet.create({
     description: {
         ...styles.body2,
         color: colors.Text03,
+        marginTop: 4,
+        textAlign: 'center',
     },
     mobileDescription: {
         textAlign: 'center',
         marginTop: 4,
     },
-    emptyInboxContainer: {
-        marginBottom: 32,
-        flexDirection: 'column',
-        alignItems: 'center',
-    },
     emptyInboxTitle: {
         ...styles.title4,
         color: '#ffffff',
-        marginBottom: 12,
+        marginBottom: 8,
+        textAlign: 'center',
     },
     emptyInboxDescription: {
         ...styles.subtitle1,
         color: colors.Text04,
+        textAlign: 'center',
     },
     line: {
         height: 1,
         backgroundColor: '#ffffff',
         opacity: 0.2,
-        marginHorizontal: -16,
-        marginVertical: 16,
+        marginVertical: 20,
     },
     refresh: {
         borderRadius: 4,
@@ -802,51 +740,58 @@ const localStyles = StyleSheet.create({
         lineHeight: 14,
         letterSpacing: em2px(0.05),
     },
-    text: {
-        ...styles.subtitle2,
-        color: '#ffffff',
-        marginLeft: 8,
-    },
     statsGrid: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 6,
     },
     mobileStatsGrid: {
         flexDirection: 'column',
+        flexWrap: 'nowrap',
         marginTop: 4,
     },
-    statsColumn: {
-        flex: 1,
-    },
-    statRow: {
+    statItem: {
+        width: '50%',
         flexDirection: 'row',
         alignItems: 'flex-start',
-        marginBottom: 16,
+        paddingRight: 16,
+        marginBottom: 18,
     },
-    statTextBlock: {
-        flexDirection: 'row',
+    mobileStatItem: {
+        width: '100%',
+        paddingRight: 0,
+    },
+    statIcon: {
+        width: 32,
         alignItems: 'center',
-        flex: 1,
-        minWidth: 0,
-    },
-    mobileStatTextBlock: {
-        flexDirection: 'column',
-        alignItems: 'flex-start',
         paddingTop: 1,
     },
-    mobileValue: {
-        marginLeft: 8,
-        marginTop: 4,
+    statTextBlock: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+    },
+    statLabel: {
+        ...styles.caption2,
         color: colors.Text04,
+        marginLeft: 8,
+    },
+    statValue: {
+        ...styles.subtitle1,
+        color: '#ffffff',
+        marginLeft: 8,
+        marginTop: 1,
+        flexWrap: 'wrap',
     },
     date: {
         ...styles.body2,
         color: colors.Text04,
-    },
-    value: {
-        marginLeft: 4,
+        marginTop: 2,
+        textAlign: 'center',
     },
     happinessSection: {
-        marginTop: 24,
+        marginTop: 12,
     },
     happinessTitle: {
         ...styles.subtitle1,
@@ -861,14 +806,14 @@ const localStyles = StyleSheet.create({
     happinessProject: {
         borderTopWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
-        paddingVertical: 8,
+        paddingVertical: 16,
     },
     mobileHappinessProject: {
         paddingVertical: 14,
     },
     happinessProjectHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'space-between',
     },
     mobileHappinessProjectHeader: {
@@ -877,7 +822,7 @@ const localStyles = StyleSheet.create({
     },
     happinessProjectInfo: {
         flex: 1,
-        marginRight: 8,
+        marginRight: 16,
         minWidth: 0,
     },
     mobileHappinessProjectInfo: {
@@ -887,6 +832,7 @@ const localStyles = StyleSheet.create({
     happinessProjectName: {
         ...styles.subtitle2,
         color: '#ffffff',
+        flexShrink: 1,
     },
     happinessProjectStats: {
         flexDirection: 'row',
@@ -916,6 +862,7 @@ const localStyles = StyleSheet.create({
     happinessActions: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 0,
     },
     mobileHappinessActions: {
         alignSelf: 'stretch',
@@ -927,7 +874,10 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 4,
+        marginRight: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
     },
     happinessComment: {
         ...styles.body2,
