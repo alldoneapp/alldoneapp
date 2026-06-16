@@ -476,6 +476,42 @@ const getDefaultAssistant = state => {
     return defaultAssistant || {}
 }
 
+const getMyDayStateForLoggedUserFocusChange = (state, loggedUser) => {
+    if (!state.myDayAllTodayTasks.loaded) return null
+
+    const {
+        myDaySelectedTasks,
+        myDayOtherTasks,
+        myDayOpenSubtasksMap,
+        myDaySortingSubtasksMap,
+        myDaySortingSelectedTasks,
+        myDaySortingOtherTasks,
+    } = processMyDayData(
+        loggedUser,
+        state.loggedUserProjectsMap,
+        state.myDayAllTodayTasks,
+        state.administratorUser.uid,
+        state.projectUsers
+    )
+
+    resetActiveTaskDatesIfTaskChanges(loggedUser.activeTaskId, myDaySelectedTasks[0], loggedUser.uid)
+
+    const myDayShowAllTasks =
+        (state.activeDragTaskModeInMyDay ? myDaySortingOtherTasks.length : myDayOtherTasks.length) === 0
+            ? false
+            : state.myDayShowAllTasks
+
+    return {
+        myDaySelectedTasks,
+        myDayOtherTasks,
+        myDayOpenSubtasksMap,
+        myDayShowAllTasks,
+        myDaySortingSubtasksMap,
+        myDaySortingSelectedTasks,
+        myDaySortingOtherTasks,
+    }
+}
+
 export const theReducer = (state = initialState, action) => {
     switch (action.type) {
         case 'Set selected Note':
@@ -505,6 +541,8 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, loggedUserProjects, loggedUserProjectsMap }
         }
         case 'Store logged user': {
+            const previousFocusTaskId = state.loggedUser.inFocusTaskId || ''
+            const previousFocusProjectId = state.loggedUser.inFocusTaskProjectId || ''
             const loggedUser = updateInactiveProjectsData(
                 action.loggedUser,
                 state.activeGuideId,
@@ -512,8 +550,12 @@ export const theReducer = (state = initialState, action) => {
                 state.areArchivedActive
             )
             const currentUser = updateCurrentUserIfNeeded(state, [loggedUser])
+            const focusChanged =
+                previousFocusTaskId !== (loggedUser.inFocusTaskId || '') ||
+                previousFocusProjectId !== (loggedUser.inFocusTaskProjectId || '')
+            const myDayState = focusChanged ? getMyDayStateForLoggedUserFocusChange(state, loggedUser) : null
 
-            return { ...state, loggedUser, currentUser }
+            return { ...state, loggedUser, currentUser, ...(myDayState || {}) }
         }
         case 'Store current user': {
             return { ...state, currentUser: action.currentUser }
