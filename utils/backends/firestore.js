@@ -6471,6 +6471,35 @@ export async function getGithubUserConnection(projectId, userId) {
     }
 }
 
+// --- Per-assistant MCP server connections ---
+// The non-secret server config (label, url, transport, authType, enabled, tokenLast4)
+// lives on the assistant doc and is edited via updateAssistant. Only the secret
+// (token / OAuth tokens) is connected/validated/stored server-side via these callables.
+
+export async function connectAssistantMcpServer(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('connectAssistantMcpServer')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function disconnectAssistantMcpServer(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectAssistantMcpServer')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function beginMcpOAuth(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('beginMcpOAuth')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function completeMcpOAuth(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('completeMcpOAuth')
+    const result = await fn(data)
+    return result.data
+}
+
 //MENTION ALL
 
 export function watchSubtasks(projectId, taskId, watcherKey, callback) {

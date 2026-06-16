@@ -16,6 +16,7 @@ import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
 import SkillsAccessProperty from './SkillsAccess/SkillsAccessProperty'
 import DelegationDescriptionProperty from './DelegationDescription/DelegationDescriptionProperty'
 import DelegationTargetsAccessProperty from './DelegationTargetsAccess/DelegationTargetsAccessProperty'
+import McpServersAccessProperty from './McpServersAccess/McpServersAccessProperty'
 import AddPreConfigTask from './PreConfigTasks/AddPreConfigTask'
 import PreConfigTaskList from './PreConfigTasks/PreConfigTaskList'
 import DeleteAssistant from './DeleteAssistant'
@@ -163,6 +164,7 @@ export default function AssistantCustomizations({
                     )}
                     <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <SkillsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <McpServersAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     {hasTalkToAssistantTool && (
                         <DelegationTargetsAccessProperty
                             disabled={!canEditAssitant}

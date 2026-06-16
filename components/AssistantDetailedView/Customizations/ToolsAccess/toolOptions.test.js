@@ -1,4 +1,10 @@
-import { DEFAULT_ALLOWED_TOOLS, TOOL_OPTIONS, TOOL_LABEL_BY_KEY, normalizeAllowedTools } from './toolOptions'
+import {
+    DEFAULT_ALLOWED_TOOLS,
+    OPT_IN_ONLY_TOOLS,
+    TOOL_OPTIONS,
+    TOOL_LABEL_BY_KEY,
+    normalizeAllowedTools,
+} from './toolOptions'
 
 describe('assistant tool options', () => {
     test('includes get_updates in the selectable assistant permissions', () => {
@@ -31,12 +37,22 @@ describe('assistant tool options', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })
 
-    test('defaults to every selectable tool', () => {
-        expect(DEFAULT_ALLOWED_TOOLS).toEqual(TOOL_OPTIONS.map(option => option.key))
+    test('defaults to every selectable tool except opt-in-only tools', () => {
+        expect(DEFAULT_ALLOWED_TOOLS).toEqual(
+            TOOL_OPTIONS.map(option => option.key).filter(key => !OPT_IN_ONLY_TOOLS.has(key))
+        )
     })
 
     test('enables the VM task tool by default', () => {
         expect(DEFAULT_ALLOWED_TOOLS).toContain('execute_task_in_vm')
         expect(TOOL_OPTIONS.map(option => option.key)).toContain('execute_task_in_vm')
+    })
+
+    test('includes the MCP servers tool as opt-in only', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'mcp_servers', labelKey: 'Use connected MCP servers' }])
+        )
+        expect(OPT_IN_ONLY_TOOLS.has('mcp_servers')).toBe(true)
+        expect(DEFAULT_ALLOWED_TOOLS).not.toContain('mcp_servers')
     })
 })

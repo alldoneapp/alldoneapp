@@ -147,6 +147,14 @@ service cloud.firestore {
       allow write: if isProjectMember(projectId);
     }
 
+    // Per-assistant MCP server secrets (bearer tokens / OAuth tokens). Server-only:
+    // written + read exclusively by Cloud Functions via the Admin SDK (which bypasses
+    // rules). Never exposed to clients — the non-secret config (label, url, tokenLast4)
+    // lives on the assistant doc above.
+    match /assistants/{projectId}/mcpSecrets/{secretId} {
+      allow read, write: if false;
+    }
+
     function isAdministrator() {
       return signedIn() && get(/databases/$(database)/documents/roles/administrator).data.userId == request.auth.uid;
     }

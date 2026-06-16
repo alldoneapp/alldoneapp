@@ -49,6 +49,10 @@
                 "function": "mcpOAuthCallback"
             },
             {
+                "source": "/mcpClientOAuthCallback",
+                "function": "mcpClientOAuthCallback"
+            },
+            {
                 "source": "/.well-known/oauth-authorization-server",
                 "function": "oauthAuthorizationServer"
             },

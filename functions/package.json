@@ -18,7 +18,7 @@
         "@ffmpeg-installer/ffmpeg": "^1.1.0",
         "@google-cloud/firestore": "^4.2.0",
         "@google-cloud/storage": "^7.7.0",
-        "@modelcontextprotocol/sdk": "^0.6.0",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "@mollie/api-client": "^3.5.1",
         "@tavily/core": "^0.0.2",
         "algoliasearch": "^4.10.5",

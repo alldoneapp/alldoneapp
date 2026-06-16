@@ -37,6 +37,7 @@ export const TOOL_OPTIONS = [
     { key: 'web_search', labelKey: 'Search the internet' },
     { key: 'execute_task_in_vm', labelKey: 'Run task in a VM' },
     { key: 'external_tools', labelKey: 'Use external app tools' },
+    { key: 'mcp_servers', labelKey: 'Use connected MCP servers' },
     { key: 'talk_to_assistant', labelKey: 'Talk to assistants' },
 ]
 
@@ -46,8 +47,9 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
 }, {})
 
 // Powerful / billable tools that must be explicitly enabled per assistant.
-// Currently empty: new assistants receive the full selectable tool set by default.
-export const OPT_IN_ONLY_TOOLS = new Set([])
+// `mcp_servers` reaches out to external MCP servers (per-assistant configured) and
+// is metered, so it is opt-in rather than on by default.
+export const OPT_IN_ONLY_TOOLS = new Set(['mcp_servers'])
 
 export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key).filter(key => !OPT_IN_ONLY_TOOLS.has(key))
 

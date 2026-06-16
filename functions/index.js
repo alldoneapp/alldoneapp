@@ -865,6 +865,114 @@ exports.disconnectGithubRepo = onCall(
     }
 )
 
+exports.connectAssistantMcpServer = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { connectAssistantMcpServer } = require('./MCP/mcpAssistantConnect')
+        return await connectAssistantMcpServer({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            assistantId: data && data.assistantId,
+            server: data && data.server,
+            secret: data && data.secret,
+        })
+    }
+)
+
+exports.disconnectAssistantMcpServer = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { disconnectAssistantMcpServer } = require('./MCP/mcpAssistantConnect')
+        return await disconnectAssistantMcpServer({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            assistantId: data && data.assistantId,
+            serverId: data && data.serverId,
+        })
+    }
+)
+
+exports.beginMcpOAuth = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { beginMcpOAuth } = require('./MCP/mcpClientOAuth')
+        return await beginMcpOAuth({ userId: auth.uid, serverUrl: data && data.serverUrl })
+    }
+)
+
+exports.completeMcpOAuth = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { completeMcpOAuth } = require('./MCP/mcpClientOAuth')
+        return await completeMcpOAuth({ userId: auth.uid, state: data && data.state })
+    }
+)
+
+// Public redirect target for the MCP OAuth authorization-code flow. Reached via a
+// hosting rewrite (/mcpClientOAuthCallback). Exchanges the code, then renders a tiny
+// page that notifies the opener window and closes itself.
+exports.mcpClientOAuthCallback = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async (req, res) => {
+        const state = (req.query && req.query.state) || ''
+        const code = (req.query && req.query.code) || ''
+        const oauthError = (req.query && req.query.error) || ''
+        const renderPage = (ok, message) => {
+            const payload = JSON.stringify({ type: 'mcp_oauth_complete', state, ok })
+            res.set('Content-Type', 'text/html')
+            res.status(200).send(
+                `<!doctype html><html><body style="font-family:sans-serif;padding:24px">` +
+                    `<p>${ok ? 'Authorization complete. You can close this window.' : 'Authorization failed.'}</p>` +
+                    `<p style="color:#888">${String(message || '')}</p>` +
+                    `<script>try{window.opener&&window.opener.postMessage(${payload},'*')}catch(e){}` +
+                    `setTimeout(function(){window.close()},800)</script></body></html>`
+            )
+        }
+        if (oauthError) return renderPage(false, oauthError)
+        if (!state || !code) return renderPage(false, 'Missing code or state')
+        try {
+            const { exchangeMcpOAuthCode } = require('./MCP/mcpClientOAuth')
+            await exchangeMcpOAuthCode({ code, state })
+            return renderPage(true, '')
+        } catch (err) {
+            return renderPage(false, (err && err.message) || 'Token exchange failed')
+        }
+    }
+)
+
 exports.giphyRandomGif = onCall(
     {
         timeoutSeconds: 30,

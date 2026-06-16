@@ -13,6 +13,7 @@ export const RECORD_VIDEO_MODAL_ID = generateKey()
 export const RECORD_SCREEN_MODAL_ID = generateKey()
 
 export const TASK_MORE_OPTIONS_MODAL_ID = generateKey()
+export const ASSISTANT_MCP_SERVERS_MODAL_ID = generateKey()
 export const TASK_PARENT_GOAL_MODAL_ID = generateKey()
 export const MENTION_MODAL_ID = generateKey()
 export const MANAGE_TASK_MODAL_ID = generateKey()

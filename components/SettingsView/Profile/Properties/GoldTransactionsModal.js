@@ -52,6 +52,7 @@ function getTransactionLabel(source) {
         meeting_transcription: 'Meeting transcription',
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
+        mcp_tool_call: 'MCP tool call',
         whatsapp_voice: 'WhatsApp voice message',
         whatsapp_call: 'WhatsApp assistant call',
         iframe_deduction: 'Embedded app deduction',

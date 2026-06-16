@@ -170,6 +170,13 @@ const ALLOWED_ASSISTANT_SETTINGS_REALTIME_VOICES = [
 ]
 const COMPACT_THREAD_CONTEXT_TOOL_KEY = 'compact_thread_context'
 const EXTERNAL_TOOL_PREFIX = 'external_tool_'
+// MCP (Model Context Protocol) client tools. When `mcp_servers` is enabled, the
+// assistant's configured remote MCP servers are queried for their tool lists and
+// each tool is exposed to the model with an `mcp_<serverSlug>_<toolSlug>_<hash>`
+// name so we can route a call back to the right server + remote tool.
+const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
+const MCP_TOOL_PREFIX = 'mcp_'
+const MAX_MCP_TOOLS = 60
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
 // be sequential (one project per round-trip), which made tool-schema builds take tens of seconds
@@ -1491,6 +1498,137 @@ async function resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeC
     return targets.find(target => target.toolName === toolName) || null
 }
 
+// ----- MCP (Model Context Protocol) client tools -----
+
+const isMcpToolName = toolName => typeof toolName === 'string' && toolName.startsWith(MCP_TOOL_PREFIX)
+
+// Build a model-facing tool name that round-trips to (serverId, remoteToolName).
+// Deterministic so resolveMcpToolTargetByName can recompute + match it. Capped at
+// 64 chars (OpenAI function-name limit) like the external-tool name builder.
+const buildMcpToolName = ({ serverId, serverLabel, remoteToolName }) => {
+    const serverSlug = normalizeToolNameToken(serverLabel || serverId).slice(0, 14)
+    const toolSlug = normalizeToolNameToken(remoteToolName).slice(0, 24)
+    const hash = crypto.createHash('sha1').update(`${serverId}:${remoteToolName}`).digest('hex').slice(0, 12)
+    return `${MCP_TOOL_PREFIX}${serverSlug}_${toolSlug}_${hash}`.slice(0, 64)
+}
+
+// Read the assistant's configured + enabled MCP servers from its Firestore doc.
+async function getAssistantMcpServers(projectId, assistantId) {
+    if (!projectId || !assistantId) return []
+    const snap = await admin.firestore().doc(`assistants/${projectId}/items/${assistantId}`).get()
+    if (!snap.exists) return []
+    const servers = snap.data()?.mcpServers
+    if (!Array.isArray(servers)) return []
+    return servers.filter(s => isObject(s) && s.enabled !== false && s.url)
+}
+
+// Discover the tools reachable across all enabled MCP servers for this assistant.
+// Each server is queried in parallel; a server that fails to respond is skipped
+// (its tools just don't appear) so one bad server can't break the whole request.
+async function getReachableMcpTools(toolRuntimeContext) {
+    const { projectId, assistantId } = toolRuntimeContext || {}
+    const servers = await getAssistantMcpServers(projectId, assistantId)
+    if (!servers.length) return []
+
+    const mcpClient = require('./mcpClient')
+    const { getValidMcpSecret } = require('../MCP/mcpAssistantConnect')
+
+    const perServer = await Promise.all(
+        servers.map(async server => {
+            try {
+                const secret =
+                    server.authType && server.authType !== 'none'
+                        ? await getValidMcpSecret(projectId, assistantId, server.id)
+                        : null
+                const tools = await mcpClient.listTools(server, secret)
+                return tools.map(tool => ({
+                    toolName: buildMcpToolName({
+                        serverId: server.id,
+                        serverLabel: server.label,
+                        remoteToolName: tool.name,
+                    }),
+                    serverId: server.id,
+                    serverLabel: server.label || server.id,
+                    serverConfig: { url: server.url, transport: server.transport, authType: server.authType },
+                    remoteToolName: tool.name,
+                    description: String(tool.description || `Run ${tool.name} on ${server.label || 'MCP server'}`),
+                    inputSchema: normalizeExternalToolInputSchema(tool.inputSchema),
+                }))
+            } catch (err) {
+                console.warn('🔌 MCP: failed to list tools for server', {
+                    projectId,
+                    assistantId,
+                    serverId: server.id,
+                    error: err && err.message ? err.message : String(err),
+                })
+                return []
+            }
+        })
+    )
+
+    // Flatten, dedupe by tool name, and cap the total exposed to the model.
+    const seen = new Set()
+    const targets = []
+    for (const tool of perServer.flat()) {
+        if (seen.has(tool.toolName)) continue
+        seen.add(tool.toolName)
+        targets.push(tool)
+        if (targets.length >= MAX_MCP_TOOLS) break
+    }
+    return targets
+}
+
+const buildMcpToolSchema = target => ({
+    type: 'function',
+    function: {
+        name: target.toolName,
+        description: `MCP server "${target.serverLabel}" → ${target.remoteToolName}. ${target.description}`,
+        parameters: target.inputSchema,
+    },
+})
+
+async function getDynamicMcpToolSchemas(allowedTools, toolRuntimeContext = null) {
+    if (!Array.isArray(allowedTools) || !allowedTools.includes(MCP_SERVERS_TOOL_KEY)) return []
+    const targets = await getReachableMcpTools(toolRuntimeContext)
+    return targets.map(buildMcpToolSchema)
+}
+
+async function resolveMcpToolTargetByName(toolName, toolRuntimeContext = null) {
+    if (!isMcpToolName(toolName)) return null
+    const targets = await getReachableMcpTools(toolRuntimeContext)
+    return targets.find(target => target.toolName === toolName) || null
+}
+
+// Execute a single MCP tool call against the resolved remote server.
+async function executeMcpTool({ target, toolArgs, projectId, assistantId }) {
+    const mcpClient = require('./mcpClient')
+    const { getValidMcpSecret } = require('../MCP/mcpAssistantConnect')
+
+    const secret =
+        target.serverConfig.authType && target.serverConfig.authType !== 'none'
+            ? await getValidMcpSecret(projectId, assistantId, target.serverId)
+            : null
+
+    let raw
+    try {
+        raw = await mcpClient.callTool(target.serverConfig, secret, target.remoteToolName, toolArgs)
+    } catch (err) {
+        throw new Error(
+            `MCP tool failed (${target.serverLabel} → ${target.remoteToolName}): ` +
+                `${String(err && err.message ? err.message : err).slice(0, 300)}`
+        )
+    }
+
+    return {
+        success: raw?.isError !== true,
+        isError: raw?.isError === true,
+        serverLabel: target.serverLabel,
+        toolName: target.remoteToolName,
+        content: Array.isArray(raw?.content) ? raw.content : [],
+        structuredContent: raw?.structuredContent || null,
+    }
+}
+
 // getAccessibleProjectIdsFromUserData / getDelegationScopeProjectIdsFromUserData are pure helpers
 // extracted to ./projectScope so they can be unit-tested without loading the full assistant stack.
 
@@ -1867,12 +2005,13 @@ async function getDynamicToolSchemasWithCache(allowedTools, toolRuntimeContext =
         requestUserId: toolRuntimeContext?.requestUserId || null,
     })
     const inFlightPromise = (async () => {
-        const [delegationToolSchemas, externalToolSchemas] = await Promise.all([
+        const [delegationToolSchemas, externalToolSchemas, mcpToolSchemas] = await Promise.all([
             getDynamicDelegationToolSchemas(allowedTools, toolRuntimeContext),
             getDynamicExternalToolSchemas(allowedTools, toolRuntimeContext),
+            getDynamicMcpToolSchemas(allowedTools, toolRuntimeContext),
         ])
 
-        const data = { delegationToolSchemas, externalToolSchemas }
+        const data = { delegationToolSchemas, externalToolSchemas, mcpToolSchemas }
         try {
             await writeDynamicToolSchemasToPersistedCache(key, data)
         } catch (error) {
@@ -1987,6 +2126,12 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     const hasExternalToolsToggle = assistantAllowedTools.includes(EXTERNAL_TOOLS_KEY)
     if (hasExternalToolsToggle && isExternalIntegrationToolName(toolName)) {
         const target = await resolveExternalIntegrationToolTargetByName(toolName, toolRuntimeContext)
+        return !!target
+    }
+
+    const hasMcpToggle = assistantAllowedTools.includes(MCP_SERVERS_TOOL_KEY)
+    if (hasMcpToggle && isMcpToolName(toolName)) {
+        const target = await resolveMcpToolTargetByName(toolName, toolRuntimeContext)
         return !!target
     }
 
@@ -2120,6 +2265,24 @@ async function spentGold(userId, goldToReduce, linkContext = {}) {
         projectId: linkContext.projectId,
         objectId: linkContext.objectId,
         objectType: linkContext.objectType,
+    })
+}
+
+// Flat gold cost per MCP tool invocation. The expensive part of an MCP call is
+// the remote server's own compute, which we don't meter; this is a small, fixed
+// platform charge so usage is visible in the user's Gold history.
+const MCP_TOOL_CALL_GOLD = 1
+
+async function chargeGoldForMcpToolCall({ requestUserId, projectId, assistantId, target }) {
+    if (!requestUserId || MCP_TOOL_CALL_GOLD <= 0) return
+    const { deductGold } = require('../Gold/goldHelper')
+    await deductGold(requestUserId, MCP_TOOL_CALL_GOLD, {
+        source: 'mcp_tool_call',
+        channel: 'assistant',
+        projectId: projectId || '',
+        objectId: assistantId || '',
+        objectType: 'assistant',
+        note: `${target?.serverLabel || 'MCP server'} → ${target?.remoteToolName || 'tool'}`,
     })
 }
 
@@ -2399,28 +2562,39 @@ async function interactWithChatStream(
         if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
             const { getToolSchemas } = require('./toolSchemas')
             const staticAllowedTools = runtimeAllowedTools.filter(
-                toolName => toolName !== TALK_TO_ASSISTANT_TOOL_KEY && toolName !== EXTERNAL_TOOLS_KEY
+                toolName =>
+                    toolName !== TALK_TO_ASSISTANT_TOOL_KEY &&
+                    toolName !== EXTERNAL_TOOLS_KEY &&
+                    toolName !== MCP_SERVERS_TOOL_KEY
             )
             const staticToolSchemas = getToolSchemas(staticAllowedTools)
             const dynamicToolSchemasStart = Date.now()
-            const { delegationToolSchemas, externalToolSchemas } = await getDynamicToolSchemasWithCache(
-                runtimeAllowedTools,
-                toolRuntimeContext
-            )
+            const {
+                delegationToolSchemas,
+                externalToolSchemas,
+                mcpToolSchemas = [],
+            } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
             console.log('🔧 TOOL SCHEMAS: Dynamic schema retrieval complete', {
                 retrievalDurationMs: Date.now() - dynamicToolSchemasStart,
                 projectId: toolRuntimeContext?.projectId || null,
                 assistantId: toolRuntimeContext?.assistantId || null,
                 requestUserId: toolRuntimeContext?.requestUserId || null,
             })
-            const toolSchemas = [...staticToolSchemas, ...delegationToolSchemas, ...externalToolSchemas]
+            const toolSchemas = [
+                ...staticToolSchemas,
+                ...delegationToolSchemas,
+                ...externalToolSchemas,
+                ...mcpToolSchemas,
+            ]
 
             console.log('🔧 TOOL SCHEMAS: Assembled for request', {
                 staticAllowedToolsCount: staticAllowedTools.length,
                 staticToolSchemasCount: staticToolSchemas.length,
                 delegationToolSchemasCount: delegationToolSchemas.length,
                 externalToolSchemasCount: externalToolSchemas.length,
+                mcpToolSchemasCount: mcpToolSchemas.length,
                 externalToolsToggleEnabled: runtimeAllowedTools.includes(EXTERNAL_TOOLS_KEY),
+                mcpServersToggleEnabled: runtimeAllowedTools.includes(MCP_SERVERS_TOOL_KEY),
                 toolRuntimeContext,
             })
 
@@ -4032,6 +4206,43 @@ async function executeToolNatively(
             callerAssistantId: assistantId,
             suppressSensitiveLogging: toolRuntimeContext?.sourceChannel === 'whatsapp_call',
         })
+    }
+
+    if (isMcpToolName(toolName)) {
+        const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+            forceRefresh: true,
+        })
+        const callerAllowedTools = Array.isArray(callerAssistant?.allowedTools) ? callerAssistant.allowedTools : []
+
+        if (!callerAllowedTools.includes(MCP_SERVERS_TOOL_KEY)) {
+            throw new Error(`Tool not permitted: ${toolName}`)
+        }
+
+        const target = await resolveMcpToolTargetByName(toolName, { projectId, assistantId, requestUserId })
+        if (!target) {
+            throw new Error(`MCP tool is not accessible: ${toolName}`)
+        }
+
+        const result = await executeMcpTool({ target, toolArgs, projectId, assistantId })
+
+        // Best-effort metered gold charge for the MCP call (mirrors other billable tools).
+        try {
+            await chargeGoldForMcpToolCall({
+                requestUserId,
+                projectId,
+                assistantId,
+                target,
+            })
+        } catch (goldError) {
+            console.warn('🔌 MCP: gold charge failed (continuing)', {
+                projectId,
+                assistantId,
+                serverId: target.serverId,
+                error: goldError && goldError.message ? goldError.message : String(goldError),
+            })
+        }
+
+        return result
     }
 
     switch (toolName) {
