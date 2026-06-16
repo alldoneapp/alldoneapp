@@ -104,11 +104,6 @@ export async function hasMicrosoftServerSideAuth(
     }
 }
 
-export async function getMicrosoftServerSideToken(projectId: string, service: MicrosoftService): Promise<string> {
-    const result = await runHttpsCallableFunction('microsoftOAuthGetToken', { projectId, service })
-    return result.accessToken
-}
-
 export async function revokeMicrosoftServerSideAuth(
     projectId: string,
     service: MicrosoftService

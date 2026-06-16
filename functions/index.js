@@ -3779,32 +3779,10 @@ exports.microsoftOAuthCallback = onRequest(
     }
 )
 
-exports.microsoftOAuthGetToken = onCall(
-    {
-        timeoutSeconds: 60,
-        memory: '512MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { auth, data } = request
-        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
-
-        const { getAccessToken } = require('./MicrosoftOAuth/microsoftOAuthHandler')
-        const { projectId, service } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
-
-        try {
-            await assertProjectAccess(auth.uid, projectId)
-            const accessToken = await getAccessToken(auth.uid, projectId, service)
-            return { accessToken }
-        } catch (error) {
-            console.error('Error getting Microsoft access token:', error)
-            if (error instanceof HttpsError) throw error
-            throw new HttpsError('internal', `Failed to get Microsoft access token: ${error.message}`)
-        }
-    }
-)
+// Note: there is intentionally no `microsoftOAuthGetToken` callable. Microsoft
+// Graph access tokens are used only server-side (functions/MicrosoftGraph/graphClient.js)
+// and must never be returned to the browser. The client checks connection state via
+// `microsoftOAuthCheckCredentials` instead.
 
 exports.microsoftOAuthRevoke = onCall(
     {
