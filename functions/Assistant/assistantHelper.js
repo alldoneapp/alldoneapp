@@ -185,6 +185,10 @@ const DELEGATION_PROJECT_SCAN_CONCURRENCY = 25
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 200
+// Wall-clock budget for a single chat run's tool loop. Kept well under the askToBotSecondGen
+// 540s function timeout so the run ends gracefully (with a clear message + finalized comment)
+// instead of being hard-killed mid-iteration and leaving the comment spinning forever.
+const MAX_RUN_WALL_CLOCK_MS = 7 * 60 * 1000
 const TOOL_PROGRESS_UPDATE_INTERVAL_MS = 7000
 const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
 const TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY =
@@ -2630,6 +2634,10 @@ async function interactWithChatStream(
             }
         }
 
+        // Slim, always-on summary. The full per-message preview below maps over the entire
+        // (monotonically growing) conversation and extracts text from each message — work that
+        // scales with history length and runs on every tool-loop round — so it's gated behind
+        // the detailed-logging flag.
         console.log('Creating OpenAI stream with params:', {
             model: requestParams.model,
             temperature: requestParams.temperature,
@@ -2637,26 +2645,33 @@ async function interactWithChatStream(
             messageCount: messages.length,
             hasTools: !!requestParams.tools,
             toolCount: requestParams.tools?.length,
-            toolNames: requestParams.tools?.map(t => t.function.name),
-            messagesPreview: messages.map((m, idx) => ({
-                index: idx,
-                role: m.role,
-                contentLength: getContentLength(m.content),
-                contentPreview: getContentPreview(m.content),
-                hasToolCalls: !!m.tool_calls,
-                toolCallsCount: m.tool_calls?.length,
-                hasToolCallId: !!m.tool_call_id,
-                toolCallId: m.tool_call_id,
-            })),
-            lastMessage: messages[messages.length - 1]
-                ? {
-                      role: messages[messages.length - 1].role,
-                      content: getMessageTextForTokenCounting(messages[messages.length - 1].content).substring(0, 300),
-                      hasToolCalls: !!messages[messages.length - 1].tool_calls,
-                      hasToolCallId: !!messages[messages.length - 1].tool_call_id,
-                  }
-                : null,
         })
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Creating OpenAI stream — message detail:', {
+                toolNames: requestParams.tools?.map(t => t.function.name),
+                messagesPreview: messages.map((m, idx) => ({
+                    index: idx,
+                    role: m.role,
+                    contentLength: getContentLength(m.content),
+                    contentPreview: getContentPreview(m.content),
+                    hasToolCalls: !!m.tool_calls,
+                    toolCallsCount: m.tool_calls?.length,
+                    hasToolCallId: !!m.tool_call_id,
+                    toolCallId: m.tool_call_id,
+                })),
+                lastMessage: messages[messages.length - 1]
+                    ? {
+                          role: messages[messages.length - 1].role,
+                          content: getMessageTextForTokenCounting(messages[messages.length - 1].content).substring(
+                              0,
+                              300
+                          ),
+                          hasToolCalls: !!messages[messages.length - 1].tool_calls,
+                          hasToolCallId: !!messages[messages.length - 1].tool_call_id,
+                      }
+                    : null,
+            })
+        }
 
         // Make the actual API call to OpenAI
         const apiCallStart = Date.now()
@@ -7601,7 +7616,39 @@ async function storeChunks(
             assistantRun && assistantRun.kind === 'chat'
                 ? admin.firestore().doc(`assistantRunLocks/${assistantRun.runId}`)
                 : null
-        const { AssistantRunCancelledError, isAssistantRunCancellationRequested } = require('./assistantRunIdempotency')
+        const {
+            AssistantRunCancelledError,
+            isAssistantRunCancellationRequested,
+            recordAssistantRunComment,
+        } = require('./assistantRunIdempotency')
+
+        // Stamp the comment coordinates onto the lock so the watchdog can finalize this exact
+        // comment if the run's process dies before it can clean up after itself.
+        if (assistantRunLockRef) {
+            recordAssistantRunComment(assistantRunLockRef, {
+                projectId,
+                objectType,
+                objectId,
+                commentId,
+            }).catch(() => {})
+        }
+
+        // Wall-clock anchor for the per-run time budget enforced in the tool loop below. Anchored
+        // per-invocation (not the shared module-global start) so concurrent runs don't skew it.
+        const runWallClockStart = Date.now()
+
+        // The assistant's settings (allowedTools, model, etc.) don't change mid-run, so fetch
+        // once and reuse instead of force-refreshing on every tool iteration (which was costing
+        // several seconds per step). Fresh at run start, cached for the rest of the run.
+        let cachedRunAssistant = null
+        const getRunAssistant = async () => {
+            if (!cachedRunAssistant) {
+                cachedRunAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+                    forceRefresh: true,
+                })
+            }
+            return cachedRunAssistant
+        }
 
         let lastCancellationCheckAt = 0
         const throwIfCancelled = async (force = false) => {
@@ -7900,7 +7947,8 @@ async function storeChunks(
                 while (
                     currentToolCalls &&
                     currentToolCalls.length > 0 &&
-                    toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS
+                    toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS &&
+                    Date.now() - runWallClockStart < MAX_RUN_WALL_CLOCK_MS
                 ) {
                     toolCallIteration++
                     if (ENABLE_DETAILED_LOGGING) {
@@ -7948,9 +7996,7 @@ async function storeChunks(
 
                     // Check permissions
                     await throwIfCancelled(true)
-                    const assistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
-                        forceRefresh: true,
-                    })
+                    const assistant = await getRunAssistant()
                     const allowed = await isToolAllowedForExecution(
                         Array.isArray(assistant.allowedTools) ? assistant.allowedTools : [],
                         toolName,
@@ -8245,13 +8291,27 @@ async function storeChunks(
                     }
                 } // End of while loop
 
-                // Check if we hit max iterations
-                if (toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS) {
+                // Check whether the loop stopped because of a guardrail (max iterations or time
+                // budget) rather than because the assistant was done. currentToolCalls is null
+                // only when the loop exited naturally with no further tool calls.
+                const hitMaxIterations = toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS
+                const hitTimeBudget =
+                    !hitMaxIterations &&
+                    !!currentToolCalls &&
+                    currentToolCalls.length > 0 &&
+                    Date.now() - runWallClockStart >= MAX_RUN_WALL_CLOCK_MS
+                if (hitMaxIterations || hitTimeBudget) {
                     await flushPendingUpdate() // Flush any pending updates first
-                    console.warn('🔧 NATIVE TOOL CALL: Hit max tool call iterations!', {
+                    console.warn('🔧 NATIVE TOOL CALL: Tool loop stopped by guardrail', {
+                        hitMaxIterations,
+                        hitTimeBudget,
+                        toolCallIteration,
                         maxIterations: MAX_NATIVE_TOOL_CALL_ITERATIONS,
+                        elapsedMs: Date.now() - runWallClockStart,
                     })
-                    commentText += '\n\n⚠️ Maximum tool call iterations reached'
+                    commentText += hitTimeBudget
+                        ? '\n\n⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.'
+                        : '\n\n⚠️ Maximum tool call iterations reached'
                     await safeCommentUpdate({ commentText, isLoading: false })
                 }
 

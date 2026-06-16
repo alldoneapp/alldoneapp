@@ -2029,28 +2029,75 @@ exports.cancelAssistantRunSecondGen = onCall(
             if (assistantRun.requestUserId && assistantRun.requestUserId !== userId) {
                 throw new HttpsError('permission-denied', 'Only the user who started the assistant run can stop it')
             }
-            transaction.set(
-                commentRef,
-                {
-                    assistantRun: {
-                        ...assistantRun,
-                        kind: runKind,
-                        runId,
-                        requestUserId: assistantRun.requestUserId || userId,
-                        status: 'cancel_requested',
-                        cancelRequestedAt: now,
-                        cancelRequestedBy: userId,
+            // Don't clobber a run that finished streaming a real answer between the lock cancel and here.
+            const alreadySettled = comment.isLoading === false
+            if (runKind === 'chat' && !alreadySettled) {
+                // Finalize the comment immediately so the spinner stops even if the run's process is
+                // already dead (timeout/redeploy) — the live loop's own cancel check is only a backup.
+                transaction.set(
+                    commentRef,
+                    {
+                        commentText: 'Stopped.',
+                        isLoading: false,
+                        isThinking: false,
+                        assistantRun: {
+                            ...assistantRun,
+                            kind: runKind,
+                            runId,
+                            requestUserId: assistantRun.requestUserId || userId,
+                            status: 'cancelled',
+                            cancelRequestedAt: now,
+                            cancelRequestedBy: userId,
+                            cancelledAt: now,
+                        },
                     },
-                },
-                { merge: true }
-            )
+                    { merge: true }
+                )
+            } else {
+                transaction.set(
+                    commentRef,
+                    {
+                        assistantRun: {
+                            ...assistantRun,
+                            kind: runKind,
+                            runId,
+                            requestUserId: assistantRun.requestUserId || userId,
+                            status: 'cancel_requested',
+                            cancelRequestedAt: now,
+                            cancelRequestedBy: userId,
+                        },
+                    },
+                    { merge: true }
+                )
+            }
         })
 
         return {
             success: true,
-            status: 'cancel_requested',
+            status: runKind === 'chat' ? 'cancelled' : 'cancel_requested',
             runKind,
             runId,
+        }
+    }
+)
+
+// Watchdog: finalize assistant chat runs whose process died (function timeout, redeploy, crash)
+// without cleaning up. Such runs leave their lock flagged running/cancel_requested and their chat
+// comment stuck on a spinner forever. Runs every 2 minutes; a live run can never exceed the
+// askToBotSecondGen 540s timeout, so anything still "running" past the stuck threshold is dead.
+exports.reconcileStuckAssistantRunsSecondGen = onSchedule(
+    {
+        schedule: '*/2 * * * *',
+        timeZone: 'UTC',
+        region: 'europe-west1',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+    },
+    async () => {
+        const { reconcileStuckAssistantRunLocks } = require('./Assistant/assistantRunIdempotency')
+        const result = await reconcileStuckAssistantRunLocks(admin.firestore())
+        if (result.reconciled > 0) {
+            console.log('🧹 ASSISTANT RUN WATCHDOG: reconciled stuck runs', result)
         }
     }
 )

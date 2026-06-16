@@ -51,9 +51,67 @@ function buildConversationSafeCalendarAvailabilityResult(toolResult) {
     return safeResult
 }
 
+// The conversation-safe version of a tool result is what gets re-sent to the model on EVERY
+// subsequent tool-loop round. For `search` the raw result carries full per-item bodies (note
+// content, task comment threads, long descriptions) that compound the context and make each
+// additional step slower than the last. We keep ids/names/dates (short fields) so the model can
+// still pick a result and fetch the full record by id, but trim the bulk.
+const SEARCH_RESULT_MAX_ITEMS_PER_CATEGORY = 10
+const SEARCH_RESULT_MAX_STRING_LENGTH = 500
+
+function truncateForContext(value, depth = 0) {
+    if (typeof value === 'string') {
+        if (value.length <= SEARCH_RESULT_MAX_STRING_LENGTH) return value
+        return `${value.slice(0, SEARCH_RESULT_MAX_STRING_LENGTH)}… [truncated ${
+            value.length - SEARCH_RESULT_MAX_STRING_LENGTH
+        } chars]`
+    }
+    if (Array.isArray(value)) {
+        if (depth >= 5) return '[…]'
+        return value.map(item => truncateForContext(item, depth + 1))
+    }
+    if (isObject(value)) {
+        if (depth >= 7) return {}
+        const out = {}
+        for (const [key, val] of Object.entries(value)) {
+            out[key] = truncateForContext(val, depth + 1)
+        }
+        return out
+    }
+    return value
+}
+
+function buildConversationSafeSearchResult(toolResult) {
+    if (!isObject(toolResult) || !isObject(toolResult.results)) return toolResult
+
+    const trimmedResults = {}
+    let omittedItems = 0
+    for (const [category, items] of Object.entries(toolResult.results)) {
+        if (!Array.isArray(items)) {
+            trimmedResults[category] = truncateForContext(items)
+            continue
+        }
+        const kept = items.slice(0, SEARCH_RESULT_MAX_ITEMS_PER_CATEGORY)
+        omittedItems += items.length - kept.length
+        trimmedResults[category] = kept.map(item => truncateForContext(item))
+    }
+
+    return {
+        ...toolResult,
+        results: trimmedResults,
+        // `totalResults`/`summary` already convey the true totals, so the model still knows the
+        // full picture even when individual items were trimmed for context size.
+        ...(omittedItems > 0 ? { omittedFromContext: omittedItems } : {}),
+        contextTrimmed: true,
+    }
+}
+
 function buildConversationSafeToolResult(toolName, toolResult) {
     if (toolName === 'find_calendar_availability') {
         return buildConversationSafeCalendarAvailabilityResult(toolResult)
+    }
+    if (toolName === 'search') {
+        return buildConversationSafeSearchResult(toolResult)
     }
     if (!isSuccessfulAttachmentToolResult(toolName, toolResult)) return toolResult
 
