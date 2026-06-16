@@ -179,8 +179,10 @@ async function exchangeMcpOAuthCode({ code, state }) {
 }
 
 /**
- * Step 4 — the client collects the tokens once the popup signals completion.
- * Returns the secret bundle for connectAssistantMcpServer and deletes the session.
+ * Step 4 — status check only. The client polls this until the popup has finished
+ * the exchange. It deliberately returns NO tokens: the access/refresh tokens and
+ * any client_secret never travel back to the browser. They are claimed server-side
+ * by connectAssistantMcpServer via consumeMcpOAuthSession (using the `state` handle).
  */
 async function completeMcpOAuth({ userId, state }) {
     if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
@@ -190,19 +192,36 @@ async function completeMcpOAuth({ userId, state }) {
     if (!snap.exists) throw new HttpsError('not-found', 'OAuth session not found or already used.')
     const session = snap.data() || {}
     if (session.userId !== userId) throw new HttpsError('permission-denied', 'This OAuth session is not yours.')
+    return { status: session.status || 'pending' }
+}
+
+/**
+ * Server-side only — consume a completed OAuth session and return the secret
+ * bundle for storage on the assistant. Verifies ownership + completeness + expiry,
+ * then deletes the one-time session. Called by connectAssistantMcpServer; the
+ * tokens never reach the client.
+ */
+async function consumeMcpOAuthSession({ userId, state }) {
+    if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
+    if (!state) throw new HttpsError('invalid-argument', 'A state is required.')
+
+    const ref = sessionRef(state)
+    const snap = await ref.get()
+    if (!snap.exists) throw new HttpsError('failed-precondition', 'OAuth session not found or already used.')
+    const session = snap.data() || {}
+    if (session.userId !== userId) throw new HttpsError('permission-denied', 'This OAuth session is not yours.')
     if (session.status !== 'complete') {
-        // Still pending — let the client keep polling.
-        return { status: session.status || 'pending' }
+        throw new HttpsError('failed-precondition', 'OAuth authorization has not completed yet.')
+    }
+    if (Date.now() > (session.expiresAt || 0)) {
+        await ref.delete().catch(() => {})
+        throw new HttpsError('failed-precondition', 'OAuth session expired. Please authorize again.')
     }
 
     const tokens = session.tokens || {}
-    // Delete the one-time session now that the tokens have been claimed.
-    await sessionRef(state)
-        .delete()
-        .catch(() => {})
+    await ref.delete().catch(() => {})
 
     return {
-        status: 'complete',
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
         expiresAt: tokens.expiresAt || null,
@@ -215,6 +234,34 @@ async function completeMcpOAuth({ userId, state }) {
             resource: session.resource || null,
         },
     }
+}
+
+/**
+ * Scheduled cleanup — delete OAuth sessions past their expiry. Completed-but-
+ * unclaimed sessions hold tokens, so we don't want them lingering if a user
+ * authorizes but never finishes connecting.
+ */
+async function cleanupExpiredMcpOAuthSessions() {
+    const db = admin.firestore()
+    const snap = await db.collection('mcpOAuthSessions').where('expiresAt', '<', Date.now()).get()
+    if (snap.empty) return { deleted: 0 }
+
+    let deleted = 0
+    let batch = db.batch()
+    let inBatch = 0
+    for (const doc of snap.docs) {
+        batch.delete(doc.ref)
+        inBatch++
+        deleted++
+        if (inBatch >= 400) {
+            await batch.commit()
+            batch = db.batch()
+            inBatch = 0
+        }
+    }
+    if (inBatch > 0) await batch.commit()
+    console.log('🧹 MCP OAuth: cleaned up expired sessions', { deleted })
+    return { deleted }
 }
 
 /**
@@ -246,5 +293,7 @@ module.exports = {
     beginMcpOAuth,
     exchangeMcpOAuthCode,
     completeMcpOAuth,
+    consumeMcpOAuthSession,
+    cleanupExpiredMcpOAuthSessions,
     refreshMcpOAuthTokens,
 }

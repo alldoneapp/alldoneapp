@@ -70,7 +70,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
     const [oauthClientId, setOauthClientId] = useState('')
     const [oauthClientSecret, setOauthClientSecret] = useState('')
     const [oauthScope, setOauthScope] = useState('')
-    const [oauthTokens, setOauthTokens] = useState(null)
+    const [oauthState, setOauthState] = useState(null)
     const [processing, setProcessing] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
@@ -102,7 +102,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
         setOauthClientId('')
         setOauthClientSecret('')
         setOauthScope('')
-        setOauthTokens(null)
+        setOauthState(null)
     }
 
     // Ensure the `mcp_servers` tool is enabled in allowedTools once a server exists.
@@ -114,7 +114,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
 
     const buildSecret = () => {
         if (authType === 'bearer') return { token: token.trim() }
-        if (authType === 'oauth') return oauthTokens || {}
+        if (authType === 'oauth') return { oauthState }
         return null
     }
 
@@ -123,13 +123,13 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
         if (!url.trim()) return setError(translate('Please enter the MCP server URL.'))
         setProcessing(true)
         try {
-            const tokens = await startMcpOAuthFlow({
+            const { oauthState: newState } = await startMcpOAuthFlow({
                 serverUrl: url.trim(),
                 clientId: oauthClientId.trim(),
                 clientSecret: oauthClientSecret.trim(),
                 scope: oauthScope.trim(),
             })
-            setOauthTokens(tokens)
+            setOauthState(newState)
             setSuccess(translate('Authorized. You can now connect the server.'))
         } catch (e) {
             setError((e && e.message) || translate('OAuth authorization failed.'))
@@ -144,7 +144,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
         if (!label.trim()) return setError(translate('Please enter a name for the server.'))
         if (!url.trim()) return setError(translate('Please enter the MCP server URL.'))
         if (authType === 'bearer' && !token.trim()) return setError(translate('Please paste a token.'))
-        if (authType === 'oauth' && !oauthTokens)
+        if (authType === 'oauth' && !oauthState)
             return setError(translate('Please authorize with OAuth before connecting.'))
 
         setProcessing(true)
@@ -275,7 +275,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                         setOauthClientId('')
                         setOauthClientSecret('')
                         setOauthScope('')
-                        setOauthTokens(null)
+                        setOauthState(null)
                     }}
                     disabled={processing}
                 />
@@ -305,7 +305,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                             value={oauthClientId}
                             onChangeText={text => {
                                 setOauthClientId(text)
-                                setOauthTokens(null)
+                                setOauthState(null)
                             }}
                             placeholder={translate('Leave blank to auto-register')}
                             placeholderTextColor={colors.Text03}
@@ -320,7 +320,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                             value={oauthClientSecret}
                             onChangeText={text => {
                                 setOauthClientSecret(text)
-                                setOauthTokens(null)
+                                setOauthState(null)
                             }}
                             placeholder={translate('Only for confidential clients')}
                             placeholderTextColor={colors.Text03}
@@ -336,7 +336,7 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
                             value={oauthScope}
                             onChangeText={text => {
                                 setOauthScope(text)
-                                setOauthTokens(null)
+                                setOauthState(null)
                             }}
                             placeholder={translate('e.g. read write')}
                             placeholderTextColor={colors.Text03}
@@ -352,12 +352,12 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
 
                         <View style={localStyles.oauthRow}>
                             <Button
-                                title={translate(oauthTokens ? 'Re-authorize' : 'Authorize with OAuth')}
+                                title={translate(oauthState ? 'Re-authorize' : 'Authorize with OAuth')}
                                 type={'ghost'}
                                 onPress={onAuthorizeOAuth}
                                 disabled={processing}
                             />
-                            {oauthTokens ? <Text style={localStyles.oauthOk}>{translate('Authorized')}</Text> : null}
+                            {oauthState ? <Text style={localStyles.oauthOk}>{translate('Authorized')}</Text> : null}
                         </View>
                     </>
                 )}

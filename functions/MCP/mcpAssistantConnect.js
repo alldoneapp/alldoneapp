@@ -184,7 +184,23 @@ async function connectAssistantMcpServer({ userId, projectId, assistantId, serve
     await assertCanEditAssistant(projectId, assistantId, userId)
 
     const normalized = normalizeServerInput(server)
-    const { toStore, toValidate, tokenLast4 } = buildSecretRecords(normalized.authType, secret)
+
+    // For OAuth, the client only hands us an `oauthState` handle — never the tokens
+    // themselves. Claim the completed OAuth session server-side so the access/refresh
+    // tokens and any client_secret never round-trip through the browser.
+    let resolvedSecret = secret
+    if (normalized.authType === 'oauth' && isObject(secret) && secret.oauthState) {
+        const { consumeMcpOAuthSession } = require('./mcpClientOAuth')
+        const bundle = await consumeMcpOAuthSession({ userId, state: secret.oauthState })
+        resolvedSecret = {
+            accessToken: bundle.accessToken,
+            refreshToken: bundle.refreshToken,
+            expiresAt: bundle.expiresAt,
+            oauthContext: bundle.oauthContext,
+        }
+    }
+
+    const { toStore, toValidate, tokenLast4 } = buildSecretRecords(normalized.authType, resolvedSecret)
 
     // For an UPDATE that doesn't re-supply the secret (e.g. only relabeling),
     // fall back to the already-stored secret so validation still works.

@@ -1730,6 +1730,22 @@ exports.resetDailyGoldLimitSecondGen = onSchedule(
     }
 )
 
+// Hourly cleanup of expired MCP OAuth sessions (completed-but-unclaimed sessions
+// hold tokens, so don't let them linger past their short TTL).
+exports.cleanupExpiredMcpOAuthSessions = onSchedule(
+    {
+        schedule: '0 * * * *',
+        timeZone: 'UTC',
+        region: 'europe-west1',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+    },
+    async () => {
+        const { cleanupExpiredMcpOAuthSessions } = require('./MCP/mcpClientOAuth')
+        await cleanupExpiredMcpOAuthSessions()
+    }
+)
+
 // "At 00:00 on day-of-month 1."
 exports.giveMonthlyGoldToAllUsersSecondGen = onSchedule(
     {

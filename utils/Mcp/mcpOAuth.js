@@ -9,13 +9,13 @@ const TIMEOUT_MS = 5 * 60 * 1000
  *   2. open it in a popup,
  *   3. wait for the callback page to postMessage completion (and also poll as a
  *      fallback, e.g. if popups block window.opener),
- *   4. fetch the resulting tokens.
+ *   4. resolve with the `oauthState` handle once authorization completes.
  *
- * Pass `clientId` (+ optional `clientSecret`, `scope`) to use a pre-registered
- * OAuth client instead of Dynamic Client Registration.
+ * The tokens themselves are NOT returned to the browser — connectAssistantMcpServer
+ * claims them server-side using this handle. Pass `clientId` (+ optional
+ * `clientSecret`, `scope`) to use a pre-registered OAuth client instead of DCR.
  *
- * Returns the secret bundle to hand to connectAssistantMcpServer:
- *   { accessToken, refreshToken, expiresAt, oauthContext }
+ * Returns: { oauthState } to hand to connectAssistantMcpServer as the server secret.
  */
 export async function startMcpOAuthFlow({ serverUrl, clientId, clientSecret, scope }) {
     const { authorizationUrl, state } = await beginMcpOAuth({ serverUrl, clientId, clientSecret, scope })
@@ -48,12 +48,7 @@ export async function startMcpOAuthFlow({ serverUrl, clientId, clientSecret, sco
                 const result = await completeMcpOAuth({ state })
                 if (result && result.status === 'complete') {
                     cleanup()
-                    resolve({
-                        accessToken: result.accessToken,
-                        refreshToken: result.refreshToken || null,
-                        expiresAt: result.expiresAt || null,
-                        oauthContext: result.oauthContext || null,
-                    })
+                    resolve({ oauthState: state })
                     return true
                 }
             } catch (e) {
