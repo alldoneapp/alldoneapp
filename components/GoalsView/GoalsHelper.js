@@ -15,6 +15,38 @@ import {
     setOpenGoalsAmount,
 } from '../../redux/actions'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
+import {
+    GOAL_MILESTONES_MODE_LINEAR,
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    GOAL_SCHEDULE_MODE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    MILESTONE_TYPE_FIXED,
+    normalizeGoalMilestonesConfig,
+    normalizeGoalScheduleMode,
+    normalizeMilestoneType,
+} from '../../utils/GoalMilestonesHelper'
+
+export {
+    GOAL_MILESTONES_MODE_MANUAL,
+    GOAL_MILESTONES_MODE_LINEAR,
+    GOAL_MILESTONES_CADENCE_WEEKLY,
+    GOAL_MILESTONES_CADENCE_BIWEEKLY,
+    GOAL_MILESTONES_CADENCE_MONTHLY,
+    GOAL_MILESTONES_CADENCE_QUARTERLY,
+    GOAL_SCHEDULE_MODE_FIXED,
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    MILESTONE_TYPE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    DEFAULT_FUTURE_LINEAR_MILESTONES_TO_CREATE,
+    normalizeGoalMilestonesConfig,
+    normalizeGoalScheduleMode,
+    normalizeMilestoneType,
+    isLinearGoalMilestonesConfig,
+    getCurrentTimezone,
+    getLinearMilestonePeriod,
+    getLinearMilestonePeriods,
+    getLinearMilestoneTitle,
+} from '../../utils/GoalMilestonesHelper'
 
 export const BACKLOG_MILESTONE_ID = 'BACKLOG'
 export const GOALS_OPEN_TAB_INDEX = 0
@@ -256,6 +288,7 @@ export const getNewDefaultGoal = milestoneDate => {
         lockKey: '',
         assistantId: '',
         commentsData: null,
+        scheduleMode: GOAL_SCHEDULE_MODE_FIXED,
     }
     return goal
 }
@@ -270,6 +303,11 @@ export const getNewDefaultGoalMilestone = () => {
         doneDate: Date.now(),
         hasStar: '#FFFFFF',
         ownerId: ALL_USERS,
+        milestoneType: MILESTONE_TYPE_FIXED,
+        periodStartDate: null,
+        periodEndDate: null,
+        periodKey: '',
+        cadence: '',
     }
     return milestone
 }
@@ -491,8 +529,13 @@ export function isPrivateGoal(goal, customUserId) {
     )
 }
 
-const filterGoalsInMilestone = (goalsToShowAmount, milestoneDate, goals, assigneesIdsToShow, inDone, milestoneId) => {
+const filterGoalsInMilestone = (goalsToShowAmount, milestone, goals, assigneesIdsToShow, inDone) => {
     const candidateGoals = []
+    const { date: milestoneDate, id: milestoneId } = milestone
+    const milestoneType = normalizeMilestoneType(milestone.milestoneType)
+    const scheduleModeForMilestone =
+        milestoneType === MILESTONE_TYPE_LINEAR ? GOAL_SCHEDULE_MODE_DYNAMIC : GOAL_SCHEDULE_MODE_FIXED
+
     for (let i = 0; i < goals.length; i++) {
         const goal = goals[i]
         const {
@@ -504,14 +547,16 @@ const filterGoalsInMilestone = (goalsToShowAmount, milestoneDate, goals, assigne
             dynamicProgress,
         } = goal
 
+        const goalScheduleMode = normalizeGoalScheduleMode(goal.scheduleMode)
         const belongsToMilestone = inDone
             ? parentDoneMilestoneIds.includes(milestoneId)
             : completionMilestoneDate >= milestoneDate &&
               startingMilestoneDate <= milestoneDate &&
               (milestoneDate !== BACKLOG_DATE_NUMERIC || progress !== 100)
+        const belongsToMilestoneType = inDone || goalScheduleMode === scheduleModeForMilestone
         const belongsToAnAssigneeToShow = assigneesIds.some(assigneeId => assigneesIdsToShow.includes(assigneeId))
 
-        if (belongsToMilestone && belongsToAnAssigneeToShow) {
+        if (belongsToMilestone && belongsToMilestoneType && belongsToAnAssigneeToShow) {
             candidateGoals.push(goal)
         }
     }
@@ -541,12 +586,22 @@ const processMilestonesAndGoalsToCountAndShow = (
         ? BASE_NUMBER_OF_MILESTONES_TO_SHOW_ALL_PROJECTS
         : BASE_NUMBER_OF_MILESTONES_TO_SHOW_SELECTED_PROJECT
 
+    // In automatic (linear) milestones mode we always surface the active milestone plus the next
+    // configured future milestones even when they are still empty, so the user has buckets to plan into.
+    // The backend already caps the number of open linear milestones to active + futureMilestonesToCreate,
+    // so we can show them all without an explicit client-side limit and without collapsing them away.
+    const project = ProjectHelper.getProjectById(projectId)
+    const milestonesConfig = normalizeGoalMilestonesConfig(project?.goalMilestonesConfig)
+    const isAutomaticMode = !inAllProjects && !inDone && milestonesConfig.mode === GOAL_MILESTONES_MODE_LINEAR
+
+    const backlogId = `${BACKLOG_MILESTONE_ID}${projectId}`
+
     const finalMilestonesToShow = inDone
         ? milestonesToShow
-        : [...milestonesToShow, { date: BACKLOG_DATE_NUMERIC, id: `${BACKLOG_MILESTONE_ID}${projectId}` }]
+        : [...milestonesToShow, { date: BACKLOG_DATE_NUMERIC, id: backlogId }]
 
     let goalsToShowAmount = inAllProjects && numberGoalsAllTeams ? numberGoalsAllTeams : null
-    const numberMilestonesToShow = goalsShowMoreExpanded ? null : BASE_NUMBER_OF_MILESTONES_TO_SHOW
+    const numberMilestonesToShow = goalsShowMoreExpanded || isAutomaticMode ? null : BASE_NUMBER_OF_MILESTONES_TO_SHOW
 
     let boardNeedShowMore = false
     const alreadyCountedGoals = {}
@@ -559,16 +614,22 @@ const processMilestonesAndGoalsToCountAndShow = (
             (numberMilestonesToShow && boardMilestones.length === numberMilestonesToShow) || goalsToShowAmount === 0
 
         const milestone = finalMilestonesToShow[i]
-        const { date, id } = milestone
-        const milestoneGoals = filterGoalsInMilestone(goalsToShowAmount, date, goals, assigneesIdsToShow, inDone, id)
+        const { id } = milestone
+        const milestoneGoals = filterGoalsInMilestone(goalsToShowAmount, milestone, goals, assigneesIdsToShow, inDone)
+
+        const isEmptyFutureLinearMilestone =
+            isAutomaticMode &&
+            milestoneGoals.length === 0 &&
+            id !== backlogId &&
+            normalizeMilestoneType(milestone.milestoneType) === MILESTONE_TYPE_LINEAR
 
         if (stopAddingMilestonesAndGoals) {
-            if (id === `${BACKLOG_MILESTONE_ID}${projectId}` || milestoneGoals.length > 0) {
+            if (id === backlogId || milestoneGoals.length > 0) {
                 boardNeedShowMore = true
                 break
             }
         } else {
-            if ((!inAllProjects && id === `${BACKLOG_MILESTONE_ID}${projectId}`) || milestoneGoals.length > 0) {
+            if ((!inAllProjects && id === backlogId) || milestoneGoals.length > 0 || isEmptyFutureLinearMilestone) {
                 milestoneGoals.forEach(goal => {
                     if (!alreadyCountedGoals[goal.id]) {
                         alreadyCountedGoals[goal.id] = goal
@@ -582,7 +643,8 @@ const processMilestonesAndGoalsToCountAndShow = (
         }
     }
 
-    if (goalsShowMoreExpanded && BASE_NUMBER_OF_MILESTONES_TO_SHOW < boardMilestones.length) boardNeedShowMore = true
+    if (!isAutomaticMode && goalsShowMoreExpanded && BASE_NUMBER_OF_MILESTONES_TO_SHOW < boardMilestones.length)
+        boardNeedShowMore = true
 
     return { boardGoalsByMilestones, boardNeedShowMore, boardMilestones, goalsAmount }
 }
@@ -611,8 +673,8 @@ const processMilestonesAndGoalsToOnlyCount = (
     const alreadyCountedGoals = {}
     for (let i = 0; i < finalMilestonesToCount.length; i++) {
         const milestone = finalMilestonesToCount[i]
-        const { date, id } = milestone
-        const milestoneGoals = filterGoalsInMilestone(goalsToShowAmount, date, goals, assigneesIdsToShow, !inDone, id)
+        const { id } = milestone
+        const milestoneGoals = filterGoalsInMilestone(goalsToShowAmount, milestone, goals, assigneesIdsToShow, !inDone)
         if (milestoneGoals.length > 0) {
             milestoneGoals.forEach(goal => {
                 if (!alreadyCountedGoals[goal.id]) {

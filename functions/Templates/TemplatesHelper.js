@@ -48,6 +48,7 @@ const { getAllGoalsAssignedToUser, uploadNewGoal } = require('../Goals/goalsFire
 const { getProjectContacts, uploadNewContact } = require('../Firestore/contactsFirestore')
 const { uploadTask } = require('../Tasks/tasksFirestoreCloud')
 const { getMentionData } = require('../Utils/parseTextUtils')
+const { GOAL_SCHEDULE_MODE_FIXED, normalizeGoalScheduleMode } = require('../shared/goalMilestonesHelper')
 
 const selectOpenGoalsAndMilestones = (goals, milestonesByDate, templateId, creatorId) => {
     const milestones = {}
@@ -416,6 +417,7 @@ const generateNewGoals = (
             startingMilestoneDate,
             oldId,
             assistantId,
+            scheduleMode,
         } = goal
         const newGoal = { ...goal }
 
@@ -474,6 +476,7 @@ const generateNewGoals = (
         newGoal.noteId = notesByOldId[noteId] ? notesByOldId[noteId].id : null
         newGoal.ownerId = userId
         newGoal.lockKey = unlockedTemplate ? '' : oldId
+        newGoal.scheduleMode = putGoalsInBacklog ? GOAL_SCHEDULE_MODE_FIXED : normalizeGoalScheduleMode(scheduleMode)
 
         newGoal.sortIndexByMilestone = {}
         if (putGoalsInBacklog) {

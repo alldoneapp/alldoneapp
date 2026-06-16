@@ -10,6 +10,7 @@ import { filterGoals } from '../HashtagFilters/FilterHelpers/FilterGoals'
 import AddGoals from './AddGoals'
 import GoalsByAssignee from './GoalsByAssignee'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
+import AutomaticMilestonesNote from './AutomaticMilestonesNote'
 
 export default function GoalsBacklog({
     projectId,
@@ -73,6 +74,7 @@ export default function GoalsBacklog({
     return (
         (filtersArray.length === 0 || filteredGoals.length > 0) && (
             <View style={{ marginBottom: 24 }}>
+                <AutomaticMilestonesNote projectId={projectId} projectIndex={projectIndex} />
                 <GoalsBacklogHeader
                     projectId={projectId}
                     previousMilestoneDate={previousMilestoneDate}

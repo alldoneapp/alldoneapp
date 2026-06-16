@@ -1,5 +1,6 @@
 import { findKey, includes, orderBy } from 'lodash'
 import moment from 'moment'
+import momentTz from 'moment-timezone'
 
 import {
     PROJECT_TYPE_ACTIVE,
@@ -79,6 +80,7 @@ import {
     setUserRoleInProject,
 } from '../../../utils/backends/Users/usersFirestore'
 import { generateSortIndex } from '../../../utils/backends/firestore'
+import { normalizeGoalMilestonesConfig } from '../../../utils/GoalMilestonesHelper'
 
 export const PROJECT_COLORS = {
     [PROJECT_COLOR_DEFAULT]: 'Default',
@@ -649,6 +651,13 @@ class ProjectHelper {
             active: true,
             assistantId: '',
             autoEstimation: true,
+            goalMilestonesConfig: normalizeGoalMilestonesConfig(
+                {
+                    timezone: loggedUser.preferredTimezone || momentTz.tz.guess(),
+                    cadenceStartDate: date,
+                },
+                loggedUser.preferredTimezone || momentTz.tz.guess()
+            ),
             sortIndexByUser: { [loggedUser.uid]: generateSortIndex() },
             // GitLab/GitHub repo connection (used by the execute_task_in_vm coding flow). The
             // token is stored per-user under users/{uid}/private/{provider}Auth_{projectId},

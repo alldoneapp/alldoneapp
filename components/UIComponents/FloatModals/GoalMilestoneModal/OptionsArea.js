@@ -11,6 +11,7 @@ import Line from './Line'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import { cleanTextMetaData } from '../../../../functions/Utils/parseTextUtils'
+import { MILESTONE_TYPE_FIXED } from '../../../../utils/GoalMilestonesHelper'
 
 export default function OptionsArea({ updateMilestone, selectedDate, milestones, openCalendar }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -31,7 +32,7 @@ export default function OptionsArea({ updateMilestone, selectedDate, milestones,
                     return (
                         <MilestoneItem
                             key={id}
-                            updateMilestone={updateMilestone}
+                            updateMilestone={date => updateMilestone(date, milestone)}
                             isSelected={isSelected}
                             milestoneDate={date}
                             description={description}
@@ -42,7 +43,7 @@ export default function OptionsArea({ updateMilestone, selectedDate, milestones,
             </CustomScrollView>
             <Line />
             <MilestoneItem
-                updateMilestone={updateMilestone}
+                updateMilestone={date => updateMilestone(date, { milestoneType: MILESTONE_TYPE_FIXED })}
                 isBacklog={true}
                 isSelected={BACKLOG_DATE_NUMERIC === selectedDate}
                 milestoneDate={BACKLOG_DATE_NUMERIC}
@@ -51,7 +52,7 @@ export default function OptionsArea({ updateMilestone, selectedDate, milestones,
             />
             <Line />
             <MilestoneItem
-                updateMilestone={updateMilestone}
+                updateMilestone={date => updateMilestone(date, { milestoneType: MILESTONE_TYPE_FIXED })}
                 milestoneDate={lastSelectedCustomDate}
                 description={translate('Last selected')}
                 shortcutKey="C"

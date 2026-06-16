@@ -70,6 +70,18 @@ import {
 } from '../Chats/chatsFirestore'
 import NavigationService from '../../NavigationService'
 import { DV_TAB_GOAL_PROPERTIES, DV_TAB_ROOT_GOALS } from '../../TabNavigationConstants'
+import {
+    GOAL_MILESTONES_MODE_LINEAR,
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    GOAL_SCHEDULE_MODE_FIXED,
+    MILESTONE_TYPE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    getLinearMilestonePeriods,
+    getLinearMilestoneTitle,
+    normalizeGoalMilestonesConfig,
+    normalizeGoalScheduleMode,
+    normalizeMilestoneType,
+} from '../../GoalMilestonesHelper'
 
 //ACCESS FUNCTIONS
 
@@ -196,7 +208,8 @@ async function getGoalsInOpenMilestone(
     milestoneDate,
     idsOfGoalsToExclude,
     getOnlyIncompleteGoalsInBacklog,
-    ownerId
+    ownerId,
+    scheduleMode = null
 ) {
     const goalsDocs = (
         await getDb()
@@ -211,7 +224,8 @@ async function getGoalsInOpenMilestone(
         if (
             goal.startingMilestoneDate <= milestoneDate &&
             !idsOfGoalsToExclude.includes(goal.id) &&
-            (milestoneDate !== BACKLOG_DATE_NUMERIC || !getOnlyIncompleteGoalsInBacklog || goal.progress !== 100)
+            (milestoneDate !== BACKLOG_DATE_NUMERIC || !getOnlyIncompleteGoalsInBacklog || goal.progress !== 100) &&
+            (!scheduleMode || normalizeGoalScheduleMode(goal.scheduleMode) === scheduleMode)
         ) {
             goals.push(goal)
         }
@@ -219,7 +233,13 @@ async function getGoalsInOpenMilestone(
     return goals
 }
 
-async function getBaseGoalsInOpenMilestone(projectId, milestoneDate, idsOfGoalsToExclude, ownerId) {
+async function getBaseGoalsInOpenMilestone(
+    projectId,
+    milestoneDate,
+    idsOfGoalsToExclude,
+    ownerId,
+    scheduleMode = null
+) {
     const goalsDocs = (
         await getDb()
             .collection(`goals/${projectId}/items`)
@@ -230,7 +250,7 @@ async function getBaseGoalsInOpenMilestone(projectId, milestoneDate, idsOfGoalsT
     const goals = []
     goalsDocs.forEach(doc => {
         const goal = mapGoalData(doc.id, doc.data())
-        if (!idsOfGoalsToExclude.includes(goal.id)) {
+        if (!idsOfGoalsToExclude.includes(goal.id) && (!scheduleMode || goal.scheduleMode === scheduleMode)) {
             goals.push(goal)
         }
     })
@@ -289,7 +309,8 @@ async function getOpenMilestonesFromGoal(projectId, goal) {
         projectId,
         startingMilestoneDate,
         completionMilestoneDate,
-        ownerId
+        ownerId,
+        goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC ? MILESTONE_TYPE_LINEAR : MILESTONE_TYPE_FIXED
     )
     return milestones
 }
@@ -386,17 +407,20 @@ export function watchMilestoneTasksStatistics(
         })
 }
 
-async function getNextMilestoneAfterDate(projectId, milestoneDate, ownerId) {
-    const milestoneDoc = (
+async function getNextMilestoneAfterDate(projectId, milestoneDate, ownerId, milestoneType = null) {
+    const milestoneDocs = (
         await getDb()
             .collection(`goalsMilestones/${projectId}/milestonesItems`)
             .where('done', '==', false)
             .where('date', '>', milestoneDate)
             .where('ownerId', '==', ownerId)
             .orderBy('date', 'asc')
-            .limit(1)
             .get()
-    ).docs[0]
+    ).docs
+    const normalizedType = milestoneType ? normalizeMilestoneType(milestoneType) : null
+    const milestoneDoc = normalizedType
+        ? milestoneDocs.find(doc => normalizeMilestoneType(doc.data().milestoneType) === normalizedType)
+        : milestoneDocs[0]
     return milestoneDoc ? mapMilestoneData(milestoneDoc.id, milestoneDoc.data()) : null
 }
 
@@ -405,7 +429,7 @@ export async function getMilestoneData(projectId, milestoneId) {
     return milestone ? mapMilestoneData(milestoneId, milestone) : null
 }
 
-async function getOpenMilestonesInDateRange(projectId, date1, date2, ownerId) {
+async function getOpenMilestonesInDateRange(projectId, date1, date2, ownerId, milestoneType = null) {
     const milestonesDocs = (
         await getDb()
             .collection(`goalsMilestones/${projectId}/milestonesItems`)
@@ -418,8 +442,11 @@ async function getOpenMilestonesInDateRange(projectId, date1, date2, ownerId) {
     ).docs
 
     const milestones = []
+    const normalizedType = milestoneType ? normalizeMilestoneType(milestoneType) : null
     milestonesDocs.forEach(doc => {
-        milestones.push(mapMilestoneData(doc.id, doc.data()))
+        if (!normalizedType || normalizeMilestoneType(doc.data().milestoneType) === normalizedType) {
+            milestones.push(mapMilestoneData(doc.id, doc.data()))
+        }
     })
     return milestones
 }
@@ -459,17 +486,87 @@ export function watchActiveMilestone(projectId, watcherKey, callback, ownerId) {
         })
 }
 
-export async function getMilestoneUsingDate(projectId, date, searchInDoneMilestones, ownerId) {
-    const milestoneDoc = (
+export async function getMilestoneUsingDate(projectId, date, searchInDoneMilestones, ownerId, milestoneType = null) {
+    const milestoneDocs = (
         await getDb()
             .collection(`goalsMilestones/${projectId}/milestonesItems`)
             .where('date', '==', date)
             .where('done', '==', searchInDoneMilestones)
             .where('ownerId', '==', ownerId)
+            .get()
+    ).docs
+    const normalizedType = milestoneType ? normalizeMilestoneType(milestoneType) : null
+    const milestoneDoc = normalizedType
+        ? milestoneDocs.find(doc => normalizeMilestoneType(doc.data().milestoneType) === normalizedType)
+        : milestoneDocs[0]
+    return milestoneDoc ? mapMilestoneData(milestoneDoc.id, milestoneDoc.data()) : null
+}
+
+async function getLinearMilestoneUsingPeriodKey(projectId, periodKey, done, ownerId) {
+    const milestoneDoc = (
+        await getDb()
+            .collection(`goalsMilestones/${projectId}/milestonesItems`)
+            .where('periodKey', '==', periodKey)
+            .where('done', '==', done)
+            .where('ownerId', '==', ownerId)
             .limit(1)
             .get()
     ).docs[0]
     return milestoneDoc ? mapMilestoneData(milestoneDoc.id, milestoneDoc.data()) : null
+}
+
+function buildLinearMilestone(period, ownerId, done = false) {
+    return {
+        ...getNewDefaultGoalMilestone(),
+        extendedName: getLinearMilestoneTitle(period),
+        date: period.date,
+        done,
+        ownerId,
+        milestoneType: MILESTONE_TYPE_LINEAR,
+        periodStartDate: period.periodStartDate,
+        periodEndDate: period.periodEndDate,
+        periodKey: period.periodKey,
+        cadence: period.cadence,
+    }
+}
+
+export async function ensureLinearMilestonesForProject(projectId, ownerId, config, startTimestamp = Date.now()) {
+    const normalizedConfig = normalizeGoalMilestonesConfig(config)
+    if (normalizedConfig.mode !== GOAL_MILESTONES_MODE_LINEAR) return []
+
+    const periods = getLinearMilestonePeriods(
+        normalizedConfig,
+        startTimestamp,
+        normalizedConfig.futureMilestonesToCreate + 1
+    )
+    const milestones = []
+
+    for (let i = 0; i < periods.length; i++) {
+        const period = periods[i]
+        let milestone = await getLinearMilestoneUsingPeriodKey(projectId, period.periodKey, false, ownerId)
+        if (!milestone) {
+            milestone = buildLinearMilestone(period, ownerId, false)
+            const milestoneId = getId()
+            await getDb().collection(`goalsMilestones/${projectId}/milestonesItems`).doc(milestoneId).set(milestone)
+            milestone.id = milestoneId
+            await addOpenMilestoneSortIndexToGoals(
+                projectId,
+                milestoneId,
+                milestone.date,
+                null,
+                ownerId,
+                GOAL_SCHEDULE_MODE_DYNAMIC
+            )
+        }
+        milestones.push(milestone)
+    }
+
+    return milestones
+}
+
+async function getActiveLinearMilestone(projectId, ownerId, config) {
+    const milestones = await ensureLinearMilestonesForProject(projectId, ownerId, config)
+    return milestones[0] || null
 }
 
 export function watchOpenMilestonesInDateRange(projectId, date1, date2, watcherKey, callback, ownerId) {
@@ -512,7 +609,13 @@ async function updateGoalData(projectId, goalId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
-export async function uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject) {
+export async function uploadNewGoal(
+    projectId,
+    goal,
+    baseDate,
+    movingGoalToOtherProject,
+    milestoneType = MILESTONE_TYPE_FIXED
+) {
     const { loggedUser } = store.getState()
 
     updateEditionData(goal)
@@ -526,6 +629,10 @@ export async function uploadNewGoal(projectId, goal, baseDate, movingGoalToOther
     const project = ProjectHelper.getProjectById(projectId)
     const ownerId = project.parentTemplateId ? goal.assigneesIds[0] : ALL_USERS
     goal.ownerId = ownerId
+    goal.scheduleMode =
+        normalizeMilestoneType(milestoneType) === MILESTONE_TYPE_LINEAR
+            ? GOAL_SCHEDULE_MODE_DYNAMIC
+            : normalizeGoalScheduleMode(goal.scheduleMode)
 
     if (!goal.id) goal.id = getId()
 
@@ -540,7 +647,11 @@ export async function uploadNewGoal(projectId, goal, baseDate, movingGoalToOther
             : (goal.startingMilestoneDate = goal.completionMilestoneDate)
     }
 
-    uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, goal.completionMilestoneDate, ownerId)
+    if (goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC) {
+        await ensureLinearMilestonesForProject(projectId, ownerId, project.goalMilestonesConfig)
+    } else {
+        uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, goal.completionMilestoneDate, ownerId)
+    }
 
     goal.assigneesReminderDate = await generateAssigneesReminderDate(
         movingGoalToOtherProject ? goal.assigneesReminderDate : {},
@@ -722,8 +833,32 @@ export async function updateGoal(projectId, oldGoal, updatedGoal, avoidFollow) {
     updateGoalUpdatesChain(projectId, oldGoal, updatedGoal, avoidFollow)
 }
 
-export async function updateGoalDateRange(projectId, goal, newDate, rangeEdgePropertyName, needToUpdateGoal) {
-    if (newDate === goal[rangeEdgePropertyName]) return
+export async function updateGoalDateRange(
+    projectId,
+    goal,
+    newDate,
+    rangeEdgePropertyName,
+    needToUpdateGoal,
+    milestoneType
+) {
+    const scheduleModeUpdate = milestoneType
+        ? {
+              scheduleMode:
+                  normalizeMilestoneType(milestoneType) === MILESTONE_TYPE_LINEAR
+                      ? GOAL_SCHEDULE_MODE_DYNAMIC
+                      : GOAL_SCHEDULE_MODE_FIXED,
+          }
+        : {}
+
+    if (newDate === goal[rangeEdgePropertyName]) {
+        if (
+            scheduleModeUpdate.scheduleMode &&
+            normalizeGoalScheduleMode(goal.scheduleMode) !== scheduleModeUpdate.scheduleMode
+        ) {
+            await updateGoalDates(projectId, goal, newDate, scheduleModeUpdate, needToUpdateGoal, true)
+        }
+        return
+    }
 
     const {
         toBacklog,
@@ -740,6 +875,7 @@ export async function updateGoalDateRange(projectId, goal, newDate, rangeEdgePro
             {
                 startingMilestoneDate: newDate,
                 completionMilestoneDate: newDate,
+                ...scheduleModeUpdate,
             },
             needToUpdateGoal,
             true
@@ -751,12 +887,20 @@ export async function updateGoalDateRange(projectId, goal, newDate, rangeEdgePro
             newDate,
             {
                 startingMilestoneDate: newDate,
+                ...scheduleModeUpdate,
             },
             needToUpdateGoal,
             false
         )
     } else {
-        await updateGoalDates(projectId, goal, newDate, { completionMilestoneDate: newDate }, needToUpdateGoal, true)
+        await updateGoalDates(
+            projectId,
+            goal,
+            newDate,
+            { completionMilestoneDate: newDate, ...scheduleModeUpdate },
+            needToUpdateGoal,
+            true
+        )
     }
 }
 
@@ -780,7 +924,7 @@ async function updateGoalDates(projectId, goal, newDate, datesData, needToUpdate
         )
     }
     if (needToHandleMilestoneExistence)
-        promises.push(handleMilestonesExistenceWhenAGoalDateRangeChanges(projectId, goal, newDate))
+        promises.push(handleMilestonesExistenceWhenAGoalDateRangeChanges(projectId, { ...goal, ...datesData }, newDate))
     promises.push(updateAllOpenGoalSortIndexs(projectId, { ...goal, ...datesData }, false))
     await Promise.all(promises)
 }
@@ -888,6 +1032,47 @@ export async function updateGoalAssigneesIds(
 export async function updateGoalAssigneeCapacity(projectId, goal, oldCapacity, newCapacity, assigneeId) {
     updateGoalData(projectId, goal.id, { [`assigneesCapacity.${assigneeId}`]: newCapacity }, null)
     updateGoalAssigneesCapacitiesFeedsChain(projectId, goal, oldCapacity, newCapacity, assigneeId)
+}
+
+export async function updateGoalScheduleMode(projectId, goal, nextMode) {
+    const scheduleMode = normalizeGoalScheduleMode(nextMode)
+
+    if (scheduleMode === GOAL_SCHEDULE_MODE_FIXED) {
+        await updateGoalData(projectId, goal.id, { scheduleMode }, null)
+        if (goal.completionMilestoneDate !== BACKLOG_DATE_NUMERIC) {
+            await uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(
+                projectId,
+                goal.completionMilestoneDate,
+                goal.ownerId
+            )
+            const fixedMilestone = await getMilestoneUsingDate(
+                projectId,
+                goal.completionMilestoneDate,
+                false,
+                goal.ownerId,
+                MILESTONE_TYPE_FIXED
+            )
+            if (fixedMilestone) await updateGoalSortIndexes(projectId, goal.id, fixedMilestone.id)
+        }
+        return
+    }
+
+    const project = ProjectHelper.getProjectById(projectId)
+    if (!project) return
+
+    const activeLinearMilestone = await getActiveLinearMilestone(projectId, goal.ownerId, project.goalMilestonesConfig)
+    if (!activeLinearMilestone) return
+
+    const updateData = {
+        scheduleMode,
+        startingMilestoneDate: activeLinearMilestone.date,
+        completionMilestoneDate: activeLinearMilestone.date,
+        assigneesReminderDate: updateAssigneesReminderDate(goal.assigneesIds, activeLinearMilestone.date),
+    }
+
+    await updateGoalData(projectId, goal.id, updateData, null)
+    await deleteOpenMilestoneIfIsEmpty(projectId, goal.completionMilestoneDate, [goal.id], goal.ownerId)
+    await updateAllOpenGoalSortIndexs(projectId, { ...goal, ...updateData }, false)
 }
 
 export async function updateGoalAssigneeReminderDate(
@@ -1127,7 +1312,7 @@ export async function moveCompletedGoalInBacklogToDone(projectId, goal) {
         updateGoalProgressFeedsChain(projectId, 100, goal)
     }
     const todayDate = moment().startOf('day').hour(12).minute(0).valueOf()
-    let milestone = await getMilestoneUsingDate(projectId, todayDate, true, goal.ownerId)
+    let milestone = await getMilestoneUsingDate(projectId, todayDate, true, goal.ownerId, MILESTONE_TYPE_FIXED)
 
     if (!milestone) {
         milestone = getNewDefaultGoalMilestone()
@@ -1153,13 +1338,19 @@ export async function moveCompletedGoalInBacklogToDone(projectId, goal) {
 
 async function handleMilestonesExistenceWhenAGoalDateRangeChanges(projectId, goal, newDate) {
     const promises = []
-    if (newDate !== BACKLOG_DATE_NUMERIC)
-        promises.push(uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, newDate, goal.ownerId))
+    if (newDate !== BACKLOG_DATE_NUMERIC) {
+        if (goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC) {
+            const project = ProjectHelper.getProjectById(projectId)
+            promises.push(ensureLinearMilestonesForProject(projectId, goal.ownerId, project.goalMilestonesConfig))
+        } else {
+            promises.push(uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, newDate, goal.ownerId))
+        }
+    }
     promises.push(deleteOpenMilestoneIfIsEmpty(projectId, goal.completionMilestoneDate, [goal.id], goal.ownerId))
     await Promise.all(promises)
 }
 
-async function updateGoalsWhenChangeMilestoneDate(projectId, oldDate, newDate, ownerId) {
+async function updateGoalsWhenChangeMilestoneDate(projectId, oldDate, newDate, ownerId, scheduleMode = null) {
     const goalsDocs = await getDb()
         .collection(`goals/${projectId}/items`)
         .where('completionMilestoneDate', '==', oldDate)
@@ -1170,6 +1361,7 @@ async function updateGoalsWhenChangeMilestoneDate(projectId, oldDate, newDate, o
 
     goalsDocs.docs.forEach(doc => {
         const goal = mapGoalData(doc.id, doc.data())
+        if (scheduleMode && goal.scheduleMode !== scheduleMode) return
 
         const toBacklog = newDate === BACKLOG_DATE_NUMERIC
         const moveFullGoalWhenUpdateCompletionDate =
@@ -1314,7 +1506,15 @@ export async function updateMilestoneDateToBacklog(projectId, milestone) {
             batch.commit()
         })
     } else {
-        await updateGoalsWhenChangeMilestoneDate(projectId, milestone.date, BACKLOG_DATE_NUMERIC, milestone.ownerId)
+        await updateGoalsWhenChangeMilestoneDate(
+            projectId,
+            milestone.date,
+            BACKLOG_DATE_NUMERIC,
+            milestone.ownerId,
+            normalizeMilestoneType(milestone.milestoneType) === MILESTONE_TYPE_LINEAR
+                ? GOAL_SCHEDULE_MODE_DYNAMIC
+                : GOAL_SCHEDULE_MODE_FIXED
+        )
         await deleteMilestone(projectId, milestone.id)
         await addOpenMilestoneSortIndexToGoalsInRange(
             projectId,
@@ -1330,7 +1530,15 @@ export async function updateMilestoneDate(projectId, milestone, newDate) {
     if (inDoneMilestone) {
         const promises = []
         promises.push(getGoalsInDoneMilestone(projectId, milestone.id, []))
-        promises.push(getMilestoneUsingDate(projectId, newDate, inDoneMilestone, milestone.ownerId))
+        promises.push(
+            getMilestoneUsingDate(
+                projectId,
+                newDate,
+                inDoneMilestone,
+                milestone.ownerId,
+                normalizeMilestoneType(milestone.milestoneType)
+            )
+        )
         const promiseResults = await Promise.all(promises)
         const goals = promiseResults[0]
         const milestoneInSameDate = promiseResults[1]
@@ -1358,7 +1566,15 @@ export async function updateMilestoneDate(projectId, milestone, newDate) {
             batch.commit()
         }
     } else {
-        await updateGoalsWhenChangeMilestoneDate(projectId, milestone.date, newDate, milestone.ownerId)
+        await updateGoalsWhenChangeMilestoneDate(
+            projectId,
+            milestone.date,
+            newDate,
+            milestone.ownerId,
+            normalizeMilestoneType(milestone.milestoneType) === MILESTONE_TYPE_LINEAR
+                ? GOAL_SCHEDULE_MODE_DYNAMIC
+                : GOAL_SCHEDULE_MODE_FIXED
+        )
         await updateOrDeleteMilestoneWhenChangesDate(projectId, milestone, newDate, inDoneMilestone)
 
         const date1 = milestone.date < newDate ? milestone.date : newDate
@@ -1372,7 +1588,8 @@ async function updateOrDeleteMilestoneWhenChangesDate(projectId, milestone, newD
         projectId,
         newDate,
         searchInDoneMilestones,
-        milestone.ownerId
+        milestone.ownerId,
+        normalizeMilestoneType(milestone.milestoneType)
     )
     milestoneInSameDate
         ? await deleteMilestone(projectId, milestone.id)
@@ -1381,17 +1598,27 @@ async function updateOrDeleteMilestoneWhenChangesDate(projectId, milestone, newD
 
 async function uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, date, ownerId) {
     if (date !== BACKLOG_DATE_NUMERIC) {
-        const milestoneInSameDate = await getMilestoneUsingDate(projectId, date, false, ownerId)
+        const milestoneInSameDate = await getMilestoneUsingDate(projectId, date, false, ownerId, MILESTONE_TYPE_FIXED)
         if (!milestoneInSameDate) {
             const milestone = getNewDefaultGoalMilestone()
             milestone.date = date
             milestone.ownerId = ownerId
+            milestone.milestoneType = MILESTONE_TYPE_FIXED
             const milestoneId = getId()
             const promises = []
             promises.push(
                 getDb().collection(`goalsMilestones/${projectId}/milestonesItems`).doc(milestoneId).set(milestone)
             )
-            promises.push(addOpenMilestoneSortIndexToGoals(projectId, milestoneId, milestone.date, null, ownerId))
+            promises.push(
+                addOpenMilestoneSortIndexToGoals(
+                    projectId,
+                    milestoneId,
+                    milestone.date,
+                    null,
+                    ownerId,
+                    GOAL_SCHEDULE_MODE_FIXED
+                )
+            )
             await Promise.all(promises)
         }
     }
@@ -1402,7 +1629,7 @@ async function deleteOpenMilestoneIfIsEmpty(projectId, milestoneDate, idsOfGoals
     const isEmpty =
         (await getBaseGoalsInOpenMilestone(projectId, milestoneDate, idsOfGoalsToExclude, ownerId)).length === 0
     if (isEmpty) {
-        const milestone = await getMilestoneUsingDate(projectId, milestoneDate, false, ownerId)
+        const milestone = await getMilestoneUsingDate(projectId, milestoneDate, false, ownerId, MILESTONE_TYPE_FIXED)
         if (milestone) await deleteMilestone(projectId, milestone.id)
     }
 }
@@ -1431,10 +1658,15 @@ export async function updateGoalMilestoneAssigneesCapacity(projectId, milestoneI
 
 export async function updateMilestoneDoneState(projectId, milestone) {
     const toDone = !milestone.done
+    const milestoneType = normalizeMilestoneType(milestone.milestoneType)
+    const scheduleModeForMilestone =
+        milestoneType === MILESTONE_TYPE_LINEAR ? GOAL_SCHEDULE_MODE_DYNAMIC : GOAL_SCHEDULE_MODE_FIXED
 
     let promises = []
-    promises.push(getMilestoneUsingDate(projectId, milestone.date, toDone, milestone.ownerId))
-    promises.push(getBaseGoalsInOpenMilestone(projectId, milestone.date, [], milestone.ownerId))
+    promises.push(getMilestoneUsingDate(projectId, milestone.date, toDone, milestone.ownerId, milestoneType))
+    promises.push(
+        getBaseGoalsInOpenMilestone(projectId, milestone.date, [], milestone.ownerId, scheduleModeForMilestone)
+    )
     if (!toDone) promises.push(getGoalsInDoneMilestone(projectId, milestone.id, []))
 
     const results = await Promise.all(promises)
@@ -1446,6 +1678,18 @@ export async function updateMilestoneDoneState(projectId, milestone) {
 
     if (toDone) {
         const newDoneDate = Date.now()
+        if (milestoneType === MILESTONE_TYPE_LINEAR) {
+            const fixedGoalsInSameDate = await getBaseGoalsInOpenMilestone(
+                projectId,
+                milestone.date,
+                [],
+                milestone.ownerId,
+                GOAL_SCHEDULE_MODE_FIXED
+            )
+            if (fixedGoalsInSameDate.length > 0) {
+                await uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, milestone.date, milestone.ownerId)
+            }
+        }
         if (milestoneInSameDate) {
             const goalsFromMilestoneInSameDate = await getGoalsInDoneMilestone(projectId, milestoneInSameDate.id, [])
             removeGoalsFromDoneMilestone(projectId, milestoneInSameDate.id, goalsFromMilestoneInSameDate, batch)
@@ -1472,7 +1716,8 @@ export async function updateMilestoneDoneState(projectId, milestone) {
             projectId,
             goalsInOpen,
             milestone.date,
-            milestone.ownerId
+            milestone.ownerId,
+            milestoneType
         )
     } else {
         const goalsInDoneToMove = goalsInDone.filter(
@@ -1544,7 +1789,8 @@ async function moveIncompleteGoalsToNextMilestoneWhenMoveACompletionMilestoneToD
     projectId,
     goals,
     milestoneDate,
-    ownerId
+    ownerId,
+    milestoneType = MILESTONE_TYPE_FIXED
 ) {
     const goalsToUpdateCompletionDate = goals.filter(goal => {
         const { completionMilestoneDate, progress, dynamicProgress } = goal
@@ -1555,10 +1801,14 @@ async function moveIncompleteGoalsToNextMilestoneWhenMoveACompletionMilestoneToD
         )
     })
     if (goalsToUpdateCompletionDate.length > 0) {
-        const nextMilestone = await getNextMilestoneAfterDate(projectId, milestoneDate, ownerId)
+        const project = ProjectHelper.getProjectById(projectId)
+        if (milestoneType === MILESTONE_TYPE_LINEAR && project) {
+            await ensureLinearMilestonesForProject(projectId, ownerId, project.goalMilestonesConfig, milestoneDate)
+        }
+        const nextMilestone = await getNextMilestoneAfterDate(projectId, milestoneDate, ownerId, milestoneType)
         const newDate = nextMilestone ? nextMilestone.date : BACKLOG_DATE_NUMERIC
         goalsToUpdateCompletionDate.forEach(goal => {
-            updateGoalDateRange(projectId, goal, newDate, 'completionMilestoneDate', true)
+            updateGoalDateRange(projectId, goal, newDate, 'completionMilestoneDate', true, milestoneType)
         })
     }
 }
@@ -1690,10 +1940,17 @@ async function fillEmptyMilestoneGoalSortIndex(milestoneId, goal, newSortIndexBy
     }
 }
 
-async function addOpenMilestoneSortIndexToGoals(projectId, milestoneId, milestoneDate, milestoneGoals, ownerId) {
+async function addOpenMilestoneSortIndexToGoals(
+    projectId,
+    milestoneId,
+    milestoneDate,
+    milestoneGoals,
+    ownerId,
+    scheduleMode = null
+) {
     const goals = milestoneGoals
         ? milestoneGoals
-        : await getGoalsInOpenMilestone(projectId, milestoneDate, [], true, ownerId)
+        : await getGoalsInOpenMilestone(projectId, milestoneDate, [], true, ownerId, scheduleMode)
     const promises = []
     goals.forEach(goal => {
         promises.push(updateGoalSortIndexes(projectId, goal.id, milestoneId))
@@ -1705,7 +1962,18 @@ async function addOpenMilestoneSortIndexToGoalsInRange(projectId, date1, date2, 
     const milestones = await getOpenMilestonesInDateRange(projectId, date1, date2, ownerId)
     const promises = []
     milestones.forEach(milestone => {
-        promises.push(addOpenMilestoneSortIndexToGoals(projectId, milestone.id, milestone.date, null, ownerId))
+        promises.push(
+            addOpenMilestoneSortIndexToGoals(
+                projectId,
+                milestone.id,
+                milestone.date,
+                null,
+                ownerId,
+                normalizeMilestoneType(milestone.milestoneType) === MILESTONE_TYPE_LINEAR
+                    ? GOAL_SCHEDULE_MODE_DYNAMIC
+                    : GOAL_SCHEDULE_MODE_FIXED
+            )
+        )
     })
     if (date2 === BACKLOG_DATE_NUMERIC) promises.push(addBacklogSortIndexToGoalsInBacklog(projectId, ownerId))
     await Promise.all(promises)

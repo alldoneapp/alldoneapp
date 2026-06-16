@@ -18,6 +18,11 @@ const {
     generateNegativeSortIndex,
 } = require('./HelperFunctionsCloud')
 const { getContactEmails } = require('../shared/contactEmailHelper')
+const {
+    normalizeGoalMilestonesConfig,
+    normalizeGoalScheduleMode,
+    normalizeMilestoneType,
+} = require('../shared/goalMilestonesHelper')
 
 function mapContactData(contactId, contact) {
     const emails = getContactEmails(contact)
@@ -85,6 +90,7 @@ function mapGoalData(goalId, goal) {
         lockKey: goal.lockKey ? goal.lockKey : '',
         assistantId: goal.assistantId ? goal.assistantId : '',
         commentsData: goal.commentsData ? goal.commentsData : '',
+        scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
     }
 }
 
@@ -138,6 +144,11 @@ function mapMilestoneData(milestoneId, milestone) {
         doneDate: milestone.doneDate ? milestone.doneDate : Date.now(),
         hasStar: milestone.hasStar ? milestone.hasStar : '#FFFFFF',
         ownerId: milestone.ownerId ? milestone.ownerId : ALL_USERS,
+        milestoneType: normalizeMilestoneType(milestone.milestoneType),
+        periodStartDate: milestone.periodStartDate || null,
+        periodEndDate: milestone.periodEndDate || null,
+        periodKey: milestone.periodKey || '',
+        cadence: milestone.cadence || '',
     }
 }
 
@@ -246,6 +257,7 @@ function mapProjectData(projectId, project, customData) {
         active: project.active ? project.active : false,
         lastActionDate: project.lastActionDate ? project.lastActionDate : Date.now(),
         autoEstimation: project.autoEstimation === false ? false : true,
+        goalMilestonesConfig: normalizeGoalMilestonesConfig(project.goalMilestonesConfig),
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         ...customData,
     }

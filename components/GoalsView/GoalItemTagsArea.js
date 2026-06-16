@@ -26,6 +26,7 @@ import ContactsHelper from '../ContactsView/Utils/ContactsHelper'
 import { setSelectedSidebarTab, setSelectedTypeOfProject, storeCurrentUser, switchProject } from '../../redux/actions'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import { setGoalDescription } from '../../utils/backends/Goals/goalsFirestore'
+import GoalScheduleModeTag from '../Tags/GoalScheduleModeTag'
 
 export default function GoalItemTagsArea({
     projectId,
@@ -125,6 +126,12 @@ export default function GoalItemTagsArea({
                     disabled={disableTagsActions}
                 />
             )}
+            <GoalScheduleModeTag
+                projectId={projectId}
+                goal={goal}
+                style={tagStyle}
+                disabled={disableTagsActions || !loggedUserCanUpdateObject}
+            />
             {goal.noteId && (
                 <ObjectNoteTag
                     objectId={goal.id}

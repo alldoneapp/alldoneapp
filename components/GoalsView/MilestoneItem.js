@@ -127,6 +127,7 @@ export default function MilestoneItem({
                         closeEdition={closeEdition}
                         milestoneId={milestoneId}
                         milestoneDate={milestone.date}
+                        milestoneType={milestone.milestoneType}
                         refId={`Add${milestoneId}`}
                         inDone={milestone.done}
                     />
@@ -151,6 +152,7 @@ export default function MilestoneItem({
                         closeEdition={closeEdition}
                         milestoneId={milestoneId}
                         milestoneDate={milestone.date}
+                        milestoneType={milestone.milestoneType}
                         refId={`Add${milestoneId}`}
                         inDone={milestone.done}
                     />

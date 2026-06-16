@@ -2018,5 +2018,21 @@
     "No skills in the catalog yet": "No skills in the catalog yet",
     "No skills enabled": "No skills enabled",
     "Contacting repository": "Contacting repository…",
-    "Processing skill %{current} of %{total}": "Processing skill %{current} of %{total}"
+    "Processing skill %{current} of %{total}": "Processing skill %{current} of %{total}",
+    "Goal milestones": "Goal milestones",
+    "Automatic milestones": "Automatic milestones",
+    "Future milestones to show": "Future milestones to show",
+    "Cadence": "Cadence",
+    "Bi-weekly": "Bi-weekly",
+    "Quarterly": "Quarterly",
+    "Project timezone": "Project timezone",
+    "Cadence start date": "Cadence start date",
+    "Dynamic": "Dynamic",
+    "Fixed": "Fixed",
+    "Schedule mode": "Schedule mode",
+    "Choose how this goal follows your linear milestones": "Choose how this goal follows your linear milestones",
+    "The goal moves automatically to the current linear milestone": "The goal moves automatically to the current linear milestone",
+    "The goal stays on the milestone date you set": "The goal stays on the milestone date you set",
+    "automatic_milestones_note": "Since this project has automatic milestones activated, we will show the next %{count} milestones automatically. You can configure this in the %{settingsLink}.",
+    "project settings": "project settings"
 }

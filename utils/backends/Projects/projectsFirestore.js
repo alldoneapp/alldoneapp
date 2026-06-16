@@ -2,7 +2,7 @@ import moment from 'moment'
 
 import { FOLLOWER_PROJECTS_TYPE } from '../../../components/Followers/FollowerConstants'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
-import { getDb, tryAddFollower } from '../firestore'
+import { getDb, getId, tryAddFollower } from '../firestore'
 import {
     createProjectAssistantChangedFeed,
     createProjectColorChangedFeed,
@@ -12,6 +12,57 @@ import {
 } from './projectUpdates'
 import store from '../../../redux/store'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { ALL_USERS } from '../../../components/GoalsView/GoalsHelper'
+import {
+    GOAL_MILESTONES_MODE_LINEAR,
+    MILESTONE_TYPE_LINEAR,
+    getCurrentTimezone,
+    getLinearMilestonePeriods,
+    getLinearMilestoneTitle,
+    normalizeGoalMilestonesConfig,
+} from '../../GoalMilestonesHelper'
+
+async function getLinearMilestoneByPeriodKey(projectId, ownerId, periodKey) {
+    const doc = (
+        await getDb()
+            .collection(`goalsMilestones/${projectId}/milestonesItems`)
+            .where('ownerId', '==', ownerId)
+            .where('done', '==', false)
+            .where('periodKey', '==', periodKey)
+            .limit(1)
+            .get()
+    ).docs[0]
+    return doc ? { id: doc.id, ...doc.data() } : null
+}
+
+async function ensureProjectLinearMilestones(projectId, ownerId, config) {
+    const periods = getLinearMilestonePeriods(config, Date.now(), config.futureMilestonesToCreate + 1)
+
+    for (let i = 0; i < periods.length; i++) {
+        const period = periods[i]
+        const existingMilestone = await getLinearMilestoneByPeriodKey(projectId, ownerId, period.periodKey)
+        if (!existingMilestone) {
+            await getDb()
+                .collection(`goalsMilestones/${projectId}/milestonesItems`)
+                .doc(getId())
+                .set({
+                    extendedName: getLinearMilestoneTitle(period),
+                    created: Date.now(),
+                    date: period.date,
+                    done: false,
+                    assigneesCapacityDates: {},
+                    doneDate: Date.now(),
+                    hasStar: '#FFFFFF',
+                    ownerId,
+                    milestoneType: MILESTONE_TYPE_LINEAR,
+                    periodStartDate: period.periodStartDate,
+                    periodEndDate: period.periodEndDate,
+                    periodKey: period.periodKey,
+                    cadence: period.cadence,
+                })
+        }
+    }
+}
 
 export async function setProjectIsShared(project, newShared) {
     getDb().doc(`projects/${project.id}`).update({ isShared: newShared })
@@ -83,6 +134,20 @@ export function setProjectAutoEstimation(projectId, autoEstimation) {
     getDb().doc(`/projects/${projectId}`).update({
         autoEstimation,
     })
+}
+
+export async function setProjectGoalMilestonesConfig(projectId, config) {
+    const normalizedConfig = normalizeGoalMilestonesConfig(config, getCurrentTimezone())
+    await getDb().doc(`/projects/${projectId}`).update({
+        goalMilestonesConfig: normalizedConfig,
+    })
+
+    if (normalizedConfig.mode === GOAL_MILESTONES_MODE_LINEAR) {
+        const { loggedUser } = store.getState()
+        const project = ProjectHelper.getProjectById(projectId)
+        const ownerId = project?.parentTemplateId ? loggedUser.uid : ALL_USERS
+        await ensureProjectLinearMilestones(projectId, ownerId, normalizedConfig)
+    }
 }
 
 export function setProjectDayRateTimeLog(projectId, dayRateTimeLog) {

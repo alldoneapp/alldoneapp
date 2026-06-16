@@ -3,6 +3,7 @@ const { promiseAllAndCatch, FEED_PUBLIC_FOR_ALL } = require('./HelperFunctions')
 const { addFollower, FOLLOW_TYPE_GOALS } = require('./FollowObjectHelper')
 
 const BACKLOG_DATE_NUMERIC = Number.MAX_SAFE_INTEGER
+const GOAL_SCHEDULE_MODE_FIXED = 'fixed'
 
 const copyGoals = async (firebase, projectId, newProjectId, user, originGoals, taskAmountsByGoals) => {
     const db = firebase.firestore()
@@ -32,6 +33,7 @@ const copyGoals = async (firebase, projectId, newProjectId, user, originGoals, t
             dateByDoneMilestone: {},
             sortIndexByMilestone: {},
             isPublicFor: [FEED_PUBLIC_FOR_ALL],
+            scheduleMode: GOAL_SCHEDULE_MODE_FIXED,
         }
 
         if (!arrayPromises[promiseIndex]) arrayPromises[promiseIndex] = []

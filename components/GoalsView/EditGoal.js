@@ -42,6 +42,12 @@ import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import { updateNoteTitleWithoutFeed } from '../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
 import GoalIndicator from '../TaskListView/GoalIndicator'
+import {
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    GOAL_SCHEDULE_MODE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    normalizeMilestoneType,
+} from '../../utils/GoalMilestonesHelper'
 
 export default function EditGoal({
     projectId,
@@ -50,6 +56,7 @@ export default function EditGoal({
     milestoneDate,
     onCancelAction,
     milestoneId,
+    milestoneType,
     style,
     inParentGoal,
     isEmptyGoal,
@@ -104,7 +111,7 @@ export default function EditGoal({
         setTimeout(() => {
             onCancelAction()
         })
-        const goal = await Backend.uploadNewGoal(projectId, newGoal, milestoneDate, true, false)
+        const goal = await Backend.uploadNewGoal(projectId, newGoal, milestoneDate, true, milestoneType)
         dispatch(setTmpInputTextGoal(''))
 
         return goal
@@ -144,9 +151,17 @@ export default function EditGoal({
         }
     }
 
-    const updateDateRange = (date, rangeEdgePropertyName) => {
+    const updateDateRange = (date, rangeEdgePropertyName, milestone) => {
         if (tmpGoal[rangeEdgePropertyName] !== date) {
-            const finalGoal = { ...tmpGoal, [rangeEdgePropertyName]: date }
+            const selectedMilestoneType = normalizeMilestoneType(milestone?.milestoneType)
+            const finalGoal = {
+                ...tmpGoal,
+                [rangeEdgePropertyName]: date,
+                scheduleMode:
+                    selectedMilestoneType === MILESTONE_TYPE_LINEAR
+                        ? GOAL_SCHEDULE_MODE_DYNAMIC
+                        : GOAL_SCHEDULE_MODE_FIXED,
+            }
             adding ? createGoal(finalGoal) : updateGoal(finalGoal)
         }
     }

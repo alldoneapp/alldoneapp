@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import DateTag from './DateTag'
 import { FEED_GOAL_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import PrivacyTag from '../../Tags/PrivacyTag'
+import GoalScheduleModeTag from '../../Tags/GoalScheduleModeTag'
 
 export default function TagList({
     projectId,
@@ -22,6 +23,11 @@ export default function TagList({
     return (
         <View style={localStyles.container}>
             <DateTag completionMilestoneDate={completionMilestoneDate} />
+            <GoalScheduleModeTag
+                projectId={projectId}
+                goal={goal}
+                disabled={!accessGranted || !loggedUserCanUpdateObject}
+            />
             <View style={{ marginLeft: 12 }}>
                 <PrivacyTag
                     projectId={projectId}

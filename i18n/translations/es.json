@@ -1993,5 +1993,15 @@
     "No skills in the catalog yet": "Aún no hay habilidades en el catálogo",
     "No skills enabled": "Sin habilidades activadas",
     "Contacting repository": "Contactando con el repositorio…",
-    "Processing skill %{current} of %{total}": "Procesando habilidad %{current} de %{total}"
+    "Processing skill %{current} of %{total}": "Procesando habilidad %{current} de %{total}",
+    "Dynamic": "Dinámico",
+    "Fixed": "Fijo",
+    "Schedule mode": "Modo de programación",
+    "Choose how this goal follows your linear milestones": "Elige cómo sigue este objetivo tus hitos lineales",
+    "The goal moves automatically to the current linear milestone": "El objetivo se mueve automáticamente al hito lineal actual",
+    "The goal stays on the milestone date you set": "El objetivo permanece en la fecha del hito que estableciste",
+    "Automatic milestones": "Hitos automáticos",
+    "Future milestones to show": "Hitos futuros a mostrar",
+    "automatic_milestones_note": "Como este proyecto tiene los hitos automáticos activados, mostraremos los próximos %{count} hitos automáticamente. Puedes configurarlo en los %{settingsLink}.",
+    "project settings": "ajustes del proyecto"
 }

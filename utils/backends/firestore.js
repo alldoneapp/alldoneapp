@@ -115,6 +115,11 @@ import ProjectHelper, {
     PROJECT_PUBLIC,
 } from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { ALL_USERS, CAPACITY_NONE, DYNAMIC_PERCENT } from '../../components/GoalsView/GoalsHelper'
+import {
+    normalizeGoalMilestonesConfig,
+    normalizeGoalScheduleMode,
+    normalizeMilestoneType,
+} from '../GoalMilestonesHelper'
 import { getGoalData, updateGoalEditionData, updateGoalNote } from './Goals/goalsFirestore'
 import {
     DAILY_GOLD_LIMIT,
@@ -3488,6 +3493,7 @@ export function mapGoalData(goalId, goal) {
         isAssistantEnabled: goal.isAssistantEnabled,
         commentsData: goal.commentsData ? goal.commentsData : '',
         timesPostponed: goal.timesPostponed ?? 0,
+        scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
     }
 }
 
@@ -3502,6 +3508,11 @@ export function mapMilestoneData(milestoneId, milestone) {
         doneDate: milestone.doneDate ? milestone.doneDate : Date.now(),
         hasStar: milestone.hasStar ? milestone.hasStar : '#FFFFFF',
         ownerId: milestone.ownerId ? milestone.ownerId : ALL_USERS,
+        milestoneType: normalizeMilestoneType(milestone.milestoneType),
+        periodStartDate: milestone.periodStartDate || null,
+        periodEndDate: milestone.periodEndDate || null,
+        periodKey: milestone.periodKey || '',
+        cadence: milestone.cadence || '',
     }
 }
 
@@ -3808,6 +3819,7 @@ export function mapProjectData(projectId, project, customData) {
         lastActionDate: project.lastActionDate ? project.lastActionDate : Date.now(),
         autoEstimation: project.autoEstimation === false ? false : true,
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
+        goalMilestonesConfig: normalizeGoalMilestonesConfig(project.goalMilestonesConfig),
         contactStatuses: project.contactStatuses ? project.contactStatuses : {},
         gitlabRepoUrl: project.gitlabRepoUrl ? project.gitlabRepoUrl : '',
         gitlabBaseBranch: project.gitlabBaseBranch ? project.gitlabBaseBranch : '',

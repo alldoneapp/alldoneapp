@@ -16,6 +16,7 @@ import TabsList, { COMPLETION_TAB, STARTING_TAB } from './TabsList'
 import OptionsArea from '../GoalMilestoneModal/OptionsArea'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
+import { MILESTONE_TYPE_FIXED } from '../../../../utils/GoalMilestonesHelper'
 
 export default function GoalMilestoneRangeModal({
     projectId,
@@ -56,8 +57,12 @@ export default function GoalMilestoneRangeModal({
         setModalHeight(height)
     }
 
-    const updateMilestone = date => {
-        updateMilestoneDateRange(date, activeTab === STARTING_TAB ? 'startingMilestoneDate' : 'completionMilestoneDate')
+    const updateMilestone = (date, milestone = { milestoneType: MILESTONE_TYPE_FIXED }) => {
+        updateMilestoneDateRange(
+            date,
+            activeTab === STARTING_TAB ? 'startingMilestoneDate' : 'completionMilestoneDate',
+            milestone
+        )
     }
 
     useEffect(() => {
@@ -99,7 +104,7 @@ export default function GoalMilestoneRangeModal({
                                 : milestoneDate
                         }
                         externalStyle={{ marginHorizontal: -16 }}
-                        updateGoalMilestone={updateMilestone}
+                        updateGoalMilestone={date => updateMilestone(date, { milestoneType: MILESTONE_TYPE_FIXED })}
                     />
                     <BackButton onPress={closeCalendar} />
                 </View>

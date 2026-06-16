@@ -13,6 +13,7 @@ export default function AddGoals({
     closeEdition,
     milestoneId,
     milestoneDate,
+    milestoneType,
     refId,
     activeDragGoalMode,
     containerStyle,
@@ -44,6 +45,7 @@ export default function AddGoals({
                             adding={true}
                             milestoneId={milestoneId}
                             milestoneDate={milestoneDate}
+                            milestoneType={milestoneType}
                         />
                     }
                 />

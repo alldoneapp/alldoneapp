@@ -43,10 +43,10 @@ export default function DateRangeWrapper({
         removeModal(GOAL_DATE_RANGE_MODAL_ID)
     }
 
-    const updateMilestoneDateRange = (date, rangeEdgePropertyName) => {
+    const updateMilestoneDateRange = (date, rangeEdgePropertyName, milestone) => {
         this.setTimeout(() => {
             closeModal()
-            updateDateRange(date, rangeEdgePropertyName)
+            updateDateRange(date, rangeEdgePropertyName, milestone)
         })
     }
 

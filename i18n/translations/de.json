@@ -1566,5 +1566,15 @@
     "No skills in the catalog yet": "Noch keine Skills im Katalog",
     "No skills enabled": "Keine Skills aktiviert",
     "Contacting repository": "Repository wird kontaktiert…",
-    "Processing skill %{current} of %{total}": "Verarbeite Skill %{current} von %{total}"
+    "Processing skill %{current} of %{total}": "Verarbeite Skill %{current} von %{total}",
+    "Dynamic": "Dynamisch",
+    "Fixed": "Fest",
+    "Schedule mode": "Planungsmodus",
+    "Choose how this goal follows your linear milestones": "Wähle, wie dieses Ziel deinen linearen Meilensteinen folgt",
+    "The goal moves automatically to the current linear milestone": "Das Ziel wechselt automatisch zum aktuellen linearen Meilenstein",
+    "The goal stays on the milestone date you set": "Das Ziel bleibt auf dem von dir festgelegten Meilensteindatum",
+    "Automatic milestones": "Automatische Meilensteine",
+    "Future milestones to show": "Anzuzeigende zukünftige Meilensteine",
+    "automatic_milestones_note": "Da für dieses Projekt automatische Meilensteine aktiviert sind, zeigen wir die nächsten %{count} Meilensteine automatisch an. Du kannst dies in den %{settingsLink} konfigurieren.",
+    "project settings": "Projekteinstellungen"
 }

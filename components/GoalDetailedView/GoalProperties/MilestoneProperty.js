@@ -7,9 +7,9 @@ import DateRangeWrapper from '../../GoalsView/EditGoalsComponents/DateRangeWrapp
 import { translate } from '../../../i18n/TranslationService'
 
 export default function MilestoneProperty({ goal, projectId, disabled }) {
-    const updateDateRange = (date, rangeEdgePropertyName) => {
+    const updateDateRange = (date, rangeEdgePropertyName, milestone) => {
         if (goal[rangeEdgePropertyName] !== date) {
-            Backend.updateGoalDateRange(projectId, goal, date, rangeEdgePropertyName, true)
+            Backend.updateGoalDateRange(projectId, goal, date, rangeEdgePropertyName, true, milestone?.milestoneType)
         }
     }
 

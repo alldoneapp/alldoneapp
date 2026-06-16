@@ -1,5 +1,6 @@
 import * as bridge from './backends/firestore'
 import * as goalsBridge from './backends/Goals/goalsFirestore'
+import * as projectsBridge from './backends/Projects/projectsFirestore'
 import * as skillsBridge from './backends/Skills/skillsFirestore'
 
 export default class Backend {
@@ -101,6 +102,10 @@ export default class Backend {
 
     static async getMilestoneData(projectId, milestoneId) {
         return await goalsBridge.getMilestoneData(projectId, milestoneId)
+    }
+
+    static async setProjectGoalMilestonesConfig(projectId, config) {
+        return await projectsBridge.setProjectGoalMilestonesConfig(projectId, config)
     }
 
     static async onUserWorkflowChange(uid, callback) {
@@ -675,8 +680,15 @@ export default class Backend {
         return goalsBridge.updateFutureOpenMilestonesDate(projectId, milestone, newDate)
     }
 
-    static updateGoalDateRange(projectId, goal, newDate, rangeEdgePropertyName, needToUpdateGoal) {
-        return goalsBridge.updateGoalDateRange(projectId, goal, newDate, rangeEdgePropertyName, needToUpdateGoal)
+    static updateGoalDateRange(projectId, goal, newDate, rangeEdgePropertyName, needToUpdateGoal, milestoneType) {
+        return goalsBridge.updateGoalDateRange(
+            projectId,
+            goal,
+            newDate,
+            rangeEdgePropertyName,
+            needToUpdateGoal,
+            milestoneType
+        )
     }
 
     static updateMilestoneDoneState(projectId, milestone) {
@@ -747,8 +759,8 @@ export default class Backend {
         return goalsBridge.watchAllDoneGoalsAmounts(projectId, assigneesIdsToShow, goalWatcherKey, callback)
     }
 
-    static async uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject) {
-        return await goalsBridge.uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject)
+    static async uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject, milestoneType) {
+        return await goalsBridge.uploadNewGoal(projectId, goal, baseDate, movingGoalToOtherProject, milestoneType)
     }
 
     static deleteGoal(projectId, goal, movingToOtherProjectId) {
@@ -813,6 +825,10 @@ export default class Backend {
 
     static updateGoalAssigneeCapacity(projectId, goal, oldCapacity, newCapacity, assigneeId) {
         return goalsBridge.updateGoalAssigneeCapacity(projectId, goal, oldCapacity, newCapacity, assigneeId)
+    }
+
+    static updateGoalScheduleMode(projectId, goal, nextMode) {
+        return goalsBridge.updateGoalScheduleMode(projectId, goal, nextMode)
     }
 
     static setGoalDescription(projectId, goalId, description, goal, oldDescription) {

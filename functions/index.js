@@ -3212,6 +3212,19 @@ exports.renewExpiredOKRsSecondGen = onSchedule(
     }
 )
 
+exports.processLinearGoalMilestonesSecondGen = onSchedule(
+    {
+        schedule: '0 * * * *',
+        timeoutSeconds: 900,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { processLinearGoalMilestones } = require('./Goals/linearGoalMilestones')
+        return await processLinearGoalMilestones()
+    }
+)
+
 exports.pollGmailLabelingSecondGen = onSchedule(
     {
         schedule: '*/5 * * * *',

@@ -14,6 +14,7 @@ import { GOALS_OPEN_TAB_INDEX } from '../../../GoalsView/GoalsHelper'
 import OptionsArea from './OptionsArea'
 import { translate } from '../../../../i18n/TranslationService'
 import { DEFAULT_WORKSTREAM_ID } from '../../../Workstreams/WorkstreamHelper'
+import { MILESTONE_TYPE_FIXED } from '../../../../utils/GoalMilestonesHelper'
 
 export default function GoalMilestoneModal({
     projectId,
@@ -83,7 +84,7 @@ export default function GoalMilestoneModal({
                         closePopover={closeModal}
                         initialDate={milestoneDate}
                         externalStyle={{ marginHorizontal: -16 }}
-                        updateGoalMilestone={updateMilestone}
+                        updateGoalMilestone={date => updateMilestone(date, { milestoneType: MILESTONE_TYPE_FIXED })}
                     />
                     <BackButton onPress={closeCalendar} />
                 </View>
