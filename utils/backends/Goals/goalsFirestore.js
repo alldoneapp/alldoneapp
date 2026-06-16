@@ -717,7 +717,7 @@ export async function updateGoal(projectId, oldGoal, updatedGoal, avoidFollow) {
 
     promisesToProcess.push(updateGoalData(projectId, updatedGoal.id, goalToStore, null))
 
-    Promise.all(promisesToProcess)
+    await Promise.all(promisesToProcess)
 
     updateGoalUpdatesChain(projectId, oldGoal, updatedGoal, avoidFollow)
 }
@@ -733,7 +733,7 @@ export async function updateGoalDateRange(projectId, goal, newDate, rangeEdgePro
     } = getGoalDirectionWhenChangesDate(newDate, goal, rangeEdgePropertyName)
 
     if (toBacklog || fromBacklog || moveFullGoalWhenUpdateCompletionDate || moveFullGoalWhenUpdateStartingDate) {
-        updateGoalDates(
+        await updateGoalDates(
             projectId,
             goal,
             newDate,
@@ -745,7 +745,7 @@ export async function updateGoalDateRange(projectId, goal, newDate, rangeEdgePro
             true
         )
     } else if (rangeEdgePropertyName === 'startingMilestoneDate') {
-        updateGoalDates(
+        await updateGoalDates(
             projectId,
             goal,
             newDate,
@@ -756,7 +756,7 @@ export async function updateGoalDateRange(projectId, goal, newDate, rangeEdgePro
             false
         )
     } else {
-        updateGoalDates(projectId, goal, newDate, { completionMilestoneDate: newDate }, needToUpdateGoal, true)
+        await updateGoalDates(projectId, goal, newDate, { completionMilestoneDate: newDate }, needToUpdateGoal, true)
     }
 }
 
