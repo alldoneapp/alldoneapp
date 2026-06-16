@@ -1576,5 +1576,6 @@
     "Automatic milestones": "Automatische Meilensteine",
     "Future milestones to show": "Anzuzeigende zukünftige Meilensteine",
     "automatic_milestones_note": "Da für dieses Projekt automatische Meilensteine aktiviert sind, zeigen wir die nächsten %{count} Meilensteine automatisch an. Du kannst dies in den %{settingsLink} konfigurieren.",
+    "Project Settings": "Projekteinstellungen",
     "project settings": "Projekteinstellungen"
 }

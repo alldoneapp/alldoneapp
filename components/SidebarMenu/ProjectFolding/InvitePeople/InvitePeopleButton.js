@@ -10,7 +10,7 @@ import Icon from '../../../Icon'
 import { translate } from '../../../../i18n/TranslationService'
 import useCollapsibleSidebar from '../../Collapsible/UseCollapsibleSidebar'
 
-export default function InvitePeopleButton({ projectColor, openModal }) {
+export default function InvitePeopleButton({ projectColor, openProjectSettings }) {
     const themeName = useSelector(state => state.loggedUser.themeName)
     const { expanded } = useCollapsibleSidebar()
     const { hover, onHover, offHover } = useOnHover()
@@ -30,12 +30,12 @@ export default function InvitePeopleButton({ projectColor, openModal }) {
             ]}
             onMouseEnter={onHover}
             onMouseLeave={offHover}
-            onPress={openModal}
+            onPress={openProjectSettings}
         >
-            <Icon size={20} name={'user-plus'} color={theme.placeholder.color} style={localStyles.icon} />
+            <Icon size={20} name={'settings'} color={theme.placeholder.color} style={localStyles.icon} />
             {expanded && (
                 <Text style={[localStyles.placeholderText, theme.placeholder]} numberOfLines={1}>
-                    {translate('Add AI Human')}
+                    {translate('Project Settings')}
                 </Text>
             )}
         </TouchableOpacity>

@@ -1,51 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react'
-import Popover from 'react-tiny-popover'
+import React from 'react'
+import { useDispatch } from 'react-redux'
 
 import InvitePeopleButton from './InvitePeopleButton'
-import InvitePeopleModal from './InvitePeopleModal'
+import NavigationService from '../../../../utils/NavigationService'
+import { setSelectedNavItem } from '../../../../redux/actions'
+import { DV_TAB_PROJECT_PROPERTIES } from '../../../../utils/TabNavigationConstants'
 
 export default function InvitePeopleWrapper({ projectColor, projectIndex }) {
-    const [isOpen, setIsOpen] = useState(false)
-    const isUnmountedRef = useRef(false)
+    const dispatch = useDispatch()
 
-    const safeSetIsOpen = value => {
-        if (!isUnmountedRef.current) {
-            setIsOpen(value)
-        } else {
-            console.debug('[InvitePeopleWrapper] Ignored setIsOpen after unmount')
-        }
+    const openProjectSettings = () => {
+        NavigationService.navigate('ProjectDetailedView', {
+            projectIndex,
+        })
+        dispatch(setSelectedNavItem(DV_TAB_PROJECT_PROPERTIES))
     }
 
-    const openModal = () => {
-        safeSetIsOpen(true)
-    }
-
-    const closeModal = () => {
-        safeSetIsOpen(false)
-    }
-
-    useEffect(() => {
-        return () => {
-            isUnmountedRef.current = true
-        }
-    }, [])
-
-    return (
-        <>
-            {isOpen ? (
-                <Popover
-                    content={<InvitePeopleModal projectIndex={projectIndex} closeModal={closeModal} />}
-                    align={'start'}
-                    position={['bottom']}
-                    onClickOutside={closeModal}
-                    disableReposition
-                    isOpen
-                >
-                    <InvitePeopleButton projectColor={projectColor} openModal={openModal} />
-                </Popover>
-            ) : (
-                <InvitePeopleButton projectColor={projectColor} openModal={openModal} />
-            )}
-        </>
-    )
+    return <InvitePeopleButton projectColor={projectColor} openProjectSettings={openProjectSettings} />
 }
