@@ -3,7 +3,6 @@ import { useSelector } from 'react-redux'
 import { StyleSheet, View } from 'react-native'
 
 import RightAreaAmount from './RightAreaAmount'
-import ProjectRightAreaEditIcon from './ProjectRightAreaEditIcon'
 import { checkIfSelectedProject } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function ProjectRightArea({ projectId, projectIndex, highlight }) {
@@ -11,9 +10,7 @@ export default function ProjectRightArea({ projectId, projectIndex, highlight })
 
     return (
         <View style={localStyles.tasksAmountContainer}>
-            {selectedProjectIndex === projectIndex ? (
-                <ProjectRightAreaEditIcon projectIndex={projectIndex} />
-            ) : !(checkIfSelectedProject(selectedProjectIndex) && highlight) ? (
+            {selectedProjectIndex !== projectIndex && !(checkIfSelectedProject(selectedProjectIndex) && highlight) ? (
                 <RightAreaAmount projectId={projectId} highlight={highlight} />
             ) : null}
         </View>
