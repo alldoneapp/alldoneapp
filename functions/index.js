@@ -3077,6 +3077,63 @@ exports.syncCalendarEventsSecondGen = onCall(
     }
 )
 
+exports.getBookingSettingsSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        try {
+            const { getBookingSettings } = require('./Booking/bookingSettings')
+            return await getBookingSettings(auth.uid)
+        } catch (error) {
+            console.error('Error loading booking settings:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to load booking settings')
+        }
+    }
+)
+
+exports.saveBookingSettingsSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        try {
+            const { saveBookingSettings } = require('./Booking/bookingSettings')
+            return await saveBookingSettings(auth.uid, data?.settings || {})
+        } catch (error) {
+            console.error('Error saving booking settings:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('invalid-argument', error.message || 'Failed to save booking settings')
+        }
+    }
+)
+
+exports.bookingApi = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async (req, res) => {
+        const { bookingApiHandler } = require('./Booking/publicBooking')
+        await bookingApiHandler(req, res)
+    }
+)
+
 exports.onCopyProjectSecondGen = onCall(
     {
         timeoutSeconds: 540,

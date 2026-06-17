@@ -113,6 +113,16 @@ describe('assistantCalendarTools', () => {
         ])
     })
 
+    test('applies before and after buffers to busy intervals', () => {
+        const result = assistantCalendarTools.__private__.applyBusyIntervalBuffers(
+            [{ startMs: 1000 * 60 * 60, endMs: 2 * 1000 * 60 * 60 }],
+            10,
+            15
+        )
+
+        expect(result).toEqual([{ startMs: 50 * 60 * 1000, endMs: 135 * 60 * 1000 }])
+    })
+
     test('searches across connected calendar accounts and returns normalized events', async () => {
         setUser('user-1', {
             projectIds: ['p1', 'p2'],

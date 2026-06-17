@@ -19,7 +19,7 @@ const MAX_SEARCH_LIMIT = 20
 const DEFAULT_CALENDAR_ID = 'primary'
 const DEFAULT_AVAILABILITY_DURATION_MINUTES = 30
 const DEFAULT_AVAILABILITY_MAX_OPTIONS = 3
-const MAX_AVAILABILITY_OPTIONS = 10
+const MAX_AVAILABILITY_OPTIONS = 96
 const DEFAULT_AVAILABILITY_SLOT_INTERVAL_MINUTES = 30
 const MAX_AVAILABILITY_RANGE_DAYS = 31
 const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
@@ -329,6 +329,16 @@ function mergeBusyIntervals(intervals = [], rangeStartMs, rangeEndMs) {
     return merged
 }
 
+function applyBusyIntervalBuffers(intervals = [], bufferBeforeMinutes = 0, bufferAfterMinutes = 0) {
+    const beforeMs = Math.max(parseInt(bufferBeforeMinutes, 10) || 0, 0) * 60 * 1000
+    const afterMs = Math.max(parseInt(bufferAfterMinutes, 10) || 0, 0) * 60 * 1000
+
+    return intervals.map(interval => ({
+        startMs: Number(interval?.startMs) - beforeMs,
+        endMs: Number(interval?.endMs) + afterMs,
+    }))
+}
+
 function ceilMomentToInterval(value, anchor, intervalMinutes) {
     const elapsedMinutes = value.diff(anchor, 'minutes', true)
     return anchor.clone().add(Math.ceil(Math.max(elapsedMinutes, 0) / intervalMinutes) * intervalMinutes, 'minutes')
@@ -435,6 +445,8 @@ async function findCalendarAvailabilityForAssistantRequest({
     workingHoursStart = DEFAULT_WORKING_HOURS_START,
     workingHoursEnd = DEFAULT_WORKING_HOURS_END,
     includeWeekends = false,
+    bufferBeforeMinutes = 0,
+    bufferAfterMinutes = 0,
 }) {
     const requestedTimeZone = safeTrim(timeZone)
     const resolvedTimeZone =
@@ -539,7 +551,8 @@ async function findCalendarAvailabilityForAssistantRequest({
         }
     }
 
-    const mergedBusyIntervals = mergeBusyIntervals(busyIntervals, rangeStart.valueOf(), rangeEnd.valueOf())
+    const bufferedBusyIntervals = applyBusyIntervalBuffers(busyIntervals, bufferBeforeMinutes, bufferAfterMinutes)
+    const mergedBusyIntervals = mergeBusyIntervals(bufferedBusyIntervals, rangeStart.valueOf(), rangeEnd.valueOf())
     const options = buildAvailabilityOptions({
         busyIntervals: mergedBusyIntervals,
         rangeStart,
@@ -565,6 +578,8 @@ async function findCalendarAvailabilityForAssistantRequest({
             start: normalizedWorkingHoursStart,
             end: normalizedWorkingHoursEnd,
             includeWeekends: includeWeekends === true,
+            bufferBeforeMinutes: Math.max(parseInt(bufferBeforeMinutes, 10) || 0, 0),
+            bufferAfterMinutes: Math.max(parseInt(bufferAfterMinutes, 10) || 0, 0),
         },
         searchedCalendarCount,
         failedCalendarCount,
@@ -1157,6 +1172,9 @@ module.exports = {
         validateEventRange,
         getConnectedCalendarAccounts,
         getUserDefaultTimeZone,
+        applyBusyIntervalBuffers,
+        buildAvailabilityOptions,
+        mergeBusyIntervals,
         resolveCalendarAccountForWrite,
         resolveEventTargetForWrite,
         normalizeCalendarEvent,

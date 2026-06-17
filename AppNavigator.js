@@ -16,6 +16,7 @@ import PaymentSuccessPage from './components/PaymentSuccess/PaymentSuccessPage'
 import AppAuthPage from './components/AppAuth/AppAuthPage'
 import OnboardingView from './components/Onboarding/OnboardingView'
 import WhatsAppOnboarding from './components/Onboarding/WhatsAppOnboarding'
+import MeetingBookingPage from './components/MeetingBooking/MeetingBookingPage'
 import NoteMaxLengthModal from './components/UIComponents/FloatModals/NoteMaxLengthModal'
 import {
     hideWebSideBar,
@@ -234,6 +235,9 @@ const AppStack = createStackNavigator(
                     </View>
                 </View>
             ),
+        },
+        MeetingBooking: {
+            screen: props => <MeetingBookingPage navigation={props.navigation} />,
         },
     },
 

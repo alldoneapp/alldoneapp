@@ -8,6 +8,7 @@ import URLsTasksTrigger from './Tasks/URLsTasksTrigger'
 import URLsGoalsTrigger from './Goals/URLsGoalsTrigger'
 import URLsSkillsTrigger from './Skills/URLsSkillsTrigger'
 import URLsAssistantsTrigger from './Assistants/URLsAssistantsTrigger'
+import URLsBookingTrigger from './Booking/URLsBookingTrigger'
 
 import store from '../redux/store'
 import { navigateToAllProjectsTasks } from '../redux/actions'
@@ -33,6 +34,7 @@ class URLTrigger {
             URLsChatsTrigger,
             URLsSkillsTrigger,
             URLsAssistantsTrigger,
+            URLsBookingTrigger,
         ]
     }
 

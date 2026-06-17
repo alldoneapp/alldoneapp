@@ -397,7 +397,7 @@ class SharedHelper {
             // We have public URLs: /login, /starttrial, and /paymentsuccess
             // The /login route is processed in other component, not here
             // For /starttrial and /paymentsuccess, we should handle them directly
-            if (URL.startsWith('/starttrial') || URL.startsWith('/paymentsuccess')) {
+            if (URL.startsWith('/starttrial') || URL.startsWith('/paymentsuccess') || URL.startsWith('/meet/')) {
                 URLTrigger.directProcessUrl(NavigationService, URL)
             }
         }
