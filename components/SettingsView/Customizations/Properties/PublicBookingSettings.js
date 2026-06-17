@@ -163,11 +163,6 @@ export default function PublicBookingSettings() {
                             onChangeText={v => updateField('slug', v)}
                         />
                         <LabeledInput
-                            label={translate('Slot interval minutes')}
-                            value={String(settings.slotIntervalMinutes)}
-                            onChangeText={v => updateField('slotIntervalMinutes', v)}
-                        />
-                        <LabeledInput
                             label={translate('Work starts')}
                             value={settings.workingHoursStart}
                             onChangeText={v => updateField('workingHoursStart', v)}

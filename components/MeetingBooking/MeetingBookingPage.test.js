@@ -66,7 +66,7 @@ describe('MeetingBookingPage', () => {
     test('renders the loading state before the page request resolves', () => {
         const tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
 
-        expect(tree.root.findAllByProps({ children: 'Loading booking page' }).length).toBeGreaterThan(0)
+        expect(tree.root.findAllByProps({ testID: 'booking-loading-skeleton' }).length).toBeGreaterThan(0)
     })
 
     test('renders an empty slots state', async () => {

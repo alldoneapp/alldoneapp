@@ -81,7 +81,12 @@ function normalizeAvailableDurations(value) {
 }
 
 function resolveUserIanaTimeZone(userData = {}) {
-    const candidates = [userData.timezone, userData.preferredTimezone, userData.timezoneOffset, userData.timezoneMinutes]
+    const candidates = [
+        userData.timezone,
+        userData.preferredTimezone,
+        userData.timezoneOffset,
+        userData.timezoneMinutes,
+    ]
     for (const candidate of candidates) {
         const trimmed = safeTrim(candidate)
         if (trimmed && moment.tz.zone(trimmed)) return trimmed
@@ -111,7 +116,9 @@ function normalizeBookingSettings(input = {}, userData = {}) {
         includeWeekends: input.includeWeekends === true,
         bufferBeforeMinutes: normalizeBoundedInteger(input.bufferBeforeMinutes, defaults.bufferBeforeMinutes, 0, 240),
         bufferAfterMinutes: normalizeBoundedInteger(input.bufferAfterMinutes, defaults.bufferAfterMinutes, 0, 240),
-        timeZone: moment.tz.zone(safeTrim(input.timeZone)) ? safeTrim(input.timeZone) : resolveUserIanaTimeZone(userData),
+        timeZone: moment.tz.zone(safeTrim(input.timeZone))
+            ? safeTrim(input.timeZone)
+            : resolveUserIanaTimeZone(userData),
     }
 }
 
@@ -177,9 +184,7 @@ async function getBookingSettings(userId) {
         settings,
         connectedCalendarCount,
         publicUrl:
-            settings.enabled && settings.slug
-                ? `${getHostingUrl().replace(/\/+$/, '')}/meet/${settings.slug}`
-                : '',
+            settings.enabled && settings.slug ? `${getHostingUrl().replace(/\/+$/, '')}/meet/${settings.slug}` : '',
     }
 }
 
@@ -232,9 +237,7 @@ async function saveBookingSettings(userId, input = {}) {
         settings,
         connectedCalendarCount,
         publicUrl:
-            settings.enabled && settings.slug
-                ? `${getHostingUrl().replace(/\/+$/, '')}/meet/${settings.slug}`
-                : '',
+            settings.enabled && settings.slug ? `${getHostingUrl().replace(/\/+$/, '')}/meet/${settings.slug}` : '',
     }
 }
 
@@ -270,7 +273,9 @@ async function findPublicBookingSlots(page, { start, end, timeZone, durationMinu
         timeZone: timeZone || settings.timeZone || 'UTC',
         durationMinutes: resolvedDurationMinutes,
         maxOptions: MAX_PUBLIC_SLOT_OPTIONS,
-        slotIntervalMinutes: settings.slotIntervalMinutes,
+        // Start times are spaced by the meeting length so slots line up cleanly and
+        // don't overlap. The slot interval is no longer a separate user-facing setting.
+        slotIntervalMinutes: resolvedDurationMinutes,
         workingHoursStart: settings.workingHoursStart,
         workingHoursEnd: settings.workingHoursEnd,
         includeWeekends: settings.includeWeekends,

@@ -122,11 +122,7 @@ export default function MeetingBookingPage({ navigation }) {
     }
 
     if (loadingPage) {
-        return (
-            <View style={localStyles.centered}>
-                <Text style={localStyles.meta}>{translate('Loading booking page')}</Text>
-            </View>
-        )
+        return <BookingPageSkeleton />
     }
 
     if (!page || error === translate('Booking page not found')) {
@@ -293,6 +289,72 @@ export default function MeetingBookingPage({ navigation }) {
     )
 }
 
+function useShimmer() {
+    const pulse = useRef(new Animated.Value(0)).current
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'test') return undefined
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 0, duration: 850, useNativeDriver: true }),
+            ])
+        )
+        animation.start()
+        return () => animation.stop()
+    }, [pulse])
+
+    return pulse
+}
+
+function SkeletonBlock({ style, opacity }) {
+    return <Animated.View style={[localStyles.skeletonBlock, style, { opacity }]} />
+}
+
+function BookingPageSkeleton() {
+    const pulse = useShimmer()
+    const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.9] })
+
+    return (
+        <ScrollView
+            testID="booking-loading-skeleton"
+            style={localStyles.page}
+            contentContainerStyle={localStyles.content}
+        >
+            <View style={localStyles.skeletonHeader}>
+                <SkeletonBlock style={localStyles.skeletonAvatar} opacity={opacity} />
+                <View style={localStyles.skeletonHeaderText}>
+                    <SkeletonBlock style={localStyles.skeletonTitleLine} opacity={opacity} />
+                    <SkeletonBlock style={localStyles.skeletonMetaLine} opacity={opacity} />
+                </View>
+            </View>
+
+            <View style={localStyles.section}>
+                <SkeletonBlock style={localStyles.skeletonSectionTitle} opacity={opacity} />
+                <View style={localStyles.durationRow}>
+                    {[0, 1, 2].map(index => (
+                        <SkeletonBlock key={index} style={localStyles.skeletonDuration} opacity={opacity} />
+                    ))}
+                </View>
+            </View>
+
+            <View style={localStyles.section}>
+                <SkeletonBlock style={localStyles.skeletonSectionTitle} opacity={opacity} />
+                <View style={localStyles.skeletonDayRow}>
+                    {[0, 1, 2, 3, 4, 5].map(index => (
+                        <SkeletonBlock key={index} style={localStyles.skeletonDay} opacity={opacity} />
+                    ))}
+                </View>
+            </View>
+
+            <View style={localStyles.section}>
+                <SkeletonBlock style={localStyles.skeletonSectionTitle} opacity={opacity} />
+                <AvailabilityLoadingCard />
+            </View>
+        </ScrollView>
+    )
+}
+
 function AvailabilityLoadingCard() {
     const pulse = useRef(new Animated.Value(0)).current
 
@@ -453,6 +515,56 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         marginHorizontal: -4,
+    },
+    skeletonBlock: {
+        backgroundColor: colors.Grey300,
+        borderRadius: 6,
+    },
+    skeletonHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    skeletonAvatar: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        marginRight: 16,
+    },
+    skeletonHeaderText: {
+        flex: 1,
+    },
+    skeletonTitleLine: {
+        height: 22,
+        width: '70%',
+        borderRadius: 5,
+    },
+    skeletonMetaLine: {
+        height: 14,
+        width: '40%',
+        borderRadius: 4,
+        marginTop: 10,
+    },
+    skeletonSectionTitle: {
+        height: 16,
+        width: 140,
+        borderRadius: 4,
+        marginBottom: 12,
+    },
+    skeletonDuration: {
+        width: 92,
+        height: 40,
+        borderRadius: 4,
+        margin: 4,
+    },
+    skeletonDayRow: {
+        flexDirection: 'row',
+    },
+    skeletonDay: {
+        width: 68,
+        height: 72,
+        borderRadius: 6,
+        marginRight: 8,
     },
     durationButton: {
         minWidth: 92,
