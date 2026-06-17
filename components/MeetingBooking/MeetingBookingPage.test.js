@@ -129,10 +129,64 @@ describe('MeetingBookingPage', () => {
                 slug: 'karsten-wysk',
                 start: slot.start,
                 end: slot.end,
+                timeZone: 'Europe/Berlin',
                 visitorName: 'Visitor',
                 visitorEmail: 'visitor@example.com',
             })
         )
         expect(tree.root.findAllByProps({ children: 'Meeting booked' }).length).toBeGreaterThan(0)
+    })
+
+    test('shows slot times in the visitor timezone while querying in the host timezone', async () => {
+        const guessSpy = jest.spyOn(moment.tz, 'guess').mockReturnValue('America/New_York')
+        const slot = { start: '2026-06-18T09:00:00+02:00', end: '2026-06-18T09:30:00+02:00' }
+        getPublicBookingSlots.mockResolvedValue({ success: true, timeZone: 'Europe/Berlin', options: [slot] })
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        // 09:00 in Berlin is 03:00 in New York (the visitor's zone).
+        expect(tree.root.findAllByProps({ children: '03:00' }).length).toBeGreaterThan(0)
+        // Availability is still requested in the host's timezone so working hours are correct.
+        expect(getPublicBookingSlots).toHaveBeenCalledWith(expect.objectContaining({ timeZone: 'Europe/Berlin' }))
+        // A timezone selector is offered.
+        expect(tree.root.findAllByProps({ testID: 'booking-timezone-select' }).length).toBeGreaterThan(0)
+
+        guessSpy.mockRestore()
+    })
+
+    test('lets the visitor pick any timezone for the displayed times', async () => {
+        const guessSpy = jest.spyOn(moment.tz, 'guess').mockReturnValue('America/New_York')
+        const slot = { start: '2026-06-18T09:00:00+02:00', end: '2026-06-18T09:30:00+02:00' }
+        getPublicBookingSlots.mockResolvedValue({ success: true, timeZone: 'Europe/Berlin', options: [slot] })
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        await act(async () => {
+            tree.root.findByProps({ testID: 'booking-timezone-select' }).props.onPress()
+            await flushPromises()
+        })
+        await act(async () => {
+            tree.root.findByProps({ testID: 'booking-timezone-search' }).props.onChangeText('Tokyo')
+            await flushPromises()
+        })
+        await act(async () => {
+            tree.root.findByProps({ testID: 'booking-timezone-option-Asia/Tokyo' }).props.onPress()
+            await flushPromises()
+        })
+
+        // 09:00 in Berlin is 16:00 in Tokyo.
+        expect(tree.root.findAllByProps({ children: '16:00' }).length).toBeGreaterThan(0)
+        // Picking a display timezone does not change the host timezone used for availability.
+        expect(getPublicBookingSlots).toHaveBeenCalledWith(expect.objectContaining({ timeZone: 'Europe/Berlin' }))
+
+        guessSpy.mockRestore()
     })
 })

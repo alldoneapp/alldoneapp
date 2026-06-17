@@ -13,6 +13,19 @@ import {
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
 
+function formatZoneLabel(zone) {
+    if (!zone) return ''
+    const offset = moment.tz(zone).format('Z')
+    const friendly = zone.replace(/_/g, ' ')
+    return `${friendly} (GMT${offset})`
+}
+
+function getFirstName(name) {
+    return String(name || '')
+        .trim()
+        .split(/\s+/)[0]
+}
+
 export default function MeetingBookingPage({ navigation }) {
     const slug = navigation.getParam('slug') || ''
     const [page, setPage] = useState(null)
@@ -28,14 +41,21 @@ export default function MeetingBookingPage({ navigation }) {
     const [booking, setBooking] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState(null)
+    const [displayTimeZone, setDisplayTimeZone] = useState(null)
+    const [pickerOpen, setPickerOpen] = useState(false)
 
-    const timeZone = page?.settings?.timeZone || moment.tz.guess()
+    // The host's timezone drives availability (working hours + day boundaries) and is
+    // always sent to the backend. The visitor's timezone is the default for display so
+    // they see times in their own local time. They can switch the display to the host's.
+    const visitorTimeZone = useMemo(() => moment.tz.guess() || 'UTC', [])
+    const hostTimeZone = page?.settings?.timeZone || visitorTimeZone
+    const activeTimeZone = displayTimeZone || visitorTimeZone
+
     const days = useMemo(() => {
-        const zone = timeZone || moment.tz.guess()
         return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
-            moment().tz(zone).add(index, 'days').startOf('day')
+            moment().tz(hostTimeZone).add(index, 'days').startOf('day')
         )
-    }, [timeZone])
+    }, [hostTimeZone])
 
     useEffect(() => {
         const loadPage = async () => {
@@ -72,11 +92,15 @@ export default function MeetingBookingPage({ navigation }) {
             setSelectedSlot(null)
             setError('')
             try {
+                const now = moment().tz(hostTimeZone)
+                const dayStart = selectedDay.clone().tz(hostTimeZone).startOf('day')
+                // For today, start from the current time so past slots aren't offered.
+                const start = dayStart.isSame(now, 'day') && now.isAfter(dayStart) ? now : dayStart
                 const result = await getPublicBookingSlots({
                     slug,
-                    start: selectedDay.clone().tz(timeZone).startOf('day').format(),
-                    end: selectedDay.clone().tz(timeZone).endOf('day').format(),
-                    timeZone,
+                    start: start.format(),
+                    end: selectedDay.clone().tz(hostTimeZone).endOf('day').format(),
+                    timeZone: hostTimeZone,
                     durationMinutes: selectedDuration,
                 })
                 setSlots(result.options || [])
@@ -88,7 +112,7 @@ export default function MeetingBookingPage({ navigation }) {
             }
         }
         loadSlots()
-    }, [page, selectedDay, selectedDuration, slug, timeZone])
+    }, [page, selectedDay, selectedDuration, slug, hostTimeZone])
 
     const onBook = async () => {
         if (!selectedSlot) {
@@ -107,7 +131,7 @@ export default function MeetingBookingPage({ navigation }) {
                 slug,
                 start: selectedSlot.start,
                 end: selectedSlot.end,
-                timeZone,
+                timeZone: hostTimeZone,
                 durationMinutes: selectedDuration,
                 visitorName,
                 visitorEmail,
@@ -139,7 +163,8 @@ export default function MeetingBookingPage({ navigation }) {
             <View style={localStyles.centered}>
                 <Text style={localStyles.title}>{translate('Meeting booked')}</Text>
                 <Text style={localStyles.meta}>
-                    {moment(success.start).tz(timeZone).format('dddd, MMM D [at] HH:mm')} {timeZone}
+                    {moment(success.start).tz(activeTimeZone).format('dddd, MMM D [at] HH:mm')} ·{' '}
+                    {formatZoneLabel(activeTimeZone)}
                 </Text>
                 <Text style={localStyles.successDescription}>{translate('Alldone booking success pitch')}</Text>
                 <Button
@@ -157,135 +182,243 @@ export default function MeetingBookingPage({ navigation }) {
     const availableDurations = page.settings.availableDurations || [page.settings.durationMinutes || 30]
 
     return (
-        <ScrollView style={localStyles.page} contentContainerStyle={localStyles.content}>
-            <View style={localStyles.header}>
-                {!!page.profile?.photoURL && <Image source={page.profile.photoURL} style={localStyles.avatar} />}
-                <View style={localStyles.headerText}>
-                    <Text style={localStyles.title}>
-                        {translate('Book a meeting with', { name: page.profile?.displayName })}
-                    </Text>
-                    <Text style={localStyles.meta}>
-                        {selectedDuration} min · {timeZone}
-                    </Text>
+        <View style={localStyles.root}>
+            <ScrollView style={localStyles.page} contentContainerStyle={localStyles.content}>
+                <View style={localStyles.header}>
+                    {!!page.profile?.photoURL && <Image source={page.profile.photoURL} style={localStyles.avatar} />}
+                    <View style={localStyles.headerText}>
+                        <Text style={localStyles.title}>
+                            {translate('Book a meeting with', { name: page.profile?.displayName })}
+                        </Text>
+                        <Text style={localStyles.meta}>{selectedDuration} min</Text>
+                    </View>
                 </View>
-            </View>
 
-            <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>{translate('Choose duration')}</Text>
-                <View style={localStyles.durationRow}>
-                    {availableDurations.map(duration => {
-                        const active = selectedDuration === duration
-                        return (
-                            <TouchableOpacity
-                                key={duration}
-                                style={[localStyles.durationButton, active && localStyles.durationButtonActive]}
-                                onPress={() => setSelectedDuration(duration)}
-                            >
-                                <Text style={[localStyles.durationText, active && localStyles.durationTextActive]}>
-                                    {translate(`${duration} minute duration`)}
-                                </Text>
-                            </TouchableOpacity>
-                        )
-                    })}
+                <View style={localStyles.timeZoneBar}>
+                    <Text style={localStyles.timeZoneLabel}>{translate('Times shown in')}</Text>
+                    <TouchableOpacity
+                        testID="booking-timezone-select"
+                        style={localStyles.timeZoneSelect}
+                        onPress={() => setPickerOpen(true)}
+                    >
+                        <Text style={localStyles.timeZoneSelectText}>{formatZoneLabel(activeTimeZone)}</Text>
+                        <Text style={localStyles.timeZoneCaret}>▾</Text>
+                    </TouchableOpacity>
                 </View>
-            </View>
 
-            <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>{translate('Choose a day')}</Text>
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={localStyles.dayList}
-                >
-                    {days.map(day => {
-                        const active = selectedDay && day.isSame(selectedDay, 'day')
-                        return (
-                            <TouchableOpacity
-                                key={day.format('YYYY-MM-DD')}
-                                testID={`booking-day-${day.format('YYYY-MM-DD')}`}
-                                style={[localStyles.dayButton, active && localStyles.dayButtonActive]}
-                                onPress={() => setSelectedDay(day)}
-                            >
-                                <Text style={[localStyles.dayName, active && localStyles.dayTextActive]}>
-                                    {day.format('ddd')}
-                                </Text>
-                                <Text style={[localStyles.dayNumber, active && localStyles.dayTextActive]}>
-                                    {day.format('D')}
-                                </Text>
-                                <Text style={[localStyles.dayMonth, active && localStyles.dayTextActive]}>
-                                    {day.format('MMM')}
-                                </Text>
-                            </TouchableOpacity>
-                        )
-                    })}
-                </ScrollView>
-            </View>
-
-            <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>{translate('Choose a time')}</Text>
-                {loadingSlots ? (
-                    <AvailabilityLoadingCard />
-                ) : slots.length === 0 ? (
-                    <Text style={localStyles.meta}>{translate('No times are available on this day.')}</Text>
-                ) : (
-                    <View style={localStyles.slotGrid}>
-                        {slots.map(slot => {
-                            const active = selectedSlot?.start === slot.start
+                <View style={localStyles.section}>
+                    <Text style={localStyles.sectionTitle}>{translate('Choose duration')}</Text>
+                    <View style={localStyles.durationRow}>
+                        {availableDurations.map(duration => {
+                            const active = selectedDuration === duration
                             return (
                                 <TouchableOpacity
-                                    key={slot.start}
-                                    testID={`booking-slot-${slot.start}`}
-                                    style={[localStyles.slotButton, active && localStyles.slotButtonActive]}
-                                    onPress={() => setSelectedSlot(slot)}
+                                    key={duration}
+                                    style={[localStyles.durationButton, active && localStyles.durationButtonActive]}
+                                    onPress={() => setSelectedDuration(duration)}
                                 >
-                                    <Text style={[localStyles.slotText, active && localStyles.slotTextActive]}>
-                                        {moment(slot.start).tz(timeZone).format('HH:mm')}
+                                    <Text style={[localStyles.durationText, active && localStyles.durationTextActive]}>
+                                        {translate(`${duration} minute duration`)}
                                     </Text>
                                 </TouchableOpacity>
                             )
                         })}
                     </View>
-                )}
-            </View>
+                </View>
 
-            <View style={localStyles.section}>
-                <Text style={localStyles.sectionTitle}>{translate('Your details')}</Text>
-                <TextInput
-                    testID="booking-name-input"
-                    value={visitorName}
-                    onChangeText={setVisitorName}
-                    placeholder={translate('Name')}
-                    style={localStyles.input}
-                />
-                <TextInput
-                    testID="booking-email-input"
-                    value={visitorEmail}
-                    onChangeText={setVisitorEmail}
-                    placeholder={translate('Email')}
-                    style={localStyles.input}
-                    autoCapitalize="none"
-                />
-                <TextInput
-                    testID="booking-note-input"
-                    value={note}
-                    onChangeText={setNote}
-                    placeholder={translate('Optional note')}
-                    style={[localStyles.input, localStyles.noteInput]}
-                    multiline
-                />
-            </View>
+                <View style={localStyles.section}>
+                    <Text style={localStyles.sectionTitle}>{translate('Choose a day')}</Text>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={localStyles.dayList}
+                    >
+                        {days.map(day => {
+                            const active = selectedDay && day.isSame(selectedDay, 'day')
+                            return (
+                                <TouchableOpacity
+                                    key={day.format('YYYY-MM-DD')}
+                                    testID={`booking-day-${day.format('YYYY-MM-DD')}`}
+                                    style={[localStyles.dayButton, active && localStyles.dayButtonActive]}
+                                    onPress={() => setSelectedDay(day)}
+                                >
+                                    <Text style={[localStyles.dayName, active && localStyles.dayTextActive]}>
+                                        {day.format('ddd')}
+                                    </Text>
+                                    <Text style={[localStyles.dayNumber, active && localStyles.dayTextActive]}>
+                                        {day.format('D')}
+                                    </Text>
+                                    <Text style={[localStyles.dayMonth, active && localStyles.dayTextActive]}>
+                                        {day.format('MMM')}
+                                    </Text>
+                                </TouchableOpacity>
+                            )
+                        })}
+                    </ScrollView>
+                </View>
 
-            {!!error && <Text style={localStyles.error}>{error}</Text>}
-            <Button
-                testID="booking-confirm-button"
-                title={translate('Confirm meeting')}
-                onPress={onBook}
-                processing={booking}
-                processingTitle={translate('Booking')}
-                disabled={booking}
-                buttonStyle={localStyles.confirmButton}
-            />
-        </ScrollView>
+                <View style={localStyles.section}>
+                    <Text style={localStyles.sectionTitle}>{translate('Choose a time')}</Text>
+                    {loadingSlots ? (
+                        <AvailabilityLoadingCard />
+                    ) : slots.length === 0 ? (
+                        <Text style={localStyles.meta}>{translate('No times are available on this day.')}</Text>
+                    ) : (
+                        <View style={localStyles.slotGrid}>
+                            {slots.map(slot => {
+                                const active = selectedSlot?.start === slot.start
+                                const slotMoment = moment(slot.start).tz(activeTimeZone)
+                                // When the display timezone shifts a slot onto a different calendar
+                                // day than the selected (host) day, show the date so it isn't misread.
+                                const crossesDay = slotMoment.format('YYYY-MM-DD') !== selectedDay.format('YYYY-MM-DD')
+                                return (
+                                    <TouchableOpacity
+                                        key={slot.start}
+                                        testID={`booking-slot-${slot.start}`}
+                                        style={[localStyles.slotButton, active && localStyles.slotButtonActive]}
+                                        onPress={() => setSelectedSlot(slot)}
+                                    >
+                                        <Text style={[localStyles.slotText, active && localStyles.slotTextActive]}>
+                                            {slotMoment.format('HH:mm')}
+                                        </Text>
+                                        {crossesDay && (
+                                            <Text style={[localStyles.slotDate, active && localStyles.slotTextActive]}>
+                                                {slotMoment.format('MMM D')}
+                                            </Text>
+                                        )}
+                                    </TouchableOpacity>
+                                )
+                            })}
+                        </View>
+                    )}
+                </View>
+
+                <View style={localStyles.section}>
+                    <Text style={localStyles.sectionTitle}>{translate('Your details')}</Text>
+                    <TextInput
+                        testID="booking-name-input"
+                        value={visitorName}
+                        onChangeText={setVisitorName}
+                        placeholder={translate('Name')}
+                        style={localStyles.input}
+                    />
+                    <TextInput
+                        testID="booking-email-input"
+                        value={visitorEmail}
+                        onChangeText={setVisitorEmail}
+                        placeholder={translate('Email')}
+                        style={localStyles.input}
+                        autoCapitalize="none"
+                    />
+                    <TextInput
+                        testID="booking-note-input"
+                        value={note}
+                        onChangeText={setNote}
+                        placeholder={translate('Optional note')}
+                        style={[localStyles.input, localStyles.noteInput]}
+                        multiline
+                    />
+                </View>
+
+                {!!error && <Text style={localStyles.error}>{error}</Text>}
+                <Button
+                    testID="booking-confirm-button"
+                    title={translate('Confirm meeting')}
+                    onPress={onBook}
+                    processing={booking}
+                    processingTitle={translate('Booking')}
+                    disabled={booking}
+                    buttonStyle={localStyles.confirmButton}
+                />
+            </ScrollView>
+            {pickerOpen && (
+                <TimeZonePicker
+                    activeTimeZone={activeTimeZone}
+                    visitorTimeZone={visitorTimeZone}
+                    hostTimeZone={hostTimeZone}
+                    hostName={getFirstName(page.profile?.displayName)}
+                    onSelect={zone => {
+                        setDisplayTimeZone(zone)
+                        setPickerOpen(false)
+                    }}
+                    onClose={() => setPickerOpen(false)}
+                />
+            )}
+        </View>
+    )
+}
+
+const MAX_TIMEZONE_RESULTS = 60
+
+function TimeZonePicker({ activeTimeZone, visitorTimeZone, hostTimeZone, hostName, onSelect, onClose }) {
+    const [query, setQuery] = useState('')
+
+    const allZones = useMemo(() => moment.tz.names(), [])
+    const normalizedQuery = query.trim().toLowerCase()
+    const filteredZones = useMemo(() => {
+        if (!normalizedQuery) return allZones
+        return allZones.filter(zone => zone.toLowerCase().replace(/_/g, ' ').includes(normalizedQuery))
+    }, [allZones, normalizedQuery])
+    const visibleZones = filteredZones.slice(0, MAX_TIMEZONE_RESULTS)
+    const hiddenCount = filteredZones.length - visibleZones.length
+
+    const quickOptions = []
+    quickOptions.push({ zone: visitorTimeZone, label: translate('Your time') })
+    if (hostTimeZone !== visitorTimeZone) {
+        quickOptions.push({ zone: hostTimeZone, label: translate('Host time', { name: hostName }) })
+    }
+
+    const renderZoneRow = (zone, hint) => {
+        const active = zone === activeTimeZone
+        return (
+            <TouchableOpacity
+                key={`${hint || 'zone'}-${zone}`}
+                testID={`booking-timezone-option-${zone}`}
+                style={[localStyles.pickerRow, active && localStyles.pickerRowActive]}
+                onPress={() => onSelect(zone)}
+            >
+                <Text style={[localStyles.pickerRowText, active && localStyles.pickerRowTextActive]}>
+                    {formatZoneLabel(zone)}
+                </Text>
+                {!!hint && <Text style={localStyles.pickerRowHint}>{hint}</Text>}
+            </TouchableOpacity>
+        )
+    }
+
+    return (
+        <View style={localStyles.pickerOverlay}>
+            <TouchableOpacity style={localStyles.pickerBackdrop} activeOpacity={1} onPress={onClose} />
+            <View style={localStyles.pickerCard}>
+                <View style={localStyles.pickerHeader}>
+                    <Text style={localStyles.pickerTitle}>{translate('Select timezone')}</Text>
+                    <TouchableOpacity testID="booking-timezone-close" onPress={onClose} style={localStyles.pickerClose}>
+                        <Text style={localStyles.pickerCloseText}>✕</Text>
+                    </TouchableOpacity>
+                </View>
+                <TextInput
+                    testID="booking-timezone-search"
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder={translate('Search timezone')}
+                    placeholderTextColor={colors.Text03}
+                    style={localStyles.pickerSearch}
+                    autoFocus
+                />
+                <ScrollView style={localStyles.pickerList} keyboardShouldPersistTaps="handled">
+                    {!normalizedQuery && quickOptions.map(option => renderZoneRow(option.zone, option.label))}
+                    {!normalizedQuery && <View style={localStyles.pickerDivider} />}
+                    {visibleZones.map(zone => renderZoneRow(zone))}
+                    {hiddenCount > 0 && (
+                        <Text style={localStyles.pickerHint}>
+                            {translate('Refine search to see more timezones', { count: hiddenCount })}
+                        </Text>
+                    )}
+                    {filteredZones.length === 0 && (
+                        <Text style={localStyles.pickerHint}>{translate('No timezones match your search')}</Text>
+                    )}
+                </ScrollView>
+            </View>
+        </View>
     )
 }
 
@@ -516,6 +649,148 @@ const localStyles = StyleSheet.create({
         flexWrap: 'wrap',
         marginHorizontal: -4,
     },
+    timeZoneBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.Grey300,
+        backgroundColor: '#FFFFFF',
+        marginBottom: 4,
+    },
+    timeZoneLabel: {
+        ...styles.body2,
+        color: colors.Text02,
+        marginRight: 12,
+    },
+    timeZoneSelect: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: colors.Primary300,
+        backgroundColor: colors.Primary100,
+        flexShrink: 1,
+    },
+    timeZoneSelectText: {
+        ...styles.subtitle2,
+        color: colors.Primary300,
+        marginRight: 8,
+    },
+    timeZoneCaret: {
+        ...styles.subtitle2,
+        color: colors.Primary300,
+    },
+    root: {
+        flex: 1,
+    },
+    pickerOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        zIndex: 1000,
+    },
+    pickerBackdrop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    },
+    pickerCard: {
+        width: '100%',
+        maxWidth: 420,
+        maxHeight: 480,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        padding: 16,
+        shadowColor: '#000000',
+        shadowOpacity: 0.18,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: 12 },
+    },
+    pickerHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    pickerTitle: {
+        ...styles.title6,
+        color: colors.Text01,
+    },
+    pickerClose: {
+        padding: 4,
+    },
+    pickerCloseText: {
+        ...styles.subtitle1,
+        color: colors.Text03,
+    },
+    pickerSearch: {
+        height: 44,
+        borderWidth: 1,
+        borderColor: colors.Grey300,
+        borderRadius: 6,
+        paddingHorizontal: 12,
+        color: colors.Text01,
+        backgroundColor: '#FFFFFF',
+        marginBottom: 8,
+    },
+    pickerList: {
+        flexGrow: 0,
+    },
+    pickerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderRadius: 6,
+    },
+    pickerRowActive: {
+        backgroundColor: colors.Primary100,
+    },
+    pickerRowText: {
+        ...styles.body2,
+        color: colors.Text01,
+        flexShrink: 1,
+    },
+    pickerRowTextActive: {
+        color: colors.Primary300,
+    },
+    pickerRowHint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginLeft: 12,
+    },
+    pickerDivider: {
+        height: 1,
+        backgroundColor: colors.Grey300,
+        marginVertical: 6,
+    },
+    pickerHint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+    },
+    slotDate: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 2,
+    },
     skeletonBlock: {
         backgroundColor: colors.Grey300,
         borderRadius: 6,
@@ -655,7 +930,8 @@ const localStyles = StyleSheet.create({
     },
     slotButton: {
         width: 96,
-        height: 40,
+        minHeight: 40,
+        paddingVertical: 4,
         borderRadius: 4,
         borderWidth: 1,
         borderColor: colors.Grey300,

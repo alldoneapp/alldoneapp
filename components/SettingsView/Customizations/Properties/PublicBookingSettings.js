@@ -185,7 +185,7 @@ export default function PublicBookingSettings() {
                     </View>
 
                     <View style={localStyles.weekendRow}>
-                        <Text style={localStyles.label}>{translate('Include weekends')}</Text>
+                        <Text style={localStyles.weekendLabel}>{translate('Include weekends')}</Text>
                         <Switch
                             active={settings.includeWeekends}
                             activeSwitch={() => updateField('includeWeekends', true)}
@@ -302,7 +302,12 @@ const localStyles = StyleSheet.create({
     weekendRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 4,
+        marginTop: 12,
+    },
+    weekendLabel: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginRight: 12,
     },
     durationSection: {
         marginTop: 16,
