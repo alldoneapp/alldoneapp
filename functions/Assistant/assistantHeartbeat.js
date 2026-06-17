@@ -580,6 +580,7 @@ async function checkAndExecuteHeartbeats() {
                     assistantId: assistant.uid,
                     userId,
                     silentOk: executionResult?.silentOk === true,
+                    guardrailStoppedReason: executionResult?.guardrailStopped?.reason || null,
                     hasCommentId: !!executionResult?.commentId,
                     commentLength: executionResult?.commentText?.length || 0,
                     commentPreview:
@@ -596,6 +597,17 @@ async function checkAndExecuteHeartbeats() {
                         projectId,
                         assistantId: assistant.uid,
                         userId,
+                    })
+                } else if (executionResult?.guardrailStopped) {
+                    await assistantRef.update({
+                        [`heartbeatLastFailureByUser.${userId}`]: Date.now(),
+                        [`heartbeatLastFailureMessageByUser.${userId}`]: executionResult.guardrailStopped.message,
+                    })
+                    console.log('Heartbeat: Guardrail failure recorded:', {
+                        projectId,
+                        assistantId: assistant.uid,
+                        userId,
+                        reason: executionResult.guardrailStopped.reason,
                     })
                 } else {
                     await assistantRef.update({

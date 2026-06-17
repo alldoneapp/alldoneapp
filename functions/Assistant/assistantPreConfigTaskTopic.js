@@ -458,7 +458,13 @@ async function generatePreConfigTaskResult(
             taskName: taskMetadata?.name,
             userId,
         })
-        if (taskMetadata?.sendWhatsApp && streamOutput.silentOk !== true) {
+        const heartbeatFailure =
+            objectType === 'topics' &&
+            taskMetadata?.name === 'Heartbeat' &&
+            streamOutput.silentOk !== true &&
+            !!streamOutput.guardrailStopped
+
+        if (taskMetadata?.sendWhatsApp && streamOutput.silentOk !== true && !heartbeatFailure) {
             console.log('Sending WhatsApp notification for task completion')
             try {
                 const admin = require('firebase-admin')
@@ -524,6 +530,13 @@ async function generatePreConfigTaskResult(
                 })
                 // Continue execution even if WhatsApp fails
             }
+        } else if (taskMetadata?.sendWhatsApp && heartbeatFailure) {
+            console.log('Skipping WhatsApp notification for heartbeat guardrail failure', {
+                userId,
+                projectId,
+                objectId,
+                reason: streamOutput.guardrailStopped.reason,
+            })
         }
 
         // Return chat information for frontend
@@ -537,6 +550,7 @@ async function generatePreConfigTaskResult(
             commentText: aiCommentText,
             commentId: streamOutput.commentId ?? null,
             silentOk: streamOutput.silentOk === true,
+            guardrailStopped: streamOutput.guardrailStopped || null,
         }
     }
 }

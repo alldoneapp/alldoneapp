@@ -4,23 +4,34 @@ export function getHeartbeatStatusForUser(assistant, userId, intervalMs, now = D
     )
     const lastExecutedAt = getTimestamp(assistant?.heartbeatLastExecutedByUser?.[userId])
     const lastSilentOkAt = getTimestamp(assistant?.heartbeatLastSilentOkByUser?.[userId])
+    const lastFailureAt = getTimestamp(assistant?.heartbeatLastFailureByUser?.[userId])
+    const lastFailureMessage = getString(assistant?.heartbeatLastFailureMessageByUser?.[userId])
     const safeIntervalMs = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 0
 
+    const latestResultAt = Math.max(lastExecutedAt || 0, lastSilentOkAt || 0, lastFailureAt || 0)
     const silentOkIsLatest =
         lastSilentOkAt !== null &&
         lastCheckedAt !== null &&
         lastSilentOkAt >= lastCheckedAt &&
-        (lastExecutedAt === null || lastSilentOkAt >= lastExecutedAt)
+        lastSilentOkAt >= latestResultAt
 
     const executedIsLatest =
         lastExecutedAt !== null &&
         lastCheckedAt !== null &&
         lastExecutedAt >= lastCheckedAt &&
-        (lastSilentOkAt === null || lastExecutedAt > lastSilentOkAt)
+        lastExecutedAt >= latestResultAt
+
+    const failureIsLatest =
+        lastFailureAt !== null &&
+        lastCheckedAt !== null &&
+        lastFailureAt >= lastCheckedAt &&
+        lastFailureAt >= latestResultAt
 
     let lastResult
     if (lastCheckedAt === null) {
         lastResult = 'never'
+    } else if (failureIsLatest) {
+        lastResult = 'failed'
     } else if (silentOkIsLatest) {
         lastResult = 'silent_ok'
     } else if (executedIsLatest) {
@@ -33,6 +44,8 @@ export function getHeartbeatStatusForUser(assistant, userId, intervalMs, now = D
         lastCheckedAt,
         lastExecutedAt,
         lastSilentOkAt,
+        lastFailureAt,
+        lastFailureMessage,
         hasRecentCheck:
             lastCheckedAt !== null && safeIntervalMs > 0 ? now - lastCheckedAt <= safeIntervalMs * 2 : false,
         lastResult,
@@ -42,4 +55,8 @@ export function getHeartbeatStatusForUser(assistant, userId, intervalMs, now = D
 function getTimestamp(value) {
     const parsedValue = Number(value)
     return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : null
+}
+
+function getString(value) {
+    return typeof value === 'string' && value.trim() ? value.trim() : null
 }

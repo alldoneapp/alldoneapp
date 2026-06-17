@@ -200,6 +200,45 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         expect(mockRemoveSingleChatNotification).not.toHaveBeenCalled()
     })
 
+    test('does not send WhatsApp for heartbeat guardrail failures', async () => {
+        mockStoreBotAnswerStream.mockImplementationOnce(async (...args) => {
+            const streamOutput = args[args.length - 2]
+            if (streamOutput && typeof streamOutput === 'object') {
+                streamOutput.commentId = 'comment-1'
+                streamOutput.guardrailStopped = {
+                    reason: 'time_budget',
+                    message:
+                        '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.',
+                }
+            }
+            return '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.'
+        })
+
+        const result = await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Heartbeat prompt',
+            'en',
+            aiSettings,
+            { sendWhatsApp: true, name: 'Heartbeat' },
+            null,
+            'topics'
+        )
+
+        expect(mockSendTaskCompletionNotification).not.toHaveBeenCalled()
+        expect(mockSendWhatsAppMessageWithConversationLink).not.toHaveBeenCalled()
+        expect(mockRemoveSingleChatNotification).not.toHaveBeenCalled()
+        expect(result.guardrailStopped).toEqual({
+            reason: 'time_budget',
+            message:
+                '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.',
+        })
+    })
+
     test('injects optional open tasks context before the prompt', async () => {
         mockGetOpenTasksContextMessage.mockResolvedValue({
             message: 'Today (including overdue) the user has 4 open tasks in total.',

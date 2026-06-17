@@ -8309,9 +8309,16 @@ async function storeChunks(
                         maxIterations: MAX_NATIVE_TOOL_CALL_ITERATIONS,
                         elapsedMs: Date.now() - runWallClockStart,
                     })
-                    commentText += hitTimeBudget
-                        ? '\n\n⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.'
-                        : '\n\n⚠️ Maximum tool call iterations reached'
+                    const guardrailMessage = hitTimeBudget
+                        ? '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.'
+                        : '⚠️ Maximum tool call iterations reached'
+                    if (streamOutput && typeof streamOutput === 'object') {
+                        streamOutput.guardrailStopped = {
+                            reason: hitTimeBudget ? 'time_budget' : 'max_iterations',
+                            message: guardrailMessage,
+                        }
+                    }
+                    commentText += `\n\n${guardrailMessage}`
                     await safeCommentUpdate({ commentText, isLoading: false })
                 }
 

@@ -15,6 +15,9 @@ describe('heartbeatStatusHelper', () => {
         expect(status).toEqual({
             lastCheckedAt: 1000,
             lastExecutedAt: 2000,
+            lastSilentOkAt: null,
+            lastFailureAt: null,
+            lastFailureMessage: null,
             hasRecentCheck: true,
             lastResult: 'executed',
         })
@@ -34,6 +37,9 @@ describe('heartbeatStatusHelper', () => {
         expect(status).toEqual({
             lastCheckedAt: 3000,
             lastExecutedAt: 2000,
+            lastSilentOkAt: null,
+            lastFailureAt: null,
+            lastFailureMessage: null,
             hasRecentCheck: true,
             lastResult: 'not_executed',
         })
@@ -45,6 +51,9 @@ describe('heartbeatStatusHelper', () => {
         expect(status).toEqual({
             lastCheckedAt: null,
             lastExecutedAt: null,
+            lastSilentOkAt: null,
+            lastFailureAt: null,
+            lastFailureMessage: null,
             hasRecentCheck: false,
             lastResult: 'never',
         })
@@ -65,8 +74,35 @@ describe('heartbeatStatusHelper', () => {
         expect(status).toEqual({
             lastCheckedAt: 5000,
             lastExecutedAt: 4500,
+            lastSilentOkAt: null,
+            lastFailureAt: null,
+            lastFailureMessage: null,
             hasRecentCheck: true,
             lastResult: 'not_executed',
+        })
+    })
+
+    test('marks the last check as failed when the latest result is a failure', () => {
+        const status = getHeartbeatStatusForUser(
+            {
+                heartbeatLastCheckedByUser: { user1: 5000 },
+                heartbeatLastExecutedByUser: { user1: 5200 },
+                heartbeatLastFailureByUser: { user1: 5300 },
+                heartbeatLastFailureMessageByUser: { user1: 'Stopped: this run reached its time limit.' },
+            },
+            'user1',
+            5 * 60 * 1000,
+            6000
+        )
+
+        expect(status).toEqual({
+            lastCheckedAt: 5000,
+            lastExecutedAt: 5200,
+            lastSilentOkAt: null,
+            lastFailureAt: 5300,
+            lastFailureMessage: 'Stopped: this run reached its time limit.',
+            hasRecentCheck: true,
+            lastResult: 'failed',
         })
     })
 })

@@ -221,4 +221,52 @@ describe('assistant heartbeat insufficient gold notice', () => {
         )
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
+
+    test('records guardrail failures for the heartbeat status section', async () => {
+        admin.__mock.setDoc('users/user-1', {
+            ...admin.__mock.getDoc('users/user-1'),
+            gold: 10,
+        })
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatChancePercent: 100,
+            heartbeatSendWhatsApp: false,
+        })
+        mockGeneratePreConfigTaskResult.mockResolvedValue({
+            success: true,
+            silentOk: false,
+            commentId: 'comment-1',
+            commentText:
+                '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.',
+            guardrailStopped: {
+                reason: 'time_budget',
+                message:
+                    '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.',
+            },
+        })
+
+        await checkAndExecuteHeartbeats()
+
+        const assistantDoc = admin.__mock.getDoc('assistants/project-1/items/assistant-1')
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledWith(
+            'user-1',
+            'project-1',
+            expect.stringMatching(/^Heartbeat/),
+            ['user-1'],
+            ['FEED_PUBLIC_FOR_ALL'],
+            'assistant-1',
+            'Check in.',
+            'en',
+            expect.any(Object),
+            { sendWhatsApp: false, name: 'Heartbeat', recurrence: 'never' },
+            null,
+            'topics',
+            expect.objectContaining({ silentModeMarker: 'HEARTBEAT_OK' })
+        )
+        expect(assistantDoc['heartbeatLastFailureByUser.user-1']).toBe(1000000000)
+        expect(assistantDoc['heartbeatLastFailureMessageByUser.user-1']).toBe(
+            '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.'
+        )
+        expect(assistantDoc['heartbeatLastExecutedByUser.user-1']).toBeUndefined()
+    })
 })
