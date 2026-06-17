@@ -1,5 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
+import moment from 'moment-timezone'
 
 import MeetingBookingPage from './MeetingBookingPage'
 import {
@@ -77,6 +78,28 @@ describe('MeetingBookingPage', () => {
         })
 
         expect(tree.root.findAllByProps({ children: 'No times are available on this day.' }).length).toBeGreaterThan(0)
+    })
+
+    test('can request availability for a day 30 days in the future', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        const futureDay = moment().tz('Europe/Berlin').add(30, 'days').startOf('day')
+        await act(async () => {
+            tree.root.findByProps({ testID: `booking-day-${futureDay.format('YYYY-MM-DD')}` }).props.onPress()
+            await flushPromises()
+        })
+
+        expect(getPublicBookingSlots).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                start: futureDay.clone().startOf('day').format(),
+                end: futureDay.clone().endOf('day').format(),
+            })
+        )
     })
 
     test('books a selected slot after visitor details are entered', async () => {

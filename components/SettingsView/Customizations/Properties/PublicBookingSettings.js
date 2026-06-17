@@ -119,9 +119,7 @@ export default function PublicBookingSettings() {
             <View style={localStyles.headerRow}>
                 <View style={localStyles.headerText}>
                     <Text style={localStyles.title}>{translate('Public booking link')}</Text>
-                    <Text style={localStyles.description}>
-                        {translate('Public booking link description')}
-                    </Text>
+                    <Text style={localStyles.description}>{translate('Public booking link description')}</Text>
                 </View>
                 <Switch
                     active={settings.enabled}
@@ -202,9 +200,7 @@ export default function PublicBookingSettings() {
 
                     {!!getDisplayUrl() && (
                         <View style={localStyles.linkRow}>
-                            <Text style={localStyles.linkText}>
-                                {getDisplayUrl()}
-                            </Text>
+                            <Text style={localStyles.linkText}>{getDisplayUrl()}</Text>
                             <Button
                                 title={translate('Copy')}
                                 type="ghost"

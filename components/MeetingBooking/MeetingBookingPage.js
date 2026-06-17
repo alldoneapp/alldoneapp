@@ -11,6 +11,8 @@ import {
     getPublicBookingSlots,
 } from '../../utils/backends/Booking/bookingFirestore'
 
+const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
+
 export default function MeetingBookingPage({ navigation }) {
     const slug = navigation.getParam('slug') || ''
     const [page, setPage] = useState(null)
@@ -30,7 +32,9 @@ export default function MeetingBookingPage({ navigation }) {
     const timeZone = page?.settings?.timeZone || moment.tz.guess()
     const days = useMemo(() => {
         const zone = timeZone || moment.tz.guess()
-        return Array.from({ length: 7 }, (_, index) => moment().tz(zone).add(index, 'days').startOf('day'))
+        return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
+            moment().tz(zone).add(index, 'days').startOf('day')
+        )
     }, [timeZone])
 
     useEffect(() => {
@@ -40,8 +44,13 @@ export default function MeetingBookingPage({ navigation }) {
             try {
                 const result = await getPublicBookingPage(slug)
                 setPage(result.page)
-                setSelectedDuration((result.page?.settings?.availableDurations || [30])[0])
-                setSelectedDay(moment().tz(result.page?.settings?.timeZone || moment.tz.guess()).startOf('day'))
+                const durations = result.page?.settings?.availableDurations || [30]
+                setSelectedDuration(durations.includes(30) ? 30 : durations[0])
+                setSelectedDay(
+                    moment()
+                        .tz(result.page?.settings?.timeZone || moment.tz.guess())
+                        .startOf('day')
+                )
                 if (typeof document !== 'undefined') {
                     document.title = translate('Book a meeting document title', {
                         name: result.page?.profile?.displayName || 'Alldone',
@@ -187,12 +196,17 @@ export default function MeetingBookingPage({ navigation }) {
 
             <View style={localStyles.section}>
                 <Text style={localStyles.sectionTitle}>{translate('Choose a day')}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={localStyles.dayList}>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={localStyles.dayList}
+                >
                     {days.map(day => {
                         const active = selectedDay && day.isSame(selectedDay, 'day')
                         return (
                             <TouchableOpacity
                                 key={day.format('YYYY-MM-DD')}
+                                testID={`booking-day-${day.format('YYYY-MM-DD')}`}
                                 style={[localStyles.dayButton, active && localStyles.dayButtonActive]}
                                 onPress={() => setSelectedDay(day)}
                             >
@@ -201,6 +215,9 @@ export default function MeetingBookingPage({ navigation }) {
                                 </Text>
                                 <Text style={[localStyles.dayNumber, active && localStyles.dayTextActive]}>
                                     {day.format('D')}
+                                </Text>
+                                <Text style={[localStyles.dayMonth, active && localStyles.dayTextActive]}>
+                                    {day.format('MMM')}
                                 </Text>
                             </TouchableOpacity>
                         )
@@ -423,6 +440,11 @@ const localStyles = StyleSheet.create({
         ...styles.title6,
         color: colors.Text01,
         marginTop: 3,
+    },
+    dayMonth: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 1,
     },
     dayTextActive: {
         color: colors.Primary300,

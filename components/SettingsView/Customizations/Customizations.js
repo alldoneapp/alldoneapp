@@ -22,6 +22,8 @@ import { useTranslator } from '../../../i18n/TranslationService'
 import Header from './Header'
 import DefaultProject from './Properties/DefaultProject/DefaultProject'
 import SidebarNavigation from './Properties/SidebarNavigation'
+import PublicBookingSettings from './Properties/PublicBookingSettings'
+import ConnectedAppsSection from './Properties/ConnectedAppsSection'
 
 const Customizations = () => {
     useTranslator()
@@ -80,6 +82,8 @@ const Customizations = () => {
             </View>
 
             <AssistantEmail userId={loggedUser.uid} assistantEmailEnabled={loggedUser.assistantEmailEnabled === true} />
+            <PublicBookingSettings />
+            <ConnectedAppsSection />
         </View>
     )
 }

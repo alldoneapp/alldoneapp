@@ -7,9 +7,7 @@ import SkillsArea from './Skills/SkillsArea'
 import ProfileHeader from './ProfileHeader'
 import ProfileProperties, { ProfileDescriptionProperty } from './Properties/ProfileProperties'
 import LogoutAndRemoveSection from './Properties/LogoutAndRemoveSection'
-import ConnectedAppsSection from './Properties/ConnectedAppsSection'
 import UserData from './Properties/UserData'
-import PublicBookingSettings from './Properties/PublicBookingSettings'
 
 export default function UserProfileSettings() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -29,8 +27,6 @@ export default function UserProfileSettings() {
             <ProfileProperties user={loggedUser} hideDescription={true}>
                 <SkillsArea userId={loggedUser.uid} />
             </ProfileProperties>
-            <PublicBookingSettings />
-            <ConnectedAppsSection />
             <LogoutAndRemoveSection />
             <ProfileDescriptionProperty user={loggedUser} />
         </View>
