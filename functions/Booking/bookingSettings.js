@@ -12,6 +12,7 @@ const DEFAULT_BOOKING_SETTINGS = {
     enabled: false,
     slug: '',
     durationMinutes: 30,
+    availableDurations: [15, 30, 60],
     slotIntervalMinutes: 30,
     workingHoursStart: '09:00',
     workingHoursEnd: '17:00',
@@ -22,6 +23,7 @@ const DEFAULT_BOOKING_SETTINGS = {
 
 const MAX_BOOKING_RANGE_DAYS = 31
 const MAX_PUBLIC_SLOT_OPTIONS = 96
+const ALLOWED_BOOKING_DURATIONS = [15, 30, 60]
 
 function getHostingUrl() {
     const configured = process.env.HOSTING_URL || process.env.FUNCTIONS_HOSTING_URL || ''
@@ -65,6 +67,19 @@ function normalizeClockTime(value, fallback) {
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(normalized) ? normalized : fallback
 }
 
+function normalizeAvailableDurations(value) {
+    const source = Array.isArray(value) ? value : DEFAULT_BOOKING_SETTINGS.availableDurations
+    const normalized = Array.from(
+        new Set(
+            source
+                .map(duration => parseInt(duration, 10))
+                .filter(duration => ALLOWED_BOOKING_DURATIONS.includes(duration))
+        )
+    ).sort((a, b) => a - b)
+
+    return normalized.length > 0 ? normalized : [...DEFAULT_BOOKING_SETTINGS.availableDurations]
+}
+
 function resolveUserIanaTimeZone(userData = {}) {
     const candidates = [userData.timezone, userData.preferredTimezone, userData.timezoneOffset, userData.timezoneMinutes]
     for (const candidate of candidates) {
@@ -82,11 +97,14 @@ function normalizeBookingSettings(input = {}, userData = {}) {
     const slug = slugify(input.slug || defaults.slug)
     const workingHoursStart = normalizeClockTime(input.workingHoursStart, defaults.workingHoursStart)
     const workingHoursEnd = normalizeClockTime(input.workingHoursEnd, defaults.workingHoursEnd)
+    const availableDurations = normalizeAvailableDurations(input.availableDurations)
+    const durationMinutes = normalizeBoundedInteger(input.durationMinutes, defaults.durationMinutes, 5, 480)
 
     return {
         enabled: input.enabled === true,
         slug,
-        durationMinutes: normalizeBoundedInteger(input.durationMinutes, defaults.durationMinutes, 5, 480),
+        durationMinutes: availableDurations.includes(durationMinutes) ? durationMinutes : availableDurations[0],
+        availableDurations,
         slotIntervalMinutes: normalizeBoundedInteger(input.slotIntervalMinutes, defaults.slotIntervalMinutes, 5, 120),
         workingHoursStart,
         workingHoursEnd: workingHoursEnd > workingHoursStart ? workingHoursEnd : defaults.workingHoursEnd,
@@ -103,6 +121,9 @@ function validateBookingSettings(settings) {
     }
     if (settings.workingHoursEnd <= settings.workingHoursStart) {
         throw new Error('Working hours end must be after start.')
+    }
+    if (!Array.isArray(settings.availableDurations) || settings.availableDurations.length === 0) {
+        throw new Error('Select at least one meeting duration.')
     }
 }
 
@@ -121,6 +142,7 @@ function buildPublicBookingPage(userId, userData, settings) {
         profile: buildPublicProfile(userData),
         settings: {
             durationMinutes: settings.durationMinutes,
+            availableDurations: settings.availableDurations,
             slotIntervalMinutes: settings.slotIntervalMinutes,
             workingHoursStart: settings.workingHoursStart,
             workingHoursEnd: settings.workingHoursEnd,
@@ -231,14 +253,22 @@ async function getPublicBookingPage(slug) {
     }
 }
 
-async function findPublicBookingSlots(page, { start, end, timeZone }) {
+function resolvePublicDuration(settings = {}, durationMinutes) {
+    const availableDurations = normalizeAvailableDurations(settings.availableDurations)
+    const requestedDuration = parseInt(durationMinutes, 10)
+    if (availableDurations.includes(requestedDuration)) return requestedDuration
+    return availableDurations.includes(settings.durationMinutes) ? settings.durationMinutes : availableDurations[0]
+}
+
+async function findPublicBookingSlots(page, { start, end, timeZone, durationMinutes }) {
     const settings = page.settings || {}
+    const resolvedDurationMinutes = resolvePublicDuration(settings, durationMinutes)
     const result = await findCalendarAvailabilityForAssistantRequest({
         userId: page.userId,
         timeMin: start,
         timeMax: end,
         timeZone: timeZone || settings.timeZone || 'UTC',
-        durationMinutes: settings.durationMinutes,
+        durationMinutes: resolvedDurationMinutes,
         maxOptions: MAX_PUBLIC_SLOT_OPTIONS,
         slotIntervalMinutes: settings.slotIntervalMinutes,
         workingHoursStart: settings.workingHoursStart,
@@ -247,18 +277,21 @@ async function findPublicBookingSlots(page, { start, end, timeZone }) {
         bufferBeforeMinutes: settings.bufferBeforeMinutes,
         bufferAfterMinutes: settings.bufferAfterMinutes,
     })
-    return result
+    return { ...result, durationMinutes: resolvedDurationMinutes }
 }
 
 module.exports = {
     DEFAULT_BOOKING_SETTINGS,
     MAX_BOOKING_RANGE_DAYS,
+    ALLOWED_BOOKING_DURATIONS,
     buildDefaultSlug,
     findPublicBookingSlots,
     getBookingSettings,
     getConnectedCalendarCount,
+    getHostingUrl,
     getPublicBookingPage,
     normalizeBookingSettings,
+    resolvePublicDuration,
     saveBookingSettings,
     slugify,
     validateBookingSettings,

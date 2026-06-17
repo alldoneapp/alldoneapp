@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
     enabled: false,
     slug: '',
     durationMinutes: 30,
+    availableDurations: [15, 30, 60],
     slotIntervalMinutes: 30,
     workingHoursStart: '09:00',
     workingHoursEnd: '17:00',
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS = {
 }
 
 const numericFields = new Set(['durationMinutes', 'slotIntervalMinutes', 'bufferBeforeMinutes', 'bufferAfterMinutes'])
+const durationOptions = [15, 30, 60]
 
 export default function PublicBookingSettings() {
     const [settings, setSettings] = useState(DEFAULT_SETTINGS)
@@ -56,6 +58,39 @@ export default function PublicBookingSettings() {
             ...current,
             [field]: numericFields.has(field) ? value.replace(/[^0-9]/g, '') : value,
         }))
+    }
+
+    const toggleDuration = duration => {
+        setMessage('')
+        setError('')
+        setSettings(current => {
+            const currentDurations = Array.isArray(current.availableDurations) ? current.availableDurations : []
+            const nextDurations = currentDurations.includes(duration)
+                ? currentDurations.filter(item => item !== duration)
+                : [...currentDurations, duration]
+            const availableDurations = nextDurations.length > 0 ? nextDurations.sort((a, b) => a - b) : currentDurations
+            return {
+                ...current,
+                availableDurations,
+                durationMinutes: availableDurations.includes(parseInt(current.durationMinutes, 10))
+                    ? current.durationMinutes
+                    : availableDurations[0],
+            }
+        })
+    }
+
+    const getDisplayUrl = () => {
+        const slug = String(settings.slug || '').trim()
+        if (publicUrl) return publicUrl
+        if (!slug) return ''
+        if (typeof window !== 'undefined' && window.location?.origin) return `${window.location.origin}/meet/${slug}`
+        return `https://my.alldone.app/meet/${slug}`
+    }
+
+    const openBookingLink = () => {
+        const url = getDisplayUrl()
+        if (!url || typeof window === 'undefined') return
+        window.open(url, '_blank', 'noopener,noreferrer')
     }
 
     const onSave = async () => {
@@ -105,16 +140,29 @@ export default function PublicBookingSettings() {
                             {translate('Connect calendar before enabling booking link')}
                         </Text>
                     )}
+                    <View style={localStyles.durationSection}>
+                        <Text style={localStyles.label}>{translate('Meeting duration options')}</Text>
+                        <View style={localStyles.durationRow}>
+                            {durationOptions.map(duration => {
+                                const active = (settings.availableDurations || []).includes(duration)
+                                return (
+                                    <Button
+                                        key={duration}
+                                        title={translate(`${duration} minute duration`)}
+                                        type={active ? 'primary' : 'ghost'}
+                                        onPress={() => toggleDuration(duration)}
+                                        buttonStyle={localStyles.durationButton}
+                                    />
+                                )
+                            })}
+                        </View>
+                    </View>
+
                     <View style={localStyles.grid}>
                         <LabeledInput
                             label={translate('Link slug')}
                             value={settings.slug}
                             onChangeText={v => updateField('slug', v)}
-                        />
-                        <LabeledInput
-                            label={translate('Duration minutes')}
-                            value={String(settings.durationMinutes)}
-                            onChangeText={v => updateField('durationMinutes', v)}
                         />
                         <LabeledInput
                             label={translate('Slot interval minutes')}
@@ -152,18 +200,24 @@ export default function PublicBookingSettings() {
                         />
                     </View>
 
-                    {!!publicUrl && settings.enabled && (
+                    {!!getDisplayUrl() && (
                         <View style={localStyles.linkRow}>
-                            <Text style={localStyles.linkText} numberOfLines={1}>
-                                {publicUrl}
+                            <Text style={localStyles.linkText}>
+                                {getDisplayUrl()}
                             </Text>
                             <Button
                                 title={translate('Copy')}
                                 type="ghost"
                                 onPress={() => {
-                                    copyTextToClipboard(publicUrl)
+                                    copyTextToClipboard(getDisplayUrl())
                                     setMessage(translate('Link copied'))
                                 }}
+                            />
+                            <Button
+                                title={translate('Open booking link')}
+                                type="ghost"
+                                onPress={openBookingLink}
+                                buttonStyle={localStyles.openButton}
                             />
                         </View>
                     )}
@@ -259,16 +313,32 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginTop: 4,
     },
+    durationSection: {
+        marginTop: 16,
+    },
+    durationRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 6,
+        marginHorizontal: -4,
+    },
+    durationButton: {
+        margin: 4,
+    },
     linkRow: {
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 16,
+        flexWrap: 'wrap',
     },
     linkText: {
         ...styles.body2,
-        flex: 1,
+        width: '100%',
         color: colors.Text02,
-        marginRight: 12,
+        marginBottom: 8,
+    },
+    openButton: {
+        marginLeft: 8,
     },
     error: {
         ...styles.body2,

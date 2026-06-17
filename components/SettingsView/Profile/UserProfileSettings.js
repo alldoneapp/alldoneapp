@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import URLsSettings, { URL_SETTINGS_PROFILE } from '../../../URLSystem/Settings/URLsSettings'
 import SkillsArea from './Skills/SkillsArea'
 import ProfileHeader from './ProfileHeader'
-import ProfileProperties from './Properties/ProfileProperties'
+import ProfileProperties, { ProfileDescriptionProperty } from './Properties/ProfileProperties'
 import LogoutAndRemoveSection from './Properties/LogoutAndRemoveSection'
 import ConnectedAppsSection from './Properties/ConnectedAppsSection'
 import UserData from './Properties/UserData'
@@ -26,12 +26,13 @@ export default function UserProfileSettings() {
         <View style={localStyles.container}>
             <ProfileHeader />
             <UserData user={loggedUser} />
-            <ProfileProperties user={loggedUser}>
+            <ProfileProperties user={loggedUser} hideDescription={true}>
                 <SkillsArea userId={loggedUser.uid} />
             </ProfileProperties>
             <PublicBookingSettings />
             <ConnectedAppsSection />
             <LogoutAndRemoveSection />
+            <ProfileDescriptionProperty user={loggedUser} />
         </View>
     )
 }

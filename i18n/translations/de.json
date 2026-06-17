@@ -1652,5 +1652,16 @@
     "Your details": "Deine Angaben",
     "Optional note": "Optionale Notiz",
     "Confirm meeting": "Termin bestätigen",
-    "Booking": "Wird gebucht"
+    "Booking": "Wird gebucht",
+    "Copy": "Kopieren",
+    "Open booking link": "Link öffnen",
+    "Meeting duration options": "Optionen für die Termindauer",
+    "15 minute duration": "15 Min.",
+    "30 minute duration": "30 Min.",
+    "60 minute duration": "1 Stunde",
+    "Choose duration": "Dauer auswählen",
+    "Alldone booking success pitch": "Willst du deinen eigenen AI Chief of Staff? Probiere alldone.app aus.",
+    "Try out alldone.app": "alldone.app ausprobieren",
+    "Checking calendar availability": "Kalenderverfügbarkeit wird geprüft",
+    "Finding the best open slots": "Die besten freien Zeiten werden gesucht"
 }

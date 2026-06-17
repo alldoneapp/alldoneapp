@@ -2110,5 +2110,16 @@
     "Your details": "Your details",
     "Optional note": "Optional note",
     "Confirm meeting": "Confirm meeting",
-    "Booking": "Booking"
+    "Booking": "Booking",
+    "Copy": "Copy",
+    "Open booking link": "Open link",
+    "Meeting duration options": "Meeting duration options",
+    "15 minute duration": "15 min",
+    "30 minute duration": "30 min",
+    "60 minute duration": "1 hour",
+    "Choose duration": "Choose duration",
+    "Alldone booking success pitch": "Want your own AI Chief of Staff? Try out alldone.app.",
+    "Try out alldone.app": "Try out alldone.app",
+    "Checking calendar availability": "Checking calendar availability",
+    "Finding the best open slots": "Finding the best open slots"
 }

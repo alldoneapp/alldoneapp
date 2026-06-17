@@ -27,13 +27,14 @@ export const getPublicBookingPage = async slug => {
     return await parseJsonResponse(response)
 }
 
-export const getPublicBookingSlots = async ({ slug, start, end, timeZone }) => {
+export const getPublicBookingSlots = async ({ slug, start, end, timeZone, durationMinutes }) => {
     const params = new URLSearchParams({
         slug,
         start,
         end,
         timeZone,
     })
+    if (durationMinutes) params.set('durationMinutes', String(durationMinutes))
     const response = await fetch(`${getPublicBookingApiBase()}/api/booking/slots?${params.toString()}`)
     return await parseJsonResponse(response)
 }

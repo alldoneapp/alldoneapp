@@ -3,7 +3,14 @@
 const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 const { createCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
-const { findPublicBookingSlots, getConnectedCalendarCount, getPublicBookingPage, slugify } = require('./bookingSettings')
+const {
+    findPublicBookingSlots,
+    getConnectedCalendarCount,
+    getHostingUrl,
+    getPublicBookingPage,
+    resolvePublicDuration,
+    slugify,
+} = require('./bookingSettings')
 
 function setCommonHeaders(res) {
     res.set('Cache-Control', 'no-store')
@@ -83,6 +90,7 @@ async function handleGetPage(req, res, slug) {
             profile: page.profile,
             settings: {
                 durationMinutes: page.settings.durationMinutes,
+                availableDurations: page.settings.availableDurations,
                 slotIntervalMinutes: page.settings.slotIntervalMinutes,
                 workingHoursStart: page.settings.workingHoursStart,
                 workingHoursEnd: page.settings.workingHoursEnd,
@@ -100,6 +108,7 @@ async function handleGetSlots(req, res) {
     const start = safeTrim(req.query?.start)
     const end = safeTrim(req.query?.end)
     const timeZone = safeTrim(req.query?.timeZone)
+    const durationMinutes = req.query?.durationMinutes
 
     if (!slug || !isValidIsoDateTime(start) || !isValidIsoDateTime(end)) {
         json(res, 400, { success: false, error: 'slug, start, and end are required' })
@@ -116,7 +125,7 @@ async function handleGetSlots(req, res) {
         return
     }
 
-    const slotsResult = await findPublicBookingSlots(page, { start, end, timeZone })
+    const slotsResult = await findPublicBookingSlots(page, { start, end, timeZone, durationMinutes })
     if (!slotsResult.success) {
         json(res, 409, {
             success: false,
@@ -129,13 +138,15 @@ async function handleGetSlots(req, res) {
     json(res, 200, {
         success: true,
         timeZone: slotsResult.timeZone,
+        durationMinutes: slotsResult.durationMinutes,
         options: slotsResult.options || [],
     })
 }
 
 function buildBookingDescription({ visitorName, visitorEmail, note, slug }) {
+    const bookingUrl = `${getHostingUrl().replace(/\/+$/, '')}/meet/${slug}`
     const lines = [
-        `Booked from Alldone public booking link: /meet/${slug}`,
+        `Booked from Alldone.app public booking link: ${bookingUrl}`,
         `Visitor: ${visitorName} <${visitorEmail}>`,
     ]
     if (safeTrim(note)) {
@@ -144,14 +155,23 @@ function buildBookingDescription({ visitorName, visitorEmail, note, slug }) {
     return lines.join('\n')
 }
 
-async function assertSlotStillAvailable(page, { start, end, timeZone }) {
+function requestedRangeMatchesDuration({ start, end, durationMinutes }) {
+    const startMoment = moment.parseZone(start)
+    const endMoment = moment.parseZone(end)
+    return endMoment.diff(startMoment, 'minutes') === durationMinutes
+}
+
+async function assertSlotStillAvailable(page, { start, end, timeZone, durationMinutes }) {
     const slotStart = moment.parseZone(start)
+    const resolvedDurationMinutes = resolvePublicDuration(page.settings, durationMinutes)
+    if (!requestedRangeMatchesDuration({ start, end, durationMinutes: resolvedDurationMinutes })) return false
     const rangeStart = slotStart.clone().tz(timeZone || page.settings.timeZone || 'UTC').startOf('day').format()
     const rangeEnd = slotStart.clone().tz(timeZone || page.settings.timeZone || 'UTC').endOf('day').format()
     const result = await findPublicBookingSlots(page, {
         start: rangeStart,
         end: rangeEnd,
         timeZone: timeZone || page.settings.timeZone,
+        durationMinutes: resolvedDurationMinutes,
     })
     return result.success && (result.options || []).some(option => slotMatchesOption(option, start, end, result.timeZone))
 }
@@ -162,6 +182,7 @@ async function handleBook(req, res) {
     const start = safeTrim(body.start)
     const end = safeTrim(body.end)
     const timeZone = safeTrim(body.timeZone)
+    const durationMinutes = body.durationMinutes
     const visitorName = safeTrim(body.visitorName).slice(0, 120)
     const visitorEmail = normalizeEmail(body.visitorEmail)
     const note = safeTrim(body.note).slice(0, 2000)
@@ -182,7 +203,13 @@ async function handleBook(req, res) {
     const page = await loadPublicPageOr404(res, slug)
     if (!page) return
 
-    const available = await assertSlotStillAvailable(page, { start, end, timeZone })
+    const resolvedDurationMinutes = resolvePublicDuration(page.settings, durationMinutes)
+    const available = await assertSlotStillAvailable(page, {
+        start,
+        end,
+        timeZone,
+        durationMinutes: resolvedDurationMinutes,
+    })
     if (!available) {
         json(res, 409, { success: false, error: 'This slot is no longer available' })
         return
@@ -212,6 +239,7 @@ async function handleBook(req, res) {
         note,
         start,
         end,
+        durationMinutes: resolvedDurationMinutes,
         timeZone: timeZone || page.settings.timeZone || '',
         event: {
             provider: eventResult.provider || 'google',
@@ -227,6 +255,7 @@ async function handleBook(req, res) {
         bookingId: bookingRef.id,
         start,
         end,
+        durationMinutes: resolvedDurationMinutes,
     })
 }
 

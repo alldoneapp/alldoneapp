@@ -68,6 +68,7 @@ export const initialState = {
     selectedProjectIndex: ALL_PROJECTS_INDEX,
     selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
     selectedNavItem: DV_TAB_ROOT_TASKS,
+    settingsScrollToTopToken: 0,
     selectedSidebarTab: '',
     expandedNavPicker: false,
     isMiddleScreen: false,
@@ -2673,6 +2674,7 @@ export const theReducer = (state = initialState, action) => {
                 selectedProjectIndex: ALL_PROJECTS_INDEX,
                 shortcutSelectedProjectIndex: null,
                 selectedNavItem: options.selectedNavItem || DV_TAB_SETTINGS_PROFILE,
+                settingsScrollToTopToken: options.settingsScrollToTopToken || state.settingsScrollToTopToken,
                 projectTypeSectionIndex: options.projectTypeSectionIndex || 0,
                 route: 'SettingsView',
             }

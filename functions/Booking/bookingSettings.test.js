@@ -48,7 +48,8 @@ describe('bookingSettings helpers', () => {
         expect(settings).toMatchObject({
             enabled: true,
             slug: 'my-link',
-            durationMinutes: 480,
+            durationMinutes: 15,
+            availableDurations: [15, 30, 60],
             slotIntervalMinutes: 5,
             workingHoursStart: '09:00',
             workingHoursEnd: '10:00',

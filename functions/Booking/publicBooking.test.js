@@ -9,7 +9,9 @@ jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
 jest.mock('./bookingSettings', () => ({
     findPublicBookingSlots: jest.fn(),
     getConnectedCalendarCount: jest.fn(),
+    getHostingUrl: jest.fn(() => 'https://my.alldone.app'),
     getPublicBookingPage: jest.fn(),
+    resolvePublicDuration: jest.fn((settings, durationMinutes) => parseInt(durationMinutes, 10) || settings.durationMinutes || 30),
     slugify: value =>
         String(value || '')
             .trim()
@@ -177,6 +179,9 @@ describe('public booking API', () => {
             expect.objectContaining({
                 userId: 'user-1',
                 summary: 'Meeting with Visitor',
+                description: expect.stringContaining(
+                    'Booked from Alldone.app public booking link: https://my.alldone.app/meet/karsten-wysk'
+                ),
                 attendees: [{ email: 'visitor@example.com', displayName: 'Visitor' }],
             })
         )

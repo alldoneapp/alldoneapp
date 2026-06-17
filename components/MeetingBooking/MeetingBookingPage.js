@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
@@ -16,6 +16,7 @@ export default function MeetingBookingPage({ navigation }) {
     const [page, setPage] = useState(null)
     const [slots, setSlots] = useState([])
     const [selectedDay, setSelectedDay] = useState(null)
+    const [selectedDuration, setSelectedDuration] = useState(30)
     const [selectedSlot, setSelectedSlot] = useState(null)
     const [visitorName, setVisitorName] = useState('')
     const [visitorEmail, setVisitorEmail] = useState('')
@@ -39,6 +40,7 @@ export default function MeetingBookingPage({ navigation }) {
             try {
                 const result = await getPublicBookingPage(slug)
                 setPage(result.page)
+                setSelectedDuration((result.page?.settings?.availableDurations || [30])[0])
                 setSelectedDay(moment().tz(result.page?.settings?.timeZone || moment.tz.guess()).startOf('day'))
                 if (typeof document !== 'undefined') {
                     document.title = translate('Book a meeting document title', {
@@ -66,6 +68,7 @@ export default function MeetingBookingPage({ navigation }) {
                     start: selectedDay.clone().tz(timeZone).startOf('day').format(),
                     end: selectedDay.clone().tz(timeZone).endOf('day').format(),
                     timeZone,
+                    durationMinutes: selectedDuration,
                 })
                 setSlots(result.options || [])
             } catch (slotsError) {
@@ -76,7 +79,7 @@ export default function MeetingBookingPage({ navigation }) {
             }
         }
         loadSlots()
-    }, [page, selectedDay, slug, timeZone])
+    }, [page, selectedDay, selectedDuration, slug, timeZone])
 
     const onBook = async () => {
         if (!selectedSlot) {
@@ -96,6 +99,7 @@ export default function MeetingBookingPage({ navigation }) {
                 start: selectedSlot.start,
                 end: selectedSlot.end,
                 timeZone,
+                durationMinutes: selectedDuration,
                 visitorName,
                 visitorEmail,
                 note,
@@ -132,9 +136,20 @@ export default function MeetingBookingPage({ navigation }) {
                 <Text style={localStyles.meta}>
                     {moment(success.start).tz(timeZone).format('dddd, MMM D [at] HH:mm')} {timeZone}
                 </Text>
+                <Text style={localStyles.successDescription}>{translate('Alldone booking success pitch')}</Text>
+                <Button
+                    title={translate('Try out alldone.app')}
+                    type="secondary"
+                    onPress={() => {
+                        if (typeof window !== 'undefined') window.location.href = 'https://alldone.app'
+                    }}
+                    buttonStyle={localStyles.successButton}
+                />
             </View>
         )
     }
+
+    const availableDurations = page.settings.availableDurations || [page.settings.durationMinutes || 30]
 
     return (
         <ScrollView style={localStyles.page} contentContainerStyle={localStyles.content}>
@@ -145,8 +160,28 @@ export default function MeetingBookingPage({ navigation }) {
                         {translate('Book a meeting with', { name: page.profile?.displayName })}
                     </Text>
                     <Text style={localStyles.meta}>
-                        {page.settings.durationMinutes} min · {timeZone}
+                        {selectedDuration} min · {timeZone}
                     </Text>
+                </View>
+            </View>
+
+            <View style={localStyles.section}>
+                <Text style={localStyles.sectionTitle}>{translate('Choose duration')}</Text>
+                <View style={localStyles.durationRow}>
+                    {availableDurations.map(duration => {
+                        const active = selectedDuration === duration
+                        return (
+                            <TouchableOpacity
+                                key={duration}
+                                style={[localStyles.durationButton, active && localStyles.durationButtonActive]}
+                                onPress={() => setSelectedDuration(duration)}
+                            >
+                                <Text style={[localStyles.durationText, active && localStyles.durationTextActive]}>
+                                    {translate(`${duration} minute duration`)}
+                                </Text>
+                            </TouchableOpacity>
+                        )
+                    })}
                 </View>
             </View>
 
@@ -176,7 +211,7 @@ export default function MeetingBookingPage({ navigation }) {
             <View style={localStyles.section}>
                 <Text style={localStyles.sectionTitle}>{translate('Choose a time')}</Text>
                 {loadingSlots ? (
-                    <Text style={localStyles.meta}>{translate('Loading available times')}</Text>
+                    <AvailabilityLoadingCard />
                 ) : slots.length === 0 ? (
                     <Text style={localStyles.meta}>{translate('No times are available on this day.')}</Text>
                 ) : (
@@ -241,6 +276,67 @@ export default function MeetingBookingPage({ navigation }) {
     )
 }
 
+function AvailabilityLoadingCard() {
+    const pulse = useRef(new Animated.Value(0)).current
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'test') return undefined
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, {
+                    toValue: 1,
+                    duration: 700,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulse, {
+                    toValue: 0,
+                    duration: 700,
+                    useNativeDriver: true,
+                }),
+            ])
+        )
+        animation.start()
+        return () => animation.stop()
+    }, [pulse])
+
+    const cardScale = pulse.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.985, 1],
+    })
+    const highlightOpacity = pulse.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.25, 0.75],
+    })
+    const secondDotOpacity = pulse.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0.35, 1, 0.35],
+    })
+    const thirdDotOpacity = pulse.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0.2, 0.45, 1],
+    })
+
+    return (
+        <Animated.View style={[localStyles.availabilityLoader, { transform: [{ scale: cardScale }] }]}>
+            <View style={localStyles.loaderTimeline}>
+                <Animated.View style={[localStyles.loaderNowMarker, { opacity: highlightOpacity }]} />
+                <View style={localStyles.loaderHour} />
+                <View style={[localStyles.loaderHour, localStyles.loaderHourShort]} />
+                <View style={localStyles.loaderHour} />
+            </View>
+            <View style={localStyles.loaderTextArea}>
+                <Text style={localStyles.loaderTitle}>{translate('Checking calendar availability')}</Text>
+                <Text style={localStyles.loaderSubtitle}>{translate('Finding the best open slots')}</Text>
+                <View style={localStyles.loaderDots}>
+                    <Animated.View style={[localStyles.loaderDot, { opacity: highlightOpacity }]} />
+                    <Animated.View style={[localStyles.loaderDot, { opacity: secondDotOpacity }]} />
+                    <Animated.View style={[localStyles.loaderDot, { opacity: thirdDotOpacity }]} />
+                </View>
+            </View>
+        </Animated.View>
+    )
+}
+
 const localStyles = StyleSheet.create({
     page: {
         flex: 1,
@@ -283,6 +379,16 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 4,
     },
+    successDescription: {
+        ...styles.body2,
+        color: colors.Text02,
+        textAlign: 'center',
+        marginTop: 20,
+        maxWidth: 420,
+    },
+    successButton: {
+        marginTop: 16,
+    },
     section: {
         marginTop: 20,
     },
@@ -321,10 +427,97 @@ const localStyles = StyleSheet.create({
     dayTextActive: {
         color: colors.Primary300,
     },
+    durationRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginHorizontal: -4,
+    },
+    durationButton: {
+        minWidth: 92,
+        height: 40,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.Grey300,
+        alignItems: 'center',
+        justifyContent: 'center',
+        margin: 4,
+        backgroundColor: '#FFFFFF',
+    },
+    durationButtonActive: {
+        borderColor: colors.Primary300,
+        backgroundColor: colors.Primary300,
+    },
+    durationText: {
+        ...styles.subtitle2,
+        color: colors.Text02,
+    },
+    durationTextActive: {
+        color: '#FFFFFF',
+    },
     slotGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         marginHorizontal: -4,
+    },
+    availabilityLoader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 112,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.Grey300,
+        backgroundColor: '#FFFFFF',
+        padding: 16,
+    },
+    loaderTimeline: {
+        width: 76,
+        height: 76,
+        borderRadius: 6,
+        backgroundColor: '#F7F8FA',
+        padding: 10,
+        justifyContent: 'space-between',
+        marginRight: 16,
+        overflow: 'hidden',
+    },
+    loaderNowMarker: {
+        position: 'absolute',
+        top: 31,
+        left: 8,
+        right: 8,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: colors.Primary300,
+    },
+    loaderHour: {
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.Grey300,
+    },
+    loaderHourShort: {
+        width: '62%',
+    },
+    loaderTextArea: {
+        flex: 1,
+    },
+    loaderTitle: {
+        ...styles.subtitle1,
+        color: colors.Text01,
+    },
+    loaderSubtitle: {
+        ...styles.body2,
+        color: colors.Text03,
+        marginTop: 4,
+    },
+    loaderDots: {
+        flexDirection: 'row',
+        marginTop: 12,
+    },
+    loaderDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.Primary300,
+        marginRight: 6,
     },
     slotButton: {
         width: 96,

@@ -15,21 +15,15 @@ import GoldTransactionsModal from './GoldTransactionsModal'
 import ProjectHelper from '../../ProjectsSettings/ProjectHelper'
 import { setUserDescription, setUserDescriptionInProject } from '../../../../utils/backends/Users/usersFirestore'
 
-export default function ProfileProperties({ user, projectId, projectIndex, children }) {
-    const smallScreen = useSelector(state => state.smallScreen)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+export function ProfileDescriptionProperty({ user, projectId, projectIndex }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
-    const role = useSelector(state => state.loggedUser.role)
-    const company = useSelector(state => state.loggedUser.company)
     const description = useSelector(state => state.loggedUser.description)
     const extendedDescription = useSelector(state => state.loggedUser.extendedDescription)
-    const phone = useSelector(state => state.loggedUser.phone)
     const inSettings = useInProfileSettings()
     const accessGranted = inSettings ? true : SharedHelper.accessGranted(null, projectId)
     const loggedUserCanUpdateObject =
         inSettings || loggedUserId === user.uid || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
-    const [showGoldTransactions, setShowGoldTransactions] = useState(false)
     const projectDescription = inSettings
         ? extendedDescription || description || ''
         : ProjectHelper.getUserDescriptionInProject(
@@ -39,6 +33,41 @@ export default function ProfileProperties({ user, projectId, projectIndex, child
               user.extendedDescription,
               true
           )
+
+    if (!inSettings && !accessGranted) return null
+
+    return (
+        <UserDescriptionField
+            description={projectDescription}
+            projectId={inSettings ? null : projectId}
+            projectIndex={inSettings ? null : projectIndex}
+            disabled={!loggedUserCanUpdateObject}
+            helperText={inSettings ? 'Global user description helper text' : 'Project user description helper text'}
+            onSave={newDescription =>
+                inSettings
+                    ? setUserDescription(loggedUserId, newDescription)
+                    : setUserDescriptionInProject(
+                          loggedUserProjectsMap[projectId],
+                          user,
+                          newDescription,
+                          projectDescription
+                      )
+            }
+        />
+    )
+}
+
+export default function ProfileProperties({ user, projectId, projectIndex, children, hideDescription = false }) {
+    const smallScreen = useSelector(state => state.smallScreen)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const role = useSelector(state => state.loggedUser.role)
+    const company = useSelector(state => state.loggedUser.company)
+    const description = useSelector(state => state.loggedUser.description)
+    const phone = useSelector(state => state.loggedUser.phone)
+    const inSettings = useInProfileSettings()
+    const accessGranted = inSettings ? true : SharedHelper.accessGranted(null, projectId)
+    const [showGoldTransactions, setShowGoldTransactions] = useState(false)
 
     return (
         <View>
@@ -85,26 +114,8 @@ export default function ProfileProperties({ user, projectId, projectIndex, child
                 </View>
             </View>
             {children}
-            {(inSettings || accessGranted) && (
-                <UserDescriptionField
-                    description={projectDescription}
-                    projectId={inSettings ? null : projectId}
-                    projectIndex={inSettings ? null : projectIndex}
-                    disabled={!loggedUserCanUpdateObject}
-                    helperText={
-                        inSettings ? 'Global user description helper text' : 'Project user description helper text'
-                    }
-                    onSave={newDescription =>
-                        inSettings
-                            ? setUserDescription(loggedUserId, newDescription)
-                            : setUserDescriptionInProject(
-                                  loggedUserProjectsMap[projectId],
-                                  user,
-                                  newDescription,
-                                  projectDescription
-                              )
-                    }
-                />
+            {!hideDescription && (
+                <ProfileDescriptionProperty user={user} projectId={projectId} projectIndex={projectIndex} />
             )}
         </View>
     )

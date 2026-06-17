@@ -62,7 +62,12 @@ export default function XpBar({ size = XP_BAR_DESKTOP }) {
     const bgColor = size === XP_BAR_MOBILE ? theme.bgColorMobile : theme.bgColorDesktop
 
     const navigateToUserProfile = () => {
-        dispatch(navigateToSettings({ selectedNavItem: DV_TAB_SETTINGS_PROFILE }))
+        dispatch(
+            navigateToSettings({
+                selectedNavItem: DV_TAB_SETTINGS_PROFILE,
+                settingsScrollToTopToken: Date.now(),
+            })
+        )
         NavigationService.navigate('SettingsView')
         setUserShowSkillPointsNotification(loggedUserId, false)
     }

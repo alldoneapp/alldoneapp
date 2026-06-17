@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
 import NavigationBar from '../NavigationBar/NavigationBar'
@@ -50,6 +50,8 @@ const ProjectDetailedView = ({ navigation }) => {
 
     const { overlay } = useCollapsibleSidebar()
 
+    const scrollRef = useRef()
+
     const linkedParentObject = {
         type: LINKED_OBJECT_TYPE_PROJECT,
         id: project.id,
@@ -95,6 +97,12 @@ const ProjectDetailedView = ({ navigation }) => {
         dispatch(switchProject(project.index))
     }, [selectedTab])
 
+    useEffect(() => {
+        if (selectedTab === DV_TAB_PROJECT_PROPERTIES) {
+            setTimeout(() => scrollRef?.current?.scrollTo?.({ y: 0, animated: false }))
+        }
+    }, [selectedTab])
+
     return (
         <View style={localStyles.container}>
             <LoadingData />
@@ -111,6 +119,7 @@ const ProjectDetailedView = ({ navigation }) => {
                 )}
 
                 <CustomScrollView
+                    ref={scrollRef}
                     style={[
                         localStyles.scrollPanel,
                         mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,

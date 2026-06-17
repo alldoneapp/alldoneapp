@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
@@ -47,7 +47,9 @@ import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSide
 
 const SettingsView = ({ navigation }) => {
     const dispatch = useDispatch()
+    const scrollRef = useRef(null)
     const selectedTab = useSelector(state => state.selectedNavItem)
+    const settingsScrollToTopToken = useSelector(state => state.settingsScrollToTopToken)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const showProjectInvitationPopup = useSelector(state => state.showProjectInvitationPopup.visible)
@@ -86,6 +88,12 @@ const SettingsView = ({ navigation }) => {
         }
     }, [])
 
+    useEffect(() => {
+        if (settingsScrollToTopToken && selectedTab === DV_TAB_SETTINGS_PROFILE) {
+            scrollRef.current?.scrollTo({ y: 0, animated: false })
+        }
+    }, [settingsScrollToTopToken, selectedTab])
+
     return (
         <View style={localStyles.container}>
             {showProjectInvitationPopup && <ProjectInvitationPopup navigation={navigation} />}
@@ -104,6 +112,7 @@ const SettingsView = ({ navigation }) => {
                 )}
 
                 <CustomScrollView
+                    ref={scrollRef}
                     style={[
                         localStyles.scrollPanel,
                         mobile ? localStyles.scrollPanelMobile : isMiddleScreen && localStyles.scrollPanelTablet,

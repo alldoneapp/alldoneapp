@@ -2079,5 +2079,16 @@
     "Your details": "Tus datos",
     "Optional note": "Nota opcional",
     "Confirm meeting": "Confirmar reunión",
-    "Booking": "Reservando"
+    "Booking": "Reservando",
+    "Copy": "Copiar",
+    "Open booking link": "Abrir enlace",
+    "Meeting duration options": "Opciones de duración de la reunión",
+    "15 minute duration": "15 min",
+    "30 minute duration": "30 min",
+    "60 minute duration": "1 hora",
+    "Choose duration": "Elige duración",
+    "Alldone booking success pitch": "¿Quieres tu propio AI Chief of Staff? Prueba alldone.app.",
+    "Try out alldone.app": "Probar alldone.app",
+    "Checking calendar availability": "Comprobando disponibilidad del calendario",
+    "Finding the best open slots": "Buscando los mejores horarios libres"
 }
