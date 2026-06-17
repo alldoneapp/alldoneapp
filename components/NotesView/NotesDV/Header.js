@@ -64,6 +64,7 @@ export default class Header extends Component {
             isFullscreen,
             disabled,
             setFullscreen,
+            onOpenSideChat,
         } = this.props
         const { mobile, isMiddleScreen, loggedUser, editionMode, selectedTab, showEllipsis } = this.state
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
@@ -138,6 +139,7 @@ export default class Header extends Component {
                             setAssistantId={setAssistantId}
                             disabled={disabled}
                             updateObjectState={this.props.updateObjectState}
+                            onOpenSideChat={onOpenSideChat}
                         />
                     </View>
                 )}

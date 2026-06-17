@@ -28,6 +28,7 @@ export default function DvBotButton({
     objectType,
     parentObject,
     updateObjectState,
+    onOpenSideChat,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -70,7 +71,10 @@ export default function DvBotButton({
             })
         }
 
-        navigateToChat()
+        // Prefer running the assistant in the note side chat when it is available,
+        // so we stay on the note instead of switching to the full-screen chat tab.
+        const openedInSideChat = onOpenSideChat?.() === true
+        if (!openedInSideChat) navigateToChat()
         setTimeout(() => {
             dispatch(setAssistantEnabled(true))
             if (optionText) {

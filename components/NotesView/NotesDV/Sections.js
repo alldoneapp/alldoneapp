@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import { setAssistantEnabled } from '../../../redux/actions'
+import { setAssistantEnabled, setSelectedNavItem } from '../../../redux/actions'
 
 import Header from './Header'
 import NavigationBar from '../../NavigationBar/NavigationBar'
@@ -92,6 +92,9 @@ export default function Sections({ projectId, note, project, navigation, updateO
             return false
         }
 
+        // The side chat lives in the editor tab, so make sure we are on it before opening
+        // (e.g. when triggered from the header assistant button on another tab).
+        if (selectedTab !== DV_TAB_NOTE_EDITOR) dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
         setSideChatOpen(true)
         dispatch(setAssistantEnabled(true))
         return true
@@ -117,6 +120,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
                 }
                 setFullscreen={setFullscreen}
                 updateObjectState={updateObjectState}
+                onOpenSideChat={openSideChat}
             />
 
             {Object.keys(note) !== 0 && (

@@ -16,7 +16,15 @@ import { DV_TAB_NOTE_CHAT } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
 import DvSearchButton from '../../UIControls/DvSearchButton'
 
-export default function TagList({ projectId, note, assistantId, setAssistantId, disabled, updateObjectState }) {
+export default function TagList({
+    projectId,
+    note,
+    assistantId,
+    setAssistantId,
+    disabled,
+    updateObjectState,
+    onOpenSideChat,
+}) {
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreenNoteDV)
@@ -64,6 +72,11 @@ export default function TagList({ projectId, note, assistantId, setAssistantId, 
                     objectType={FEED_NOTE_OBJECT_TYPE}
                     parentObject={note}
                     updateObjectState={updateObjectState}
+                    onOpenSideChat={
+                        onOpenSideChat
+                            ? () => onOpenSideChat({ objectType: 'notes', objectId: note.id, projectId })
+                            : undefined
+                    }
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
