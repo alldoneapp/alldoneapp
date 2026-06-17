@@ -4,7 +4,7 @@ import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
 import styles, { colors } from '../styles/global'
-import { translate } from '../../i18n/TranslationService'
+import { getDeviceLanguage, translate } from '../../i18n/TranslationService'
 import {
     bookPublicMeeting,
     getPublicBookingPage,
@@ -159,22 +159,28 @@ export default function MeetingBookingPage({ navigation }) {
     }
 
     if (success) {
+        const when = moment(success.start).tz(activeTimeZone).locale(getDeviceLanguage())
         return (
             <View style={localStyles.centered}>
-                <Text style={localStyles.title}>{translate('Meeting booked')}</Text>
-                <Text style={localStyles.meta}>
-                    {moment(success.start).tz(activeTimeZone).format('dddd, MMM D [at] HH:mm')} ·{' '}
-                    {formatZoneLabel(activeTimeZone)}
-                </Text>
-                <Text style={localStyles.successDescription}>{translate('Alldone booking success pitch')}</Text>
-                <Button
-                    title={translate('Try out alldone.app')}
-                    type="secondary"
-                    onPress={() => {
-                        if (typeof window !== 'undefined') window.location.href = 'https://alldone.app'
-                    }}
-                    buttonStyle={localStyles.successButton}
-                />
+                <View style={localStyles.successCard}>
+                    <View style={localStyles.successBadge}>
+                        <Text style={localStyles.successBadgeCheck}>✓</Text>
+                    </View>
+                    <Text style={localStyles.successTitle}>{translate('Meeting booked')}</Text>
+                    <View style={localStyles.successWhen}>
+                        <Text style={localStyles.successWhenDate}>{when.format('dddd, D MMMM')}</Text>
+                        <Text style={localStyles.successWhenTime}>{when.format('HH:mm')}</Text>
+                        <Text style={localStyles.successWhenZone}>{formatZoneLabel(activeTimeZone)}</Text>
+                    </View>
+                    <Text style={localStyles.successDescription}>{translate('Alldone booking success pitch')}</Text>
+                    <Button
+                        title={translate('Try out alldone.app')}
+                        onPress={() => {
+                            if (typeof window !== 'undefined') window.location.href = 'https://alldone.app'
+                        }}
+                        buttonStyle={localStyles.successButton}
+                    />
+                </View>
             </View>
         )
     }
@@ -377,10 +383,17 @@ function TimeZonePicker({ activeTimeZone, visitorTimeZone, hostTimeZone, hostNam
                 style={[localStyles.pickerRow, active && localStyles.pickerRowActive]}
                 onPress={() => onSelect(zone)}
             >
-                <Text style={[localStyles.pickerRowText, active && localStyles.pickerRowTextActive]}>
+                <Text style={[localStyles.pickerRowText, active && localStyles.pickerRowTextActive]} numberOfLines={1}>
                     {formatZoneLabel(zone)}
                 </Text>
-                {!!hint && <Text style={localStyles.pickerRowHint}>{hint}</Text>}
+                <View style={localStyles.pickerRowRight}>
+                    {!!hint && (
+                        <Text style={[localStyles.pickerRowHint, active && localStyles.pickerRowHintActive]}>
+                            {hint}
+                        </Text>
+                    )}
+                    {active && <Text style={localStyles.pickerRowCheck}>✓</Text>}
+                </View>
             </TouchableOpacity>
         )
     }
@@ -591,15 +604,73 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 4,
     },
+    successCard: {
+        width: '100%',
+        maxWidth: 460,
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        paddingVertical: 40,
+        paddingHorizontal: 32,
+        shadowColor: '#000000',
+        shadowOpacity: 0.08,
+        shadowRadius: 28,
+        shadowOffset: { width: 0, height: 12 },
+    },
+    successBadge: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.UtilityGreen100,
+        marginBottom: 20,
+    },
+    successBadgeCheck: {
+        fontSize: 32,
+        lineHeight: 38,
+        color: colors.UtilityGreen200,
+    },
+    successTitle: {
+        ...styles.title4,
+        color: colors.Text01,
+        textAlign: 'center',
+    },
+    successWhen: {
+        alignItems: 'center',
+        alignSelf: 'stretch',
+        marginTop: 20,
+        paddingVertical: 16,
+        paddingHorizontal: 20,
+        borderRadius: 12,
+        backgroundColor: colors.UtilityBlue,
+    },
+    successWhenDate: {
+        ...styles.subtitle1,
+        color: colors.Primary300,
+        textAlign: 'center',
+    },
+    successWhenTime: {
+        ...styles.title4,
+        color: colors.Text01,
+        marginTop: 2,
+    },
+    successWhenZone: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 4,
+        textAlign: 'center',
+    },
     successDescription: {
         ...styles.body2,
         color: colors.Text02,
         textAlign: 'center',
-        marginTop: 20,
-        maxWidth: 420,
+        marginTop: 24,
+        maxWidth: 360,
     },
     successButton: {
-        marginTop: 16,
+        alignSelf: 'center',
+        marginTop: 24,
     },
     section: {
         marginTop: 20,
@@ -624,8 +695,8 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
     },
     dayButtonActive: {
-        borderColor: colors.Primary300,
-        backgroundColor: colors.Primary100,
+        borderColor: colors.Primary100,
+        backgroundColor: colors.UtilityBlue,
     },
     dayName: {
         ...styles.caption2,
@@ -670,12 +741,12 @@ const localStyles = StyleSheet.create({
     timeZoneSelect: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 8,
         borderWidth: 1,
-        borderColor: colors.Primary300,
-        backgroundColor: colors.Primary100,
+        borderColor: colors.Primary100,
+        backgroundColor: colors.UtilityBlue,
         flexShrink: 1,
     },
     timeZoneSelectText: {
@@ -684,7 +755,7 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
     },
     timeZoneCaret: {
-        ...styles.subtitle2,
+        ...styles.caption2,
         color: colors.Primary300,
     },
     root: {
@@ -711,42 +782,47 @@ const localStyles = StyleSheet.create({
     },
     pickerCard: {
         width: '100%',
-        maxWidth: 420,
-        maxHeight: 480,
+        maxWidth: 440,
+        maxHeight: 520,
         backgroundColor: '#FFFFFF',
-        borderRadius: 10,
-        padding: 16,
+        borderRadius: 14,
+        padding: 20,
         shadowColor: '#000000',
-        shadowOpacity: 0.18,
-        shadowRadius: 24,
-        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.2,
+        shadowRadius: 32,
+        shadowOffset: { width: 0, height: 16 },
     },
     pickerHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        marginBottom: 16,
     },
     pickerTitle: {
-        ...styles.title6,
+        ...styles.title5,
         color: colors.Text01,
     },
     pickerClose: {
-        padding: 4,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.Grey200,
     },
     pickerCloseText: {
-        ...styles.subtitle1,
-        color: colors.Text03,
+        ...styles.subtitle2,
+        color: colors.Text02,
     },
     pickerSearch: {
         height: 44,
         borderWidth: 1,
         borderColor: colors.Grey300,
-        borderRadius: 6,
-        paddingHorizontal: 12,
+        borderRadius: 8,
+        paddingHorizontal: 14,
         color: colors.Text01,
-        backgroundColor: '#FFFFFF',
-        marginBottom: 8,
+        backgroundColor: colors.Grey100,
+        marginBottom: 12,
     },
     pickerList: {
         flexGrow: 0,
@@ -755,12 +831,13 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        minHeight: 44,
         paddingVertical: 10,
-        paddingHorizontal: 10,
-        borderRadius: 6,
+        paddingHorizontal: 12,
+        borderRadius: 8,
     },
     pickerRowActive: {
-        backgroundColor: colors.Primary100,
+        backgroundColor: colors.UtilityBlue,
     },
     pickerRowText: {
         ...styles.body2,
@@ -768,23 +845,42 @@ const localStyles = StyleSheet.create({
         flexShrink: 1,
     },
     pickerRowTextActive: {
+        ...styles.subtitle2,
         color: colors.Primary300,
+    },
+    pickerRowRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 12,
     },
     pickerRowHint: {
         ...styles.caption2,
-        color: colors.Text03,
-        marginLeft: 12,
+        color: colors.Text02,
+        backgroundColor: colors.Grey200,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+        overflow: 'hidden',
+    },
+    pickerRowHintActive: {
+        color: '#FFFFFF',
+        backgroundColor: colors.Primary100,
+    },
+    pickerRowCheck: {
+        ...styles.subtitle1,
+        color: colors.Primary100,
+        marginLeft: 10,
     },
     pickerDivider: {
         height: 1,
         backgroundColor: colors.Grey300,
-        marginVertical: 6,
+        marginVertical: 8,
     },
     pickerHint: {
         ...styles.caption2,
         color: colors.Text03,
         paddingVertical: 10,
-        paddingHorizontal: 10,
+        paddingHorizontal: 12,
     },
     slotDate: {
         ...styles.caption2,
@@ -853,15 +949,15 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
     },
     durationButtonActive: {
-        borderColor: colors.Primary300,
-        backgroundColor: colors.Primary300,
+        borderColor: colors.Primary100,
+        backgroundColor: colors.UtilityBlue,
     },
     durationText: {
         ...styles.subtitle2,
         color: colors.Text02,
     },
     durationTextActive: {
-        color: '#FFFFFF',
+        color: colors.Primary300,
     },
     slotGrid: {
         flexDirection: 'row',
@@ -941,15 +1037,15 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
     },
     slotButtonActive: {
-        borderColor: colors.Primary300,
-        backgroundColor: colors.Primary300,
+        borderColor: colors.Primary100,
+        backgroundColor: colors.UtilityBlue,
     },
     slotText: {
         ...styles.subtitle2,
         color: colors.Text02,
     },
     slotTextActive: {
-        color: '#FFFFFF',
+        color: colors.Primary300,
     },
     input: {
         height: 44,
