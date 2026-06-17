@@ -1215,15 +1215,15 @@ class SearchService {
      */
     extractMetadata(hit, entityType) {
         const metadata = {
-            lastModified: hit.lastEditionDate ? new Date(hit.lastEditionDate).toISOString() : null,
-            created: hit.created ? new Date(hit.created).toISOString() : null,
+            lastModified: this.toIsoDateOrNull(hit.lastEditionDate),
+            created: this.toIsoDateOrNull(hit.created),
         }
 
         switch (entityType) {
             case ENTITY_TYPES.TASKS:
                 metadata.completed = !!hit.done
                 metadata.assignee = hit.userId
-                metadata.dueDate = hit.dueDate ? new Date(hit.dueDate).toISOString() : null
+                metadata.dueDate = this.toIsoDateOrNull(hit.dueDate)
                 break
             case ENTITY_TYPES.GOALS:
                 metadata.progress = hit.progress || 0
@@ -1243,6 +1243,27 @@ class SearchService {
         }
 
         return metadata
+    }
+
+    toIsoDateOrNull(value) {
+        if (value === null || value === undefined || value === '') return null
+
+        let dateValue = value
+
+        if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+            dateValue = Number(value)
+        } else if (typeof value === 'object' && !(value instanceof Date)) {
+            if (typeof value.toDate === 'function') {
+                dateValue = value.toDate()
+            } else if (typeof value.seconds === 'number') {
+                dateValue = value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000)
+            } else if (typeof value._seconds === 'number') {
+                dateValue = value._seconds * 1000 + Math.floor((value._nanoseconds || 0) / 1000000)
+            }
+        }
+
+        const date = new Date(dateValue)
+        return Number.isNaN(date.getTime()) ? null : date.toISOString()
     }
 
     /**
