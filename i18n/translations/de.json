@@ -661,6 +661,8 @@
     "Every {{days}} days": "Alle {{days}} Tage",
     "{{days}} D": "{{days}} T",
     "days": "Tage",
+    "Enter the number of days": "Anzahl der Tage eingeben",
+    "Confirm": "Bestätigen",
     "Annually": "Jährlich",
     "D": "D",
     "Mo-Fr": "Mo-Fr",

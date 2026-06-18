@@ -4,8 +4,8 @@ import styles, { colors } from '../../styles/global'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import PropTypes from 'prop-types'
 import Icon from '../../Icon'
-import Backend from '../../../utils/BackendBridge'
 import store from '../../../redux/store'
+import Button from '../../UIControls/Button'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
 import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
@@ -28,6 +28,7 @@ import {
     RECURRENCE_CUSTOM_MAX_DAYS,
     buildCustomRecurrence,
     getCustomRecurrenceDays,
+    isCustomRecurrence,
 } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskRecurrence } from '../../../utils/backends/Tasks/tasksFirestore'
 
@@ -39,10 +40,9 @@ class RecurrenceModal extends Component {
         this.state = {
             smallScreenNavigation: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
-            // Start empty so Custom is never pre-selected when the modal opens. The current
-            // custom value (if any) is still shown as a placeholder hint in renderCustomSection.
+            // When true, the modal shows the dedicated "enter number of days" view.
+            showCustomDaysView: false,
             customDays: '',
-            customInputFocused: false,
         }
 
         this.customInputRef = React.createRef()
@@ -84,30 +84,38 @@ class RecurrenceModal extends Component {
         this.props.closePopover(recurrence)
     }
 
-    onChangeCustomDays = value => {
-        const sanitized = value.replace(/[^0-9]/g, '')
-        this.setState({ customDays: sanitized })
+    // Hotkeys filter is global in react-hot-keys, so keep it consistent: ignore keys typed inside
+    // a text field (the days input) but always allow Escape.
+    hotkeysEnabled = e => {
+        if (e && (e.key === 'Escape' || e.keyCode === 27)) return true
+        const tagName = e && e.target && e.target.tagName
+        return !(tagName === 'INPUT' || tagName === 'TEXTAREA')
     }
 
-    selectCustomRecurrence = () => {
+    openCustomDaysView = () => {
+        const { task } = this.props
+        const currentCustomDays = getCustomRecurrenceDays(task && task.recurrence)
+        this.setState(
+            { showCustomDaysView: true, customDays: currentCustomDays ? String(currentCustomDays) : '' },
+            () => {
+                setTimeout(() => this.customInputRef.current && this.customInputRef.current.focus(), 0)
+            }
+        )
+    }
+
+    closeCustomDaysView = () => {
+        this.setState({ showCustomDaysView: false })
+    }
+
+    onChangeCustomDays = value => {
+        this.setState({ customDays: value.replace(/[^0-9]/g, '') })
+    }
+
+    confirmCustomDays = () => {
         const days = parseInt(this.state.customDays, 10)
         if (!Number.isInteger(days) || days <= 0) return
         const clampedDays = Math.min(days, RECURRENCE_CUSTOM_MAX_DAYS)
         this.selectRecurrence(buildCustomRecurrence(clampedDays))
-    }
-
-    focusCustomInput = () => {
-        if (this.customInputRef.current) {
-            this.customInputRef.current.focus()
-        }
-    }
-
-    // Block row/custom hotkeys while the user is typing in a text field, so entering a number
-    // in the custom input never triggers a recurrence selection (which would close the modal).
-    hotkeysEnabled = e => {
-        const tagName = e && e.target && e.target.tagName
-        if (tagName === 'INPUT' || tagName === 'TEXTAREA') return false
-        return !this.state.customInputFocused
     }
 
     renderRecurrenceSection = (recurrence, i) => {
@@ -153,68 +161,32 @@ class RecurrenceModal extends Component {
 
     renderCustomSection = () => {
         const { task } = this.props
-        const { smallScreenNavigation, customDays } = this.state
+        const { smallScreenNavigation } = this.state
 
-        // Show the task's current custom value (if any) as a placeholder hint, without pre-filling the input.
-        const currentCustomDays = getCustomRecurrenceDays(task && task.recurrence)
-        const isCustomSelected = !!currentCustomDays
-        const placeholder = currentCustomDays ? String(currentCustomDays) : String(RECURRENCE_CUSTOM_DEFAULT_DAYS)
+        const isSelected = isCustomRecurrence(task && task.recurrence)
         return (
             <View>
                 <Hotkeys
                     keyName={RECURRENCE_CUSTOM_SHORTCUT}
-                    onKeyDown={(sht, event) => {
-                        if (event && event.preventDefault) event.preventDefault()
-                        this.focusCustomInput()
-                    }}
+                    onKeyDown={(sht, event) => this.openCustomDaysView()}
                     filter={this.hotkeysEnabled}
                 >
-                    <View style={localStyles.recurrenceSectionItem}>
-                        <TouchableOpacity
-                            style={localStyles.sectionItemText}
-                            onPress={this.focusCustomInput}
-                            accessible={false}
-                        >
-                            <Text style={[styles.subtitle1, { color: '#ffffff' }]}>{translate('Custom')}</Text>
-                            {isCustomSelected && (
-                                <Icon
-                                    name={'check'}
-                                    size={16}
-                                    color={'#ffffff'}
-                                    style={localStyles.customSelectedCheck}
-                                />
-                            )}
-                        </TouchableOpacity>
-                        <View style={localStyles.customInputContainer}>
-                            <TextInput
-                                ref={this.customInputRef}
-                                style={localStyles.customInput}
-                                value={customDays}
-                                onChangeText={this.onChangeCustomDays}
-                                onSubmitEditing={this.selectCustomRecurrence}
-                                onFocus={() => this.setState({ customInputFocused: true })}
-                                onBlur={() => this.setState({ customInputFocused: false })}
-                                keyboardType={'number-pad'}
-                                placeholder={placeholder}
-                                placeholderTextColor={colors.Text03}
-                                maxLength={4}
-                                blurOnSubmit={false}
-                            />
-                            <Text style={[styles.body2, localStyles.customDaysLabel]}>{translate('days')}</Text>
-                            <TouchableOpacity
-                                style={localStyles.customConfirm}
-                                onPress={this.selectCustomRecurrence}
-                                disabled={!customDays}
-                            >
-                                <Icon name={'check'} size={20} color={customDays ? '#ffffff' : colors.Text03} />
-                            </TouchableOpacity>
-                            {!smallScreenNavigation && (
-                                <View style={localStyles.customShortcut}>
-                                    <Shortcut text={RECURRENCE_CUSTOM_SHORTCUT} theme={SHORTCUT_LIGHT} />
-                                </View>
-                            )}
+                    <TouchableOpacity style={localStyles.recurrenceSectionItem} onPress={this.openCustomDaysView}>
+                        <View style={localStyles.recurrenceSectionItem}>
+                            <View style={localStyles.sectionItemText}>
+                                <Text style={[styles.subtitle1, { color: '#ffffff' }]}>{translate('Custom')}</Text>
+                            </View>
+                            <View style={localStyles.sectionItemCheck}>
+                                {isSelected ? (
+                                    <Icon name={'check'} size={24} color={'#ffffff'} />
+                                ) : (
+                                    !smallScreenNavigation && (
+                                        <Shortcut text={RECURRENCE_CUSTOM_SHORTCUT} theme={SHORTCUT_LIGHT} />
+                                    )
+                                )}
+                            </View>
                         </View>
-                    </View>
+                    </TouchableOpacity>
                 </Hotkeys>
             </View>
         )
@@ -229,8 +201,8 @@ class RecurrenceModal extends Component {
         closePopover()
     }
 
-    render() {
-        const { closePopover, showBackButton, windowSize } = this.props
+    renderRecurrenceListView() {
+        const { showBackButton, windowSize } = this.props
         const { smallScreenNavigation } = this.state
 
         return (
@@ -261,8 +233,8 @@ class RecurrenceModal extends Component {
                     </View>
 
                     {showBackButton && (
-                        <Hotkeys keyName={'B'} onKeyDown={(s, e) => this.closePopup(e)} filter={e => true}>
-                            <TouchableOpacity style={localStyles.backContainer} onPress={closePopover}>
+                        <Hotkeys keyName={'B'} onKeyDown={(s, e) => this.closePopup(e)} filter={this.hotkeysEnabled}>
+                            <TouchableOpacity style={localStyles.backContainer} onPress={this.props.closePopover}>
                                 <Icon name="chevron-left" size={24} color={colors.Text03} />
                                 <Text style={[styles.subtitle1, localStyles.backText]}>{translate('Back')}</Text>
                                 {!smallScreenNavigation && (
@@ -275,7 +247,7 @@ class RecurrenceModal extends Component {
                     )}
 
                     <View style={localStyles.closeContainer}>
-                        <Hotkeys keyName={'esc'} onKeyDown={(s, e) => this.closePopup(e)} filter={e => true}>
+                        <Hotkeys keyName={'esc'} onKeyDown={(s, e) => this.closePopup(e)} filter={this.hotkeysEnabled}>
                             <TouchableOpacity style={localStyles.closeButton} onPress={this.closePopup}>
                                 <Icon name="x" size={24} color={colors.Text03} />
                             </TouchableOpacity>
@@ -284,6 +256,87 @@ class RecurrenceModal extends Component {
                 </CustomScrollView>
             </View>
         )
+    }
+
+    renderCustomDaysView() {
+        const { windowSize } = this.props
+        const { smallScreenNavigation, customDays } = this.state
+
+        const days = parseInt(customDays, 10)
+        const isValid = Number.isInteger(days) && days > 0
+
+        return (
+            <View
+                style={[
+                    localStyles.container,
+                    applyPopoverWidth(),
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                ]}
+            >
+                <CustomScrollView showsVerticalScrollIndicator={false}>
+                    <View style={localStyles.title}>
+                        <Text style={[styles.title7, { color: '#ffffff' }]}>{translate('Custom')}</Text>
+                        <Text style={[styles.body2, { color: colors.Text03 }]}>
+                            {translate('Enter the number of days')}
+                        </Text>
+                    </View>
+
+                    <View style={localStyles.customDaysRow}>
+                        <TextInput
+                            ref={this.customInputRef}
+                            style={localStyles.customInput}
+                            value={customDays}
+                            onChangeText={this.onChangeCustomDays}
+                            onSubmitEditing={this.confirmCustomDays}
+                            keyboardType={'number-pad'}
+                            placeholder={String(RECURRENCE_CUSTOM_DEFAULT_DAYS)}
+                            placeholderTextColor={colors.Text03}
+                            maxLength={4}
+                            autoFocus={true}
+                            blurOnSubmit={false}
+                        />
+                        <Text style={[styles.subtitle1, localStyles.customDaysLabel]}>{translate('days')}</Text>
+                    </View>
+
+                    <View style={localStyles.customDaysButtons}>
+                        <Button
+                            type={'primary'}
+                            title={translate('Confirm')}
+                            onPress={this.confirmCustomDays}
+                            disabled={!isValid}
+                        />
+                    </View>
+
+                    <Hotkeys
+                        keyName={'B'}
+                        onKeyDown={(s, e) => this.closeCustomDaysView()}
+                        filter={this.hotkeysEnabled}
+                    >
+                        <TouchableOpacity style={localStyles.backContainer} onPress={this.closeCustomDaysView}>
+                            <Icon name="chevron-left" size={24} color={colors.Text03} />
+                            <Text style={[styles.subtitle1, localStyles.backText]}>{translate('Back')}</Text>
+                            {!smallScreenNavigation && (
+                                <View style={localStyles.shortcut}>
+                                    <Shortcut text={'B'} theme={SHORTCUT_LIGHT} />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </Hotkeys>
+
+                    <View style={localStyles.closeContainer}>
+                        <Hotkeys keyName={'esc'} onKeyDown={(s, e) => this.closePopup(e)} filter={this.hotkeysEnabled}>
+                            <TouchableOpacity style={localStyles.closeButton} onPress={this.closePopup}>
+                                <Icon name="x" size={24} color={colors.Text03} />
+                            </TouchableOpacity>
+                        </Hotkeys>
+                    </View>
+                </CustomScrollView>
+            </View>
+        )
+    }
+
+    render() {
+        return this.state.showCustomDaysView ? this.renderCustomDaysView() : this.renderRecurrenceListView()
     }
 }
 
@@ -327,34 +380,29 @@ const localStyles = StyleSheet.create({
     sectionItemCheck: {
         justifyContent: 'flex-end',
     },
-    customInputContainer: {
+    customDaysRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        paddingHorizontal: 16,
+        marginBottom: 20,
     },
     customInput: {
         ...styles.subtitle1,
         color: '#ffffff',
         backgroundColor: colors.Secondary300,
         borderRadius: 4,
-        height: 28,
-        width: 48,
-        paddingHorizontal: 8,
+        height: 40,
+        width: 72,
+        paddingHorizontal: 12,
         textAlign: 'center',
     },
     customDaysLabel: {
-        color: colors.Text03,
-        marginLeft: 6,
+        color: '#ffffff',
+        marginLeft: 12,
     },
-    customConfirm: {
-        marginLeft: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    customShortcut: {
-        marginLeft: 8,
-    },
-    customSelectedCheck: {
-        marginLeft: 6,
+    customDaysButtons: {
+        paddingHorizontal: 16,
+        marginBottom: 8,
     },
     sectionSeparator: {
         height: 1,
