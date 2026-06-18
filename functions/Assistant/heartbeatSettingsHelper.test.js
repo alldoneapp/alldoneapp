@@ -41,6 +41,7 @@ describe('heartbeatSettingsHelper', () => {
         ).toMatchObject({
             intervalMinutes: 30,
             chancePercent: 10,
+            chanceNoReplyPercent: 10,
             sendWhatsApp: true,
             prompt: DEFAULT_PROMPT,
         })
@@ -51,6 +52,7 @@ describe('heartbeatSettingsHelper', () => {
             {
                 heartbeatIntervalMs: 20 * 60 * 1000,
                 heartbeatChancePercent: 45,
+                heartbeatChanceNoReplyPercent: 15,
                 heartbeatAwakeStart: 9 * 60 * 60 * 1000,
                 heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
                 heartbeatSendWhatsApp: false,
@@ -62,7 +64,8 @@ describe('heartbeatSettingsHelper', () => {
         expect(contextMessage).toContain('Current heartbeat settings for this assistant:')
         expect(contextMessage).toContain('Awake time: 09:00 - 18:00')
         expect(contextMessage).toContain('Heartbeat interval: 20 minutes')
-        expect(contextMessage).toContain('Execution chance: 45%')
+        expect(contextMessage).toContain('Execution chance when the user replied that day: 45%')
+        expect(contextMessage).toContain('Execution chance when the user did not reply that day: 15%')
         expect(contextMessage).toContain('WhatsApp notification: disabled')
         expect(contextMessage).toContain('Check progress and remind about the focus task.')
     })

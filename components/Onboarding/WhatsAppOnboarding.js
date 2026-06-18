@@ -341,6 +341,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         setSavingCheckInPreference(true)
         const assistant = getOnboardingAssistant()
         const heartbeatChancePercent = enabled ? 50 : 0
+        const heartbeatChanceNoReplyPercent = enabled ? 50 : 0
 
         if (!assistant?.uid || !projectId) {
             console.warn('Unable to update onboarding heartbeat preference: missing project or assistant', {
@@ -349,7 +350,10 @@ export default function WhatsAppOnboarding({ navigation }) {
             })
         } else {
             try {
-                await updateAssistantHeartbeatSettings(projectId, assistant, { heartbeatChancePercent })
+                await updateAssistantHeartbeatSettings(projectId, assistant, {
+                    heartbeatChancePercent,
+                    heartbeatChanceNoReplyPercent,
+                })
             } catch (error) {
                 console.error('Error updating onboarding heartbeat preference:', error)
             }

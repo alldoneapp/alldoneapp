@@ -10,12 +10,7 @@ import SocialText from '../../UIControls/SocialText/SocialText'
 import ObjectHeaderParser from '../TextParser/ObjectHeaderParser'
 import ObjectLinkTag from '../Utils/ObjectLinkTag'
 import { getTagCommentsPrivacyData, goToFeedSource } from '../Utils/HelperFunctions'
-import TasksHelper, {
-    GENERIC_CHAT_TYPE,
-    GENERIC_COMMENT_TYPE,
-    OPEN_STEP,
-    RECURRENCE_NEVER,
-} from '../../TaskListView/Utils/TasksHelper'
+import TasksHelper, { GENERIC_CHAT_TYPE, GENERIC_COMMENT_TYPE, OPEN_STEP } from '../../TaskListView/Utils/TasksHelper'
 import Backend from '../../../utils/BackendBridge'
 import SharedHelper from '../../../utils/SharedHelper'
 import PrivacyTag from '../../Tags/PrivacyTag'
@@ -29,7 +24,7 @@ import TaskCommentsWrapper from '../../Tags/TaskCommentsWrapper'
 import useBacklinks from '../../../hooks/useBacklinks'
 import { LINKED_OBJECT_TYPE_TASK } from '../../../utils/LinkingHelper'
 import BacklinksTag from '../../Tags/BacklinksTag'
-import { RECURRENCE_MAP } from '../../TaskListView/Utils/TasksHelper'
+import { isRecurrenceActive } from '../../TaskListView/Utils/TasksHelper'
 
 const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -188,7 +183,7 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
                         callback={setTaskLikePublic}
                     />
                 )}
-                {!inInteractionBar && RECURRENCE_MAP[recurrence] && recurrence !== RECURRENCE_NEVER && (
+                {!inInteractionBar && isRecurrenceActive(recurrence) && (
                     <TaskRecurrence
                         task={task ? task : { recurrence }}
                         projectId={projectId}

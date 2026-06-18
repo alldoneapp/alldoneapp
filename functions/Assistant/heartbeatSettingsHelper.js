@@ -92,6 +92,18 @@ function getEffectiveHeartbeatChancePercent(assistant = {}, projectId, userData 
     return 0
 }
 
+function getEffectiveHeartbeatChanceNoReplyPercent(assistant = {}, projectId, userData = null) {
+    if (assistant.heartbeatChanceNoReplyPercent !== undefined && assistant.heartbeatChanceNoReplyPercent !== null) {
+        return normalizeHeartbeatChancePercent(assistant.heartbeatChanceNoReplyPercent, 0)
+    }
+
+    if (assistant.isDefault && userData?.defaultProjectId === projectId) {
+        return 10
+    }
+
+    return 0
+}
+
 function getEffectiveHeartbeatSendWhatsApp(assistant = {}, userData = null) {
     if (assistant.heartbeatSendWhatsApp !== undefined && assistant.heartbeatSendWhatsApp !== null) {
         return assistant.heartbeatSendWhatsApp === true
@@ -117,6 +129,7 @@ function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, user
         intervalMs,
         intervalMinutes: Math.round(intervalMs / MINUTE_MS),
         chancePercent: getEffectiveHeartbeatChancePercent(assistant, projectId, userData),
+        chanceNoReplyPercent: getEffectiveHeartbeatChanceNoReplyPercent(assistant, projectId, userData),
         awakeStartMs,
         awakeStartTime: formatHeartbeatTimeMs(awakeStartMs),
         awakeEndMs,
@@ -136,7 +149,8 @@ function buildHeartbeatSettingsContextMessage(assistant = {}, { projectId = null
         'Current heartbeat settings for this assistant:',
         `- Awake time: ${settings.awakeStartTime} - ${settings.awakeEndTime} (user local time)`,
         `- Heartbeat interval: ${formatHeartbeatIntervalMinutes(settings.intervalMinutes)}`,
-        `- Execution chance: ${settings.chancePercent}%`,
+        `- Execution chance when the user replied that day: ${settings.chancePercent}%`,
+        `- Execution chance when the user did not reply that day: ${settings.chanceNoReplyPercent}%`,
         `- WhatsApp notification: ${settings.sendWhatsApp ? 'enabled' : 'disabled'}`,
         `- heartbeatPromptHistory: ${heartbeatPromptHistoryLength} previous version(s) saved, up to 10 retained (rollback by passing the older prompt text back through update_heartbeat_settings).`,
         '- Current heartbeat prompt:',
@@ -162,6 +176,7 @@ module.exports = {
     formatHeartbeatTimeMs,
     formatHeartbeatIntervalMinutes,
     getEffectiveHeartbeatChancePercent,
+    getEffectiveHeartbeatChanceNoReplyPercent,
     getEffectiveHeartbeatSendWhatsApp,
     getEffectiveHeartbeatPrompt,
     getNormalizedHeartbeatSettings,

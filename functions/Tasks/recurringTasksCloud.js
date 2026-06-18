@@ -14,6 +14,14 @@ const RECURRENCE_MONTHLY = 'monthly'
 const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
 const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
+const RECURRENCE_CUSTOM = 'custom'
+
+// Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
+function getCustomRecurrenceDays(recurrence) {
+    if (typeof recurrence !== 'string' || recurrence.indexOf(`${RECURRENCE_CUSTOM}:`) !== 0) return null
+    const days = parseInt(recurrence.slice(RECURRENCE_CUSTOM.length + 1), 10)
+    return Number.isInteger(days) && days > 0 ? days : null
+}
 
 const OPEN_STEP = 'open'
 
@@ -167,9 +175,14 @@ function getNextDateFromBaseDate(baseDate, recurrence) {
             return baseDate.clone().add(6, 'months')
         case RECURRENCE_ANNUALLY:
             return baseDate.clone().add(1, 'years')
-        default:
+        default: {
+            const customDays = getCustomRecurrenceDays(recurrence)
+            if (customDays) {
+                return baseDate.clone().add(customDays, 'days')
+            }
             console.error('Unknown recurrence pattern:', recurrence)
             return null
+        }
     }
 }
 
@@ -196,12 +209,14 @@ function calculateNextRecurrenceDate(task, now = Date.now()) {
     if (baseDateOverride) {
         const completedMoment = moment(task.completed || now)
         let safetyCounter = 0
-        while (!nextDate.isAfter(completedMoment) && safetyCounter < 500) {
+        // High cap only to guard against a non-advancing recurrence; each step moves the
+        // date forward by >= 1 day, so for any real recurrence this terminates quickly.
+        while (!nextDate.isAfter(completedMoment) && safetyCounter < 100000) {
             nextDate = getNextDateFromBaseDate(nextDate, task.recurrence)
             safetyCounter++
         }
 
-        if (safetyCounter >= 500) {
+        if (safetyCounter >= 100000) {
             console.error('Failed to advance recurring task date to a future occurrence:', {
                 recurrence: task.recurrence,
                 baseDateOverride,

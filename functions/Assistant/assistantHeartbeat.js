@@ -16,6 +16,7 @@ const {
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatTimeMs,
     getEffectiveHeartbeatChancePercent,
+    getEffectiveHeartbeatChanceNoReplyPercent,
     getEffectiveHeartbeatSendWhatsApp,
 } = require('./heartbeatSettingsHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
@@ -187,10 +188,38 @@ function isWithinAwakeWindow(assistant, timezoneOffsetMinutes) {
 }
 
 /**
- * Get the effective heartbeat chance percent, considering defaults.
+ * Get the effective heartbeat chance percent for days the user already replied,
+ * considering defaults.
  */
 function getEffectiveChancePercent(assistant, projectId, userData) {
     return getEffectiveHeartbeatChancePercent(assistant, projectId, userData)
+}
+
+/**
+ * Get the effective heartbeat chance percent for days the user has not replied yet,
+ * considering defaults.
+ */
+function getEffectiveChanceNoReplyPercent(assistant, projectId, userData) {
+    return getEffectiveHeartbeatChanceNoReplyPercent(assistant, projectId, userData)
+}
+
+/**
+ * Determine whether the user has replied to the assistant during their current
+ * local day. We look at both the in-app heartbeat daily topic and the WhatsApp
+ * daily topic, since the heartbeat conversation can live in either channel.
+ */
+async function hasUserRepliedToday(projectId, userId, userData) {
+    const { hasUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
+    const { dateKey } = getUserLocalDateContext(userData)
+    const heartbeatChatId = `Heartbeat${dateKey}${userId}`
+    const whatsAppChatId = `BotChat${dateKey}${userId}`
+
+    const [repliedInHeartbeat, repliedInWhatsApp] = await Promise.all([
+        hasUserMessageOnUserLocalDay(projectId, heartbeatChatId, userId, userData),
+        hasUserMessageOnUserLocalDay(projectId, whatsAppChatId, userId, userData),
+    ])
+
+    return repliedInHeartbeat || repliedInWhatsApp
 }
 
 function getEffectiveHeartbeatIntervalMs(assistant) {
@@ -408,9 +437,11 @@ async function checkAndExecuteHeartbeats() {
                         if (!activeUsersMap.has(userId)) continue
 
                         let userData = activeUsersMap.get(userId)
-                        const chancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+                        const repliedChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+                        const noReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
 
-                        if (chancePercent <= 0) continue
+                        // Skip only when the heartbeat is disabled for both reply states.
+                        if (repliedChancePercent <= 0 && noReplyChancePercent <= 0) continue
 
                         // Check awake window
                         const timezoneOffsetMinutes =
@@ -454,6 +485,18 @@ async function checkAndExecuteHeartbeats() {
                             }
                         }
 
+                        // Pick the execution chance based on whether the user has replied
+                        // today. Only look up the reply state when the two chances differ,
+                        // to avoid an extra Firestore read on the hot path.
+                        let chancePercent = repliedChancePercent
+                        let repliedToday = null
+                        if (repliedChancePercent !== noReplyChancePercent) {
+                            repliedToday = await hasUserRepliedToday(projectId, userId, userData)
+                            chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
+                        }
+
+                        if (chancePercent <= 0) continue
+
                         // Roll dice
                         if (Math.random() * 100 >= chancePercent) {
                             continue
@@ -469,6 +512,7 @@ async function checkAndExecuteHeartbeats() {
                             assistantId: assistant.uid,
                             userId,
                             chancePercent,
+                            repliedToday,
                             intervalMs,
                         })
 

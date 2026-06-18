@@ -6,7 +6,7 @@ import Popover from 'react-tiny-popover'
 import RecurrenceModal from '../UIComponents/FloatModals/RecurrenceModal'
 import { useSelector } from 'react-redux'
 import { translate } from '../../i18n/TranslationService'
-import { RECURRENCE_MAP } from '../TaskListView/Utils/TasksHelper'
+import { getRecurrenceInfo } from '../TaskListView/Utils/TasksHelper'
 
 const TaskRecurrence = ({
     task,
@@ -52,8 +52,8 @@ const TaskRecurrence = ({
 
     const recurrenceValue = getRecurrenceValue(recurrence)
 
-    // Ensure the recurrence value exists in RECURRENCE_MAP
-    const recurrenceData = RECURRENCE_MAP[recurrenceValue] || RECURRENCE_MAP['never']
+    // Resolve display info, including dynamic custom-days recurrence
+    const recurrenceData = getRecurrenceInfo(recurrenceValue)
 
     return (
         <Popover
@@ -81,7 +81,8 @@ const TaskRecurrence = ({
                     />
                     <Text style={[(outline ? otl : localStyles).text, windowTagStyle()]}>
                         {translate(
-                            outline || smallScreenNavigation || isMobile ? recurrenceData.short : recurrenceData.large
+                            outline || smallScreenNavigation || isMobile ? recurrenceData.short : recurrenceData.large,
+                            recurrenceData.interpolations
                         )}
                     </Text>
                 </View>

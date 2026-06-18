@@ -12,7 +12,7 @@ import {
     TASK_TYPE_WEBHOOK,
     TASK_TYPE_IFRAME,
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
-import { RECURRENCE_MAP, RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
+import { getRecurrenceInfo, RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 
 export default function PreConfigTaskItem({ disabled, projectId, task, assistantId }) {
@@ -97,7 +97,7 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
                 {recurrenceGroups.length > 0 && (
                     <View style={localStyles.tagsArea}>
                         {recurrenceGroups.map(([recurrenceValue, userIds]) => {
-                            const recurrenceData = RECURRENCE_MAP[recurrenceValue] || RECURRENCE_MAP[RECURRENCE_NEVER]
+                            const recurrenceData = getRecurrenceInfo(recurrenceValue)
                             return (
                                 <View key={recurrenceValue} style={localStyles.recurrenceTag}>
                                     <Icon
@@ -107,7 +107,10 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
                                         style={localStyles.tagIcon}
                                     />
                                     <Text style={localStyles.recurrenceText}>
-                                        {translate(recurrenceData.short || recurrenceData.large)}
+                                        {translate(
+                                            recurrenceData.short || recurrenceData.large,
+                                            recurrenceData.interpolations
+                                        )}
                                     </Text>
                                     <View style={localStyles.activatorsContainer}>
                                         {userIds.slice(0, 3).map((userId, index) => {

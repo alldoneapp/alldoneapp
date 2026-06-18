@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TextInput, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import PropTypes from 'prop-types'
@@ -22,8 +22,12 @@ import {
     RECURRENCE_EVERY_3_WEEKS,
     RECURRENCE_MONTHLY,
     RECURRENCE_EVERY_3_MONTHS,
-    RECURRENCE_EVERY_6_MONTHS,
     RECURRENCE_ANNUALLY,
+    RECURRENCE_CUSTOM_SHORTCUT,
+    RECURRENCE_CUSTOM_DEFAULT_DAYS,
+    RECURRENCE_CUSTOM_MAX_DAYS,
+    buildCustomRecurrence,
+    getCustomRecurrenceDays,
 } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskRecurrence } from '../../../utils/backends/Tasks/tasksFirestore'
 
@@ -32,10 +36,17 @@ class RecurrenceModal extends Component {
         super(props)
         const storeState = store.getState()
 
+        const currentRecurrence = props.task ? props.task.recurrence : RECURRENCE_NEVER
+        const currentCustomDays = getCustomRecurrenceDays(currentRecurrence)
+
         this.state = {
             smallScreenNavigation: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
+            customDays: currentCustomDays ? String(currentCustomDays) : '',
+            customInputFocused: false,
         }
+
+        this.customInputRef = React.createRef()
 
         this.recurrences = [
             RECURRENCE_NEVER,
@@ -46,7 +57,6 @@ class RecurrenceModal extends Component {
             RECURRENCE_EVERY_3_WEEKS,
             RECURRENCE_MONTHLY,
             RECURRENCE_EVERY_3_MONTHS,
-            RECURRENCE_EVERY_6_MONTHS,
             RECURRENCE_ANNUALLY,
         ]
     }
@@ -75,6 +85,24 @@ class RecurrenceModal extends Component {
         this.props.closePopover(recurrence)
     }
 
+    onChangeCustomDays = value => {
+        const sanitized = value.replace(/[^0-9]/g, '')
+        this.setState({ customDays: sanitized })
+    }
+
+    selectCustomRecurrence = () => {
+        const days = parseInt(this.state.customDays, 10)
+        if (!Number.isInteger(days) || days <= 0) return
+        const clampedDays = Math.min(days, RECURRENCE_CUSTOM_MAX_DAYS)
+        this.selectRecurrence(buildCustomRecurrence(clampedDays))
+    }
+
+    focusCustomInput = () => {
+        if (this.customInputRef.current) {
+            this.customInputRef.current.focus()
+        }
+    }
+
     renderRecurrenceSection = (recurrence, i) => {
         const { task } = this.props
         const { smallScreenNavigation } = this.state
@@ -86,7 +114,7 @@ class RecurrenceModal extends Component {
                     key={i}
                     keyName={shortcut}
                     onKeyDown={(sht, event) => this.selectRecurrence(recurrence)}
-                    filter={e => true}
+                    filter={e => !this.state.customInputFocused}
                 >
                     <TouchableOpacity
                         style={localStyles.recurrenceSectionItem}
@@ -111,6 +139,59 @@ class RecurrenceModal extends Component {
                             </View>
                         </View>
                     </TouchableOpacity>
+                </Hotkeys>
+            </View>
+        )
+    }
+
+    renderCustomSection = () => {
+        const { smallScreenNavigation, customDays } = this.state
+
+        const placeholder = String(RECURRENCE_CUSTOM_DEFAULT_DAYS)
+        return (
+            <View>
+                <Hotkeys
+                    keyName={RECURRENCE_CUSTOM_SHORTCUT}
+                    onKeyDown={(sht, event) => {
+                        if (event && event.preventDefault) event.preventDefault()
+                        this.focusCustomInput()
+                    }}
+                    filter={e => !this.state.customInputFocused}
+                >
+                    <View style={localStyles.recurrenceSectionItem}>
+                        <View style={localStyles.sectionItemText}>
+                            <Text style={[styles.subtitle1, { color: '#ffffff' }]}>{translate('Custom')}</Text>
+                        </View>
+                        <View style={localStyles.customInputContainer}>
+                            <TextInput
+                                ref={this.customInputRef}
+                                style={localStyles.customInput}
+                                value={customDays}
+                                onChangeText={this.onChangeCustomDays}
+                                onSubmitEditing={this.selectCustomRecurrence}
+                                onFocus={() => this.setState({ customInputFocused: true })}
+                                onBlur={() => this.setState({ customInputFocused: false })}
+                                keyboardType={'number-pad'}
+                                placeholder={placeholder}
+                                placeholderTextColor={colors.Text03}
+                                maxLength={4}
+                                blurOnSubmit={false}
+                            />
+                            <Text style={[styles.body2, localStyles.customDaysLabel]}>{translate('days')}</Text>
+                            <TouchableOpacity
+                                style={localStyles.customConfirm}
+                                onPress={this.selectCustomRecurrence}
+                                disabled={!customDays}
+                            >
+                                <Icon name={'check'} size={20} color={customDays ? '#ffffff' : colors.Text03} />
+                            </TouchableOpacity>
+                            {!smallScreenNavigation && (
+                                <View style={localStyles.customShortcut}>
+                                    <Shortcut text={RECURRENCE_CUSTOM_SHORTCUT} theme={SHORTCUT_LIGHT} />
+                                </View>
+                            )}
+                        </View>
+                    </View>
                 </Hotkeys>
             </View>
         )
@@ -152,7 +233,8 @@ class RecurrenceModal extends Component {
                     <View style={localStyles.sectionSeparator} />
 
                     <View style={localStyles.recurrenceSection}>
-                        {this.recurrences.slice(1, 10).map(this.renderRecurrenceSection)}
+                        {this.recurrences.slice(1).map(this.renderRecurrenceSection)}
+                        {this.renderCustomSection()}
                     </View>
 
                     {showBackButton && (
@@ -221,6 +303,32 @@ const localStyles = StyleSheet.create({
     },
     sectionItemCheck: {
         justifyContent: 'flex-end',
+    },
+    customInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    customInput: {
+        ...styles.subtitle1,
+        color: '#ffffff',
+        backgroundColor: colors.Secondary300,
+        borderRadius: 4,
+        height: 28,
+        width: 48,
+        paddingHorizontal: 8,
+        textAlign: 'center',
+    },
+    customDaysLabel: {
+        color: colors.Text03,
+        marginLeft: 6,
+    },
+    customConfirm: {
+        marginLeft: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    customShortcut: {
+        marginLeft: 8,
     },
     sectionSeparator: {
         height: 1,

@@ -192,7 +192,18 @@ export default function AssistantCustomizations({
                         projectId={projectId}
                         assistant={assistant}
                     />
-                    <HeartbeatChanceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <HeartbeatChanceProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                        variant="replied"
+                    />
+                    <HeartbeatChanceProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                        variant="noReply"
+                    />
                     <HeartbeatWhatsAppProperty
                         disabled={!canEditAssitant}
                         projectId={projectId}

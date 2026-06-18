@@ -1,4 +1,5 @@
 const mockGeneratePreConfigTaskResult = jest.fn()
+const mockHasUserMessageOnUserLocalDay = jest.fn()
 const mockCreateInitialStatusMessage = jest.fn()
 const mockGetOpenTasksContextMessage = jest.fn()
 const mockSendWhatsAppMessage = jest.fn()
@@ -109,6 +110,7 @@ jest.mock('firebase-admin', () => {
 
 jest.mock('./assistantPreConfigTaskTopic', () => ({
     generatePreConfigTaskResult: (...args) => mockGeneratePreConfigTaskResult(...args),
+    hasUserMessageOnUserLocalDay: (...args) => mockHasUserMessageOnUserLocalDay(...args),
 }))
 
 jest.mock('./assistantStatusHelper', () => ({
@@ -150,6 +152,7 @@ describe('assistant heartbeat insufficient gold notice', () => {
         admin.__mock.reset()
         jest.spyOn(Date, 'now').mockReturnValue(1000000000)
         jest.spyOn(Math, 'random').mockReturnValue(0.99)
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
 
         admin.__mock.setDoc('users/user-1', {
             uid: 'user-1',
@@ -268,5 +271,89 @@ describe('assistant heartbeat insufficient gold notice', () => {
             '⚠️ Stopped: this run reached its time limit before finishing. Please narrow the request or try again.'
         )
         expect(assistantDoc['heartbeatLastExecutedByUser.user-1']).toBeUndefined()
+    })
+})
+
+describe('assistant heartbeat reply-aware execution chance', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        admin.__mock.reset()
+        jest.spyOn(Date, 'now').mockReturnValue(1000000000)
+        // Random roll of 0.5 -> 50, so a 100% chance executes and a 0% chance does not.
+        jest.spyOn(Math, 'random').mockReturnValue(0.5)
+        mockGeneratePreConfigTaskResult.mockResolvedValue({ success: true, silentOk: false, commentId: 'comment-1' })
+
+        admin.__mock.setDoc('users/user-1', {
+            uid: 'user-1',
+            displayName: 'Test User',
+            lastLogin: 1000000000,
+            gold: 100,
+        })
+        admin.__mock.setDoc('projects/project-1', {
+            active: true,
+            userIds: ['user-1'],
+        })
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            uid: 'assistant-1',
+            heartbeatPrompt: 'Check in.',
+            heartbeatChancePercent: 100,
+            heartbeatChanceNoReplyPercent: 0,
+            heartbeatAwakeStart: 0,
+            heartbeatAwakeEnd: 86340000,
+            heartbeatIntervalMs: 300000,
+            heartbeatSendWhatsApp: false,
+            model: 'MODEL_GPT5_5',
+            temperature: 'TEMPERATURE_NORMAL',
+            instructions: 'Be helpful.',
+        })
+    })
+
+    afterEach(() => {
+        Date.now.mockRestore()
+        Math.random.mockRestore()
+    })
+
+    test('uses the replied chance when the user already replied that day', async () => {
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
+
+        await checkAndExecuteHeartbeats()
+
+        // replied chance is 100 -> executes
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('uses the no-reply chance when the user has not replied that day', async () => {
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+
+        // no-reply chance is 0 -> skipped
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+    })
+
+    test('honors a no-reply chance higher than the replied chance', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatChancePercent: 0,
+            heartbeatChanceNoReplyPercent: 100,
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('does not query reply state when both chances are equal', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatChancePercent: 100,
+            heartbeatChanceNoReplyPercent: 100,
+        })
+
+        await checkAndExecuteHeartbeats()
+
+        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
     })
 })

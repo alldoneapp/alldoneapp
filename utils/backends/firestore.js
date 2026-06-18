@@ -10,17 +10,9 @@ import TasksHelper, {
     GENERIC_NOTE_TYPE,
     GENERIC_TASK_TYPE,
     OPEN_STEP,
-    RECURRENCE_MAP,
+    getRecurrenceLabel,
+    isRecurrenceActive,
     RECURRENCE_NEVER,
-    RECURRENCE_DAILY,
-    RECURRENCE_EVERY_WORKDAY,
-    RECURRENCE_WEEKLY,
-    RECURRENCE_EVERY_2_WEEKS,
-    RECURRENCE_EVERY_3_WEEKS,
-    RECURRENCE_MONTHLY,
-    RECURRENCE_EVERY_3_MONTHS,
-    RECURRENCE_EVERY_6_MONTHS,
-    RECURRENCE_ANNUALLY,
     TASK_ASSIGNEE_USER_TYPE,
 } from '../../components/TaskListView/Utils/TasksHelper'
 // BEGIN-ENVS
@@ -4565,7 +4557,7 @@ export async function registerEmailDataForTasks(user, objectId, project, feed, f
         })
     }
     if (feedObject.recurrence && feedObject.recurrence.toLowerCase() !== RECURRENCE_NEVER) {
-        objectData.feedTaskTags.push({ icon: 'rotate-cw', text: RECURRENCE_MAP[feedObject.recurrence].large })
+        objectData.feedTaskTags.push({ icon: 'rotate-cw', text: getRecurrenceLabel(feedObject.recurrence) })
     }
 
     /**
@@ -7555,20 +7547,11 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
     projectIds.forEach(projectId => {
         promises.push(
             db
+                // Recurrence is filtered in JS (below) instead of a Firestore `in`,
+                // because custom recurrence values (`custom:<days>`) can't be enumerated for an `in` query.
                 .collection(`items/${projectId}/tasks`)
                 .where('userId', '==', userId)
                 .where('completed', '==', null)
-                .where('recurrence', 'in', [
-                    RECURRENCE_DAILY,
-                    RECURRENCE_EVERY_WORKDAY,
-                    RECURRENCE_WEEKLY,
-                    RECURRENCE_EVERY_2_WEEKS,
-                    RECURRENCE_EVERY_3_WEEKS,
-                    RECURRENCE_MONTHLY,
-                    RECURRENCE_EVERY_3_MONTHS,
-                    RECURRENCE_EVERY_6_MONTHS,
-                    RECURRENCE_ANNUALLY,
-                ])
                 .where('timesDoneInExpectedDay', '>', 0)
                 .get()
         )
@@ -7581,6 +7564,9 @@ export const resetTimesDoneInExpectedDayPropertyInTasksIfNeeded = async () => {
         tasksDocs.forEach(doc => {
             const task = doc.data()
             const { dueDate } = task
+
+            // Only recurring tasks (fixed or custom) should have this counter reset.
+            if (!isRecurrenceActive(task.recurrence)) return
 
             if (dueDate) {
                 const endExpectedDay = moment(task.dueDate).endOf('day').valueOf()

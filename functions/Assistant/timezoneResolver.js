@@ -22,6 +22,24 @@ const recurrenceAdvanceHandlers = {
     annually: momentInstance => momentInstance.add(1, 'years'),
 }
 
+const RECURRENCE_CUSTOM = 'custom'
+
+// Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
+function getCustomRecurrenceDays(recurrence) {
+    if (typeof recurrence !== 'string' || recurrence.indexOf(`${RECURRENCE_CUSTOM}:`) !== 0) return null
+    const days = parseInt(recurrence.slice(RECURRENCE_CUSTOM.length + 1), 10)
+    return Number.isInteger(days) && days > 0 ? days : null
+}
+
+// Resolves the advance handler for any recurrence value, including custom days.
+function getRecurrenceAdvanceHandler(recurrence) {
+    const customDays = getCustomRecurrenceDays(recurrence)
+    if (customDays) {
+        return momentInstance => momentInstance.add(customDays, 'days')
+    }
+    return recurrenceAdvanceHandlers[recurrence]
+}
+
 function normalizeTimezoneOffset(value) {
     const normalized = TaskRetrievalService.normalizeTimezoneOffset(value)
     return typeof normalized === 'number' ? normalized : null
@@ -203,7 +221,7 @@ function evaluateCandidateForSchedule(
 
     if (!task.lastExecuted) {
         const nextExecution = originalScheduledTime.clone()
-        const advanceHandler = recurrenceAdvanceHandlers[task.recurrence]
+        const advanceHandler = getRecurrenceAdvanceHandler(task.recurrence)
         const maxIterations = 10000
         let iterations = 0
 

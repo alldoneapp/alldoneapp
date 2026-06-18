@@ -20,7 +20,7 @@ import AISettingsArea from './AISettingsArea'
 import { REGEX_URL } from '../../../Feeds/Utils/HelperFunctions'
 import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import RecurrenceButton from '../../../UIControls/RecurrenceButton'
-import { RECURRENCE_NEVER, RECURRENCE_MAP } from '../../../TaskListView/Utils/TasksHelper'
+import { RECURRENCE_NEVER, getRecurrenceInfo } from '../../../TaskListView/Utils/TasksHelper'
 import Icon from '../../../Icon'
 import moment from 'moment'
 import DueDateCalendarModal from '../../FloatModals/DueDateCalendarModal/DueDateCalendarModal'
@@ -54,7 +54,7 @@ const RecurrencePickerArea = memo(
                         disabled={disabled}
                     >
                         <Text style={[styles.subtitle2, { color: colors.Text02 }]}>
-                            {translate((RECURRENCE_MAP[recurrence] || RECURRENCE_MAP[RECURRENCE_NEVER]).large)}
+                            {(info => translate(info.large, info.interpolations))(getRecurrenceInfo(recurrence))}
                         </Text>
                     </TouchableOpacity>
                 </View>

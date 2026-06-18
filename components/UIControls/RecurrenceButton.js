@@ -6,7 +6,7 @@ import Button from './Button'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RecurrenceModal from '../UIComponents/FloatModals/RecurrenceModal'
 import { translate } from '../../i18n/TranslationService'
-import { RECURRENCE_MAP } from '../TaskListView/Utils/TasksHelper'
+import { getRecurrenceInfo } from '../TaskListView/Utils/TasksHelper'
 
 class RecurrenceButton extends Component {
     constructor(props) {
@@ -50,6 +50,8 @@ class RecurrenceButton extends Component {
         const { task, projectId, disabled, style, inEditTask } = this.props
         const { visiblePopover, smallScreen } = this.state
 
+        const recurrenceInfo = getRecurrenceInfo(task.recurrence)
+
         return (
             <Popover
                 content={<RecurrenceModal task={task} projectId={projectId} closePopover={this.hidePopover} />}
@@ -61,7 +63,11 @@ class RecurrenceButton extends Component {
                 contentLocation={smallScreen ? null : undefined}
             >
                 <Button
-                    title={inEditTask && smallScreen ? null : translate(RECURRENCE_MAP[task.recurrence].large)}
+                    title={
+                        inEditTask && smallScreen
+                            ? null
+                            : translate(recurrenceInfo.large, recurrenceInfo.interpolations)
+                    }
                     type={'ghost'}
                     noBorder={inEditTask && smallScreen}
                     icon={'rotate-cw'}

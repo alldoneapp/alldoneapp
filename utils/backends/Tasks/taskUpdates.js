@@ -31,7 +31,11 @@ import {
     FEED_TASK_UNOBSERVED,
     FEED_TASK_OBSERVER_ESTIMATION_CHANGED,
 } from '../../../components/Feeds/Utils/FeedsConstants'
-import TasksHelper, { DONE_STEP, OPEN_STEP, RECURRENCE_MAP } from '../../../components/TaskListView/Utils/TasksHelper'
+import TasksHelper, {
+    DONE_STEP,
+    OPEN_STEP,
+    getRecurrenceLabel,
+} from '../../../components/TaskListView/Utils/TasksHelper'
 import HelperFunctions, { chronoEntriesOrder } from '../../HelperFunctions'
 import store from '.././../../redux/store'
 import {
@@ -799,8 +803,8 @@ export async function createTaskRecurrenceChangedFeed(
     )
 
     const isSubtask = taskFeedObject.parentId ? true : false
-    const newRecurrenceText = RECURRENCE_MAP[newRecurrenceType].large
-    const oldRecurrenceText = RECURRENCE_MAP[oldRecurrenceType].large
+    const newRecurrenceText = getRecurrenceLabel(newRecurrenceType)
+    const oldRecurrenceText = getRecurrenceLabel(oldRecurrenceType)
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_TASK_RECURRENCE_CHANGED,
         lastChangeDate: currentMilliseconds,

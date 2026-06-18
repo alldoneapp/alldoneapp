@@ -98,6 +98,22 @@ const RECURRENCE_MAP = {
     [RECURRENCE_ANNUALLY]: { short: 'A', large: 'Annually', shortcut: '9' },
 }
 
+const RECURRENCE_CUSTOM = 'custom'
+
+// Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
+function getCustomRecurrenceDays(recurrence) {
+    if (typeof recurrence !== 'string' || recurrence.indexOf(`${RECURRENCE_CUSTOM}:`) !== 0) return null
+    const days = parseInt(recurrence.slice(RECURRENCE_CUSTOM.length + 1), 10)
+    return Number.isInteger(days) && days > 0 ? days : null
+}
+
+// Plain English label for any recurrence value, including custom days. Matches RECURRENCE_MAP[...].large.
+function getRecurrenceLabel(recurrence) {
+    const days = getCustomRecurrenceDays(recurrence)
+    if (days) return `Every ${days} days`
+    return (RECURRENCE_MAP[recurrence] || RECURRENCE_MAP[RECURRENCE_NEVER]).large
+}
+
 const ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY = 'allProjects'
 
 let sortKey = 0
@@ -279,6 +295,8 @@ module.exports = {
     WORKSTREAM_ID_PREFIX,
     DATE_FORMAT_EUROPE,
     RECURRENCE_MAP,
+    getCustomRecurrenceDays,
+    getRecurrenceLabel,
     ESTIMATION_TYPE_TIME,
     TIME_TEXT_DEFAULT_MINI,
     ESTIMATION_TYPE_POINTS,

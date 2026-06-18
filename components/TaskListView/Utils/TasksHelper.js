@@ -170,6 +170,12 @@ export const RECURRENCE_ANNUALLY = 'annually'
 export const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 export const MAX_GOLD_TO_EARN_BY_COMMENT = 3
 
+// Custom recurrence is stored as a string `custom:<days>` (e.g. `custom:28`).
+export const RECURRENCE_CUSTOM = 'custom'
+export const RECURRENCE_CUSTOM_SHORTCUT = '8'
+export const RECURRENCE_CUSTOM_DEFAULT_DAYS = 28
+export const RECURRENCE_CUSTOM_MAX_DAYS = 3650
+
 export const RECURRENCE_MAP = {
     [RECURRENCE_NEVER]: { short: '', large: 'Never', shortcut: '0' },
     [RECURRENCE_DAILY]: { short: 'D', large: 'Daily', shortcut: '1' },
@@ -179,8 +185,54 @@ export const RECURRENCE_MAP = {
     [RECURRENCE_EVERY_3_WEEKS]: { short: '3 W', large: 'Every 3 weeks', shortcut: '5' },
     [RECURRENCE_MONTHLY]: { short: 'M', large: 'Monthly', shortcut: '6' },
     [RECURRENCE_EVERY_3_MONTHS]: { short: '3 M', large: 'Every 3 months', shortcut: '7' },
+    // Legacy fixed option kept for backward compatibility with existing tasks; replaced by Custom in the picker.
     [RECURRENCE_EVERY_6_MONTHS]: { short: '6 M', large: 'Every 6 months', shortcut: '8' },
     [RECURRENCE_ANNUALLY]: { short: 'A', large: 'Annually', shortcut: '9' },
+}
+
+// Returns true when the recurrence is a `custom:<days>` value.
+export const isCustomRecurrence = recurrence =>
+    typeof recurrence === 'string' && recurrence.indexOf(`${RECURRENCE_CUSTOM}:`) === 0
+
+// Parses the day count out of a `custom:<days>` value. Returns null when invalid.
+export const getCustomRecurrenceDays = recurrence => {
+    if (!isCustomRecurrence(recurrence)) return null
+    const days = parseInt(recurrence.slice(RECURRENCE_CUSTOM.length + 1), 10)
+    return Number.isInteger(days) && days > 0 ? days : null
+}
+
+// Builds a `custom:<days>` recurrence value.
+export const buildCustomRecurrence = days => `${RECURRENCE_CUSTOM}:${days}`
+
+// True for any value that schedules a repeat (i.e. not "never" and not unknown).
+export const isRecurrenceActive = recurrence =>
+    !!recurrence &&
+    (isCustomRecurrence(recurrence) || (recurrence !== RECURRENCE_NEVER && !!RECURRENCE_MAP[recurrence]))
+
+// Plain (untranslated) English label for any recurrence value, including custom days.
+// Used for stored feed text where labels are kept in English, matching RECURRENCE_MAP[...].large.
+export const getRecurrenceLabel = recurrence => {
+    const days = getCustomRecurrenceDays(recurrence)
+    if (days) return `Every ${days} days`
+    return (RECURRENCE_MAP[recurrence] || RECURRENCE_MAP[RECURRENCE_NEVER]).large
+}
+
+// Resolves the display info for any recurrence value, including custom days.
+// Returns translation keys plus `interpolations` so callers translate at render time.
+export const getRecurrenceInfo = recurrence => {
+    const days = getCustomRecurrenceDays(recurrence)
+    if (days) {
+        return {
+            short: '{{days}} D',
+            large: 'Every {{days}} days',
+            shortcut: RECURRENCE_CUSTOM_SHORTCUT,
+            interpolations: { days },
+            isCustom: true,
+            days,
+        }
+    }
+    const base = RECURRENCE_MAP[recurrence] || RECURRENCE_MAP[RECURRENCE_NEVER]
+    return { ...base, interpolations: {}, isCustom: false }
 }
 
 class TasksHelper {

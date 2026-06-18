@@ -85,6 +85,7 @@ import TasksHelper, {
     DONE_STEP,
     GENERIC_COMMENT_TYPE,
     GENERIC_TASK_TYPE,
+    getCustomRecurrenceDays,
     getTaskAutoEstimation,
     MAX_GOLD_TO_EARN_BY_CHECK_TASKS,
     OPEN_STEP,
@@ -615,6 +616,11 @@ export async function createRecurrentTask(projectId, taskId) {
             [RECURRENCE_EVERY_3_MONTHS]: baseDate.clone().add(3, 'months'),
             [RECURRENCE_EVERY_6_MONTHS]: baseDate.clone().add(6, 'months'),
             [RECURRENCE_ANNUALLY]: baseDate.clone().add(1, 'years'),
+        }
+
+        const customDays = getCustomRecurrenceDays(recurrence)
+        if (customDays) {
+            recurrenceMap[recurrence] = baseDate.clone().add(customDays, 'days')
         }
 
         delete task.id

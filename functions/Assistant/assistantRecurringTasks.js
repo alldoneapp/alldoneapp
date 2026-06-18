@@ -23,6 +23,14 @@ const RECURRENCE_MONTHLY = 'monthly'
 const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
 const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
+const RECURRENCE_CUSTOM = 'custom'
+
+// Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
+function getCustomRecurrenceDays(recurrence) {
+    if (typeof recurrence !== 'string' || recurrence.indexOf(`${RECURRENCE_CUSTOM}:`) !== 0) return null
+    const days = parseInt(recurrence.slice(RECURRENCE_CUSTOM.length + 1), 10)
+    return Number.isInteger(days) && days > 0 ? days : null
+}
 
 function getActivatedUserIdsForTask(task) {
     const recurrenceByUser = task?.recurrenceByUser || {}
@@ -246,10 +254,16 @@ function getNextExecutionTime(originalScheduledTime, recurrence, lastExecuted, o
             case RECURRENCE_ANNUALLY:
                 next.add(1, 'years')
                 break
-            default:
+            default: {
+                const customDays = getCustomRecurrenceDays(recurrence)
+                if (customDays) {
+                    next.add(customDays, 'days')
+                    break
+                }
                 console.warn('[getNextExecutionTime] Unknown recurrence:', recurrence)
                 // If recurrence is unknown or 'never', return original time + 1 day to avoid infinite loop if something went wrong
                 return originalScheduledTime.clone().add(1, 'day')
+            }
         }
     }
 
@@ -1103,7 +1117,10 @@ async function checkAndExecuteRecurringTasks() {
                 // Check each task
                 for (const task of tasks) {
                     // Filter 0: Skip tasks without recurring schedule
-                    if (!task.recurrence || !recurringTypes.includes(task.recurrence)) {
+                    if (
+                        !task.recurrence ||
+                        (!recurringTypes.includes(task.recurrence) && !getCustomRecurrenceDays(task.recurrence))
+                    ) {
                         continue
                     }
 

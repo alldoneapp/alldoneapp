@@ -6178,6 +6178,16 @@ async function executeToolNatively(
                 updatedFields.push('chancePercent')
             }
 
+            if (hasOwn('chanceNoReplyPercent')) {
+                const numericChanceNoReplyPercent = Number(toolArgs.chanceNoReplyPercent)
+                if (!Number.isFinite(numericChanceNoReplyPercent)) {
+                    throw new Error('chanceNoReplyPercent must be a number.')
+                }
+
+                patch.heartbeatChanceNoReplyPercent = normalizeHeartbeatChancePercent(numericChanceNoReplyPercent, 0)
+                updatedFields.push('chanceNoReplyPercent')
+            }
+
             if (hasOwn('awakeStartTime')) {
                 const awakeStartMs = parseHeartbeatTimeString(toolArgs.awakeStartTime)
                 if (awakeStartMs === null) {
@@ -6221,7 +6231,7 @@ async function executeToolNatively(
 
             if (updatedFields.length === 0) {
                 throw new Error(
-                    'update_heartbeat_settings requires at least one of intervalMinutes, chancePercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
+                    'update_heartbeat_settings requires at least one of intervalMinutes, chancePercent, chanceNoReplyPercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
                 )
             }
 

@@ -28,7 +28,7 @@ const {
 const { generateTaskObjectModel, updateTasksFeedsAmountOfSubtasks } = require('./tasksFeedsHelper')
 const {
     getTaskNameWithoutMeta,
-    RECURRENCE_MAP,
+    getRecurrenceLabel,
     ESTIMATION_TYPE_TIME,
     TIME_TEXT_DEFAULT_MINI,
     ESTIMATION_TYPE_POINTS,
@@ -375,8 +375,8 @@ async function createTaskRecurrenceChangedFeed(
     if (!taskFeedObject) return
 
     const isSubtask = taskFeedObject.parentId ? true : false
-    const newRecurrenceText = RECURRENCE_MAP[newRecurrenceType].large
-    const oldRecurrenceText = RECURRENCE_MAP[oldRecurrenceType].large
+    const newRecurrenceText = getRecurrenceLabel(newRecurrenceType)
+    const oldRecurrenceText = getRecurrenceLabel(oldRecurrenceType)
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_TASK_RECURRENCE_CHANGED,
         lastChangeDate: currentMilliseconds,

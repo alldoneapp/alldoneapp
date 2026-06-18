@@ -144,8 +144,16 @@ function validateOptionalFields(params) {
             'every6Months',
             'annually',
         ]
-        if (!validRecurrences.includes(recurrence)) {
-            throw new Error(`Invalid recurrence: ${recurrence}. Must be one of: ${validRecurrences.join(', ')}`)
+        // Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`).
+        const isCustomRecurrence =
+            typeof recurrence === 'string' &&
+            recurrence.indexOf('custom:') === 0 &&
+            Number.isInteger(parseInt(recurrence.slice('custom:'.length), 10)) &&
+            parseInt(recurrence.slice('custom:'.length), 10) > 0
+        if (!validRecurrences.includes(recurrence) && !isCustomRecurrence) {
+            throw new Error(
+                `Invalid recurrence: ${recurrence}. Must be one of: ${validRecurrences.join(', ')} or custom:<days>`
+            )
         }
     }
 }

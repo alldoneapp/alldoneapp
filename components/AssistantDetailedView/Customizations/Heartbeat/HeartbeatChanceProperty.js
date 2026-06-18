@@ -11,19 +11,33 @@ import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Ass
 import { translate } from '../../../../i18n/TranslationService'
 import { formatHeartbeatInterval, getHeartbeatIntervalMs } from './heartbeatIntervalHelper'
 
-export default function HeartbeatChanceProperty({ disabled, projectId, assistant }) {
+const VARIANT_CONFIG = {
+    replied: {
+        field: 'heartbeatChancePercent',
+        rowLabel: 'Execution chance when you replied on the day',
+        modalTitle: 'Heartbeat execution chance (replied)',
+    },
+    noReply: {
+        field: 'heartbeatChanceNoReplyPercent',
+        rowLabel: 'Execution chance when you didn’t reply on the day',
+        modalTitle: 'Heartbeat execution chance (no reply)',
+    },
+}
+
+export default function HeartbeatChanceProperty({ disabled, projectId, assistant, variant = 'replied' }) {
     const mobile = useSelector(state => state.smallScreen)
     const mobileNav = useSelector(state => state.smallScreenNavigation)
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const [open, setOpen] = useState(false)
 
+    const config = VARIANT_CONFIG[variant] || VARIANT_CONFIG.replied
     const isDefaultAssistantInDefaultProject = assistant.isDefault && projectId === defaultProjectId
-    const chancePercent = assistant.heartbeatChancePercent ?? (isDefaultAssistantInDefaultProject ? 10 : 0)
+    const chancePercent = assistant[config.field] ?? (isDefaultAssistantInDefaultProject ? 10 : 0)
     const intervalLabel = formatHeartbeatInterval(getHeartbeatIntervalMs(assistant.heartbeatIntervalMs))
 
     const changeData = percent => {
         const value = percent > 100 ? 100 : percent < 0 ? 0 : percent
-        updateAssistantHeartbeatSettings(projectId, assistant, { heartbeatChancePercent: value })
+        updateAssistantHeartbeatSettings(projectId, assistant, { [config.field]: value })
     }
 
     return (
@@ -36,7 +50,7 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                     </Text>
                 ) : (
                     <Text style={[styles.subtitle2, { color: colors.Text03 }]} numberOfLines={1}>
-                        {translate('Execution chance')}
+                        {translate(config.rowLabel)}
                     </Text>
                 )}
             </View>
@@ -49,7 +63,7 @@ export default function HeartbeatChanceProperty({ disabled, projectId, assistant
                 <Popover
                     content={
                         <ChangeNumberTodayTasks
-                            customTitle={translate('Heartbeat execution chance')}
+                            customTitle={translate(config.modalTitle)}
                             customSubtitle={translate(
                                 'Percent chance the heartbeat prompt will execute each heartbeat interval (%{interval})',
                                 { interval: intervalLabel }
