@@ -11,8 +11,10 @@ export default function BotMessagePlaceholder({ projectId, assistantId }) {
             <View style={localStyles.headerContainer}>
                 <BotHeader projectId={projectId} assistantId={assistantId} />
             </View>
-            <Spinner containerSize={18} spinnerSize={12} containerStyle={localStyles.spinner} />
-            <Text style={localStyles.helperText}>Working on your request. Live tool updates will appear here.</Text>
+            <View style={localStyles.statusRow}>
+                <Spinner containerSize={18} spinnerSize={12} />
+                <Text style={localStyles.helperText}>Working on your request. Live tool updates will appear here.</Text>
+            </View>
         </View>
     )
 }
@@ -26,14 +28,16 @@ const localStyles = StyleSheet.create({
     headerContainer: {
         marginTop: 8,
     },
-    spinner: {
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         marginLeft: 36,
+        marginTop: 6,
     },
     helperText: {
         ...global.caption2,
         color: colors.Text03,
-        marginLeft: 36,
-        marginTop: 6,
+        marginLeft: 8,
         maxWidth: 360,
     },
 })
