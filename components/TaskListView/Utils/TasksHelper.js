@@ -172,7 +172,7 @@ export const MAX_GOLD_TO_EARN_BY_COMMENT = 3
 
 // Custom recurrence is stored as a string `custom:<days>` (e.g. `custom:28`).
 export const RECURRENCE_CUSTOM = 'custom'
-export const RECURRENCE_CUSTOM_SHORTCUT = '8'
+export const RECURRENCE_CUSTOM_SHORTCUT = '9'
 export const RECURRENCE_CUSTOM_DEFAULT_DAYS = 28
 export const RECURRENCE_CUSTOM_MAX_DAYS = 3650
 
@@ -187,7 +187,7 @@ export const RECURRENCE_MAP = {
     [RECURRENCE_EVERY_3_MONTHS]: { short: '3 M', large: 'Every 3 months', shortcut: '7' },
     // Legacy fixed option kept for backward compatibility with existing tasks; replaced by Custom in the picker.
     [RECURRENCE_EVERY_6_MONTHS]: { short: '6 M', large: 'Every 6 months', shortcut: '8' },
-    [RECURRENCE_ANNUALLY]: { short: 'A', large: 'Annually', shortcut: '9' },
+    [RECURRENCE_ANNUALLY]: { short: 'A', large: 'Annually', shortcut: '8' },
 }
 
 // Returns true when the recurrence is a `custom:<days>` value.

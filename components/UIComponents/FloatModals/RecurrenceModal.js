@@ -36,13 +36,12 @@ class RecurrenceModal extends Component {
         super(props)
         const storeState = store.getState()
 
-        const currentRecurrence = props.task ? props.task.recurrence : RECURRENCE_NEVER
-        const currentCustomDays = getCustomRecurrenceDays(currentRecurrence)
-
         this.state = {
             smallScreenNavigation: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
-            customDays: currentCustomDays ? String(currentCustomDays) : '',
+            // Start empty so Custom is never pre-selected when the modal opens. The current
+            // custom value (if any) is still shown as a placeholder hint in renderCustomSection.
+            customDays: '',
             customInputFocused: false,
         }
 
@@ -103,18 +102,28 @@ class RecurrenceModal extends Component {
         }
     }
 
+    // Block row/custom hotkeys while the user is typing in a text field, so entering a number
+    // in the custom input never triggers a recurrence selection (which would close the modal).
+    hotkeysEnabled = e => {
+        const tagName = e && e.target && e.target.tagName
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA') return false
+        return !this.state.customInputFocused
+    }
+
     renderRecurrenceSection = (recurrence, i) => {
         const { task } = this.props
         const { smallScreenNavigation } = this.state
 
         const { large: recurrenceText, shortcut } = RECURRENCE_MAP[recurrence]
+        // Treat a missing recurrence as "never" so "Never" is preselected when no recurrence is set.
+        const isSelected = (task.recurrence || RECURRENCE_NEVER) === recurrence
         return (
             <View key={recurrence}>
                 <Hotkeys
                     key={i}
                     keyName={shortcut}
                     onKeyDown={(sht, event) => this.selectRecurrence(recurrence)}
-                    filter={e => !this.state.customInputFocused}
+                    filter={this.hotkeysEnabled}
                 >
                     <TouchableOpacity
                         style={localStyles.recurrenceSectionItem}
@@ -129,12 +138,10 @@ class RecurrenceModal extends Component {
                                 </Text>
                             </View>
                             <View style={localStyles.sectionItemCheck}>
-                                {!smallScreenNavigation ? (
-                                    <Shortcut text={shortcut} theme={SHORTCUT_LIGHT} />
+                                {isSelected ? (
+                                    <Icon name={'check'} size={24} color={'#ffffff'} />
                                 ) : (
-                                    task.recurrence === recurrence && (
-                                        <Icon name={'check'} size={24} color={'#ffffff'} />
-                                    )
+                                    !smallScreenNavigation && <Shortcut text={shortcut} theme={SHORTCUT_LIGHT} />
                                 )}
                             </View>
                         </View>
@@ -145,9 +152,13 @@ class RecurrenceModal extends Component {
     }
 
     renderCustomSection = () => {
+        const { task } = this.props
         const { smallScreenNavigation, customDays } = this.state
 
-        const placeholder = String(RECURRENCE_CUSTOM_DEFAULT_DAYS)
+        // Show the task's current custom value (if any) as a placeholder hint, without pre-filling the input.
+        const currentCustomDays = getCustomRecurrenceDays(task && task.recurrence)
+        const isCustomSelected = !!currentCustomDays
+        const placeholder = currentCustomDays ? String(currentCustomDays) : String(RECURRENCE_CUSTOM_DEFAULT_DAYS)
         return (
             <View>
                 <Hotkeys
@@ -156,12 +167,24 @@ class RecurrenceModal extends Component {
                         if (event && event.preventDefault) event.preventDefault()
                         this.focusCustomInput()
                     }}
-                    filter={e => !this.state.customInputFocused}
+                    filter={this.hotkeysEnabled}
                 >
                     <View style={localStyles.recurrenceSectionItem}>
-                        <View style={localStyles.sectionItemText}>
+                        <TouchableOpacity
+                            style={localStyles.sectionItemText}
+                            onPress={this.focusCustomInput}
+                            accessible={false}
+                        >
                             <Text style={[styles.subtitle1, { color: '#ffffff' }]}>{translate('Custom')}</Text>
-                        </View>
+                            {isCustomSelected && (
+                                <Icon
+                                    name={'check'}
+                                    size={16}
+                                    color={'#ffffff'}
+                                    style={localStyles.customSelectedCheck}
+                                />
+                            )}
+                        </TouchableOpacity>
                         <View style={localStyles.customInputContainer}>
                             <TextInput
                                 ref={this.customInputRef}
@@ -329,6 +352,9 @@ const localStyles = StyleSheet.create({
     },
     customShortcut: {
         marginLeft: 8,
+    },
+    customSelectedCheck: {
+        marginLeft: 6,
     },
     sectionSeparator: {
         height: 1,
