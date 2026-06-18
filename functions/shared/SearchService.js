@@ -1537,7 +1537,7 @@ class SearchService {
 
         // If noteId is provided, try direct lookup first
         if (noteId) {
-            const directMatch = await this.findNoteById(noteId, userProjects)
+            const directMatch = await this.findNoteById(noteId, userProjects, userId)
             if (directMatch) {
                 matches.push({
                     ...directMatch,
@@ -1567,9 +1567,10 @@ class SearchService {
      * Find note by direct ID lookup
      * @param {string} noteId - The note ID
      * @param {Array} userProjects - User's accessible projects
+     * @param {string} userId - The authenticated user ID
      * @returns {Object|null} Note match or null
      */
-    async findNoteById(noteId, userProjects) {
+    async findNoteById(noteId, userProjects, userId) {
         for (const project of userProjects) {
             try {
                 // Clean the note ID in case it has project suffix (from Algolia objectID)

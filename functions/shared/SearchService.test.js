@@ -36,3 +36,33 @@ describe('SearchService metadata extraction', () => {
         )
     })
 })
+
+describe('SearchService direct note lookup', () => {
+    test('uses the caller userId when checking direct note access', async () => {
+        const get = jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({
+                title: 'Direct note',
+                isPublicFor: ['user-1'],
+            }),
+        })
+        const doc = jest.fn(() => ({ get }))
+        const service = new SearchService({
+            database: { doc },
+        })
+
+        await expect(
+            service.findNoteById('note-1', [{ id: 'project-1', name: 'Project 1' }], 'user-1')
+        ).resolves.toEqual({
+            note: {
+                title: 'Direct note',
+                isPublicFor: ['user-1'],
+                id: 'note-1',
+            },
+            projectId: 'project-1',
+            projectName: 'Project 1',
+        })
+
+        expect(doc).toHaveBeenCalledWith('noteItems/project-1/notes/note-1')
+    })
+})
