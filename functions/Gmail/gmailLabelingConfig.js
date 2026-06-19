@@ -3,6 +3,13 @@
 const admin = require('firebase-admin')
 
 const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_4_NANO'
+// The self-consistency auditor (second pass) deliberately runs on a STRONGER, independent
+// model than the first-pass classifier. Re-judging with the same small model produces
+// correlated error — production logs show the auditor re-confirming, and even strengthening,
+// its own mistake (e.g. labelKey "Bechtle" kept at 0.86 -> 0.90 while the reasoning describes
+// "JTL Software - Project Juno"). The audit pass only runs on the rare flagged cases, so a
+// high-capability model here is cheap and gives a genuinely different judgement.
+const DEFAULT_GMAIL_CONSISTENCY_MODEL = 'MODEL_GPT5_5'
 const DEFAULT_MAX_MESSAGES_PER_RUN = 20
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 const DEFAULT_LOOKBACK_DAYS = 7
@@ -306,6 +313,7 @@ function buildDefaultState(projectId, gmailEmail = '') {
 module.exports = {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_ESTIMATED_EMAILS_PER_DAY,
+    DEFAULT_GMAIL_CONSISTENCY_MODEL,
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_LOOKBACK_DAYS,
     DEFAULT_MAX_MESSAGES_PER_RUN,

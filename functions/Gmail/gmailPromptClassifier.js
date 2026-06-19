@@ -1,7 +1,11 @@
 'use strict'
 
 const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
-const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('./gmailLabelingConfig')
+const {
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_GMAIL_LABELING_MODEL,
+    DEFAULT_GMAIL_CONSISTENCY_MODEL,
+} = require('./gmailLabelingConfig')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
@@ -196,6 +200,14 @@ async function classifyGmailMessage({ config, message }) {
     const selectedModel = mapAssistantModelToOpenAIModel(config?.model)
     const isReasoningModel = isGpt5ReasoningModel(config?.model)
 
+    // The self-consistency auditor (second pass) runs on a stronger, independent model than the
+    // first pass. Re-judging with the same (small) model just reproduces the first pass's error;
+    // a different high-capability model gives genuinely uncorrelated judgement. Per-config override
+    // via `consistencyModel` is honored for tuning without redeploy; otherwise the strong default.
+    const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
+    const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
+    const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
+
     const firstUserContent =
         `Prompt:\n${config.prompt}\n\n` +
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
@@ -230,8 +242,8 @@ async function classifyGmailMessage({ config, message }) {
 
     try {
         const { verified, usage: verifyUsage, parsed: verifyParsed } = await verifyClassificationConsistency(openai, {
-            selectedModel,
-            isReasoningModel,
+            selectedModel: auditModel,
+            isReasoningModel: auditIsReasoningModel,
             config,
             message,
             labelDefinitions,
@@ -252,6 +264,7 @@ async function classifyGmailMessage({ config, message }) {
                     corrected: false,
                     inconclusive: true,
                     trigger: crossReference,
+                    auditModel,
                     originalLabelKey: firstResult.labelKey,
                     originalConfidence: firstResult.confidence,
                 },
@@ -266,6 +279,7 @@ async function classifyGmailMessage({ config, message }) {
                 correctedLabelKey: verified.labelKey,
                 correctedMatched: verified.matched,
                 trigger: crossReference,
+                auditModel,
             })
         }
 
@@ -276,6 +290,7 @@ async function classifyGmailMessage({ config, message }) {
                 ran: true,
                 corrected,
                 trigger: crossReference,
+                auditModel,
                 originalLabelKey: firstResult.labelKey,
                 originalConfidence: firstResult.confidence,
             },
