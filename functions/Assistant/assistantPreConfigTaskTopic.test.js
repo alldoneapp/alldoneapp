@@ -99,7 +99,11 @@ jest.mock(
     { virtual: true }
 )
 
-const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+const { generatePreConfigTaskResult, hasUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
+
+test('exports the local-day user-message lookup used by heartbeats', () => {
+    expect(hasUserMessageOnUserLocalDay).toEqual(expect.any(Function))
+})
 
 describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
     const aiSettings = {

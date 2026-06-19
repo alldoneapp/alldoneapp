@@ -624,4 +624,5 @@ async function executeWebhookTask(
 module.exports = {
     generatePreConfigTaskResult,
     executeWebhookTask,
+    hasUserMessageOnUserLocalDay,
 }
