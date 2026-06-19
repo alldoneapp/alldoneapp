@@ -1061,6 +1061,20 @@ const buildInitialAssistantRunStatusMessage = () => {
     ].join('\n')
 }
 
+/**
+ * Append a status/notice block to the in-progress comment text. Ensures exactly one
+ * blank line separates the block from any preceding content, and produces NO leading
+ * blank lines when there is nothing before it. Without this, a tool that runs before
+ * the model streams any answer text yields "\n\n<status>" (a large gap above the
+ * status), and successive tool-call iterations accumulate blank lines because each
+ * removal leaves the orphaned separator behind. Trimming the base before re-joining
+ * collapses any such orphan back to a single separator.
+ */
+const appendStatusBlock = (baseText, block) => {
+    const trimmedBase = (baseText || '').replace(/\s+$/, '')
+    return trimmedBase ? `${trimmedBase}\n\n${block}` : block
+}
+
 const buildExternalIntegrationToolName = ({ projectId, assistantId, taskId, integrationId, toolKey, toolName }) => {
     const slug = normalizeToolNameToken(`${integrationId || ''}_${toolKey || toolName || 'tool'}`).slice(0, 22)
     const hash = crypto
@@ -8018,7 +8032,7 @@ async function storeChunks(
                             console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
                         }
                         await flushPendingUpdate() // Flush any pending updates first
-                        commentText += `\n\nTool not permitted: ${toolName}`
+                        commentText = appendStatusBlock(commentText, `Tool not permitted: ${toolName}`)
                         await safeCommentUpdate({ commentText, isLoading: false })
                         toolAlreadyExecuted = true
                         break // Exit the while loop
@@ -8033,7 +8047,7 @@ async function storeChunks(
                         toolCallIteration,
                         elapsedMs: 0,
                     })
-                    commentText += `\n\n${toolStatusMessage}`
+                    commentText = appendStatusBlock(commentText, toolStatusMessage)
                     await safeCommentUpdate({ commentText, isLoading: true })
 
                     let stopToolProgressUpdates = false
@@ -8328,7 +8342,7 @@ async function storeChunks(
                             message: guardrailMessage,
                         }
                     }
-                    commentText += `\n\n${guardrailMessage}`
+                    commentText = appendStatusBlock(commentText, guardrailMessage)
                     await safeCommentUpdate({ commentText, isLoading: false })
                 }
 

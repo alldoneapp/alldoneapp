@@ -62,6 +62,9 @@ export default function MessageItemContent({
 
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
+    // Strip leading whitespace so a status block appended before any answer text streamed
+    // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
+    const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
     const canStopAssistantRun =
         isLoadingState &&
         assistantRun?.status === 'running' &&
@@ -404,11 +407,11 @@ export default function MessageItemContent({
                 <View style={localStyles.messageContentContainer}>
                     {isLoadingState ? (
                         <View style={localStyles.loadingContainer}>
-                            {!containsBlockOrSpecialElements(commentText) ? (
-                                <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{commentText}</Text>
+                            {!containsBlockOrSpecialElements(loadingText) ? (
+                                <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{loadingText}</Text>
                             ) : (
                                 <CommentElementsParser
-                                    comment={commentText}
+                                    comment={loadingText}
                                     containerStyle={{ marginBottom: 8 }}
                                     entryStyle={localStyles.loadingText}
                                     projectId={projectId}
