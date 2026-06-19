@@ -174,12 +174,18 @@ export const getDefaultAssistantInProjectById = projectId => {
 }
 
 const getDefaultAssistantInProject = project => {
+    // Always default to the default assistant from the user's default project, not the
+    // per-project assistant. The project assistant (project.assistantId) is still selectable
+    // in the assistant picker, but it should no longer be the one shown by default.
+    const { defaultAssistant } = store.getState()
+    if (defaultAssistant && defaultAssistant.uid) return defaultAssistant
+
+    // Fallback only when the default project has no assistant at all: use the project's own.
     if (project && project.assistantId) {
         const assistant = getAssistantInProject(project.id, project.assistantId)
         if (assistant) return assistant
     }
 
-    const { defaultAssistant } = store.getState()
     return defaultAssistant
 }
 
