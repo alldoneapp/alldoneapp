@@ -1,6 +1,10 @@
 'use strict'
 
-const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('../Gmail/gmailLabelingConfig')
+const {
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_GMAIL_LABELING_MODEL,
+    DEFAULT_GMAIL_CONSISTENCY_MODEL,
+} = require('../Gmail/gmailLabelingConfig')
 const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
@@ -263,6 +267,15 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     const openai = getOpenAIClient(openAiKey)
     const selectedModel = mapAssistantModelToOpenAIModel(config?.model)
     const isReasoningModel = isGpt5ReasoningModel(config?.model)
+
+    // The inconsistency-repair pass (second pass) runs on a stronger, independent model than the
+    // first pass. Re-judging with the same (small) model just reproduces the first pass's error;
+    // a different high-capability model gives genuinely uncorrelated judgement. Mirrors the Gmail
+    // label auditor. Overridable per-config via `consistencyModel`; otherwise the strong default.
+    const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
+    const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
+    const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
+
     const normalizedEvent = normalizeCalendarEventForClassifier(event, calendarEmail)
 
     const firstCompletion = await runCalendarClassifierCompletion(
@@ -291,8 +304,8 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     const repairCompletion = await runCalendarClassifierCompletion(
         openai,
         buildCalendarClassifierRepairRequestParams({
-            selectedModel,
-            isReasoningModel,
+            selectedModel: auditModel,
+            isReasoningModel: auditIsReasoningModel,
             config,
             definitions,
             normalizedEvent,
@@ -309,6 +322,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
                 completionTokens:
                     (firstCompletion.usage?.completionTokens || 0) + (repairCompletion.usage?.completionTokens || 0),
                 retriedAfterInconsistentResult: true,
+                auditModel,
             },
         },
         definitions,
