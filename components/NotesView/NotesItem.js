@@ -268,7 +268,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
                                             <Icon name={renderIcon()} size={24} color={colors.Text03} />
                                         )}
                                     </TouchableOpacity>
-                                    <View style={{ flex: 1, marginHorizontal: 12 }}>
+                                    <View style={{ flex: 1, minWidth: 0, overflow: 'hidden', marginHorizontal: 12 }}>
                                         <SocialText
                                             style={[styles.body1, { color: colors.Text01 }]}
                                             numberOfLines={1}

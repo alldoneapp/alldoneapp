@@ -44,6 +44,11 @@ export default function WordsList({
     let emails = 0
     let links = 0
 
+    // In single-line mode the title/preview must stay on one line and truncate.
+    // Each word is rendered as its own flex <Text>, so without this the words shrink
+    // below their content width and wrap character-by-character into narrow columns.
+    const singleLine = numberOfLines === 1 && !wrapText
+
     return (
         <>
             {wordList.map((word, i) => {
@@ -205,7 +210,13 @@ export default function WordsList({
                     return wordList.map((word, j) => (
                         <Text
                             key={`${i}${j}`}
-                            style={[localStyles.text, textStyle, normalStyle, wrapText && localStyles.wrappedText]}
+                            style={[
+                                localStyles.text,
+                                singleLine && localStyles.singleLineText,
+                                textStyle,
+                                normalStyle,
+                                wrapText && localStyles.wrappedText,
+                            ]}
                             numberOfLines={numberOfLines}
                         >
                             {word}
@@ -236,6 +247,10 @@ const localStyles = StyleSheet.create({
     text: {
         whiteSpace: 'pre-wrap',
         marginRight: 4.3,
+    },
+    singleLineText: {
+        flexShrink: 0,
+        whiteSpace: 'nowrap',
     },
     wrappedText: {
         marginTop: 3,
