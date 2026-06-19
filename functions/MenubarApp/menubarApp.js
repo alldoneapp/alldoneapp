@@ -635,20 +635,41 @@ function isActivePush(pushData) {
     return pushData.status === 'pending' && pendingAge < NOTE_PUSH_PENDING_TIMEOUT_MS
 }
 
-async function getMenubarAssistantActor(db, projectId) {
-    const projectDoc = await db.doc(`projects/${projectId}`).get()
-    const project = projectDoc.exists ? projectDoc.data() || {} : {}
-    let assistantId = typeof project.assistantId === 'string' ? project.assistantId.trim() : ''
-    let assistant = null
+async function getMenubarAssistantActor(db, userData) {
+    // Always act as (and assign) the default assistant from the user's default project — matching
+    // the in-app default — instead of the assistant configured on the project the note lands in.
+    const defaultProjectId = typeof userData?.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+    const userDefaultAssistantId =
+        typeof userData?.defaultAssistantId === 'string' ? userData.defaultAssistantId.trim() : ''
 
-    if (assistantId) {
-        const [projectAssistantDoc, globalAssistantDoc] = await db.getAll(
-            db.doc(`assistants/${projectId}/items/${assistantId}`),
-            db.doc(`assistants/globalProject/items/${assistantId}`)
-        )
-        const assistantDoc = projectAssistantDoc.exists ? projectAssistantDoc : globalAssistantDoc
-        assistant = assistantDoc.exists ? assistantDoc.data() || {} : null
-    } else {
+    const fetchAssistant = async candidateId => {
+        if (!candidateId) return null
+        const refs = []
+        if (defaultProjectId) refs.push(db.doc(`assistants/${defaultProjectId}/items/${candidateId}`))
+        refs.push(db.doc(`assistants/globalProject/items/${candidateId}`))
+        const docs = await db.getAll(...refs)
+        const found = docs.find(doc => doc && doc.exists)
+        return found ? { assistantId: found.id || candidateId, assistant: found.data() || {} } : null
+    }
+
+    let resolved = null
+
+    // 1) The default project's configured assistant.
+    if (defaultProjectId) {
+        const defaultProjectDoc = await db.doc(`projects/${defaultProjectId}`).get()
+        const defaultProject = defaultProjectDoc.exists ? defaultProjectDoc.data() || {} : {}
+        const projectAssistantId =
+            typeof defaultProject.assistantId === 'string' ? defaultProject.assistantId.trim() : ''
+        resolved = await fetchAssistant(projectAssistantId)
+    }
+
+    // 2) The user's stored default assistant.
+    if (!resolved) {
+        resolved = await fetchAssistant(userDefaultAssistantId)
+    }
+
+    // 3) The global default assistant.
+    if (!resolved) {
         const defaultAssistantSnapshot = await db
             .collection('assistants/globalProject/items')
             .where('isDefault', '==', true)
@@ -656,12 +677,11 @@ async function getMenubarAssistantActor(db, projectId) {
             .get()
         const defaultAssistantDoc = defaultAssistantSnapshot.docs[0]
         if (defaultAssistantDoc) {
-            assistantId = defaultAssistantDoc.id
-            assistant = defaultAssistantDoc.data() || {}
+            resolved = { assistantId: defaultAssistantDoc.id, assistant: defaultAssistantDoc.data() || {} }
         }
     }
 
-    if (!assistantId) {
+    if (!resolved || !resolved.assistantId) {
         return {
             assistantId: null,
             feedUser: {
@@ -676,7 +696,7 @@ async function getMenubarAssistantActor(db, projectId) {
         }
     }
 
-    assistant = assistant || {}
+    const { assistantId, assistant } = resolved
     const displayName = assistant.displayName || assistant.name || 'Anna Alldone'
     return {
         assistantId,
@@ -850,7 +870,7 @@ async function handleMenubarPushNote(req, res) {
             try {
                 const noteService = await getNoteService()
                 const notesBucketName = await noteService.getBucketName()
-                const assistantActor = await getMenubarAssistantActor(db, resolution.projectId)
+                const assistantActor = await getMenubarAssistantActor(db, userData)
                 const sourceProjectDoc = await db.doc(`projects/${noteMove.sourceProjectId}`).get()
                 const sourceProject = sourceProjectDoc.exists ? sourceProjectDoc.data() || {} : {}
                 const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
@@ -995,7 +1015,7 @@ async function handleMenubarPushNote(req, res) {
             }
         }
 
-        const assistantActor = await getMenubarAssistantActor(db, resolution.projectId)
+        const assistantActor = await getMenubarAssistantActor(db, userData)
         const feedUser = assistantActor.feedUser
 
         let noteResult

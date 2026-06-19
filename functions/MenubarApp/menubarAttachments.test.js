@@ -40,7 +40,7 @@ describe('menubar note idempotency', () => {
 })
 
 describe('menubar feed actor', () => {
-    test('uses the project assistant rather than the signed-in user', async () => {
+    test("uses the default project's assistant rather than the signed-in user", async () => {
         const db = {
             doc: jest.fn(path => ({
                 path,
@@ -55,7 +55,8 @@ describe('menubar feed actor', () => {
             ]),
         }
 
-        await expect(getMenubarAssistantActor(db, 'project-a')).resolves.toMatchObject({
+        // Resolves from the user's default project, not the project the note lands in.
+        await expect(getMenubarAssistantActor(db, { defaultProjectId: 'default-project' })).resolves.toMatchObject({
             assistantId: 'assistant-1',
             feedUser: {
                 uid: 'assistant-1',
