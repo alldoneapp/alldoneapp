@@ -3,7 +3,6 @@ import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, Dimensions 
 
 import Icon from '../Icon'
 import styles from '../styles/global'
-import LoadingScreen from '../LoadingScreen'
 import LogInButton from '../UIControls/LogInButton'
 import URLSystem, { URL_LOGIN } from '../../URLSystem/URLSystem'
 import Colors from '../../Themes/Colors'
@@ -18,7 +17,6 @@ const GUIDE_LOGIN = 'GUIDE_LOGIN'
 export default function LoginScreenContent() {
     const dispatch = useDispatch()
     const initialUrl = useSelector(state => state.initialUrl)
-    const resolvingSharedResource = useSelector(state => state.resolvingSharedResource)
     const [templateTitle, setTemplateTitle] = useState('')
     const [templateImage, setTemplateImage] = useState('')
     const [loginType, setLoginType] = useState(
@@ -91,14 +89,6 @@ export default function LoginScreenContent() {
             })
         }
     }, [])
-
-    // For an anonymous visitor opening a shared resource link, show a neutral spinner instead of the
-    // login UI. The bootstrap effects above (URL capture + anonymous sign-in) still run, and we get
-    // forwarded straight to the resource view once it resolves. The login UI only ever appears for
-    // URLs that genuinely require signing in.
-    if (resolvingSharedResource) {
-        return <LoadingScreen text={''} />
-    }
 
     return (
         <ImageBackground source={require('../../web/images/illustrations/LoginBg.svg')} style={localStyles.container}>

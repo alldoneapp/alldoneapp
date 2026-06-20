@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 
-import { LogOut, setResolvingSharedResource } from './redux/actions'
+import { LogOut, setInitialUrl, setResolvingSharedResource } from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
@@ -32,19 +32,30 @@ export default function AppContent() {
     const [connectingMessage] = useState(() => getConnectingMessage())
 
     const logoutUser = async () => {
-        // If this is an anonymous visitor opening a shared resource detail link, keep the login
-        // screen on a neutral spinner (instead of flashing the login UI) while we resolve the
-        // resource and forward them to the view.
         const currentUrl = window.location.pathname + window.location.search
-        const isSharedResource = SharedHelper.matchesSharedResourceUrl(currentUrl)
-        store.dispatch(isSharedResource ? [LogOut(), setResolvingSharedResource(true)] : LogOut())
-        try {
-            await SharedHelper.processUrlAsAnonymous()
-        } catch (error) {
-            // On failure, fall back to the normal login UI rather than leaving a stuck spinner.
-            if (isSharedResource) store.dispatch(setResolvingSharedResource(false))
-            throw error
+
+        // Anonymous visitor opening a shared resource detail link (chat, note, task, …): resolve it
+        // and forward straight to the view in the boot path, WITHOUT ever mounting the login screen.
+        // We capture the URL and flag the resolution up-front so the login route renders a neutral
+        // loading screen (see LoginScreen.js) — the login UI never shows and /login is never pushed
+        // into the address bar (the resource URL stays put the whole time).
+        if (SharedHelper.matchesSharedResourceUrl(currentUrl)) {
+            // The anonymous sign-in performed during resolution re-fires this auth callback; ignore
+            // that re-entry so we don't resolve (and reload project data) twice.
+            if (store.getState().resolvingSharedResource) return
+            store.dispatch([LogOut(), setInitialUrl(currentUrl), setResolvingSharedResource(true)])
+            try {
+                await SharedHelper.processUrlAsAnonymous()
+            } catch (error) {
+                // On failure, fall back to the normal login UI rather than a stuck loading screen.
+                store.dispatch(setResolvingSharedResource(false))
+                throw error
+            }
+            return
         }
+
+        store.dispatch(LogOut())
+        await SharedHelper.processUrlAsAnonymous()
     }
 
     const handleMissingUserDocument = async firebaseUser => {
