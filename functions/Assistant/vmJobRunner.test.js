@@ -143,6 +143,48 @@ describe('VM runner prompt', () => {
     })
 })
 
+describe('Codex VM proxy configuration', () => {
+    test('routes Codex through the HTTP proxy and disables Responses WebSockets', () => {
+        const overrides = __private__.buildCodexProxyConfigOverrides('https://vm-proxy.example/functions/vmLlmProxy/')
+
+        expect(overrides).toEqual(
+            expect.arrayContaining([
+                'model_provider="alldone_vm_proxy"',
+                'model_providers.alldone_vm_proxy.base_url="https://vm-proxy.example/functions/vmLlmProxy/openai/v1"',
+                'model_providers.alldone_vm_proxy.env_key="OPENAI_API_KEY"',
+                'model_providers.alldone_vm_proxy.wire_api="responses"',
+                'model_providers.alldone_vm_proxy.supports_websockets=false',
+            ])
+        )
+    })
+
+    test('includes the HTTP-only provider on fresh and resumed Codex runs', () => {
+        for (const isResume of [false, true]) {
+            const command = __private__.buildCodexRunCommand(
+                isResume,
+                'gpt-5.5',
+                'high',
+                'https://vm-proxy.example/vmLlmProxy'
+            )
+
+            expect(command).toContain(`-c 'model_provider="alldone_vm_proxy"'`)
+            expect(command).toContain(
+                `-c 'model_providers.alldone_vm_proxy.base_url="https://vm-proxy.example/vmLlmProxy/openai/v1"'`
+            )
+            expect(command).toContain(`-c 'model_providers.alldone_vm_proxy.supports_websockets=false'`)
+            expect(command).toContain(`-c 'sandbox_mode="workspace-write"'`)
+            expect(command).not.toContain('--sandbox')
+        }
+    })
+
+    test('rejects malformed proxy URLs instead of allowing a direct Codex request', () => {
+        expect(() => __private__.buildCodexProxyConfigOverrides('')).toThrow('Codex VM proxy base URL is invalid.')
+        expect(() => __private__.buildCodexProxyConfigOverrides('file:///tmp/proxy')).toThrow(
+            'Codex VM proxy base URL must use HTTP or HTTPS.'
+        )
+    })
+})
+
 describe('VM runner runtime Gold monitor', () => {
     const pendingWebhook = {
         correlationId: 'correlation-1',

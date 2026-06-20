@@ -912,11 +912,51 @@ function buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort) {
     return `claude ${resumeFlag}${modelFlag}${effortFlag}-p "$(cat /home/user/prompt.txt)" --output-format stream-json --verbose --dangerously-skip-permissions </dev/null`
 }
 
-function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort) {
+const CODEX_VM_PROXY_PROVIDER = 'alldone_vm_proxy'
+
+function shellQuoteArg(value) {
+    return `'${String(value).replace(/'/g, `'\\''`)}'`
+}
+
+function buildCodexProxyConfigOverrides(proxyBaseUrl) {
+    let parsed
+    try {
+        parsed = new URL(proxyBaseUrl)
+    } catch (_) {
+        throw new Error('Codex VM proxy base URL is invalid.')
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('Codex VM proxy base URL must use HTTP or HTTPS.')
+    }
+    if (parsed.search || parsed.hash) {
+        throw new Error('Codex VM proxy base URL must not contain a query string or fragment.')
+    }
+
+    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/openai/v1`
+    const openAiProxyBaseUrl = parsed.toString().replace(/\/$/, '')
+
+    // Codex's built-in OpenAI provider may use the Responses WebSocket transport. Our
+    // Cloud Function proxy is HTTP-only, so use an explicit custom provider and disable
+    // WebSockets instead of relying on the legacy OPENAI_BASE_URL environment override.
+    return [
+        `model_provider=${JSON.stringify(CODEX_VM_PROXY_PROVIDER)}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify('Alldone VM LLM proxy')}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(openAiProxyBaseUrl)}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.env_key=${JSON.stringify('OPENAI_API_KEY')}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify('responses')}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.supports_websockets=false`,
+    ]
+}
+
+function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
     const modelFlag = agentModel ? ` --model ${agentModel}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
-    return `codex ${resumePart} --sandbox workspace-write -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag} --json "$(cat /home/user/prompt.txt)" </dev/null`
+    const sandboxFlag = ` -c ${shellQuoteArg('sandbox_mode="workspace-write"')}`
+    const providerFlags = buildCodexProxyConfigOverrides(proxyBaseUrl)
+        .map(override => ` -c ${shellQuoteArg(override)}`)
+        .join('')
+    return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
 const AGENT_CONFIGS = {
@@ -954,12 +994,13 @@ const AGENT_CONFIGS = {
         // `codex exec` is already non-interactive (it never prompts for approval), so we do NOT
         // pass `--ask-for-approval` — newer Codex CLIs reject that flag on `exec` (exit status 2:
         // "unexpected argument '--ask-for-approval' found"). Codex has its own command sandbox
-        // inside the E2B sandbox; `--sandbox workspace-write` does not grant outbound network by
-        // itself, so enable it explicitly for package installs, git push, and PR creation.
-        buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
-            buildCodexRunCommand(isResume, agentModel, agentReasoningEffort),
-        // `apiKey` is a short-lived per-job proxy token. Codex is pointed at the proxy via
-        // OPENAI_BASE_URL, and the real key stays server-side (see vmLlmProxy.js).
+        // inside the E2B sandbox; configure sandbox_mode instead of using --sandbox because
+        // current `codex exec resume` rejects that flag. Workspace-write still needs explicit
+        // network access for package installs, git push, and PR creation.
+        buildRun: (isResume, { agentModel, agentReasoningEffort, proxyBaseUrl } = {}) =>
+            buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl),
+        // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
+        // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
         sandboxEnv: ({ apiKey, baseUrl }) => ({
             CODEX_API_KEY: apiKey,
             OPENAI_API_KEY: apiKey,
@@ -1582,6 +1623,7 @@ async function runAgentInSandbox(
             {
                 agentModel: runDetails.model,
                 agentReasoningEffort: runDetails.effort,
+                proxyBaseUrl: agentCredentials.baseUrl,
             }
         )}`
 
@@ -2139,6 +2181,8 @@ module.exports = {
     MAX_VM_RUNTIME_MS,
     __private__: {
         buildAgentPrompt,
+        buildCodexProxyConfigOverrides,
+        buildCodexRunCommand,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,
