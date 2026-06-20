@@ -62,7 +62,7 @@ const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, se
                     </View>
                 )}
             </View>
-            {!isFullscreen && (
+            {!isFullscreen && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <TagList projectId={projectId} chat={chat} />
                 </View>

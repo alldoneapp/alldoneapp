@@ -464,6 +464,14 @@ export const setNavigationRoute = route => {
     return action
 }
 
+export const setResolvingSharedResource = value => {
+    const action = {
+        type: 'Set resolving shared resource',
+        value,
+    }
+    return action
+}
+
 export const setAssigneePickerLayout = layout => {
     const action = {
         type: 'Set assignee picker layout',

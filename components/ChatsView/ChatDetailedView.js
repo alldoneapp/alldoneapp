@@ -49,6 +49,9 @@ const ChatDetailedView = ({ navigation }) => {
     const [assistantId, setAssistantId] = useState(chat?.assistantId || '')
     const CustomView = selectedTab === DV_TAB_CHAT_BOARD || selectedTab === DV_TAB_CHAT_NOTE ? View : CustomScrollView
     const scrollRef = useRef()
+    // Members get the full tabbed view; shared-resource viewers (anonymous + logged-in non-members)
+    // are locked to the specifically shared chat board.
+    const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     usePrivateProject(projectId)
 
     const { overlay } = useCollapsibleSidebar()
@@ -144,7 +147,7 @@ const ChatDetailedView = ({ navigation }) => {
                     />
 
                     <View style={{ flex: 1 }}>
-                        {!isFullscreen && (
+                        {!isFullscreen && accessGranted && (
                             <View style={mobile ? localStyles.navigationBar : undefined}>
                                 <NavigationBar isSecondary tabs={navigationTabs} />
                             </View>

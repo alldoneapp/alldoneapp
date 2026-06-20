@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 
-import { LogOut } from './redux/actions'
+import { LogOut, setResolvingSharedResource } from './redux/actions'
 import store from './redux/store'
 import LoadingScreen from './components/LoadingScreen'
 import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
@@ -25,14 +25,26 @@ import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
     const processedInitialURL = useSelector(state => state.processedInitialURL)
+    const navigationRoute = useSelector(state => state.route)
     const loadingStep = useSelector(state => state.loadingStep)
     const loadingMessage = useSelector(state => state.loadingMessage)
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
     const [connectingMessage] = useState(() => getConnectingMessage())
 
     const logoutUser = async () => {
-        store.dispatch(LogOut())
-        await SharedHelper.processUrlAsAnonymous()
+        // If this is an anonymous visitor opening a shared resource detail link, keep the login
+        // screen on a neutral spinner (instead of flashing the login UI) while we resolve the
+        // resource and forward them to the view.
+        const currentUrl = window.location.pathname + window.location.search
+        const isSharedResource = SharedHelper.matchesSharedResourceUrl(currentUrl)
+        store.dispatch(isSharedResource ? [LogOut(), setResolvingSharedResource(true)] : LogOut())
+        try {
+            await SharedHelper.processUrlAsAnonymous()
+        } catch (error) {
+            // On failure, fall back to the normal login UI rather than leaving a stuck spinner.
+            if (isSharedResource) store.dispatch(setResolvingSharedResource(false))
+            throw error
+        }
     }
 
     const handleMissingUserDocument = async firebaseUser => {
@@ -159,6 +171,15 @@ export default function AppContent() {
             unwatch('userProjectWatcherUnsubKey')
         }
     }, [])
+
+    // Once the anonymous visitor has been forwarded off the login screen (to the resource view or
+    // the private-resource page), clear the resolving flag so the login UI can render normally if
+    // they ever return to it.
+    useEffect(() => {
+        if (navigationRoute && navigationRoute !== 'LoginScreen' && store.getState().resolvingSharedResource) {
+            store.dispatch(setResolvingSharedResource(false))
+        }
+    }, [navigationRoute])
 
     // Defer loading of heavy components for better initial performance
     useEffect(() => {

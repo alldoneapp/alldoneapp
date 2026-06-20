@@ -125,7 +125,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
 
             {Object.keys(note) !== 0 && (
                 <View style={{ flex: 1 }} onLayout={onContentLayout}>
-                    {!isFullscreen && (
+                    {!isFullscreen && accessGranted && (
                         <View
                             style={
                                 mobile

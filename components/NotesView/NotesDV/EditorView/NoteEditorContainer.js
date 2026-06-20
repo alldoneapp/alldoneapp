@@ -13,6 +13,7 @@ import {
 } from '../../../../redux/actions'
 import Backend from '../../../../utils/BackendBridge'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import SharedHelper from '../../../../utils/SharedHelper'
 
 export default function NoteEditorContainer({
     project,
@@ -28,10 +29,22 @@ export default function NoteEditorContainer({
     onOpenSideChat,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const loggedUser = useSelector(state => state.loggedUser)
     const [editorKey, setEditorKey] = useState(v4())
     const dispatch = useDispatch()
     const [connectionState, setConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
+
+    // Only members can edit the note body. Anonymous viewers and logged-in non-members get a
+    // read-only editor, matching the note title (which is already gated on accessGranted).
+    const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
+    const loggedUserIsCreator = loggedUserId === note.creatorId
+    const loggedUserCanUpdateObject =
+        accessGranted &&
+        !note.linkedToTemplate &&
+        (objectType === 'topics' ||
+            loggedUserIsCreator ||
+            !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id))
 
     // Use prop if provided, otherwise fall back to navigation param
     const autoStartTranscription =
@@ -42,12 +55,12 @@ export default function NoteEditorContainer({
     }
 
     useEffect(() => {
-        const isReadOnly = connectionState === 'offline'
+        const isReadOnly = connectionState === 'offline' || !loggedUserCanUpdateObject
         dispatch(setActiveNoteIsReadOnly(isReadOnly))
         return () => {
             dispatch(setActiveNoteIsReadOnly(false))
         }
-    }, [connectionState])
+    }, [connectionState, loggedUserCanUpdateObject])
 
     const updateInnerTasks = tasks => {
         dispatch(setNoteInnerTasks(note.id, tasks))
@@ -68,13 +81,6 @@ export default function NoteEditorContainer({
             dispatch(setActiveNoteId(''))
         }
     }, [])
-
-    const loggedUserIsCreator = loggedUserId === note.creatorId
-    const loggedUserCanUpdateObject =
-        !note.linkedToTemplate &&
-        (objectType === 'topics' ||
-            loggedUserIsCreator ||
-            !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id))
 
     return (
         <View style={localstyles.container}>

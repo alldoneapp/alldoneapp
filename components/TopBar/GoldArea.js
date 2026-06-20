@@ -17,6 +17,7 @@ export default function GoldArea({ containerStyle }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const gold = useSelector(state => state.loggedUser.gold)
+    const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const showGoldChain = useSelector(state => state.showGoldChain)
 
     const navigateToUserProfile = () => {
@@ -25,6 +26,10 @@ export default function GoldArea({ containerStyle }) {
     }
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.GoldArea')
+
+    // Anonymous viewers of shared notes/chats have no gold of their own and must not see the
+    // resource owner's balance, so hide the gold pill entirely for them.
+    if (isAnonymous) return null
 
     return (
         <TouchableOpacity

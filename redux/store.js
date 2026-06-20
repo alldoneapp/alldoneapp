@@ -120,6 +120,9 @@ export const initialState = {
     browserHistoryState: {},
     initialUrl: '/',
     processedInitialURL: false,
+    // True while an anonymous visitor's shared-resource link is being resolved, so the login
+    // screen shows a neutral spinner instead of the login UI until we forward them to the view.
+    resolvingSharedResource: false,
     taskInDetailView: {},
     route: '',
     subTaskSection: null,
@@ -796,6 +799,8 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, taskInDetailView: action.task }
         case 'Set navigation route':
             return { ...state, route: action.route }
+        case 'Set resolving shared resource':
+            return { ...state, resolvingSharedResource: action.value }
         case 'Set sub task section':
             return { ...state, subTaskSection: action.subTaskSection }
         case 'Set users in project': {

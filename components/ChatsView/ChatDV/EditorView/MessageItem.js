@@ -10,6 +10,7 @@ import MessageItemContent from './MessageItemContent'
 import MessageItemHeader from './MessageItemHeader'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../Utils/ChatHelper'
+import SharedHelper from '../../../../utils/SharedHelper'
 
 export default function MessageItem({
     chat,
@@ -24,6 +25,10 @@ export default function MessageItem({
 }) {
     const dispatch = useDispatch()
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const loggedUser = useSelector(state => state.loggedUser)
+    // Members can quote/edit messages; shared-resource viewers (anonymous + logged-in non-members)
+    // see messages read-only.
+    const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const [blockOpen, setBlockOpen] = useState(false)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const itemSwipe = useRef(null)
@@ -119,7 +124,7 @@ export default function MessageItem({
             <Swipeable
                 ref={itemSwipe}
                 leftThreshold={80}
-                enabled={!userIsAnonymous && dismissibleRef.current && !dismissibleRef.current.modalIsVisible()}
+                enabled={accessGranted && dismissibleRef.current && !dismissibleRef.current.modalIsVisible()}
                 renderLeftActions={renderLeftSwipe}
                 onSwipeableLeftWillOpen={onLeftSwipe}
                 overshootLeft={false}
@@ -144,7 +149,7 @@ export default function MessageItem({
                         creatorData={creatorData}
                         highlight={highlight}
                         onEditPress={enableEditMode}
-                        editDisabled={userIsAnonymous}
+                        editDisabled={!accessGranted}
                     />
                     <MessageItemContent
                         chat={chat}

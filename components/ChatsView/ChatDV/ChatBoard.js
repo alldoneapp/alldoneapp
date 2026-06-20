@@ -31,6 +31,7 @@ import URLsNotes, { URL_NOTE_DETAILS_CHAT } from '../../../URLSystem/Notes/URLsN
 import { LIMIT_SHOW_EARLIER } from '../Utils/ChatHelper'
 import ShowMoreButton from '../../UIControls/ShowMoreButton'
 import Backend from '../../../utils/BackendBridge'
+import SharedHelper from '../../../utils/SharedHelper'
 import URLsSkills, { URL_SKILL_DETAILS_CHAT } from '../../../URLSystem/Skills/URLsSkills'
 import PagesAmountSubscriptionContainer from './PagesAmountSubscriptionContainer'
 import BotMessagePlaceholder from './EditorView/BotMessagePlaceholder'
@@ -51,6 +52,9 @@ export default function ChatBoard({
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const loggedUser = useSelector(state => state.loggedUser)
+    // Only members can post. Anonymous viewers and logged-in non-members see this chat read-only.
+    const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const chatPagesAmount = useSelector(state => state.chatPagesAmount)
     const chatNotifications = useSelector(state => state.projectChatNotifications[projectId][chat.id])
@@ -267,7 +271,7 @@ export default function ChatBoard({
                     )}
                 </View>
             </CustomScrollView>
-            {!isAnonymous && (
+            {accessGranted && (
                 <ChatInput
                     projectId={projectId}
                     chat={chat}

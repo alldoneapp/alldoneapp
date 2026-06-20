@@ -71,6 +71,43 @@ class SharedHelper {
         return rawUrl
     }
 
+    // Synchronously decide whether a URL is a shareable resource *detail* link (chat, note, task,
+    // goal, contact, person, skill, assistant, project). For an anonymous visitor these always
+    // resolve to either the resource view (public) or the private-resource page — never the login
+    // UI — so the login screen can safely show a spinner while we resolve instead of flashing login.
+    static matchesSharedResourceUrl = rawUrl => {
+        const url = SharedHelper.normalizeInternalUrl(rawUrl)
+        const detailKeys = [
+            URL_TASK_DETAILS,
+            URL_NOTE_DETAILS,
+            URL_CONTACT_DETAILS,
+            URL_PEOPLE_DETAILS,
+            URL_GOAL_DETAILS,
+            URL_PROJECT_DETAILS,
+            URL_SKILL_DETAILS,
+            URL_CHAT_DETAILS,
+            URL_ASSISTANT_DETAILS,
+        ]
+        const matchers = [
+            URLsTasksTrigger,
+            URLsNotesTrigger,
+            URLsContactsTrigger,
+            URLsPeopleTrigger,
+            URLsGoalsTrigger,
+            URLsProjectsTrigger,
+            URLsSkillsTrigger,
+            URLsChatsTrigger,
+            URLsAssistantsTrigger,
+        ]
+        for (let key in matchers) {
+            const matched = matchers[key].match(url)
+            if (matched !== URL_NOT_MATCH) {
+                return detailKeys.some(detailKey => matched.key.indexOf(detailKey) >= 0)
+            }
+        }
+        return false
+    }
+
     static processUrl = async (isLoggedIn, URL, onIsMember, onIsShared, onNotShared, onNotMatch, onJoinToTemplate) => {
         URL = SharedHelper.normalizeInternalUrl(URL)
 
@@ -551,6 +588,10 @@ export const ANONYMOUS_USER_DATA = {
     email: 'anonymous@alldone.com',
     photoURL: 'https://mystaging.alldone.app/images/generic-user.svg',
     isAnonymous: true,
+    // Never expose the resource owner's gold balance to an anonymous viewer. Without this the
+    // anonymous loggedUser inherits the creator's gold (via the spread in addAnonymousData), which
+    // both leaks it into the UI and auto-enables the assistant/fullscreen bar on shared links.
+    gold: 0,
     themeName: COLORS_THEME_MODERN,
     sidebarNavigationMode: SIDEBAR_NAVIGATION_SIMPLE,
     sidebarExpanded: SIDEBAR_COLLAPSED,

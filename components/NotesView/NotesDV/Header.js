@@ -130,7 +130,7 @@ export default class Header extends Component {
                     </View>
                 </View>
 
-                {!isFullscreen && (
+                {!isFullscreen && accessGranted && (
                     <View style={localStyles.bottomHeader}>
                         <TagList
                             projectId={projectId}
