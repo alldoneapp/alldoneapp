@@ -1910,9 +1910,10 @@ const toolSchemas = {
                     },
                     agentReasoningEffort: {
                         type: 'string',
-                        enum: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+                        enum: ['low', 'medium', 'high', 'xhigh'],
                         description:
                             'Optional. Effort/reasoning setting for the VM agent. Defaults to "high". ' +
+                            'The minimum is "low" because Codex Responses requests can include tools that are incompatible with "minimal". ' +
                             'For Claude Code this maps to the CLI `--effort` flag; for Codex it maps to the `model_reasoning_effort` config.',
                     },
                     context_object_ids: {

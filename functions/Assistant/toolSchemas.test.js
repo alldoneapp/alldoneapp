@@ -242,7 +242,7 @@ describe('VM assistant tool schema', () => {
         )
         const properties = toolSchemas.execute_task_in_vm.function.parameters.properties
         expect(properties.agentModel.type).toBe('string')
-        expect(properties.agentReasoningEffort.enum).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh'])
+        expect(properties.agentReasoningEffort.enum).toEqual(['low', 'medium', 'high', 'xhigh'])
     })
 })
 

@@ -148,4 +148,32 @@ describe('startVmJob WhatsApp metadata', () => {
             expect.any(Array)
         )
     })
+
+    test('clamps legacy Codex minimal effort requests to low', async () => {
+        await startVmJob({
+            objective: 'Reply briefly',
+            taskType: 'prototype',
+            agent: 'codex',
+            agentReasoningEffort: 'minimal',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(createInitialStatusMessage).toHaveBeenCalledWith(
+            'project-1',
+            'topics',
+            'chat-1',
+            'assistant-1',
+            '🖥️ Spinning up Codex (gpt-5.5 · low effort) in a VM to work on this…',
+            expect.any(Array),
+            expect.any(Array),
+            expect.any(Array)
+        )
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agentReasoningEffort: 'low' })
+        )
+    })
 })

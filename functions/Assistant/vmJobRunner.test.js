@@ -89,7 +89,14 @@ describe('VM runner prompt', () => {
         expect(prompt).toContain(
             'If you made no repository changes, your final message MUST say that no Pull Request was opened'
         )
-        expect(prompt).toContain('best-effort dependency install for JavaScript/TypeScript repos')
+        expect(prompt).toContain('Repository dependencies are intentionally NOT installed before you start')
+        expect(prompt).toContain(
+            'when the requested change or a necessary lint/test/build verification actually requires them'
+        )
+        expect(prompt).toContain(
+            'For explanation-only work or when no code change is needed, do not install dependencies'
+        )
+        expect(prompt).not.toContain('runner has already performed a best-effort dependency install')
         expect(prompt).toContain('retry before reporting failure')
     })
 

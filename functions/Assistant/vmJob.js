@@ -37,7 +37,7 @@ const DEFAULT_CODEX_MODEL = 'gpt-5.5'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
 const DEFAULT_CODEX_REASONING_EFFORT = 'high'
 const VALID_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
-const VALID_CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh']
+const VALID_CODEX_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 const MODEL_SAFE_PATTERN = /^[A-Za-z0-9._-]+$/
 const AGENT_LABELS = {
     claude: 'Claude',
@@ -94,6 +94,10 @@ function normalizeAgentReasoningEffort(agent, effort) {
     const fallback = agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL
     if (agent === 'codex') {
         if (!trimmed) return { value: fallback }
+        // Current Codex may attach web_search to Responses requests, and OpenAI rejects that
+        // tool when reasoning.effort is "minimal". Preserve compatibility with callers that
+        // still send the old value by clamping it to the lowest supported VM effort.
+        if (trimmed === 'minimal') return { value: 'low' }
         if (!VALID_CODEX_REASONING_EFFORTS.includes(trimmed)) {
             return {
                 error: `agentReasoningEffort must be one of: ${VALID_CODEX_REASONING_EFFORTS.join(', ')}.`,
