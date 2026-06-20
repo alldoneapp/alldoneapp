@@ -19,6 +19,7 @@ export default function MessageItemHeader({
     highlight,
     onEditPress,
     editDisabled,
+    accessGranted,
 }) {
     const dispatch = useDispatch()
 
@@ -75,7 +76,7 @@ export default function MessageItemHeader({
             {highlight && <View style={localStyles.dotNotification} />}
             <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center' }}
-                disabled={isUnknownUser}
+                disabled={isUnknownUser || !accessGranted}
                 onPress={navigateToUserDv}
             >
                 <Image source={photoURL} style={localStyles.userImage} />

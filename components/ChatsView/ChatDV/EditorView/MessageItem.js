@@ -150,6 +150,7 @@ export default function MessageItem({
                         highlight={highlight}
                         onEditPress={enableEditMode}
                         editDisabled={!accessGranted}
+                        accessGranted={accessGranted}
                     />
                     <MessageItemContent
                         chat={chat}
