@@ -6,6 +6,7 @@ const { getOpenTasksContextMessage, parseTextForUseLiKePrompt } = require('./ass
 const {
     addTimestampToContextContent,
     resolveUserTimezoneOffset,
+    getUserLocalDayBounds,
     getUserLocalDateContext,
 } = require('./contextTimestampHelper')
 const {
@@ -236,6 +237,14 @@ function getTimestampMillis(value) {
     if (value && typeof value.toMillis === 'function') return value.toMillis()
     if (value && typeof value.seconds === 'number') return value.seconds * 1000
     return 0
+}
+
+function hasCompletedHeartbeatToday(assistant, userId, userData, now = Date.now()) {
+    const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, now)
+    const lastExecuted = getTimestampMillis(assistant.heartbeatLastExecutedByUser?.[userId])
+    const lastSilentOk = getTimestampMillis(assistant.heartbeatLastSilentOkByUser?.[userId])
+
+    return [lastExecuted, lastSilentOk].some(timestamp => timestamp >= startOfDay && timestamp <= endOfDay)
 }
 
 async function reserveHeartbeatInsufficientGoldNotice(userId, now = Date.now()) {
@@ -485,12 +494,13 @@ async function checkAndExecuteHeartbeats() {
                             }
                         }
 
-                        // Pick the execution chance based on whether the user has replied
-                        // today. Only look up the reply state when the two chances differ,
-                        // to avoid an extra Firestore read on the hot path.
+                        // Use the higher/replied chance until this assistant completes its
+                        // first heartbeat of the user's local day. After that first run,
+                        // use the lower/no-reply chance until the user replies that day.
                         let chancePercent = repliedChancePercent
                         let repliedToday = null
-                        if (repliedChancePercent !== noReplyChancePercent) {
+                        const completedToday = hasCompletedHeartbeatToday(assistant, userId, userData)
+                        if (completedToday && repliedChancePercent !== noReplyChancePercent) {
                             repliedToday = await hasUserRepliedToday(projectId, userId, userData)
                             chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
                         }
@@ -512,6 +522,7 @@ async function checkAndExecuteHeartbeats() {
                             assistantId: assistant.uid,
                             userId,
                             chancePercent,
+                            completedToday,
                             repliedToday,
                             intervalMs,
                         })

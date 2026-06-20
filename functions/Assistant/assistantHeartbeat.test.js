@@ -125,6 +125,7 @@ jest.mock('./assistantHelper', () => ({
 jest.mock('./contextTimestampHelper', () => ({
     addTimestampToContextContent: content => content,
     resolveUserTimezoneOffset: jest.fn(() => 0),
+    getUserLocalDayBounds: jest.fn(() => ({ startOfDay: 999000000, endOfDay: 1001000000 })),
     getUserLocalDateContext: jest.fn(() => ({ dateKey: '20260504', dateLabel: 'May 4' })),
 }))
 
@@ -313,21 +314,61 @@ describe('assistant heartbeat reply-aware execution chance', () => {
         Math.random.mockRestore()
     })
 
-    test('uses the replied chance when the user already replied that day', async () => {
-        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
-
-        await checkAndExecuteHeartbeats()
-
-        // replied chance is 100 -> executes
-        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-    })
-
-    test('uses the no-reply chance when the user has not replied that day', async () => {
+    test('uses the higher chance for the first completed heartbeat even before the user replies', async () => {
         mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
 
         await checkAndExecuteHeartbeats()
 
-        // no-reply chance is 0 -> skipped
+        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('resets to the higher chance on the next local day', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatLastExecutedByUser: { 'user-1': 998500000 },
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+
+        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('uses the replied chance after an earlier heartbeat when the user replied that day', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatLastExecutedByUser: { 'user-1': 999500000 },
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(true)
+
+        await checkAndExecuteHeartbeats()
+
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
+    test('uses the no-reply chance after an earlier heartbeat when the user has not replied', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatLastExecutedByUser: { 'user-1': 999500000 },
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+    })
+
+    test('treats a silent OK as the first completed heartbeat of the day', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatLastSilentOkByUser: { 'user-1': 999500000 },
+        })
+        mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
+
+        await checkAndExecuteHeartbeats()
+
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
 
@@ -336,6 +377,7 @@ describe('assistant heartbeat reply-aware execution chance', () => {
             ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
             heartbeatChancePercent: 0,
             heartbeatChanceNoReplyPercent: 100,
+            heartbeatLastExecutedByUser: { 'user-1': 999500000 },
         })
         mockHasUserMessageOnUserLocalDay.mockResolvedValue(false)
 
