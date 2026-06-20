@@ -74,7 +74,7 @@ const localStyles = StyleSheet.create({
         marginLeft: 8,
     },
     dynamicContainer: {
-        backgroundColor: colors.UtilityViolet100,
+        backgroundColor: colors.Grey300,
     },
     fixedContainer: {
         backgroundColor: colors.Grey300,
@@ -83,7 +83,7 @@ const localStyles = StyleSheet.create({
         ...styles.subtitle2,
     },
     dynamicText: {
-        color: colors.UtilityViolet300,
+        color: colors.Text03,
     },
     fixedText: {
         color: colors.Text03,
