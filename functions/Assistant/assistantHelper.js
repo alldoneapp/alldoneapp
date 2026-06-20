@@ -70,6 +70,7 @@ const {
     DEFAULT_PROMPT,
 } = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
+const { buildVmJobTaskName, buildVmJobTaskDescription } = require('./vmHostTaskHelper')
 const {
     addTimestampToContextContent,
     formatContextMessageTimestamp,
@@ -4142,6 +4143,109 @@ async function getAssistantFeedUserForTool(db, projectId, assistantId, requestUs
 }
 
 /**
+ * execute_task_in_vm must be anchored to a task/topic thread: the worker posts the status
+ * comment, live progress and final result there, bills Gold against it, and keys the
+ * resumable VM session by `${projectId}__${objectId}`. When the tool is invoked outside any
+ * conversation (a contextless assistant trigger), create a fresh task to host the job. Each
+ * such call gets its own task/thread — and therefore its own VM session — while the work can
+ * still be continued later by talking to the assistant inside that created task.
+ */
+async function ensureVmJobThread({
+    db,
+    objective,
+    deliverable = '',
+    originatingRequestText = '',
+    originatingImageUrls = [],
+    projectId,
+    assistantId,
+    creatorId,
+}) {
+    const targetSelection = await resolveCreateTaskTargetProject(db, {
+        creatorId,
+        contextProjectId: projectId,
+        assistantId,
+        globalProjectId: GLOBAL_PROJECT_ID,
+        requestedProjectId: '',
+        requestedProjectName: '',
+    })
+    const targetProjectId = targetSelection.targetProjectId
+    if (!targetProjectId) {
+        throw new Error('Could not resolve a project to host the VM task')
+    }
+
+    const feedUser = await getAssistantFeedUserForTool(db, targetProjectId, assistantId, creatorId)
+
+    // Seed the task so it is self-documenting (and carries into later resumes): the objective,
+    // the deliverable, the user's original request, plus any images they attached embedded inline.
+    const baseDescription = buildVmJobTaskDescription({ objective, deliverable, originatingRequestText })
+    const description = mergeTaskDescriptionWithImages(baseDescription, originatingImageUrls)
+
+    // Reuse the same cached TaskService instance create_task uses.
+    if (!cachedTaskService) {
+        const { TaskService } = require('../shared/TaskService')
+        const moment = require('moment-timezone')
+        cachedTaskService = new TaskService({
+            database: db,
+            moment,
+            idGenerator: () => db.collection('_').doc().id,
+            enableFeeds: true,
+            enableValidation: true,
+            isCloudFunction: true,
+            taskBatchSize: 100,
+            maxBatchesPerProject: 20,
+        })
+        await cachedTaskService.initialize()
+    }
+
+    const result = await cachedTaskService.createAndPersistTask(
+        {
+            name: buildVmJobTaskName(objective),
+            description,
+            userId: creatorId,
+            projectId: targetProjectId,
+            isPrivate: false,
+            feedUser,
+        },
+        {
+            userId: creatorId,
+            projectId: targetProjectId,
+        }
+    )
+
+    const creationSucceeded = result?.success !== false
+    const resolvedTaskId = result?.taskId || result?.taskid || result?.id || result?.task?.id || null
+    if (!creationSucceeded || !resolvedTaskId) {
+        throw new Error(result?.message || 'Failed to create a task to host the VM job')
+    }
+
+    // Make the requesting user follow the new task right away so they get chat notifications
+    // (in-app + push + email) and the task shows up in their chat list. We create the chat
+    // object here explicitly rather than relying on the later status-comment write, which is
+    // best-effort and would silently leave the user un-following if it fails. isPublicFor is set
+    // public-for-all to match the task doc (createTaskObject uses isPrivate:false →
+    // [FEED_PUBLIC_FOR_ALL, userId]) so the task + its chat are visible to all project members.
+    try {
+        const { ensureChatExists } = require('./assistantStatusHelper')
+        await ensureChatExists(
+            targetProjectId,
+            'tasks',
+            resolvedTaskId,
+            assistantId,
+            [creatorId],
+            [FEED_PUBLIC_FOR_ALL, creatorId]
+        )
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed ensuring requesting user follows host task', {
+            projectId: targetProjectId,
+            taskId: resolvedTaskId,
+            error: error.message,
+        })
+    }
+
+    return { projectId: targetProjectId, objectType: 'tasks', objectId: resolvedTaskId }
+}
+
+/**
  * Execute a tool natively and return the raw result (not processed by LLM)
  * This is used for OpenAI native tool calling
  */
@@ -7500,17 +7604,74 @@ async function executeToolNatively(
             }
 
             try {
+                // Pre-check the per-user concurrency cap before we materialize a host task, so a
+                // user at their cap doesn't get a stray empty task. startVmJob re-checks this as
+                // the authoritative gate (and handles the race).
+                const { countActiveVmJobsForUser, MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJob')
+                const activeVmJobs = await countActiveVmJobsForUser(requestUserId)
+                if (activeVmJobs >= MAX_CONCURRENT_VM_JOBS_PER_USER) {
+                    return {
+                        success: false,
+                        message: `You already have ${activeVmJobs} VM tasks running. Please wait for one to finish before starting another.`,
+                    }
+                }
+
+                // A VM job must be anchored to a task/topic thread (it posts status + result
+                // there, bills Gold against it, and keys its resumable VM session by
+                // project+object). When the tool is invoked outside any conversation, create a
+                // fresh task to host this job. Each contextless call gets its own task/thread —
+                // and therefore its own VM session — while the work can be continued later by
+                // talking to the assistant inside that created task.
+                let effectiveProjectId = projectId
+                let effectiveObjectType = toolRuntimeContext?.objectType || 'tasks'
+                let effectiveObjectId = toolRuntimeContext?.objectId || ''
+
+                // When we host the job in a freshly-created task there is no thread conversation
+                // for buildVmThreadContext to read, so carry the originating request (the user's
+                // message text + any attached images) explicitly. In an existing thread the
+                // conversation already covers this, so we leave it null there.
+                let originatingRequest = null
+
+                if (!effectiveObjectId) {
+                    const originatingRequestText = typeof userContext?.message === 'string' ? userContext.message : ''
+                    const originatingImageUrls = normalizeCreateTaskImageUrls(
+                        userContext?.currentMessageImageUrls || extractImageUrlsFromMessageContent(userContext?.content)
+                    )
+                    originatingRequest = { text: originatingRequestText, imageUrls: originatingImageUrls }
+
+                    const hostThread = await ensureVmJobThread({
+                        db: admin.firestore(),
+                        objective: toolArgs.objective,
+                        deliverable: toolArgs.deliverable,
+                        originatingRequestText,
+                        originatingImageUrls,
+                        projectId,
+                        assistantId,
+                        creatorId,
+                    })
+                    effectiveProjectId = hostThread.projectId
+                    effectiveObjectType = hostThread.objectType
+                    effectiveObjectId = hostThread.objectId
+                    console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Created host task for contextless VM job', {
+                        projectId: effectiveProjectId,
+                        objectId: effectiveObjectId,
+                        hasOriginatingText: !!originatingRequestText,
+                        originatingImageCount: originatingImageUrls.length,
+                    })
+                }
+
                 // Forward the same thread context the in-chat assistant has (user/project
                 // descriptions, persona, conversation so far, shared files, date/time, language)
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
                 const threadContext = await buildVmThreadContext({
-                    projectId,
-                    objectType: toolRuntimeContext?.objectType || 'tasks',
-                    objectId: toolRuntimeContext?.objectId,
+                    projectId: effectiveProjectId,
+                    objectType: effectiveObjectType,
+                    objectId: effectiveObjectId,
                     assistantId,
                     requestUserId,
                     userTimezoneOffset: toolRuntimeContext?.userTimezoneOffset ?? null,
                     language: toolRuntimeContext?.language || '',
+                    originatingRequest,
                 }).catch(error => {
                     console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: thread context build failed', {
                         error: error.message,
@@ -7528,9 +7689,9 @@ async function executeToolNatively(
                     contextObjectIds: toolArgs.context_object_ids,
                     deliverable: toolArgs.deliverable,
                     threadContext,
-                    projectId,
-                    objectType: toolRuntimeContext?.objectType || 'tasks',
-                    objectId: toolRuntimeContext?.objectId,
+                    projectId: effectiveProjectId,
+                    objectType: effectiveObjectType,
+                    objectId: effectiveObjectId,
                     assistantId,
                     requestUserId,
                     triggerChannel: toolRuntimeContext?.sourceChannel === 'whatsapp' ? 'whatsapp' : '',
@@ -9212,6 +9373,7 @@ async function buildVmThreadContext({
     requestUserId,
     userTimezoneOffset = null,
     language = '',
+    originatingRequest = null,
     options = VM_THREAD_CONTEXT_OPTIONS,
 } = {}) {
     if (!projectId || !objectId) return ''
@@ -9284,6 +9446,23 @@ async function buildVmThreadContext({
                 ? `Respond in the same language the user uses in this thread (the user's app language is "${lang}").`
                 : 'Respond in the same language the user uses in this thread.'
         )
+    }
+
+    // Originating request — for a VM job hosted in a freshly-created task there is no thread
+    // conversation yet, so the message that triggered the job is forwarded explicitly (text +
+    // any attached images) to stand in for the missing conversation/attachments sections.
+    if (originatingRequest) {
+        const reqText = typeof originatingRequest.text === 'string' ? originatingRequest.text.trim() : ''
+        const reqImages = Array.isArray(originatingRequest.imageUrls) ? originatingRequest.imageUrls : []
+        if (reqText) {
+            sections.push(
+                `Originating request that triggered this VM task:\n[user]: ${parseTextForUseLiKePrompt(reqText)}`
+            )
+        }
+        if (reqImages.length) {
+            const imageLines = reqImages.slice(0, VM_THREAD_MAX_ATTACHMENTS).map(url => `- image: ${url}`)
+            sections.push(`Images shared with the request (downloadable via the URLs):\n${imageLines.join('\n')}`)
+        }
     }
 
     // #5 + #7 — conversation transcript and shared files (both derived from the thread comments).

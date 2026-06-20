@@ -316,4 +316,5 @@ function createChatInternalNotifications(
 
 module.exports = {
     createInitialStatusMessage,
+    ensureChatExists,
 }

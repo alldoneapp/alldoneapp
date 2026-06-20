@@ -426,6 +426,7 @@ async function startVmJob({
 
 module.exports = {
     startVmJob,
+    countActiveVmJobsForUser,
     VM_JOB_BASE_GOLD,
     VM_GOLD_PER_MINUTE,
     VM_TOKENS_PER_GOLD,
