@@ -4175,10 +4175,8 @@ async function ensureVmJobThread({
 
     const feedUser = await getAssistantFeedUserForTool(db, targetProjectId, assistantId, creatorId)
 
-    // Seed the task so it is self-documenting (and carries into later resumes): the objective,
-    // the deliverable, the user's original request, plus any images they attached embedded inline.
-    const baseDescription = buildVmJobTaskDescription({ objective, deliverable, originatingRequestText })
-    const description = mergeTaskDescriptionWithImages(baseDescription, originatingImageUrls)
+    // The task title is necessarily abbreviated; the full prompt is posted as the first chat
+    // entry below (readable by the user + grounds the VM agent), so the description stays empty.
 
     // Reuse the same cached TaskService instance create_task uses.
     if (!cachedTaskService) {
@@ -4200,7 +4198,7 @@ async function ensureVmJobThread({
     const result = await cachedTaskService.createAndPersistTask(
         {
             name: buildVmJobTaskName(objective),
-            description,
+            description: '',
             userId: creatorId,
             projectId: targetProjectId,
             isPrivate: false,
@@ -4242,7 +4240,97 @@ async function ensureVmJobThread({
         })
     }
 
+    // Post the full task/prompt as the first chat entry so the user can read exactly what the VM
+    // was asked to do (the title is abbreviated). Authored as the requesting user with any
+    // attached images, so it reads as the originating request and grounds the VM agent through
+    // buildVmThreadContext's normal conversation/attachment slices — making this contextless job
+    // behave like a normal in-thread one.
+    try {
+        const promptText = buildVmJobTaskDescription({ objective, deliverable, originatingRequestText })
+        await postVmHostTaskRequestComment({
+            projectId: targetProjectId,
+            objectType: 'tasks',
+            objectId: resolvedTaskId,
+            creatorId,
+            text: promptText,
+            imageUrls: originatingImageUrls,
+        })
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed posting request comment to host task', {
+            projectId: targetProjectId,
+            taskId: resolvedTaskId,
+            error: error.message,
+        })
+    }
+
     return { projectId: targetProjectId, objectType: 'tasks', objectId: resolvedTaskId }
+}
+
+/**
+ * Build image mediaContext entries for the VM host-task request comment so the read-side
+ * (chat attachments, get_chat_attachment) and the VM grounding can see the attached images.
+ */
+function buildVmRequestImageMediaContext(imageUrls) {
+    return normalizeCreateTaskImageUrls(imageUrls).map(url => ({
+        kind: 'image',
+        fileName: '',
+        mimeType: 'image/*',
+        storageUrl: url,
+        previewUrl: url,
+    }))
+}
+
+/**
+ * Post the originating request as the first chat comment on the VM host task. Authored as the
+ * requesting user (fromAssistant: false) with image tokens embedded for inline rendering and
+ * mediaContext set for the read-side. Mirrors the comment/commentsData bookkeeping that the
+ * status-comment writer does. Returns the comment id, or null when there is nothing to post.
+ */
+async function postVmHostTaskRequestComment({ projectId, objectType, objectId, creatorId, text, imageUrls }) {
+    const cleanText = typeof text === 'string' ? text.trim() : ''
+    const images = normalizeCreateTaskImageUrls(imageUrls)
+    if (!cleanText && !images.length) return null
+
+    const db = admin.firestore()
+    const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+    const now = Date.now()
+    const commentText = mergeTaskDescriptionWithImages(cleanText, images)
+    const mediaContext = buildVmRequestImageMediaContext(images)
+
+    const comment = {
+        creatorId,
+        commentText,
+        originalContent: commentText,
+        commentType: STAYWARD_COMMENT,
+        lastChangeDate: admin.firestore.Timestamp.now(),
+        created: now,
+        fromAssistant: false,
+    }
+    if (mediaContext.length) comment.mediaContext = mediaContext
+
+    await db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`).set(comment)
+
+    await db.doc(`chatObjects/${projectId}/chats/${objectId}`).set(
+        {
+            lastEditionDate: now,
+            lastEditorId: creatorId,
+            [`commentsData.lastCommentOwnerId`]: creatorId,
+            [`commentsData.lastComment`]: cleanText.substring(0, 500),
+            [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+            [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+        },
+        { merge: true }
+    )
+
+    await updateLastCommentDataOfChatParentObject(
+        projectId,
+        objectId,
+        objectType,
+        cleanText,
+        STAYWARD_COMMENT
+    ).catch(() => {})
+
+    return commentId
 }
 
 /**
@@ -7626,18 +7714,15 @@ async function executeToolNatively(
                 let effectiveObjectType = toolRuntimeContext?.objectType || 'tasks'
                 let effectiveObjectId = toolRuntimeContext?.objectId || ''
 
-                // When we host the job in a freshly-created task there is no thread conversation
-                // for buildVmThreadContext to read, so carry the originating request (the user's
-                // message text + any attached images) explicitly. In an existing thread the
-                // conversation already covers this, so we leave it null there.
-                let originatingRequest = null
-
+                // When we host the job in a freshly-created task, the originating request (the
+                // user's message text + any attached images) is posted as the task's first chat
+                // entry inside ensureVmJobThread — so buildVmThreadContext's normal
+                // conversation/attachment slices ground the VM agent just like an in-thread job.
                 if (!effectiveObjectId) {
                     const originatingRequestText = typeof userContext?.message === 'string' ? userContext.message : ''
                     const originatingImageUrls = normalizeCreateTaskImageUrls(
                         userContext?.currentMessageImageUrls || extractImageUrlsFromMessageContent(userContext?.content)
                     )
-                    originatingRequest = { text: originatingRequestText, imageUrls: originatingImageUrls }
 
                     const hostThread = await ensureVmJobThread({
                         db: admin.firestore(),
@@ -7671,7 +7756,6 @@ async function executeToolNatively(
                     requestUserId,
                     userTimezoneOffset: toolRuntimeContext?.userTimezoneOffset ?? null,
                     language: toolRuntimeContext?.language || '',
-                    originatingRequest,
                 }).catch(error => {
                     console.warn('🖥️ EXECUTE_TASK_IN_VM TOOL: thread context build failed', {
                         error: error.message,
@@ -9373,7 +9457,6 @@ async function buildVmThreadContext({
     requestUserId,
     userTimezoneOffset = null,
     language = '',
-    originatingRequest = null,
     options = VM_THREAD_CONTEXT_OPTIONS,
 } = {}) {
     if (!projectId || !objectId) return ''
@@ -9446,23 +9529,6 @@ async function buildVmThreadContext({
                 ? `Respond in the same language the user uses in this thread (the user's app language is "${lang}").`
                 : 'Respond in the same language the user uses in this thread.'
         )
-    }
-
-    // Originating request — for a VM job hosted in a freshly-created task there is no thread
-    // conversation yet, so the message that triggered the job is forwarded explicitly (text +
-    // any attached images) to stand in for the missing conversation/attachments sections.
-    if (originatingRequest) {
-        const reqText = typeof originatingRequest.text === 'string' ? originatingRequest.text.trim() : ''
-        const reqImages = Array.isArray(originatingRequest.imageUrls) ? originatingRequest.imageUrls : []
-        if (reqText) {
-            sections.push(
-                `Originating request that triggered this VM task:\n[user]: ${parseTextForUseLiKePrompt(reqText)}`
-            )
-        }
-        if (reqImages.length) {
-            const imageLines = reqImages.slice(0, VM_THREAD_MAX_ATTACHMENTS).map(url => `- image: ${url}`)
-            sections.push(`Images shared with the request (downloadable via the URLs):\n${imageLines.join('\n')}`)
-        }
     }
 
     // #5 + #7 — conversation transcript and shared files (both derived from the thread comments).
