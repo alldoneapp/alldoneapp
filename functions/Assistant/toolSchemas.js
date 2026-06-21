@@ -9,7 +9,7 @@ const toolSchemas = {
         function: {
             name: 'create_task',
             description:
-                'Creates a new task with optional reminder/alert. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X" or "create a task to Y at Z time" requests. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, etc.) are optional. When you choose a project for the task, also provide projectRoutingReason explaining why. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
+                'Creates a new task with optional reminder/alert and recurrence. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X", "create a task to Y at Z time", or recurring task requests. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, recurrence, etc.) are optional. When you choose a project for the task, also provide projectRoutingReason explaining why. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -48,6 +48,31 @@ const toolSchemas = {
                         type: 'boolean',
                         description:
                             'Optional: Enable alert notification for this task. When true, the user will receive an alert at the time specified in dueDate. Requires dueDate to be provided. Use this for "remind me" or "alert me" requests.',
+                    },
+                    recurrence: {
+                        oneOf: [
+                            {
+                                type: 'string',
+                                enum: [
+                                    'never',
+                                    'daily',
+                                    'everyWorkday',
+                                    'weekly',
+                                    'every2Weeks',
+                                    'every3Weeks',
+                                    'monthly',
+                                    'every3Months',
+                                    'every6Months',
+                                    'annually',
+                                ],
+                            },
+                            {
+                                type: 'string',
+                                pattern: '^custom:[1-9]\\d*$',
+                            },
+                        ],
+                        description:
+                            'Optional recurrence schedule. Use daily, everyWorkday, weekly, every2Weeks, every3Weeks, monthly, every3Months, every6Months, annually, or custom:<positive number of days>. The task recurs after it is completed; dueDate sets the first occurrence.',
                     },
                     projectId: {
                         type: 'string',
@@ -511,7 +536,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set time estimations, or move a task to another project. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
+                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set or disable recurrence, set time estimations, or move a task to another project. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, recurrence, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
             parameters: {
                 type: 'object',
                 properties: {
@@ -570,6 +595,31 @@ const toolSchemas = {
                         type: 'boolean',
                         description:
                             'Enable (true) or disable (false) the alert notification for this task. When enabled, the user will receive an alert at the time specified in dueDate. Requires dueDate to be set on the task. Use this for "remind me" or "alert me" requests.',
+                    },
+                    recurrence: {
+                        oneOf: [
+                            {
+                                type: 'string',
+                                enum: [
+                                    'never',
+                                    'daily',
+                                    'everyWorkday',
+                                    'weekly',
+                                    'every2Weeks',
+                                    'every3Weeks',
+                                    'monthly',
+                                    'every3Months',
+                                    'every6Months',
+                                    'annually',
+                                ],
+                            },
+                            {
+                                type: 'string',
+                                pattern: '^custom:[1-9]\\d*$',
+                            },
+                        ],
+                        description:
+                            'Set the recurrence schedule, or use never to disable recurrence. Supports daily, everyWorkday, weekly, every2Weeks, every3Weeks, monthly, every3Months, every6Months, annually, and custom:<positive number of days>. The task recurs after it is completed; dueDate sets or changes the current occurrence date.',
                     },
                     estimation: {
                         type: 'number',

@@ -1534,6 +1534,7 @@ describe('assistant create_task project routing comments', () => {
             {
                 name: 'Follow up with client',
                 projectName: 'Client Work',
+                recurrence: 'weekly',
                 projectRoutingReason: 'the task is about the client onboarding discussion',
                 projectRoutingConfidence: 0.84,
             },
@@ -1547,6 +1548,7 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 name: 'Follow up with client',
                 projectId: 'project-client',
+                recurrence: 'weekly',
             }),
             expect.objectContaining({
                 userId: 'user-1',

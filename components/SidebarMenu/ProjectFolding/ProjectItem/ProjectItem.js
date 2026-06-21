@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import {
     hideGlobalSearchPopup,
+    hideWebSideBar,
     setGlobalSearchResults,
     setSearchText,
     setSelectedSidebarTab,
@@ -92,7 +93,7 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
     }
 
     const onPress = e => {
-        const { loggedUser, activeGuideId, activeTemplateId, route } = store.getState()
+        const { loggedUser, activeGuideId, activeTemplateId, route, smallScreenNavigation } = store.getState()
         const { uid: loggedUserId } = loggedUser
 
         if (isGuide && checkIfUserIsGuideAdmin(loggedUser) && activeGuideId !== projectId) {
@@ -131,6 +132,8 @@ export default function ProjectItem({ itemIndex, projectData, projectType, isSha
                 setTaskViewToggleIndex(0),
                 setTaskViewToggleSection('Open'),
             ]
+
+            if (smallScreenNavigation) dispatches.push(hideWebSideBar())
 
             if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
             dispatch(dispatches)

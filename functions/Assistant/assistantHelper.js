@@ -4588,6 +4588,7 @@ async function executeToolNatively(
                         name: toolArgs.name,
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
+                        recurrence: toolArgs.recurrence,
                         userId: creatorId,
                         projectId: targetProjectId,
                         isPrivate: false,

@@ -142,6 +142,26 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
+    test('defines recurrence for task creation and updates', () => {
+        const createRecurrence = toolSchemas.create_task.function.parameters.properties.recurrence
+        const updateRecurrence = toolSchemas.update_task.function.parameters.properties.recurrence
+
+        expect(createRecurrence.oneOf).toEqual(updateRecurrence.oneOf)
+        expect(createRecurrence.oneOf[0].enum).toEqual([
+            'never',
+            'daily',
+            'everyWorkday',
+            'weekly',
+            'every2Weeks',
+            'every3Weeks',
+            'monthly',
+            'every3Months',
+            'every6Months',
+            'annually',
+        ])
+        expect(createRecurrence.oneOf[1].pattern).toBe('^custom:[1-9]\\d*$')
+    })
+
     test('documents heartbeat settings update fields', () => {
         expect(toolSchemas.update_heartbeat_settings.function.parameters.required).toEqual([])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')

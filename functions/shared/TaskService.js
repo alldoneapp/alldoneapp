@@ -648,6 +648,7 @@ class TaskService {
             name,
             description,
             dueDate,
+            recurrence,
             completed,
             userId,
             parentId,
@@ -684,6 +685,15 @@ class TaskService {
         if (dueDate !== undefined) {
             updateData.dueDate = dueDate
             changes.push('due date')
+        }
+        if (recurrence !== undefined && recurrence !== currentTask.recurrence) {
+            TaskValidator.validateOptionalFields({ recurrence })
+            updateData.recurrence = recurrence
+            if (recurrence === 'never') {
+                updateData.timesDoneInExpectedDay = 0
+                updateData.timesDone = 0
+            }
+            changes.push(`recurrence to "${recurrence}"`)
         }
         if (userId !== undefined) {
             updateData.userId = String(userId)
