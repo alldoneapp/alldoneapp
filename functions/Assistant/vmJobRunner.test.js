@@ -2,6 +2,7 @@ const mockSendWhatsAppMessageWithConversationLink = jest.fn()
 const mockDeductGold = jest.fn()
 const mockRefundGold = jest.fn()
 const mockGetObjectFollowersIds = jest.fn()
+const mockCreateInitialStatusMessage = jest.fn()
 const mockFirestore = jest.fn(() => ({
     doc: jest.fn(),
 }))
@@ -54,6 +55,10 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
 jest.mock('../Gold/goldHelper', () => ({
     deductGold: mockDeductGold,
     refundGold: mockRefundGold,
+}))
+
+jest.mock('./assistantStatusHelper', () => ({
+    createInitialStatusMessage: mockCreateInitialStatusMessage,
 }))
 
 const { __private__ } = require('./vmJobRunner')
@@ -696,5 +701,125 @@ describe('VM runner WhatsApp notifications', () => {
                 }),
             })
         )
+    })
+})
+
+describe('VM runner origin-conversation completion note', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockCreateInitialStatusMessage.mockResolvedValue('origin-comment-1')
+    })
+
+    test('posts a completion note into the delegated-from conversation', async () => {
+        const result = await __private__.postVmOriginConversationNote(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                projectId: 'project-X',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+                originProjectId: 'project-anna',
+                originObjectType: 'topics',
+                originObjectId: 'whatsapp-topic-1',
+                originAssistantId: 'anna-assistant',
+            },
+            'The competitor research is done.',
+            { notificationType: 'completed' }
+        )
+
+        expect(result).toBe(true)
+        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
+        const [
+            projectId,
+            objectType,
+            objectId,
+            assistantId,
+            note,
+            userIdsToNotify,
+            ,
+            followerIds,
+        ] = mockCreateInitialStatusMessage.mock.calls[0]
+        expect(projectId).toBe('project-anna')
+        expect(objectType).toBe('topics')
+        expect(objectId).toBe('whatsapp-topic-1')
+        expect(assistantId).toBe('anna-assistant')
+        expect(userIdsToNotify).toEqual(['user-1'])
+        expect(followerIds).toEqual(['user-1'])
+        // Note carries the outcome + a deep link to the host task (a different object/project).
+        expect(note).toContain('✅')
+        expect(note).toContain('finished')
+        expect(note).toContain('The competitor research is done.')
+        expect(note).toContain('host-task-1')
+    })
+
+    test('uses the failure framing for failed jobs', async () => {
+        await __private__.postVmOriginConversationNote(
+            {
+                userId: 'user-1',
+                projectId: 'project-X',
+                objectId: 'host-task-1',
+                originProjectId: 'project-anna',
+                originObjectId: 'whatsapp-topic-1',
+                originAssistantId: 'anna-assistant',
+            },
+            '❌ It broke.',
+            { notificationType: 'failed' }
+        )
+
+        const note = mockCreateInitialStatusMessage.mock.calls[0][4]
+        expect(note).toContain('failed')
+        expect(note).not.toContain('✅')
+    })
+
+    test('is a no-op when there is no origin conversation', async () => {
+        const result = await __private__.postVmOriginConversationNote(
+            { userId: 'user-1', projectId: 'project-X', objectId: 'host-task-1' },
+            'done',
+            {}
+        )
+        expect(result).toBeNull()
+        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
+    })
+
+    test('is a no-op when the origin conversation is the host thread itself', async () => {
+        const result = await __private__.postVmOriginConversationNote(
+            {
+                userId: 'user-1',
+                projectId: 'project-X',
+                objectId: 'host-task-1',
+                originProjectId: 'project-X',
+                originObjectId: 'host-task-1',
+                originAssistantId: 'cto-assistant',
+            },
+            'done',
+            {}
+        )
+        expect(result).toBeNull()
+        expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
+    })
+
+    test('notifyVmResultChannels fans out to both WhatsApp and the origin note', async () => {
+        mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true, sid: 'SM1', status: 'queued' })
+
+        await __private__.notifyVmResultChannels(
+            {
+                correlationId: 'correlation-1',
+                userId: 'user-1',
+                triggerChannel: 'whatsapp',
+                whatsappTo: 'whatsapp:+123',
+                projectId: 'project-X',
+                objectType: 'tasks',
+                objectId: 'host-task-1',
+                originProjectId: 'project-anna',
+                originObjectType: 'topics',
+                originObjectId: 'whatsapp-topic-1',
+                originAssistantId: 'anna-assistant',
+            },
+            'All done.',
+            { notificationType: 'completed' }
+        )
+
+        expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledTimes(1)
+        expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
     })
 })

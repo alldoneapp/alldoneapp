@@ -1866,6 +1866,71 @@ async function sendWhatsAppVmResultNotification(
     }
 }
 
+const VM_ORIGIN_NOTE_SNIPPET_MAX = 600
+
+// Post a short completion note back into the conversation the job was delegated from (e.g. the
+// WhatsApp daily topic where the user talked to Anna), so the user sees the outcome where they
+// are actually talking — not only in the separate host task. No-op when there is no distinct
+// origin conversation on the job.
+async function postVmOriginConversationNote(pendingWebhook, text, { notificationType = 'completed' } = {}) {
+    const originProjectId = typeof pendingWebhook?.originProjectId === 'string' ? pendingWebhook.originProjectId : ''
+    const originObjectId = typeof pendingWebhook?.originObjectId === 'string' ? pendingWebhook.originObjectId : ''
+    const originObjectType =
+        typeof pendingWebhook?.originObjectType === 'string' && pendingWebhook.originObjectType
+            ? pendingWebhook.originObjectType
+            : 'topics'
+    const originAssistantId =
+        typeof pendingWebhook?.originAssistantId === 'string' ? pendingWebhook.originAssistantId : ''
+    if (!originProjectId || !originObjectId || !originAssistantId) return null
+    // Don't double-post if the origin conversation is the host thread itself.
+    if (originProjectId === pendingWebhook.projectId && originObjectId === pendingWebhook.objectId) return null
+
+    const hostObjectType = pendingWebhook.objectType || 'tasks'
+    const link = buildVmChatLink(pendingWebhook.projectId, hostObjectType, pendingWebhook.objectId)
+    const icon = notificationType === 'completed' ? '✅' : notificationType === 'cancelled' ? '🛑' : '❌'
+    const verb =
+        notificationType === 'completed' ? 'finished' : notificationType === 'cancelled' ? 'was cancelled' : 'failed'
+    const snippet = shrinkTagText(
+        cleanTextMetaData(removeFormatTagsFromText(text || ''), true),
+        VM_ORIGIN_NOTE_SNIPPET_MAX
+    )
+    const note = `${icon} The VM task you requested ${verb}.\n\n${snippet}\n\n${link}`
+
+    try {
+        const { createInitialStatusMessage } = require('./assistantStatusHelper')
+        await createInitialStatusMessage(
+            originProjectId,
+            originObjectType,
+            originObjectId,
+            originAssistantId,
+            note,
+            [pendingWebhook.userId],
+            [],
+            [pendingWebhook.userId]
+        )
+        console.log('🖥️ VM JOB: Posted completion note to origin conversation', {
+            correlationId: pendingWebhook.correlationId,
+            originProjectId,
+            originObjectId,
+        })
+        return true
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed posting origin conversation note', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+        return false
+    }
+}
+
+// Fan a settled VM job's result out to the external channels the request came through: a direct
+// WhatsApp message (when WhatsApp-triggered) and a continuity note in the origin conversation
+// (when delegated from another thread). Both are best-effort and independent.
+async function notifyVmResultChannels(pendingWebhook, text, opts = {}) {
+    await sendWhatsAppVmResultNotification(pendingWebhook, text, opts)
+    await postVmOriginConversationNote(pendingWebhook, text, { notificationType: opts.notificationType })
+}
+
 /**
  * Worker entry point: run a queued VM job to completion and post the result back
  * into the conversation. Invoked by the runVmJob onTaskDispatched function.
@@ -1918,7 +1983,7 @@ async function runVmJobByCorrelationId(correlationId) {
         const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
-        await sendWhatsAppVmResultNotification(pendingWebhook, failureText, {
+        await notifyVmResultChannels(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',
         })
@@ -1977,7 +2042,7 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
-        await sendWhatsAppVmResultNotification(pendingWebhook, output, {
+        await notifyVmResultChannels(pendingWebhook, output, {
             mediaContext,
             pendingRef,
             notificationType: 'completed',
@@ -2046,7 +2111,7 @@ async function runVmJobByCorrelationId(correlationId) {
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
         if (isVmGoldExhaustedError(error) || latestPendingData.failureReason === VM_GOLD_EXHAUSTED_FAILURE_REASON) {
             await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, { assistantRunStatus: 'failed' })
-            await sendWhatsAppVmResultNotification(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
+            await notifyVmResultChannels(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
                 pendingRef,
                 notificationType: 'failed',
             })
@@ -2067,7 +2132,7 @@ async function runVmJobByCorrelationId(correlationId) {
             await writeStatusComment(pendingWebhook, VM_JOB_CANCELLED_TEXT, {
                 assistantRunStatus: VM_JOB_CANCELLED_STATUS,
             })
-            await sendWhatsAppVmResultNotification(pendingWebhook, VM_JOB_CANCELLED_TEXT, {
+            await notifyVmResultChannels(pendingWebhook, VM_JOB_CANCELLED_TEXT, {
                 pendingRef,
                 notificationType: 'failed',
             })
@@ -2086,7 +2151,7 @@ async function runVmJobByCorrelationId(correlationId) {
         const message = `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
-        await sendWhatsAppVmResultNotification(pendingWebhook, failureText, {
+        await notifyVmResultChannels(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',
         })
@@ -2128,6 +2193,8 @@ module.exports = {
         buildWhatsAppVmResultMessage,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,
+        postVmOriginConversationNote,
+        notifyVmResultChannels,
         buildAttachmentTokens,
         buildVmFinalCommentText,
         applyVmCompletionMetadata,

@@ -223,6 +223,10 @@ async function startVmJob({
     requestUserId,
     triggerChannel = '',
     whatsappTo = '',
+    originProjectId = '',
+    originObjectType = '',
+    originObjectId = '',
+    originAssistantId = '',
 }) {
     if (!objective || typeof objective !== 'string' || !objective.trim()) {
         return { success: false, message: 'A non-empty objective is required to run a task in a VM.' }
@@ -350,6 +354,24 @@ async function startVmJob({
     if (triggerChannel === 'whatsapp' && normalizedWhatsappTo) {
         pendingWebhookPayload.triggerChannel = 'whatsapp'
         pendingWebhookPayload.whatsappTo = normalizedWhatsappTo
+    }
+
+    // Origin conversation (set when the job was delegated from another thread). Persist it only
+    // when it's a real conversation distinct from the host thread, so the worker can post a
+    // completion note back where the user is actually talking.
+    const trimmedOriginProjectId = typeof originProjectId === 'string' ? originProjectId.trim() : ''
+    const trimmedOriginObjectId = typeof originObjectId === 'string' ? originObjectId.trim() : ''
+    const trimmedOriginAssistantId = typeof originAssistantId === 'string' ? originAssistantId.trim() : ''
+    const isDistinctOrigin =
+        trimmedOriginProjectId &&
+        trimmedOriginObjectId &&
+        trimmedOriginAssistantId &&
+        !(trimmedOriginProjectId === projectId && trimmedOriginObjectId === objectId)
+    if (isDistinctOrigin) {
+        pendingWebhookPayload.originProjectId = trimmedOriginProjectId
+        pendingWebhookPayload.originObjectType = originObjectType || 'topics'
+        pendingWebhookPayload.originObjectId = trimmedOriginObjectId
+        pendingWebhookPayload.originAssistantId = trimmedOriginAssistantId
     }
 
     await admin.firestore().doc(`pendingWebhooks/${correlationId}`).set(pendingWebhookPayload)

@@ -3775,6 +3775,7 @@ async function executeDelegatedAssistantRequest({
     callerProjectId,
     callerAssistantId,
     userContext = null,
+    callerToolRuntimeContext = null,
 }) {
     const message = typeof toolArgs?.message === 'string' ? toolArgs.message.trim() : ''
     if (!message) {
@@ -3830,18 +3831,46 @@ async function executeDelegatedAssistantRequest({
         delegatedByAssistantId: callerAssistantId,
         delegatedByProjectId: callerProjectId,
     }
+    // Carry the originating channel + conversation through delegation so an async tool the
+    // delegate starts (e.g. execute_task_in_vm) can (1) notify the original requester on the
+    // channel they used (WhatsApp), and (2) post a continuity note back into the conversation
+    // the user is actually in. We deliberately do NOT forward objectType/objectId — the delegate
+    // must host any VM job in its OWN fresh task (the contextless path), not the caller's thread.
+    const delegatedLanguage =
+        typeof callerToolRuntimeContext?.language === 'string' ? callerToolRuntimeContext.language : ''
+    const delegatedTimezoneOffset =
+        typeof callerToolRuntimeContext?.userTimezoneOffset === 'number'
+            ? callerToolRuntimeContext.userTimezoneOffset
+            : null
     const delegatedToolRuntimeContext = {
         projectId: target.projectId,
         assistantId: target.assistantId,
         requestUserId,
+        sourceChannel: callerToolRuntimeContext?.sourceChannel || '',
+        whatsappFromNumber: callerToolRuntimeContext?.whatsappFromNumber || '',
+        language: delegatedLanguage,
+        userTimezoneOffset: delegatedTimezoneOffset,
+        // Origin conversation (where the user is actually talking) for async-result continuity.
+        originProjectId: callerToolRuntimeContext?.projectId || callerProjectId || '',
+        originObjectType: callerToolRuntimeContext?.objectType || '',
+        originObjectId: callerToolRuntimeContext?.objectId || '',
+        originAssistantId: callerToolRuntimeContext?.assistantId || callerAssistantId || '',
     }
 
     const messages = []
-    await addBaseInstructions(messages, targetDisplayName, 'English', targetInstructions, targetAllowedTools, null, {
-        projectId: target.projectId,
-        assistantId: target.assistantId,
-        requestUserId,
-    })
+    await addBaseInstructions(
+        messages,
+        targetDisplayName,
+        delegatedLanguage || 'English',
+        targetInstructions,
+        targetAllowedTools,
+        delegatedTimezoneOffset,
+        {
+            projectId: target.projectId,
+            assistantId: target.assistantId,
+            requestUserId,
+        }
+    )
     messages.push([
         'system',
         `You are handling a delegated request from assistant "${callerAssistantId}" in project "${callerProjectId}". ` +
@@ -4396,6 +4425,7 @@ async function executeToolNatively(
             callerProjectId: projectId,
             callerAssistantId: assistantId,
             userContext,
+            callerToolRuntimeContext: toolRuntimeContext,
         })
     }
 
@@ -7784,6 +7814,13 @@ async function executeToolNatively(
                         toolRuntimeContext?.sourceChannel === 'whatsapp'
                             ? toolRuntimeContext?.whatsappFromNumber || ''
                             : '',
+                    // Origin conversation (set when this job was delegated from another thread,
+                    // e.g. a WhatsApp chat with a different assistant) so the worker can post a
+                    // completion note back where the user is actually talking.
+                    originProjectId: toolRuntimeContext?.originProjectId || '',
+                    originObjectType: toolRuntimeContext?.originObjectType || '',
+                    originObjectId: toolRuntimeContext?.originObjectId || '',
+                    originAssistantId: toolRuntimeContext?.originAssistantId || '',
                 })
             } catch (error) {
                 console.error('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed to start VM job', {
