@@ -16,6 +16,8 @@ const { resolveUserTimezoneOffset, getUserLocalDayBounds } = require('./contextT
 const { removeSingleChatNotification } = require('../Chats/chatsFirestoreCloud')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
+const ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS = 55 * 60 * 1000
+
 // Pre-load tiktoken at module load (performance optimization)
 console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')
 const jsonLoadStart = Date.now()
@@ -335,6 +337,7 @@ async function generatePreConfigTaskResult(
             requestUserId: userId,
             objectType,
             objectId,
+            maxRunWallClockMs: options?.maxRunWallClockMs || ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS,
         }
 
         // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token

@@ -1,8 +1,8 @@
-const ASSISTANT_RUN_LOCK_LEASE_MS = 15 * 60 * 1000
-// A live chat run can never outlast the askToBotSecondGen function timeout (540s). Any lock
-// still flagged running/cancel_requested past this threshold belongs to a process that was
+const ASSISTANT_RUN_LOCK_LEASE_MS = 65 * 60 * 1000
+// Interactive assistant chats can run for 55 minutes inside a function with a 60-minute timeout.
+// Any lock still flagged running/cancel_requested after 61 minutes belongs to a process that was
 // killed (timeout, redeploy, crash) and left its comment spinning — the watchdog finalizes it.
-const ASSISTANT_RUN_STUCK_THRESHOLD_MS = 11 * 60 * 1000
+const ASSISTANT_RUN_STUCK_THRESHOLD_MS = 61 * 60 * 1000
 const ASSISTANT_RUN_STATUS_RUNNING = 'running'
 const ASSISTANT_RUN_STATUS_CANCEL_REQUESTED = 'cancel_requested'
 const ASSISTANT_RUN_STATUS_CANCELLED = 'cancelled'

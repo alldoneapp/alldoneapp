@@ -278,6 +278,27 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
     })
 
+    test('uses a 55-minute run wall-clock budget for assistant tasks', async () => {
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'chat-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Long-running recurring task',
+            'en',
+            aiSettings,
+            { sendWhatsApp: false, name: 'Recurring task' },
+            null,
+            'tasks'
+        )
+
+        expect(mockStoreBotAnswerStream.mock.calls[0][18]).toEqual(
+            expect.objectContaining({ maxRunWallClockMs: 55 * 60 * 1000 })
+        )
+    })
+
     test('preserves additional assistant and user turns before the latest prompt', async () => {
         await generatePreConfigTaskResult(
             'user-1',

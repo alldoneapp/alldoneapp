@@ -20,6 +20,7 @@ const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
 const ENCODE_INITIAL_GAP = 3
+const INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS = 55 * 60 * 1000
 
 // Pre-load heavy JSON and encoder at module load time (cold start)
 console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')
@@ -169,6 +170,7 @@ async function askToOpenAIBotOptimized(
             // date/time + language context without re-resolving it.
             userTimezoneOffset,
             language,
+            maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
         }
         const stream = await interactWithChatStream(
             contextMessages,

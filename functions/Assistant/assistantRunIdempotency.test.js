@@ -1,5 +1,6 @@
 const {
     ASSISTANT_RUN_LOCK_LEASE_MS,
+    ASSISTANT_RUN_STUCK_THRESHOLD_MS,
     acquireAssistantRunLock,
     buildAssistantRunLockId,
     cancelAssistantRunLock,
@@ -63,6 +64,11 @@ const baseParams = {
 }
 
 describe('assistant run idempotency', () => {
+    test('keeps locks alive beyond the 55-minute interactive assistant limit', () => {
+        expect(ASSISTANT_RUN_LOCK_LEASE_MS).toBe(65 * 60 * 1000)
+        expect(ASSISTANT_RUN_STUCK_THRESHOLD_MS).toBe(61 * 60 * 1000)
+    })
+
     test('builds a deterministic Firestore-safe lock id', () => {
         expect(
             buildAssistantRunLockId({
@@ -161,9 +167,9 @@ describe('assistant run idempotency', () => {
             cancelRequestedAt: 2000,
             cancelRequestedBy: 'user-1',
         })
-        expect(
-            shouldSkipExistingRun(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1'), 2500)
-        ).toBe(true)
+        expect(shouldSkipExistingRun(db.docs.get('assistantRunLocks/project-1__tasks__task-1__message-1'), 2500)).toBe(
+            true
+        )
     })
 
     test('does not let another user cancel a running lock', async () => {

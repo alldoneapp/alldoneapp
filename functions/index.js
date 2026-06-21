@@ -1790,7 +1790,7 @@ const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk_optimized')
 
 exports.askToBotSecondGen = onCall(
     {
-        timeoutSeconds: 540,
+        timeoutSeconds: 3600,
         memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 2 instances warm to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
@@ -2084,7 +2084,7 @@ exports.cancelAssistantRunSecondGen = onCall(
 // Watchdog: finalize assistant chat runs whose process died (function timeout, redeploy, crash)
 // without cleaning up. Such runs leave their lock flagged running/cancel_requested and their chat
 // comment stuck on a spinner forever. Runs every 2 minutes; a live run can never exceed the
-// askToBotSecondGen 540s timeout, so anything still "running" past the stuck threshold is dead.
+// askToBotSecondGen 60-minute timeout, so anything still "running" past the stuck threshold is dead.
 exports.reconcileStuckAssistantRunsSecondGen = onSchedule(
     {
         schedule: '*/2 * * * *',
@@ -2169,7 +2169,7 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
 
 exports.generatePreConfigTaskResultSecondGen = onCall(
     {
-        timeoutSeconds: 540,
+        timeoutSeconds: 3600,
         memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
@@ -3390,7 +3390,7 @@ exports.getLinkPreviewDataSecondGen = onRequest(
 exports.checkRecurringAssistantTasks = onSchedule(
     {
         schedule: '*/5 * * * *', // Run every 5 minutes
-        timeoutSeconds: 900, // 15 minutes - increased for parallel batch execution
+        timeoutSeconds: 3600, // 60 minutes; recurring assistant runs have a 55-minute internal limit
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -3404,7 +3404,7 @@ exports.checkRecurringAssistantTasks = onSchedule(
 exports.checkAssistantHeartbeats = onSchedule(
     {
         schedule: '*/5 * * * *',
-        timeoutSeconds: 300,
+        timeoutSeconds: 3600,
         memory: '512MiB',
         region: 'europe-west1',
     },

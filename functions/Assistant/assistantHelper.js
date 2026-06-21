@@ -186,10 +186,10 @@ const DELEGATION_PROJECT_SCAN_CONCURRENCY = 25
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 200
-// Wall-clock budget for a single chat run's tool loop. Kept well under the askToBotSecondGen
-// 540s function timeout so the run ends gracefully (with a clear message + finalized comment)
-// instead of being hard-killed mid-iteration and leaving the comment spinning forever.
-const MAX_RUN_WALL_CLOCK_MS = 7 * 60 * 1000
+// Fallback wall-clock budget for callers that do not provide an explicit limit. Assistant-task
+// and interactive-chat entry points provide their longer budget through toolRuntimeContext when
+// their platform timeout leaves enough cleanup headroom.
+const DEFAULT_MAX_RUN_WALL_CLOCK_MS = 7 * 60 * 1000
 const TOOL_PROGRESS_UPDATE_INTERVAL_MS = 7000
 const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
 const TOOL_RESULT_FOLLOW_UP_PROMPT_LEGACY =
@@ -7905,6 +7905,11 @@ async function storeChunks(
         // Wall-clock anchor for the per-run time budget enforced in the tool loop below. Anchored
         // per-invocation (not the shared module-global start) so concurrent runs don't skew it.
         const runWallClockStart = Date.now()
+        const configuredMaxRunWallClockMs = Number(toolRuntimeContext?.maxRunWallClockMs)
+        const maxRunWallClockMs =
+            Number.isFinite(configuredMaxRunWallClockMs) && configuredMaxRunWallClockMs > 0
+                ? configuredMaxRunWallClockMs
+                : DEFAULT_MAX_RUN_WALL_CLOCK_MS
 
         // The assistant's settings (allowedTools, model, etc.) don't change mid-run, so fetch
         // once and reuse instead of force-refreshing on every tool iteration (which was costing
@@ -8217,7 +8222,7 @@ async function storeChunks(
                     currentToolCalls &&
                     currentToolCalls.length > 0 &&
                     toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS &&
-                    Date.now() - runWallClockStart < MAX_RUN_WALL_CLOCK_MS
+                    Date.now() - runWallClockStart < maxRunWallClockMs
                 ) {
                     toolCallIteration++
                     if (ENABLE_DETAILED_LOGGING) {
@@ -8568,7 +8573,7 @@ async function storeChunks(
                     !hitMaxIterations &&
                     !!currentToolCalls &&
                     currentToolCalls.length > 0 &&
-                    Date.now() - runWallClockStart >= MAX_RUN_WALL_CLOCK_MS
+                    Date.now() - runWallClockStart >= maxRunWallClockMs
                 if (hitMaxIterations || hitTimeBudget) {
                     await flushPendingUpdate() // Flush any pending updates first
                     console.warn('🔧 NATIVE TOOL CALL: Tool loop stopped by guardrail', {
@@ -8576,6 +8581,7 @@ async function storeChunks(
                         hitTimeBudget,
                         toolCallIteration,
                         maxIterations: MAX_NATIVE_TOOL_CALL_ITERATIONS,
+                        maxRunWallClockMs,
                         elapsedMs: Date.now() - runWallClockStart,
                     })
                     const guardrailMessage = hitTimeBudget
