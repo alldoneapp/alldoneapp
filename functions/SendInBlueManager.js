@@ -221,9 +221,15 @@ const getTemplateIdWhenSingUp = async (admin, user) => {
 
 const sendEmailToNewSignUpUser = async (admin, user) => {
     const templateId = await getTemplateIdWhenSingUp(admin, user)
+    // New user docs are written with `ignoreUndefinedProperties: true`, so when the auth provider
+    // returns no name/email (or an anonymous user is upgraded) these fields are simply absent on the
+    // doc. Without fallbacks the template interpolates the literal string "undefined", producing the
+    // "undefined [undefined] has just signed up" notification. Coalesce to readable placeholders.
+    const displayName = user.displayName || 'Unknown user'
+    const email = user.email || 'no email'
     const htmlToSend = templateId
-        ? `<p><b>${user.displayName}</b> [${user.email}] has just signed up in <b>${firebaseConfig.app_name}.</b> TemplateId:<b>${templateId}</b></p>`
-        : `<p><b>${user.displayName}</b> [${user.email}] has just signed up in <b>${firebaseConfig.app_name}</b></p>`
+        ? `<p><b>${displayName}</b> [${email}] has just signed up in <b>${firebaseConfig.app_name}.</b> TemplateId:<b>${templateId}</b></p>`
+        : `<p><b>${displayName}</b> [${email}] has just signed up in <b>${firebaseConfig.app_name}</b></p>`
 
     let sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail()
     sendSmtpEmail = {
