@@ -109,7 +109,7 @@ function buildVmChatLink(projectId, objectType, objectId) {
 }
 
 async function resolveVmCompletionFollowers(pendingWebhook) {
-    const { projectId, objectType = 'tasks', objectId, isPublicFor = [] } = pendingWebhook
+    const { projectId, objectType = 'tasks', objectId, assistantId, isPublicFor = [] } = pendingWebhook
     let followerIds = []
     try {
         const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
@@ -126,7 +126,9 @@ async function resolveVmCompletionFollowers(pendingWebhook) {
         ? followerIds
         : followerIds.filter(followerId => !Array.isArray(isPublicFor) || isPublicFor.includes(followerId))
 
-    return uniqueDefined([...(visibleFollowerIds || []), ...(pendingWebhook.userIdsToNotify || [])])
+    return uniqueDefined([...(visibleFollowerIds || []), ...(pendingWebhook.userIdsToNotify || [])]).filter(
+        followerId => followerId !== assistantId
+    )
 }
 
 async function applyVmCompletionMetadata(pendingWebhook, commentId, text) {

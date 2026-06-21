@@ -537,6 +537,38 @@ describe('VM completion chat metadata', () => {
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
     })
+
+    test('does not treat the assistant as a user when it appears in the follower list', async () => {
+        mockGetObjectFollowersIds.mockResolvedValue(['assistant-1', 'user-1', 'user-2'])
+        const { transaction, refs } = createFirestoreMock()
+
+        const result = await __private__.applyVmCompletionMetadata(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+            },
+            'comment-1',
+            'Finished VM result'
+        )
+
+        expect(result.followerIds).toEqual(['user-1', 'user-2'])
+        expect(transaction.set).not.toHaveBeenCalledWith(
+            refs.get('users/assistant-1'),
+            expect.anything(),
+            expect.anything()
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('emailNotifications/task-1'),
+            expect.objectContaining({ userIds: ['user-1', 'user-2'] }),
+            { merge: true }
+        )
+    })
 })
 
 describe('VM runner WhatsApp notifications', () => {
