@@ -48,11 +48,15 @@ const generateUser = async (firebaseUser, projectId) => {
     const { initialUrl } = store.getState()
     const { uid: userId, email, displayName, photoURL } = firebaseUser
 
+    // Coalesce identity fields: the auth provider (e.g. a Google One-Tap credential without
+    // name/email claims) can return undefined/null here. Firestore runs with
+    // ignoreUndefinedProperties:true, so an undefined value would be dropped from users/{uid}
+    // entirely and later render as the literal "undefined" in the signup notification email.
     const user = getNewDefaultUser({
         uid: userId,
-        displayName,
-        email,
-        photoURL,
+        displayName: displayName || '',
+        email: email || '',
+        photoURL: photoURL || '',
         singUpUrl: initialUrl,
         defaultProjectId: projectId,
         projectIds: [projectId],

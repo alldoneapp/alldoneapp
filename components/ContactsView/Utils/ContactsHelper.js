@@ -682,6 +682,16 @@ export const getUserPresentationDataInProject = (projectId, userId) => {
 
 export const getNewDefaultUser = (customData = {}) => {
     const dateNow = Date.now()
+    // Critical identity fields must never be persisted as undefined/null. Because customData is
+    // spread last (below) and Firestore runs with ignoreUndefinedProperties:true, an undefined
+    // displayName/email/photoURL coming from the caller would both overwrite the '' defaults here
+    // and then be dropped from the stored users/{uid} doc — surfacing later as the literal
+    // "undefined" in the signup notification email. Strip nullish identity fields so the safe
+    // defaults below survive, while preserving any real (incl. empty-string) value the caller set.
+    const sanitizedCustomData = { ...customData }
+    ;['displayName', 'email', 'photoURL'].forEach(field => {
+        if (sanitizedCustomData[field] == null) delete sanitizedCustomData[field]
+    })
     return {
         displayName: '',
         email: '',
@@ -764,7 +774,7 @@ export const getNewDefaultUser = (customData = {}) => {
         activeTaskProjectId: '',
         showAllProjectsByTime: false,
         lastAssistantCommentData: {},
-        ...customData,
+        ...sanitizedCustomData,
     }
 }
 
