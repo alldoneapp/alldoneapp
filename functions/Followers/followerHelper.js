@@ -47,8 +47,8 @@ async function addFollowerToChat(projectId, chatId, userId) {
     const doc = await db.doc(`chatObjects/${projectId}/chats/${chatId}`).get()
     if (doc.exists) {
         const chat = doc.data()
-        const { usersFollowing } = chat
-        if (!usersFollowing.includes(uid)) {
+        const usersFollowing = Array.isArray(chat.usersFollowing) ? chat.usersFollowing : []
+        if (!usersFollowing.includes(userId)) {
             await db.doc(`chatObjects/${projectId}/chats/${chatId}`).update({
                 usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
             })

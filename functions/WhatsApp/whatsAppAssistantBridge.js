@@ -443,11 +443,6 @@ async function collectStreamWithToolCalls(
 function enforceSafeTaskResponse(responseText, toolEvidence) {
     if (!responseText) return responseText
 
-    if (containsUndefinedPlaceholders(responseText)) {
-        console.warn('WhatsApp: Blocking assistant response with undefined placeholders')
-        return TASK_CREATION_FAILURE_MESSAGE
-    }
-
     const createTaskEvidence = toolEvidence?.createTask
     if (createTaskEvidence?.called && !createTaskEvidence?.succeeded) {
         console.warn('WhatsApp: Blocking assistant task success message due to missing create_task IDs', {
@@ -463,11 +458,6 @@ function enforceSafeTaskResponse(responseText, toolEvidence) {
     }
 
     return responseText
-}
-
-function containsUndefinedPlaceholders(text) {
-    if (!text) return false
-    return /\bundefined\b/i.test(text)
 }
 
 function mentionsTaskCreation(text) {

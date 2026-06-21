@@ -157,6 +157,22 @@ describe('WhatsApp assistant attachment handoff', () => {
         expect(storeAssistantMessageInTopic).toHaveBeenCalled()
     })
 
+    test('preserves legitimate response text containing undefined values', async () => {
+        const responseText = 'The signup notification contained “undefined [undefined]”.'
+        const response = await collectStreamWithToolCalls(
+            createAsyncStream([{ content: responseText }]),
+            [['user', 'Why does the notification contain undefined values?']],
+            'MODEL_GPT4O',
+            'TEMPERATURE_NORMAL',
+            [],
+            'project-1',
+            'assistant-1',
+            'user-1'
+        )
+
+        expect(response).toBe(responseText)
+    })
+
     test('passes multimodal current-message images through to the model context', async () => {
         getUserData.mockResolvedValue({ gold: 10, language: 'en' })
         assistantHelper.getAssistantForChat.mockResolvedValue({
