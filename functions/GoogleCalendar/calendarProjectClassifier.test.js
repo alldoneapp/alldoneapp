@@ -225,7 +225,7 @@ describe('calendarProjectClassifier', () => {
         )
     })
 
-    test('falls back to no match when the retry is still inconsistent', async () => {
+    test('trusts the stronger retry when its configured project id is valid and above threshold', async () => {
         const create = jest
             .fn()
             .mockResolvedValueOnce({
@@ -251,7 +251,7 @@ describe('calendarProjectClassifier', () => {
                             content: JSON.stringify({
                                 matched: true,
                                 projectId: 'family-project',
-                                projectName: 'Familie',
+                                projectName: 'JTL Software - Project Juno',
                                 confidence: 0.86,
                                 reasoning: 'JTL Software - Project Juno still seems relevant.',
                             }),
@@ -277,9 +277,74 @@ describe('calendarProjectClassifier', () => {
         expect(create).toHaveBeenCalledTimes(2)
         expect(result).toEqual(
             expect.objectContaining({
+                matched: true,
+                projectId: 'family-project',
+                projectName: 'Familie',
+                confidence: 0.86,
+                reasoning: 'JTL Software - Project Juno still seems relevant.',
+                usage: expect.objectContaining({
+                    retriedAfterInconsistentResult: true,
+                    auditModel: 'gpt-5.5',
+                }),
+            })
+        )
+    })
+
+    test('still rejects an invalid project id from the stronger retry', async () => {
+        const create = jest
+            .fn()
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                matched: true,
+                                projectId: 'family-project',
+                                projectName: 'Familie',
+                                confidence: 0.86,
+                                reasoning: 'The event belongs to JTL.',
+                            }),
+                        },
+                    },
+                ],
+                usage: { total_tokens: 100, prompt_tokens: 80, completion_tokens: 20 },
+            })
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                matched: true,
+                                projectId: 'invented-project',
+                                projectName: 'Invented project',
+                                confidence: 0.95,
+                                reasoning: 'This project seems relevant.',
+                            }),
+                        },
+                    },
+                ],
+                usage: { total_tokens: 80, prompt_tokens: 65, completion_tokens: 15 },
+            })
+        assistantHelper.getCachedEnvFunctions.mockReturnValue({ OPEN_AI_KEY: 'key' })
+        assistantHelper.getOpenAIClient.mockReturnValue({ chat: { completions: { create } } })
+
+        const result = await classifyCalendarEventProject({
+            config: {
+                prompt: 'Route events',
+                model: 'MODEL_GPT5_4_NANO',
+                confidenceThreshold: 0.7,
+            },
+            event: { id: 'event-1', summary: 'Partner Conferenz on Cologne' },
+            projectDefinitions,
+            calendarEmail: 'me@example.com',
+        })
+
+        expect(create).toHaveBeenCalledTimes(2)
+        expect(result).toEqual(
+            expect.objectContaining({
                 matched: false,
                 projectId: null,
-                reasoning: 'Classifier returned inconsistent project routing details.',
+                confidence: 0.95,
             })
         )
     })

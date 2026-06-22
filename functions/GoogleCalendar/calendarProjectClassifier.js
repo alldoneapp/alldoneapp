@@ -118,7 +118,8 @@ function reasoningMentionsDifferentProject(reasoning = '', selectedProjectId = '
 function coerceCalendarProjectResult(
     result,
     projectDefinitionsOrIds = [],
-    confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
+    confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD,
+    { enforceConsistency = true } = {}
 ) {
     const projectDefinitions = normalizeProjectDefinitions(projectDefinitionsOrIds)
     const projectDefinitionById = new Map(projectDefinitions.map(project => [project.projectId, project]))
@@ -136,13 +137,15 @@ function coerceCalendarProjectResult(
         normalizeForProjectComparison(projectName) !== normalizeForProjectComparison(expectedProjectName)
     const reasoningMismatch = matched && reasoningMentionsDifferentProject(reasoning, projectId, projectDefinitions)
 
-    if (!matched || confidence < confidenceThreshold || projectNameMismatch || reasoningMismatch) {
+    const inconsistent = projectNameMismatch || reasoningMismatch
+
+    if (!matched || confidence < confidenceThreshold || (enforceConsistency && inconsistent)) {
         return {
             matched: false,
             projectId: null,
             confidence,
             reasoning:
-                projectNameMismatch || reasoningMismatch
+                enforceConsistency && inconsistent
                     ? INCONSISTENT_ROUTING_REASON
                     : reasoning || 'No active project clearly matched.',
             usage,
@@ -313,6 +316,9 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
         })
     )
 
+    // The repair pass uses the stronger consistency model and is the final adjudicator.
+    // Continue to enforce explicit no-match, configured project IDs, and the confidence
+    // threshold, but do not let the lightweight name/token heuristic overrule it again.
     return coerceCalendarProjectResult(
         {
             ...repairCompletion.parsed,
@@ -326,7 +332,8 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
             },
         },
         definitions,
-        confidenceThreshold
+        confidenceThreshold,
+        { enforceConsistency: false }
     )
 }
 
