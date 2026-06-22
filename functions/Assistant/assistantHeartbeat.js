@@ -242,9 +242,10 @@ function getTimestampMillis(value) {
 function hasCompletedHeartbeatToday(assistant, userId, userData, now = Date.now()) {
     const { startOfDay, endOfDay } = getUserLocalDayBounds(userData, now)
     const lastExecuted = getTimestampMillis(assistant.heartbeatLastExecutedByUser?.[userId])
-    const lastSilentOk = getTimestampMillis(assistant.heartbeatLastSilentOkByUser?.[userId])
 
-    return [lastExecuted, lastSilentOk].some(timestamp => timestamp >= startOfDay && timestamp <= endOfDay)
+    // HEARTBEAT_OK is only a silent evaluation result. Keep using the initial,
+    // higher chance until the assistant produces a substantive heartbeat.
+    return lastExecuted >= startOfDay && lastExecuted <= endOfDay
 }
 
 async function reserveHeartbeatInsufficientGoldNotice(userId, now = Date.now()) {

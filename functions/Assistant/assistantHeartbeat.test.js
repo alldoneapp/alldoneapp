@@ -360,7 +360,7 @@ describe('assistant heartbeat reply-aware execution chance', () => {
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
 
-    test('treats a silent OK as the first completed heartbeat of the day', async () => {
+    test('keeps using the higher chance after a silent OK', async () => {
         admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
             ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
             heartbeatLastSilentOkByUser: { 'user-1': 999500000 },
@@ -369,7 +369,8 @@ describe('assistant heartbeat reply-aware execution chance', () => {
 
         await checkAndExecuteHeartbeats()
 
-        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
     })
 
     test('honors a no-reply chance higher than the replied chance', async () => {
