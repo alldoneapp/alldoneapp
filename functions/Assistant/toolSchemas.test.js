@@ -441,6 +441,18 @@ describe('Update note assistant tool schema', () => {
         ])
         expect(properties.edits.items.properties.occurrence.type).toBe('number')
     })
+
+    test('directs additive summaries to prepend mode and reserves patch mode for small edits', () => {
+        const tool = toolSchemas.update_note.function
+        const properties = tool.parameters.properties
+
+        expect(tool.description).toContain('note summary')
+        expect(tool.description).toContain('use the default prepend mode')
+        expect(tool.description).toContain('Reserve mode "patch" for small, specific edits')
+        expect(properties.content.description).toContain('note summaries')
+        expect(properties.mode.description).toContain('Use "patch" only for small, exact edits')
+        expect(properties.edits.description).toContain('not for adding a summary')
+    })
 })
 
 describe('Update contact assistant tool schema', () => {

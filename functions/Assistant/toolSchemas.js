@@ -652,7 +652,7 @@ const toolSchemas = {
         function: {
             name: 'update_note',
             description:
-                'Updates an existing note by searching for it by note title or ID, or by targeting the note linked to a contact via contact ID, name, or email. Defaults to prepending new content with a date stamp. Use mode "patch" with deterministic edits to safely rewrite exact text or sections without first reading the note. Patch mode refuses missing or ambiguous anchors and never performs full-note replacement.',
+                'Updates an existing note by searching for it by note title or ID, or by targeting the note linked to a contact via contact ID, name, or email. When adding new material such as a note summary, meeting recap, analysis, or follow-up, use the default prepend mode and pass the complete new material in content. Reserve mode "patch" for small, specific edits to existing text or a narrowly identified section. Patch mode refuses missing or ambiguous anchors and never performs full-note replacement.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -691,7 +691,7 @@ const toolSchemas = {
                     content: {
                         type: 'string',
                         description:
-                            'New content to prepend to the note when mode is omitted or "prepend" (date stamp will be added automatically, markdown supported). Do not use this for mode "patch"; use edits instead.',
+                            'Complete new material to prepend to the note when mode is omitted or "prepend" (date stamp will be added automatically, markdown supported). Use this for additions such as note summaries, meeting recaps, analyses, and follow-ups. Do not use patch mode to add this kind of content.',
                     },
                     title: {
                         type: 'string',
@@ -701,12 +701,12 @@ const toolSchemas = {
                         type: 'string',
                         enum: ['prepend', 'patch'],
                         description:
-                            'Optional update mode. Defaults to "prepend". Use "patch" for exact, safe partial rewrites using edits.',
+                            'Optional update mode. Defaults to "prepend" and should normally be used when adding content, including summaries and recaps. Use "patch" only for small, exact edits to existing text or a narrowly identified section.',
                     },
                     edits: {
                         type: 'array',
                         description:
-                            'Required when mode is "patch". Edits are applied in order and the whole patch is rejected if any edit has a missing or ambiguous anchor.',
+                            'Required when mode is "patch". Use only for small, specific changes to existing content, not for adding a summary or other substantial new material. Edits are applied in order and the whole patch is rejected if any edit has a missing or ambiguous anchor.',
                         items: {
                             type: 'object',
                             properties: {
