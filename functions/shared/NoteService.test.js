@@ -410,3 +410,81 @@ describe('NoteService patch storage updates', () => {
         )
     })
 })
+
+describe('NoteService feed persistence', () => {
+    test('loads project users before creating note feeds so notifications have recipients', async () => {
+        const createNoteCreatedFeed = jest.fn(async () => {})
+        const createNoteFollowedFeed = jest.fn(async () => {})
+        jest.doMock('../Feeds/notesFeeds', () => ({
+            createNoteCreatedFeed,
+            createNoteFollowedFeed,
+        }))
+        const globalState = require('../GlobalState/globalState')
+        const loadFeedsGlobalStateSpy = jest.spyOn(globalState, 'loadFeedsGlobalState')
+        const noteSet = jest.fn(async () => {})
+        const projectGet = jest.fn(async () => ({
+            exists: true,
+            data: () => ({
+                userIds: ['user-1', 'user-2'],
+                name: 'Project',
+            }),
+        }))
+        const service = createService({
+            enableFeeds: true,
+            database: {
+                collection: jest.fn(() => ({
+                    doc: jest.fn(() => ({
+                        set: noteSet,
+                    })),
+                })),
+                doc: jest.fn(path => ({
+                    get: path === 'projects/project-1' ? projectGet : jest.fn(async () => ({ exists: false })),
+                })),
+                batch: jest.fn(() => ({
+                    set: jest.fn(),
+                    commit: jest.fn(async () => {}),
+                })),
+            },
+        })
+
+        await service.persistNote(
+            {
+                note: {
+                    id: 'note-1',
+                    title: 'assistant note',
+                    extendedTitle: 'Assistant note',
+                    userId: 'user-1',
+                    isPublicFor: [0],
+                    stickyData: { days: 0 },
+                },
+                noteContent: Buffer.alloc(0),
+                feedData: { feedId: 'feed-1' },
+                noteId: 'note-1',
+                success: true,
+            },
+            {
+                projectId: 'project-1',
+                feedUser: { uid: 'assistant-1', displayName: 'Anna' },
+            }
+        )
+
+        expect(loadFeedsGlobalStateSpy).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.anything(),
+            expect.objectContaining({ uid: 'assistant-1' }),
+            expect.objectContaining({ id: 'project-1', userIds: ['user-1', 'user-2'] }),
+            [],
+            null
+        )
+        expect(createNoteCreatedFeed).toHaveBeenCalledWith(
+            'project-1',
+            expect.objectContaining({ id: 'note-1' }),
+            'note-1',
+            expect.anything(),
+            expect.objectContaining({ uid: 'assistant-1' }),
+            true
+        )
+        expect(createNoteFollowedFeed).toHaveBeenCalled()
+        jest.dontMock('../Feeds/notesFeeds')
+    })
+})

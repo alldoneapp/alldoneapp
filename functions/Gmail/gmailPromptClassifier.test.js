@@ -144,4 +144,39 @@ describe('gmailPromptClassifier', () => {
         )
         expect(result.consistencyCheck).toBeUndefined()
     })
+
+    test('does not audit no-match results when label names are only mentioned as non-matches', async () => {
+        mockCreateCompletion.mockResolvedValueOnce(
+            mockCompletion({
+                matched: false,
+                labelKey: null,
+                confidence: 0.9,
+                reasoning:
+                    'This is a generic newsletter and does not mention any configured active project such as Alldone Product, Privat, or JTL Software - Project Juno.',
+            })
+        )
+
+        const result = await classifyGmailMessage({
+            config: {
+                prompt: 'Classify by active project.',
+                model: 'MODEL_GPT5_4_NANO',
+                confidenceThreshold: 0.7,
+                labelDefinitions: [
+                    { key: 'project_product', gmailLabelName: 'Alldone Product' },
+                    { key: 'project_jtl', gmailLabelName: 'JTL Software - Project Juno' },
+                ],
+            },
+            message: { subject: 'Newsletter', direction: 'incoming' },
+        })
+
+        expect(mockCreateCompletion).toHaveBeenCalledTimes(1)
+        expect(result).toEqual(
+            expect.objectContaining({
+                matched: false,
+                labelKey: null,
+                confidence: 0.9,
+            })
+        )
+        expect(result.consistencyCheck).toBeUndefined()
+    })
 })

@@ -630,6 +630,8 @@ class NoteService {
             // Create feeds using the same approach as frontend
             if (feedData && this.options.enableFeeds && this.options.isCloudFunction) {
                 try {
+                    const admin = require('firebase-admin')
+                    const { loadFeedsGlobalState } = require('../GlobalState/globalState')
                     const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
                     const notesFeeds = require('../Feeds/notesFeeds')
 
@@ -638,6 +640,16 @@ class NoteService {
 
                         const feedsBatch = new BatchWrapper(this.options.database)
                         const creator = feedUser || { uid: note.userId, id: note.userId }
+                        const projectSnap = await this.options.database.doc(`projects/${finalProjectId}`).get()
+                        const rawProjectData = projectSnap.exists ? projectSnap.data() : {}
+                        const projectData = {
+                            ...rawProjectData,
+                            userIds: Array.isArray(rawProjectData.userIds) ? rawProjectData.userIds : [],
+                        }
+                        loadFeedsGlobalState(admin, admin, creator, { ...projectData, id: finalProjectId }, [], null)
+                        if (feedsBatch.setProjectContext) {
+                            feedsBatch.setProjectContext(finalProjectId)
+                        }
                         const initialFollowers = Array.from(new Set([creator.uid, note.userId].filter(Boolean)))
                         feedsBatch.feedChainFollowersIds = {
                             ...(feedsBatch.feedChainFollowersIds || {}),

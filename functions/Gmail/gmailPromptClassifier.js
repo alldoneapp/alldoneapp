@@ -104,6 +104,22 @@ function buildDecisionGuidance(confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOL
     ].join('\n')
 }
 
+function noMatchReasoningSuggestsPositiveMatch(reasoning = '') {
+    const text = String(reasoning || '').toLowerCase()
+    if (!text.trim()) return false
+
+    return [
+        /\bexplicitly (titled|mentions|references|names)\b/,
+        /\b(sender|email) is from\b/,
+        /\bbody confirms\b/,
+        /\blink points to\b/,
+        /\bclearly (belongs|relates|matches|fits|aligns)\b/,
+        /\b(strong|specific) (match|evidence)\b/,
+        /\bproject-specific\b.*\b(link|url|reference)\b/,
+        /\bunder the\b.*\bproject id\b/,
+    ].some(pattern => pattern.test(text))
+}
+
 function extractUsage(completion) {
     if (!completion?.usage) return null
     return {
@@ -244,11 +260,14 @@ async function classifyGmailMessage({ config, message }) {
     // Self-consistency check: when the model's reasoning references a configured label that is
     // inconsistent with the normalized outcome, run a second pass to reconcile. This covers both
     // matched-but-wrong-key and no-match-with-project-reasoning results.
-    const crossReference = reasoningReferencesDifferentOption(
-        firstResult.reasoning,
-        firstResult.labelKey,
-        buildConsistencyOptionsFromLabels(labelDefinitions)
-    )
+    const shouldInspectReasoning = firstResult.matched || noMatchReasoningSuggestsPositiveMatch(firstResult.reasoning)
+    const crossReference = shouldInspectReasoning
+        ? reasoningReferencesDifferentOption(
+              firstResult.reasoning,
+              firstResult.labelKey,
+              buildConsistencyOptionsFromLabels(labelDefinitions)
+          )
+        : null
     if (!crossReference) {
         return firstResult
     }
