@@ -71,7 +71,7 @@ export default function RichCommentModal({
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
     const commentListRef = useRef()
-    const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(true)
+    const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(false)
     const [initialComment, setInitialComment] = useState(currentComment || '')
     const messages = useGetMessages(
         true,
@@ -128,14 +128,10 @@ export default function RichCommentModal({
             if (data && data.object) {
                 const threadEnabled = data.object.isAssistantEnabled === true
                 setIsThreadAssistantEnabled(threadEnabled)
-                if (threadEnabled) {
-                    dispatch(setAssistantEnabled(true))
-                } else {
-                    dispatch(setAssistantEnabled(false))
-                }
+                dispatch(setAssistantEnabled(threadEnabled))
             } else {
-                setIsThreadAssistantEnabled(true)
-                dispatch(setAssistantEnabled(true))
+                setIsThreadAssistantEnabled(false)
+                dispatch(setAssistantEnabled(false))
             }
         })
         return () => {
@@ -152,12 +148,13 @@ export default function RichCommentModal({
 
     const updateObjectState = updatedObj => {
         if (updatedObj && updatedObj.isAssistantEnabled !== undefined) {
-            setIsThreadAssistantEnabled(updatedObj.isAssistantEnabled)
+            setIsThreadAssistantEnabled(updatedObj.isAssistantEnabled === true)
         }
     }
 
     const done = ({ comment, mentions, privacy, hasKarma }) => {
         const clientSubmissionTime = Date.now()
+        const shouldTriggerAssistant = isThreadAssistantEnabled === true
         console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
             timestamp: new Date().toISOString(),
             submissionTime: clientSubmissionTime,
@@ -166,24 +163,25 @@ export default function RichCommentModal({
             objectId,
             assistantId,
             assistantEnabled,
+            shouldTriggerAssistant,
             inTaskModal,
             commentLength: comment?.length,
         })
 
-        if (assistantEnabled && gold === 0) {
+        if (shouldTriggerAssistant && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
         } else {
-            if (assistantEnabled) setWaitingForBotAnswer(true)
+            if (shouldTriggerAssistant) setWaitingForBotAnswer(true)
 
             if (inTaskModal) {
-                processDone(comment.trim(), mentions, privacy, hasKarma, isThreadAssistantEnabled)
+                processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
                 console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
                     timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                 })
             } else {
                 updateNewAttachmentsData(projectId, comment).then(text => {
-                    processDone(text.trim(), mentions, privacy, hasKarma, isThreadAssistantEnabled)
+                    processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
                     console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
                         timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                     })
@@ -194,7 +192,7 @@ export default function RichCommentModal({
                 editor.setText('')
                 editor.setSelection(0)
             }
-            if (!inNotesEditor && !assistantEnabled) {
+            if (!inNotesEditor && !shouldTriggerAssistant) {
                 closeModal()
             }
         }
@@ -221,6 +219,12 @@ export default function RichCommentModal({
         const hasLoadingState = topComment?.isLoading === true
         if (hasVisibleText || hasLoadingState) setWaitingForBotAnswer(false)
     }, [lastMessageid])
+
+    useEffect(() => {
+        if (!isThreadAssistantEnabled) {
+            setWaitingForBotAnswer(false)
+        }
+    }, [isThreadAssistantEnabled])
 
     useEffect(() => {
         if (commentsLengthRef) {
