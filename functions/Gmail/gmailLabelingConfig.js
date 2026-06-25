@@ -104,7 +104,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         gmailEmail,
         promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
         prompt:
-            'Read each Gmail message and assign exactly one of the configured Gmail labels when it clearly matches. Messages may be incoming or outgoing depending on the rule scope. Prefer precision over recall. If no label clearly matches, return no match. Focus on participants, subject, deadlines, action requests, and business relevance.',
+            'Read each Gmail message and assign exactly one of the configured Gmail labels when it clearly matches. Messages may be incoming or outgoing depending on the rule scope. Prefer precision over recall. If no label clearly matches at the configured confidence threshold, return no match. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured label, client, sender domain, or project-specific link. Focus on participants, subject, deadlines, action requests, decisions, deliverables, and business relevance.',
         model: DEFAULT_GMAIL_LABELING_MODEL,
         processUnreadOnly: true,
         onlyInbox: true,

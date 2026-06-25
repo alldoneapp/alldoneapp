@@ -878,6 +878,9 @@ export default function GmailLabelingSettings({
                                     placeholder={translate('Gmail confidence threshold placeholder')}
                                     placeholderTextColor={colors.Text03}
                                 />
+                                <Text style={localStyles.helperText}>
+                                    {translate('Gmail confidence threshold description')}
+                                </Text>
                             </View>
 
                             <SyncSummary state={syncState} result={syncResult} />

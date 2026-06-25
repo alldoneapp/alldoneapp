@@ -1347,6 +1347,7 @@
     "GmailLookbackDaysDescription": "Dies steuert das Gmail-neuer_than-Fenster bei Bootstrap-Neusynchronisierungen. Es werden nur E-Mails der letzten 1 bis 30 Tage geprüft. Standard sind 7 Tage, damit nicht unnötig Tokens für ältere E-Mails verbraucht werden.",
     "Confidence threshold": "Konfidenzschwelle",
     "Gmail confidence threshold placeholder": "0.7",
+    "Gmail confidence threshold description": "Wird im Klassifizierungs-Prompt verwendet und nach der Antwort erzwungen. Treffer unterhalb dieser Konfidenz werden zu Kein Treffer.",
     "Save Gmail labeling settings": "Einstellungen speichern",
     "Run Gmail sync now": "Synchronisierung jetzt ausführen",
     "Syncing": "Synchronisiere",

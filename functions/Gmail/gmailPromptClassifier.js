@@ -9,7 +9,7 @@ const {
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
+    'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1 and must describe confidence in the returned decision.'
 
 // Second-pass auditor used when the first-pass reasoning looks inconsistent with the
 // label it chose (e.g. it chose the "Bechtle" label but the reasoning describes "JTL").
@@ -87,6 +87,23 @@ function coerceClassifierResult(result, validLabelKeys = [], confidenceThreshold
     }
 }
 
+function normalizeConfidenceThreshold(value) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 1) : DEFAULT_CONFIDENCE_THRESHOLD
+}
+
+function buildDecisionGuidance(confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD) {
+    return [
+        `Configured confidence threshold: ${confidenceThreshold}.`,
+        `Return matched:true only when the best configured label's confidence is at least ${confidenceThreshold}.`,
+        'For matched:true, confidence means confidence that the returned labelKey is the correct configured label.',
+        'For matched:false, confidence means confidence that no configured label matches.',
+        'Use high no-match confidence only when the reasoning explains why the email is unrelated to every configured label.',
+        'Do not return matched:false when your reasoning identifies a configured label, project name, client name, sender domain, or project-specific link. In that case return matched:true with that labelKey.',
+        'Explicit project names, client names, sender domains, subjects, body references, deadlines, action requests, deliverables, or links to project-specific Alldone URLs are strong match evidence.',
+    ].join('\n')
+}
+
 function extractUsage(completion) {
     if (!completion?.usage) return null
     return {
@@ -154,8 +171,10 @@ async function verifyClassificationConsistency(
         `Prompt:\n${config.prompt}\n\n` +
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
         `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
+        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
         `First-pass decision:\n${JSON.stringify(
             {
+                matched: firstResult.matched,
                 labelKey: firstResult.labelKey,
                 confidence: firstResult.confidence,
                 reasoning: firstResult.reasoning,
@@ -183,9 +202,7 @@ async function classifyGmailMessage({ config, message }) {
     const openAiKey = envFunctions?.OPEN_AI_KEY
     const labelDefinitions = Array.isArray(config?.labelDefinitions) ? config.labelDefinitions : []
     const validLabelKeys = labelDefinitions.map(label => label.key)
-    const confidenceThreshold = Number.isFinite(config?.confidenceThreshold)
-        ? Number(config.confidenceThreshold)
-        : DEFAULT_CONFIDENCE_THRESHOLD
+    const confidenceThreshold = normalizeConfidenceThreshold(config?.confidenceThreshold)
 
     if (!openAiKey || labelDefinitions.length === 0) {
         return {
@@ -212,6 +229,7 @@ async function classifyGmailMessage({ config, message }) {
         `Prompt:\n${config.prompt}\n\n` +
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
         `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
+        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
         'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"..."}. If no label matches clearly, return {"matched":false,"labelKey":null,"confidence":0.2,"reasoning":"..."}'
 
     const { parsed, usage: firstUsage } = await runClassifierCompletion(openai, {
@@ -223,14 +241,9 @@ async function classifyGmailMessage({ config, message }) {
 
     const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, validLabelKeys, confidenceThreshold)
 
-    // Self-consistency check: when the model matched a label but its own reasoning references a
-    // DIFFERENT configured label, run a second pass to reconcile. Correcting the labelKey here
-    // automatically re-routes everything downstream (applied Gmail label, selectedProjectId, and
-    // the follow-up task's project) because they are all derived from the chosen label definition.
-    if (!firstResult.matched) {
-        return firstResult
-    }
-
+    // Self-consistency check: when the model's reasoning references a configured label that is
+    // inconsistent with the normalized outcome, run a second pass to reconcile. This covers both
+    // matched-but-wrong-key and no-match-with-project-reasoning results.
     const crossReference = reasoningReferencesDifferentOption(
         firstResult.reasoning,
         firstResult.labelKey,

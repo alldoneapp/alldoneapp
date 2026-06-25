@@ -112,6 +112,8 @@ describe('GmailLabelingSettings helpers', () => {
         ])
 
         expect(preview.prompt).toContain('active Alldone project')
+        expect(preview.prompt).toContain('configured confidence threshold')
+        expect(preview.prompt).toContain('Do not return no match')
         expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)'])
         expect(preview.labelDefinitions[0].description).toContain('Website launch')
         expect(preview.labelDefinitions[0].description).not.toContain('Project description: Project Description')

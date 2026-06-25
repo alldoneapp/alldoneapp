@@ -1314,6 +1314,7 @@
     "GmailLookbackDaysDescription": "Esto controla la ventana newer_than de Gmail usada durante los reescaneos bootstrap. Solo se analizan correos de los últimos 1 a 30 días. El valor predeterminado es 7 días para no gastar demasiados tokens en correos antiguos.",
     "Confidence threshold": "Umbral de confianza",
     "Gmail confidence threshold placeholder": "0.7",
+    "Gmail confidence threshold description": "Se usa en el prompt del clasificador y se aplica después de la respuesta. Las coincidencias por debajo de esta confianza pasan a sin coincidencia.",
     "Save Gmail labeling settings": "Guardar configuración",
     "Run Gmail sync now": "Ejecutar sincronización ahora",
     "Syncing": "Sincronizando",

@@ -19,6 +19,14 @@ describe('gmailLabelingConfig', () => {
         expect(config.promptMode).toBe(GMAIL_LABELING_PROMPT_MODE_DEFAULT)
     })
 
+    test('default custom prompt explains threshold confidence semantics', () => {
+        const config = normalizeConfigInput('project-1', {})
+
+        expect(config.prompt).toContain('configured confidence threshold')
+        expect(config.prompt).toContain('Confidence for a match means confidence in the selected label')
+        expect(config.prompt).toContain('Do not return no match')
+    })
+
     test('normalizes valid prompt modes', () => {
         expect(normalizeConfigInput('project-1', { promptMode: 'custom' }).promptMode).toBe(
             GMAIL_LABELING_PROMPT_MODE_CUSTOM

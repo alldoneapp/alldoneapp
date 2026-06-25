@@ -1322,6 +1322,7 @@
     "GmailLookbackDaysDescription": "This controls the Gmail newer_than window used during bootstrap rescans. Only emails from the last 1 to 30 days are scanned. The default is 7 days to avoid wasting tokens on older email.",
     "Confidence threshold": "Confidence threshold",
     "Gmail confidence threshold placeholder": "0.7",
+    "Gmail confidence threshold description": "Used in the classifier prompt and enforced after the response. Matches below this confidence become no match.",
     "Save Gmail labeling settings": "Save settings",
     "Run Gmail sync now": "Run sync now",
     "Syncing": "Syncing",
