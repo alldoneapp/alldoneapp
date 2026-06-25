@@ -54,6 +54,10 @@ const localStyles = StyleSheet.create({
     closeButton: {
         alignItems: 'center',
         justifyContent: 'center',
+        width: 28,
+        height: 28,
+        borderRadius: 4,
+        backgroundColor: colors.Secondary300,
     },
     openChatButton: {
         marginRight: 8,
