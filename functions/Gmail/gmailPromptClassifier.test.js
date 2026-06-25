@@ -179,4 +179,54 @@ describe('gmailPromptClassifier', () => {
         )
         expect(result.consistencyCheck).toBeUndefined()
     })
+
+    test('audits no-match results when reasoning says a label aligns best', async () => {
+        mockCreateCompletion
+            .mockResolvedValueOnce(
+                mockCompletion({
+                    matched: false,
+                    labelKey: null,
+                    confidence: 0.74,
+                    reasoning:
+                        'The email is an incoming Qonto payment notification with accounting-related wording. This aligns best with the Alldone Business label.',
+                })
+            )
+            .mockResolvedValueOnce(
+                mockCompletion({
+                    matched: true,
+                    labelKey: 'project_business',
+                    confidence: 0.81,
+                    reasoning: 'The payment notification matches Alldone Business accounting work.',
+                })
+            )
+
+        const result = await classifyGmailMessage({
+            config: {
+                prompt: 'Classify by active project.',
+                model: 'MODEL_GPT5_4_NANO',
+                confidenceThreshold: 0.7,
+                labelDefinitions: [
+                    { key: 'project_business', gmailLabelName: 'Alldone Business' },
+                    { key: 'project_jtl', gmailLabelName: 'JTL Software - Project Juno' },
+                ],
+            },
+            message: { subject: 'Qonto payment notification', direction: 'incoming' },
+        })
+
+        expect(mockCreateCompletion).toHaveBeenCalledTimes(2)
+        expect(result).toEqual(
+            expect.objectContaining({
+                matched: true,
+                labelKey: 'project_business',
+                confidence: 0.81,
+                consistencyCheck: expect.objectContaining({
+                    ran: true,
+                    corrected: true,
+                    trigger: { otherKey: 'project_business', token: 'business' },
+                    originalLabelKey: null,
+                    originalConfidence: 0.74,
+                }),
+            })
+        )
+    })
 })

@@ -114,6 +114,8 @@ function noMatchReasoningSuggestsPositiveMatch(reasoning = '') {
         /\bbody confirms\b/,
         /\blink points to\b/,
         /\bclearly (belongs|relates|matches|fits|aligns)\b/,
+        /\baligns best with\b/,
+        /\bbest (fits|matches|aligns with)\b/,
         /\b(strong|specific) (match|evidence)\b/,
         /\bproject-specific\b.*\b(link|url|reference)\b/,
         /\bunder the\b.*\bproject id\b/,
