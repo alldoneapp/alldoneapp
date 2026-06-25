@@ -200,13 +200,13 @@ describe('serverSideGmailLabelingSync helpers', () => {
         ).toEqual(['alice@example.com', 'bob@example.com'])
     })
 
-    test('builds default active project labels with duplicate project names suffixed and follow-ups', () => {
+    test('builds default labels with duplicate project names suffixed, Ads, and project follow-ups', () => {
         const labels = buildDefaultActiveProjectLabelDefinitions([
             { id: 'project-a', name: 'Client', description: 'Project Description: Website launch' },
             { id: 'project-b', name: 'Client', description: '' },
         ])
 
-        expect(labels.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)'])
+        expect(labels.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)', 'Ads'])
         expect(labels[0].description).toContain('Website launch')
         expect(labels[0].description).not.toContain('Project description: Project Description')
         expect(labels[0].directionScope).toBe('both')
@@ -214,6 +214,17 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(labels[0].postLabelPrompt).toContain('Only if its an inbound email')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
+        expect(labels[2]).toEqual(
+            expect.objectContaining({
+                key: 'ads',
+                gmailLabelName: 'Ads',
+                directionScope: 'incoming',
+                autoArchive: false,
+                postLabelPrompt: '',
+            })
+        )
+        expect(labels[2].description).toContain('promotional')
+        expect(labels[2].description).toContain('Do not use this label for newsletters')
     })
 
     test('builds the default project follow-up prompt with the label name', () => {
@@ -269,14 +280,24 @@ describe('serverSideGmailLabelingSync helpers', () => {
             }
         )
 
-        expect(config.prompt).toContain('active Alldone project')
-        expect(config.labelDefinitions).toHaveLength(1)
+        expect(config.prompt).toContain('active Alldone project or the Ads label')
+        expect(config.prompt).toContain('do not use Ads for newsletters')
+        expect(config.labelDefinitions).toHaveLength(2)
         expect(config.labelDefinitions[0]).toEqual(
             expect.objectContaining({
                 gmailLabelName: 'Active Client',
                 autoArchive: false,
                 postLabelPrompt: expect.stringContaining('update_note'),
                 postLabelPromptDirectionScope: 'incoming',
+            })
+        )
+        expect(config.labelDefinitions[1]).toEqual(
+            expect.objectContaining({
+                key: 'ads',
+                gmailLabelName: 'Ads',
+                directionScope: 'incoming',
+                autoArchive: false,
+                postLabelPrompt: '',
             })
         )
     })

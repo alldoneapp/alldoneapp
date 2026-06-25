@@ -53,8 +53,17 @@ const GMAIL_LABELING_MIN_GOLD_TO_CLASSIFY = 1
 const DEFAULT_SYNC_INTERVAL_MINUTES = 5
 
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
-    'Classify each Gmail message into exactly one active Alldone project label when the message clearly belongs to that project. Use the project descriptions in the configured labels as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. Do not label general newsletters, spam, or unrelated messages unless they clearly mention a configured active project. Use the configured confidence threshold: only return a project match when the best label is at or above that threshold. Confidence for a match means confidence in the selected project label; confidence for no match means confidence that no configured project label matches. Do not return no match when your reasoning identifies a configured project, client, sender domain, or project-specific link; return the matching project label instead.'
+    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple project labels, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. Use Ads for promotional, spam, sales, marketing, or unsolicited commercial email, but do not use Ads for newsletters with useful or interesting content that the user intentionally subscribed to. Use the configured confidence threshold: only return a match when the best label is at or above that threshold. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; return the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
+const DEFAULT_ADS_LABEL_DEFINITION = {
+    key: 'ads',
+    gmailLabelName: 'Ads',
+    description:
+        'Use this label for promotional, spam, sales, marketing, or unsolicited commercial email. Do not use this label for newsletters with useful or interesting content that the user intentionally subscribed to.',
+    directionScope: GMAIL_DIRECTION_SCOPE_INCOMING,
+    autoArchive: false,
+    postLabelPrompt: '',
+}
 
 class GmailSyncLockedError extends Error {
     constructor(message) {
@@ -218,7 +227,7 @@ function buildDefaultProjectFollowUpPrompt(labelName = '') {
 function buildDefaultActiveProjectLabelDefinitions(projects = []) {
     const labelNames = getUniqueProjectLabelNames(projects)
 
-    return projects.map((project, index) => {
+    const projectLabels = projects.map((project, index) => {
         const gmailLabelName = labelNames[index]
         const projectKey = slugifyLabelKey(project.id || gmailLabelName) || `project_${index + 1}`
         return {
@@ -232,6 +241,8 @@ function buildDefaultActiveProjectLabelDefinitions(projects = []) {
             sourceProjectId: project.id || '',
         }
     })
+
+    return [...projectLabels, { ...DEFAULT_ADS_LABEL_DEFINITION }]
 }
 
 async function loadActiveProjectsForDefaultLabels(userData = {}) {

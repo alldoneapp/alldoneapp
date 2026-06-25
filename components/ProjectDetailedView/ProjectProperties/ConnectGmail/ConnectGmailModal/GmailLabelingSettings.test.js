@@ -104,17 +104,18 @@ describe('GmailLabelingSettings helpers', () => {
         expect(customDefaults.labelDefinitions[0].id).toContain('custom-default-')
     })
 
-    test('builds default project label preview with duplicate names suffixed and follow-ups', () => {
+    test('builds default label preview with project labels, Ads, and project follow-ups', () => {
         const preview = buildDefaultConfigPreviewFromProjects([
             { id: 'project-a', name: 'Client', description: 'Project Description: Website launch' },
             { id: 'project-b', name: 'Client', description: '' },
             { id: 'archived', name: 'Archived', active: false },
         ])
 
-        expect(preview.prompt).toContain('active Alldone project')
+        expect(preview.prompt).toContain('active Alldone project or the Ads label')
         expect(preview.prompt).toContain('configured confidence threshold')
         expect(preview.prompt).toContain('Do not return no match')
-        expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)'])
+        expect(preview.prompt).toContain('do not use Ads for newsletters')
+        expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)', 'Ads'])
         expect(preview.labelDefinitions[0].description).toContain('Website launch')
         expect(preview.labelDefinitions[0].description).not.toContain('Project description: Project Description')
         expect(preview.labelDefinitions[1].autoArchive).toBe(false)
@@ -122,6 +123,17 @@ describe('GmailLabelingSettings helpers', () => {
         expect(preview.labelDefinitions[1].postLabelPrompt).toContain('update_note')
         expect(preview.labelDefinitions[1].postLabelPrompt).toContain('Client (2)')
         expect(preview.labelDefinitions[1].postLabelPromptDirectionScope).toBe('incoming')
+        expect(preview.labelDefinitions[2]).toEqual(
+            expect.objectContaining({
+                key: 'ads',
+                gmailLabelName: 'Ads',
+                directionScope: 'incoming',
+                autoArchive: false,
+                postLabelPrompt: '',
+            })
+        )
+        expect(preview.labelDefinitions[2].description).toContain('promotional')
+        expect(preview.labelDefinitions[2].description).toContain('Do not use this label for newsletters')
     })
 
     test('builds default project follow-up prompt with the label name', () => {

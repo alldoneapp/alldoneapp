@@ -278,7 +278,7 @@ function DefaultLabelingPreview({ preview }) {
 
     return (
         <View style={localStyles.section}>
-            <Text style={localStyles.inputLabel}>Generated project prompt</Text>
+            <Text style={localStyles.inputLabel}>Generated default prompt</Text>
             <CustomTextInput3
                 containerStyle={[localStyles.input, localStyles.textArea, localStyles.multilineInput]}
                 initialTextExtended={preview?.prompt || ''}
@@ -294,7 +294,7 @@ function DefaultLabelingPreview({ preview }) {
                 keepBreakLines={true}
                 key={`gmail-default-prompt-${labelDefinitions.length}`}
             />
-            <Text style={localStyles.sectionTitle}>Generated project labels</Text>
+            <Text style={localStyles.sectionTitle}>Generated default labels</Text>
             {labelDefinitions.length > 0 ? (
                 labelDefinitions.map((label, index) => (
                     <View key={label.key || `${label.gmailLabelName}-${index}`} style={localStyles.previewLabelCard}>
