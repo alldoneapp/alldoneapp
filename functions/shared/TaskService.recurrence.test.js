@@ -1,4 +1,5 @@
 const { TaskService } = require('./TaskService')
+const { TASK_NAME_MAX_LENGTH } = require('./TaskValidator')
 
 describe('TaskService recurrence updates', () => {
     let taskService
@@ -65,5 +66,47 @@ describe('TaskService recurrence updates', () => {
                 recurrence: 'sometimes',
             })
         ).rejects.toThrow('Invalid recurrence')
+    })
+})
+
+describe('TaskService task name normalization', () => {
+    let taskService
+
+    beforeEach(async () => {
+        taskService = new TaskService({
+            enableFeeds: false,
+            idGenerator: () => 'task-1',
+        })
+        await taskService.initialize()
+    })
+
+    test('abbreviates task names that exceed the creation limit', async () => {
+        const longName = 'A'.repeat(TASK_NAME_MAX_LENGTH + 1)
+
+        const result = await taskService.createTask(
+            {
+                name: longName,
+                userId: 'user-1',
+                projectId: 'project-1',
+            },
+            {
+                userId: 'user-1',
+                projectId: 'project-1',
+            }
+        )
+
+        expect(result.task.name).toHaveLength(TASK_NAME_MAX_LENGTH)
+        expect(result.task.name.endsWith('...')).toBe(true)
+        expect(result.task.extendedName).toBe(result.task.name)
+    })
+
+    test('still rejects empty task names', async () => {
+        await expect(
+            taskService.createTask({
+                name: ' '.repeat(TASK_NAME_MAX_LENGTH + 1),
+                userId: 'user-1',
+                projectId: 'project-1',
+            })
+        ).rejects.toThrow('Task name cannot be empty')
     })
 })

@@ -5,6 +5,15 @@
  * across all platforms and contexts (MCP Server, Assistant, Frontend, Cloud Functions).
  */
 
+const TASK_NAME_MAX_LENGTH = 500
+
+function abbreviateTaskName(name, maxLength = TASK_NAME_MAX_LENGTH) {
+    if (typeof name !== 'string' || name.length <= maxLength) return name
+    if (!name.trim()) return name
+    if (maxLength <= 3) return name.slice(0, maxLength)
+    return `${name.slice(0, maxLength - 3).trimEnd()}...`
+}
+
 /**
  * Validates required task creation parameters
  * @param {Object} params - Task parameters to validate
@@ -26,8 +35,8 @@ function validateRequiredFields(params) {
     if (!name.trim()) {
         throw new Error('Task name cannot be empty')
     }
-    if (name.length > 500) {
-        throw new Error('Task name cannot exceed 500 characters')
+    if (name.length > TASK_NAME_MAX_LENGTH) {
+        throw new Error(`Task name cannot exceed ${TASK_NAME_MAX_LENGTH} characters`)
     }
 
     // User ID validation
@@ -274,6 +283,8 @@ function validateTask(params, context = null) {
 
 // CommonJS export - works with Node.js and can be converted by bundlers
 module.exports = {
+    TASK_NAME_MAX_LENGTH,
+    abbreviateTaskName,
     validateRequiredFields,
     validateOptionalFields,
     validateCreationContext,

@@ -4,7 +4,7 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 
-export default function CloseButton({ closeModal, comments }) {
+export default function CloseButton({ closeModal, comments, openChat }) {
     const onKeyDown = event => {
         const { key } = event
 
@@ -22,6 +22,15 @@ export default function CloseButton({ closeModal, comments }) {
 
     return (
         <View style={localStyles.closeContainer}>
+            {openChat && (
+                <TouchableOpacity
+                    accessibilityLabel={'open-chat'}
+                    style={[localStyles.closeButton, localStyles.openChatButton]}
+                    onPress={openChat}
+                >
+                    <Icon accessibilityLabel={'open-chat'} name="maximize-2" size={20} color={colors.Text03} />
+                </TouchableOpacity>
+            )}
             <TouchableOpacity
                 disabled={!comments}
                 accessibilityLabel={'social-text-block'}
@@ -39,9 +48,14 @@ const localStyles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         right: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     closeButton: {
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    openChatButton: {
+        marginRight: 8,
     },
 })

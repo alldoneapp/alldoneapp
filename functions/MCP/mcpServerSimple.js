@@ -2870,13 +2870,14 @@ class AlldoneSimpleMCPServer {
                         {
                             name: 'create_task',
                             description:
-                                'Create a new task in the current project (requires OAuth 2.0 Bearer token authentication)',
+                                'Create a new task in the current project. Use a concise task name; very long names are automatically abbreviated by the server. Requires OAuth 2.0 Bearer token authentication.',
                             inputSchema: {
                                 type: 'object',
                                 properties: {
                                     name: {
                                         type: 'string',
-                                        description: 'Task name (required)',
+                                        description:
+                                            'Task name (required). Use a concise title; very long names are automatically abbreviated by the server.',
                                     },
                                     description: {
                                         type: 'string',

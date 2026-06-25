@@ -228,12 +228,16 @@ class TaskService {
         await this.ensureInitialized()
 
         const { feedUser, ...taskParams } = params
+        const normalizedTaskParams = {
+            ...taskParams,
+            name: TaskValidator.abbreviateTaskName(taskParams.name),
+        }
 
         // Step 1: Validate parameters
-        await this.validateTaskCreation(taskParams, context)
+        await this.validateTaskCreation(normalizedTaskParams, context)
 
         // Step 2: Build complete task object
-        const task = await this.buildTask(taskParams)
+        const task = await this.buildTask(normalizedTaskParams)
 
         // Step 3: Create feed data (if enabled)
         let feedData = null

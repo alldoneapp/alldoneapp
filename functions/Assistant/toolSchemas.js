@@ -9,13 +9,14 @@ const toolSchemas = {
         function: {
             name: 'create_task',
             description:
-                'Creates a new task with optional reminder/alert and recurrence. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X", "create a task to Y at Z time", or recurring task requests. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, recurrence, etc.) are optional. When you choose a project for the task, also provide projectRoutingReason explaining why. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
+                'Creates a new task with optional reminder/alert and recurrence. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X", "create a task to Y at Z time", or recurring task requests. Keep the task name concise; if the user gives a very long request, summarize it into a short title and put extra detail in description. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, recurrence, etc.) are optional. When you choose a project for the task, also provide projectRoutingReason explaining why. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
             parameters: {
                 type: 'object',
                 properties: {
                     name: {
                         type: 'string',
-                        description: 'The name/title of the task (required)',
+                        description:
+                            'The name/title of the task (required). Use a concise title; very long names are automatically abbreviated by the server.',
                     },
                     description: {
                         type: 'string',

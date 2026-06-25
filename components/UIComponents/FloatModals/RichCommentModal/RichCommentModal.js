@@ -370,7 +370,7 @@ export default function RichCommentModal({
                         />
                     </View>
 
-                    <CloseButton closeModal={closeModal} comments={comments} />
+                    <CloseButton closeModal={closeModal} comments={comments} openChat={processShowMore} />
                 </CustomScrollView>
             )}
         </View>
