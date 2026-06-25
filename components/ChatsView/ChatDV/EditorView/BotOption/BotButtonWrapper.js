@@ -8,6 +8,7 @@ import { setAssistantEnabled, setShowNotificationAboutTheBotBehavior } from '../
 import BotOptionsModal from './BotOptionsModal'
 import RunOutOfGoldAssistantModal from './RunOutOfGoldAssistantModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
+import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 
 export default function BotButtonWrapper({
     onSelectBotOption,
@@ -37,6 +38,30 @@ export default function BotButtonWrapper({
         if (gold <= 0) dispatch(setAssistantEnabled(false))
         setIsOpen(true)
         document.activeElement.blur()
+    }
+
+    const enableAssistant = () => {
+        setOptimisticAssistantEnabled(true)
+        setObjectAssistantEnabled(projectId, objectId, objectType, true)
+        dispatch(setAssistantEnabled(true))
+        if (updateObjectState) updateObjectState({ isAssistantEnabled: true })
+        if (document.activeElement) document.activeElement.blur()
+    }
+
+    const onPress = () => {
+        if (!noticeAboutTheBotBehavior) {
+            dispatch(setShowNotificationAboutTheBotBehavior(true))
+            return
+        }
+        if (gold <= 0) {
+            openModal()
+            return
+        }
+        if (!optimisticAssistantEnabled) {
+            enableAssistant()
+            return
+        }
+        openModal()
     }
 
     const closeModal = () => {
@@ -85,14 +110,14 @@ export default function BotButtonWrapper({
         >
             {inModal ? (
                 <BotButtonInModal
-                    onPress={openModal}
+                    onPress={onPress}
                     projectId={projectId}
                     assistantId={assistantId}
                     isAssistantEnabled={optimisticAssistantEnabled}
                 />
             ) : (
                 <BotButton
-                    onPress={openModal}
+                    onPress={onPress}
                     projectId={projectId}
                     assistantId={assistantId}
                     isAssistantEnabled={optimisticAssistantEnabled}
