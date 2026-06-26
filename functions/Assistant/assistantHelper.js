@@ -7192,6 +7192,185 @@ async function executeToolNatively(
             }
         }
 
+        case 'get_weather': {
+            console.log('🌦️ GET_WEATHER TOOL: Looking up weather', {
+                location: toolArgs.location,
+                forecast_days: toolArgs.forecast_days,
+                units: toolArgs.units,
+            })
+
+            const location = typeof toolArgs.location === 'string' ? toolArgs.location.trim() : ''
+
+            if (!location) {
+                return {
+                    success: false,
+                    error: 'A location is required.',
+                }
+            }
+
+            const envFunctions = getCachedEnvFunctions()
+            const googleMapsApiKey = envFunctions.GOOGLE_MAPS_API_KEY
+
+            if (!googleMapsApiKey || googleMapsApiKey === '' || googleMapsApiKey.startsWith('your_')) {
+                return {
+                    success: false,
+                    error: 'Weather lookup is not configured. GOOGLE_MAPS_API_KEY is missing.',
+                }
+            }
+
+            const unitsSystem = (toolArgs.units || 'metric').toLowerCase() === 'imperial' ? 'IMPERIAL' : 'METRIC'
+
+            // Clamp the forecast to the API's supported range (0 = current conditions only, max 10 days).
+            let forecastDays = parseInt(toolArgs.forecast_days, 10)
+            if (!Number.isFinite(forecastDays) || forecastDays < 0) forecastDays = 0
+            if (forecastDays > 10) forecastDays = 10
+
+            try {
+                // The Weather API only accepts coordinates, so resolve a place name/address via geocoding first.
+                let latitude
+                let longitude
+                let resolvedLocation = location
+
+                const coordinateMatch = location.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/)
+                if (coordinateMatch) {
+                    latitude = parseFloat(coordinateMatch[1])
+                    longitude = parseFloat(coordinateMatch[2])
+                } else {
+                    const geocodeUrl =
+                        'https://maps.googleapis.com/maps/api/geocode/json?address=' +
+                        encodeURIComponent(location) +
+                        '&key=' +
+                        googleMapsApiKey
+                    const geocodeResponse = await fetch(geocodeUrl)
+                    const geocodeData = await geocodeResponse.json()
+
+                    if (geocodeData.status === 'ZERO_RESULTS') {
+                        return {
+                            success: false,
+                            error: `Could not find a location matching "${location}".`,
+                        }
+                    }
+                    if (geocodeData.status !== 'OK' || !geocodeData.results || !geocodeData.results[0]) {
+                        const geoMessage = geocodeData.error_message || geocodeData.status || 'unknown error'
+                        console.error('🌦️ GET_WEATHER TOOL: Geocoding error', { status: geocodeData.status })
+                        return {
+                            success: false,
+                            error: `Could not resolve "${location}" to coordinates: ${geoMessage}.`,
+                        }
+                    }
+
+                    const geoResult = geocodeData.results[0]
+                    latitude = geoResult.geometry.location.lat
+                    longitude = geoResult.geometry.location.lng
+                    resolvedLocation = geoResult.formatted_address || location
+                }
+
+                const locationQuery =
+                    'location.latitude=' +
+                    encodeURIComponent(latitude) +
+                    '&location.longitude=' +
+                    encodeURIComponent(longitude) +
+                    '&unitsSystem=' +
+                    unitsSystem +
+                    '&key=' +
+                    googleMapsApiKey
+
+                // Current conditions.
+                const currentResponse = await fetch(
+                    'https://weather.googleapis.com/v1/currentConditions:lookup?' + locationQuery
+                )
+                const currentData = await currentResponse.json()
+
+                if (!currentResponse.ok) {
+                    const apiMessage =
+                        currentData && currentData.error && currentData.error.message
+                            ? currentData.error.message
+                            : `HTTP ${currentResponse.status}`
+                    console.error('🌦️ GET_WEATHER TOOL: Weather API error', {
+                        status: currentResponse.status,
+                        apiMessage,
+                    })
+                    return {
+                        success: false,
+                        error: `Weather lookup failed: ${apiMessage}`,
+                    }
+                }
+
+                const current = {
+                    condition: currentData.weatherCondition?.description?.text || null,
+                    condition_type: currentData.weatherCondition?.type || null,
+                    temperature: currentData.temperature?.degrees ?? null,
+                    feels_like: currentData.feelsLikeTemperature?.degrees ?? null,
+                    temperature_unit: currentData.temperature?.unit || null,
+                    relative_humidity: currentData.relativeHumidity ?? null,
+                    uv_index: currentData.uvIndex ?? null,
+                    wind_speed: currentData.wind?.speed?.value ?? null,
+                    wind_speed_unit: currentData.wind?.speed?.unit || null,
+                    wind_direction: currentData.wind?.direction?.cardinal || null,
+                    precipitation_probability: currentData.precipitation?.probability?.percent ?? null,
+                }
+
+                // Optional daily forecast.
+                let forecast = null
+                if (forecastDays > 0) {
+                    const forecastResponse = await fetch(
+                        'https://weather.googleapis.com/v1/forecast/days:lookup?' +
+                            locationQuery +
+                            '&days=' +
+                            forecastDays
+                    )
+                    const forecastData = await forecastResponse.json()
+
+                    if (forecastResponse.ok && Array.isArray(forecastData.forecastDays)) {
+                        forecast = forecastData.forecastDays.map(day => {
+                            const d = day.displayDate || {}
+                            const isoDate =
+                                d.year && d.month && d.day
+                                    ? `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
+                                    : null
+                            return {
+                                date: isoDate,
+                                max_temperature: day.maxTemperature?.degrees ?? null,
+                                min_temperature: day.minTemperature?.degrees ?? null,
+                                daytime_condition: day.daytimeForecast?.weatherCondition?.description?.text || null,
+                                daytime_precipitation_probability:
+                                    day.daytimeForecast?.precipitation?.probability?.percent ?? null,
+                                nighttime_condition: day.nighttimeForecast?.weatherCondition?.description?.text || null,
+                                nighttime_precipitation_probability:
+                                    day.nighttimeForecast?.precipitation?.probability?.percent ?? null,
+                            }
+                        })
+                    } else {
+                        console.warn('🌦️ GET_WEATHER TOOL: Forecast unavailable', {
+                            status: forecastResponse.status,
+                        })
+                    }
+                }
+
+                console.log('🌦️ GET_WEATHER TOOL: Weather retrieved', {
+                    resolvedLocation,
+                    temperature: current.temperature,
+                    forecastDays: forecast ? forecast.length : 0,
+                })
+
+                return {
+                    success: true,
+                    location: resolvedLocation,
+                    units: unitsSystem === 'IMPERIAL' ? 'imperial' : 'metric',
+                    current,
+                    forecast,
+                }
+            } catch (error) {
+                console.error('🌦️ GET_WEATHER TOOL: Lookup failed', {
+                    error: error.message,
+                })
+                return {
+                    success: false,
+                    error: `Weather lookup failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'search_gmail': {
             console.log('📧 SEARCH_GMAIL TOOL: Starting Gmail search', {
                 query: toolArgs.query,

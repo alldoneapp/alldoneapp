@@ -1192,6 +1192,36 @@ const toolSchemas = {
         },
     },
 
+    get_weather: {
+        type: 'function',
+        function: {
+            name: 'get_weather',
+            description:
+                'Get the current weather and optional multi-day forecast for a location using Google Maps. Use this when the user asks about the weather, temperature, or whether it will rain at a place. Accepts a city or place name, a street address, or a "latitude,longitude" pair.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    location: {
+                        type: 'string',
+                        description:
+                            'The location to get the weather for. A city or place name, a street address, or a "latitude,longitude" pair (e.g. "Berlin", "Eiffel Tower, Paris", or "52.5200,13.4050").',
+                    },
+                    forecast_days: {
+                        type: 'integer',
+                        description:
+                            'How many days of daily forecast to include in addition to current conditions. 0 (default) returns current conditions only. Maximum 10.',
+                    },
+                    units: {
+                        type: 'string',
+                        enum: ['metric', 'imperial'],
+                        description: 'Unit system for temperatures and measurements. Defaults to "metric".',
+                    },
+                },
+                required: ['location'],
+            },
+        },
+    },
+
     search_gmail: {
         type: 'function',
         function: {
