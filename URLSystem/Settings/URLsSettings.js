@@ -66,6 +66,11 @@ export const URL_SETTINGS_PREMIUM = 'SETTINGS_PREMIUM'
 export const URL_SETTINGS_EXPORT = 'SETTINGS_EXPORT'
 
 /**
+ * /settings/mcp
+ */
+export const URL_SETTINGS_MCP = 'SETTINGS_MCP'
+
+/**
  * URL System for Settings
  */
 class URLsSettings {
@@ -129,6 +134,8 @@ class URLsSettings {
                 return `settings/premium`
             case URL_SETTINGS_EXPORT:
                 return `settings/export`
+            case URL_SETTINGS_MCP:
+                return `settings/mcp`
         }
     }
 
@@ -172,6 +179,9 @@ class URLsSettings {
                 break
             case URL_SETTINGS_EXPORT:
                 document.title = `Alldone.app - Settings - Export`
+                break
+            case URL_SETTINGS_MCP:
+                document.title = `Alldone.app - Settings - MCP`
                 break
         }
     }

@@ -154,6 +154,7 @@ export const DV_TAB_SETTINGS_OKRS = 'SETTINGS_OKRS'
 export const DV_TAB_SETTINGS_SHORTCUTS = 'SETTINGS_SHORTCUTS'
 export const DV_TAB_SETTINGS_PREMIUM = 'SETTINGS_PREMIUM'
 export const DV_TAB_SETTINGS_EXPORT = 'SETTINGS_EXPORT'
+export const DV_TAB_SETTINGS_MCP = 'SETTINGS_MCP'
 
 /**
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -246,6 +247,7 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_SETTINGS_SHORTCUTS]: 'Shortcuts',
     [DV_TAB_SETTINGS_PREMIUM]: 'Premium',
     [DV_TAB_SETTINGS_EXPORT]: 'Export',
+    [DV_TAB_SETTINGS_MCP]: 'MCP',
     // Chat
     [DV_TAB_CHAT_BOARD]: 'Chat',
     [DV_TAB_CHAT_PROPERTIES]: 'Properties',

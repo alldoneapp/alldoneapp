@@ -12,6 +12,7 @@ import {
     URL_SETTINGS_OKRS,
     URL_SETTINGS_PROFILE,
     URL_SETTINGS_EXPORT,
+    URL_SETTINGS_MCP,
 } from './URLsSettings'
 import SettingsHelper from '../../components/SettingsView/SettingsHelper'
 import {
@@ -25,6 +26,7 @@ import {
     DV_TAB_SETTINGS_CUSTOMIZATIONS,
     DV_TAB_SETTINGS_PROFILE,
     DV_TAB_SETTINGS_EXPORT,
+    DV_TAB_SETTINGS_MCP,
 } from '../../utils/TabNavigationConstants'
 import {
     PROJECT_TYPE_ACTIVE,
@@ -48,6 +50,7 @@ class URLsSettingsTrigger {
             [URL_SETTINGS_SHORTCUTS]: new RegExp('^/settings/shortcuts$'),
             [URL_SETTINGS_PREMIUM]: new RegExp('^/settings/premium$'),
             [URL_SETTINGS_EXPORT]: new RegExp('^/settings/export$'),
+            [URL_SETTINGS_MCP]: new RegExp('^/settings/mcp$'),
         }
     }
 
@@ -93,6 +96,8 @@ class URLsSettingsTrigger {
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_PREMIUM)
             case URL_SETTINGS_EXPORT:
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_EXPORT)
+            case URL_SETTINGS_MCP:
+                return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_MCP)
         }
     }
 }
